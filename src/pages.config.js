@@ -3,6 +3,7 @@ import QRScanner from './pages/QRScanner';
 import GuardIncidents from './pages/GuardIncidents';
 import GuardMaintenance from './pages/GuardMaintenance';
 import ControlRoom from './pages/ControlRoom';
+import Scheduling from './pages/Scheduling';
 import Layout from './Layout.jsx';
 
 
@@ -12,6 +13,7 @@ export const PAGES = {
     "GuardIncidents": GuardIncidents,
     "GuardMaintenance": GuardMaintenance,
     "ControlRoom": ControlRoom,
+    "Scheduling": Scheduling,
 }
 
 export const pagesConfig = {
