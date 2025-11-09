@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Upload, CloudOff } from "lucide-react";
+import { X, Camera, Upload } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -12,11 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useOfflineMode } from "@/hooks/useOfflineMode";
-import { Badge } from "@/components/ui/badge";
 
 export default function MaintenanceForm({ user, shift, location, onClose, onSuccess }) {
-  const { isOnline, savePendingSync } = useOfflineMode();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -37,19 +34,9 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
     setSubmitting(true);
 
     try {
-      if (!isOnline) {
-        const success = savePendingSync("maintenance", formData);
-        if (success) {
-          alert("📱 Maintenance request saved offline. Will sync when online.");
-          onSuccess();
-        } else {
-          alert("❌ Failed to save maintenance request offline.");
-        }
-      } else {
-        await base44.entities.MaintenanceRequest.create(formData);
-        alert("✅ Maintenance request submitted successfully!");
-        onSuccess();
-      }
+      await base44.entities.MaintenanceRequest.create(formData);
+      alert("✅ Maintenance request submitted successfully!");
+      onSuccess();
     } catch (error) {
       alert(`Error: ${error.message}`);
     } finally {
@@ -61,32 +48,17 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
     const files = Array.from(e.target.files);
     
     for (const file of files) {
-      if (!isOnline) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setFormData(prev => ({
-            ...prev,
-            media: [...prev.media, {
-              type: file.type.startsWith('video') ? 'video' : 'photo',
-              url: reader.result,
-              offline: true
-            }]
-          }));
-        };
-        reader.readAsDataURL(file);
-      } else {
-        try {
-          const { file_url } = await base44.integrations.Core.UploadFile({ file });
-          setFormData(prev => ({
-            ...prev,
-            media: [...prev.media, {
-              type: file.type.startsWith('video') ? 'video' : 'photo',
-              url: file_url
-            }]
-          }));
-        } catch (error) {
-          alert(`Failed to upload ${file.name}`);
-        }
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        setFormData(prev => ({
+          ...prev,
+          media: [...prev.media, {
+            type: file.type.startsWith('video') ? 'video' : 'photo',
+            url: file_url
+          }]
+        }));
+      } catch (error) {
+        alert(`Failed to upload ${file.name}`);
       }
     }
   };
@@ -96,22 +68,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
       <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-8">
         <CardHeader className="border-b border-slate-700">
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-white flex items-center gap-2">
-                Maintenance Request
-                {!isOnline && (
-                  <Badge className="bg-amber-500 flex items-center gap-1">
-                    <CloudOff className="w-3 h-3" />
-                    Offline
-                  </Badge>
-                )}
-              </CardTitle>
-              {!isOnline && (
-                <p className="text-xs text-amber-400 mt-1">
-                  Request will be saved and synced when online
-                </p>
-              )}
-            </div>
+            <CardTitle className="text-white">Maintenance Request</CardTitle>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="w-5 h-5" />
             </Button>
@@ -218,18 +175,12 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
               {formData.media.length > 0 && (
                 <div className="mt-3 flex gap-2 overflow-x-auto">
                   {formData.media.map((media, idx) => (
-                    <div key={idx} className="relative">
-                      <img
-                        src={media.url}
-                        alt="Issue"
-                        className="h-20 w-20 object-cover rounded border border-slate-700"
-                      />
-                      {media.offline && (
-                        <Badge className="absolute top-1 right-1 bg-amber-500 text-xs">
-                          Offline
-                        </Badge>
-                      )}
-                    </div>
+                    <img
+                      key={idx}
+                      src={media.url}
+                      alt="Issue"
+                      className="h-20 w-20 object-cover rounded border border-slate-700"
+                    />
                   ))}
                 </div>
               )}
@@ -258,7 +209,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
                 disabled={submitting}
                 className="flex-1 bg-amber-600 hover:bg-amber-700"
               >
-                {submitting ? "Submitting..." : isOnline ? "Submit Request" : "Save Offline"}
+                {submitting ? "Submitting..." : "Submit Request"}
               </Button>
             </div>
           </form>
