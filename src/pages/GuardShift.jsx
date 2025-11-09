@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +22,8 @@ import ClockInOut from "../components/guard/ClockInOut";
 import ActiveShiftCard from "../components/guard/ActiveShiftCard";
 import StayAwakeAlert from "../components/guard/StayAwakeAlert";
 import QuickActions from "../components/guard/QuickActions";
+import AlarmNotification from "../components/guard/AlarmNotification";
+import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -28,6 +31,7 @@ export default function GuardShift() {
   const [user, setUser] = useState(null);
   const [location, setLocation] = useState(null);
   const [showStayAwake, setShowStayAwake] = useState(false);
+  const [alarmToComplete, setAlarmToComplete] = useState(null);
 
   useEffect(() => {
     loadUser();
@@ -98,6 +102,19 @@ export default function GuardShift() {
     initialData: []
   });
 
+  const { data: arrivedAlarms } = useQuery({
+    queryKey: ["arrivedAlarms", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      return await base44.entities.AlarmResponse.filter({
+        assigned_to: user.id,
+        status: "arrived"
+      });
+    },
+    enabled: !!user,
+    initialData: []
+  });
+
   // Simulate Stay Awake Alert (in production, this would come from backend)
   useEffect(() => {
     if (activeShift) {
@@ -132,6 +149,52 @@ export default function GuardShift() {
           onConfirm={() => setShowStayAwake(false)}
           location={location}
         />
+      )}
+
+      {/* Alarm Notifications */}
+      {user && <AlarmNotification user={user} />}
+
+      {/* Complete Alarm Response */}
+      {alarmToComplete && (
+        <CompleteAlarmResponse
+          alarm={alarmToComplete}
+          onClose={() => setAlarmToComplete(null)}
+          onSuccess={() => {
+            setAlarmToComplete(null);
+            queryClient.invalidateQueries(["arrivedAlarms"]);
+          }}
+        />
+      )}
+
+      {/* Arrived Alarms - Ready to Complete */}
+      {arrivedAlarms.length > 0 && (
+        <Card className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              On Scene - Complete Response
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {arrivedAlarms.map((alarm) => (
+              <div
+                key={alarm.id}
+                className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+              >
+                <h4 className="font-semibold text-white mb-1">
+                  {alarm.alarm_type.replace(/_/g, ' ').toUpperCase()}
+                </h4>
+                <p className="text-sm text-slate-400 mb-3">{alarm.address}</p>
+                <Button
+                  onClick={() => setAlarmToComplete(alarm)}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                >
+                  Complete & Report
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {/* Active Shift Card */}
