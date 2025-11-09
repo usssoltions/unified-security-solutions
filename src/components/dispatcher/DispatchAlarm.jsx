@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Added useMutation, useQueryClient
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,21 +19,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     description: "",
     assigned_to: ""
   });
-  // submitting state is replaced by dispatchMutation.isLoading
-  // const [submitting, setSubmitting] = useState(false);
-  // user state and loadUser effect are removed as user is fetched within the mutationFn
-  // const [user, setUser] = useState(null);
 
-  // useEffect(() => {
-  //   loadUser();
-  // }, []);
-
-  // const loadUser = async () => {
-  //   const currentUser = await base44.auth.me();
-  //   setUser(currentUser);
-  // };
-
-  const queryClient = useQueryClient(); // Initialize query client
+  const queryClient = useQueryClient();
 
   const { data: activeGuards } = useQuery({
     queryKey: ["activeGuardsForDispatch"],
@@ -74,8 +60,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   const geocodeAddress = async () => {
     if (!formData.address) return;
     
-    // Simple geocoding using browser Geolocation API or mock
-    // In production, use Google Maps Geocoding API
+    // Simple geocoding - in production, use Google Maps Geocoding API
     setFormData({
       ...formData,
       location: { lat: -33.9249 + Math.random() * 0.1, lng: 18.4241 + Math.random() * 0.1 }
@@ -111,14 +96,15 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
           minDistance = distance;
           nearest = { guard, distance };
         }
-      });
+      }
+    });
 
     return nearest;
   };
 
   const dispatchMutation = useMutation({
     mutationFn: async (alarmPayload) => {
-      const currentUser = await base44.auth.me(); // Fetch user within mutation
+      const currentUser = await base44.auth.me();
 
       const alarm = await base44.entities.AlarmResponse.create({
         ...alarmPayload,
@@ -137,42 +123,33 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
             body: `${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()} at ${alarmPayload.address}`,
             priority: alarmPayload.priority,
             data: {
-              type: 'alarm_response', // Changed from 'alarm' for clarity
+              type: 'alarm',
               id: alarm.id,
               alarm_type: alarmPayload.alarm_type
             }
           });
         } catch (error) {
           console.error('Failed to send push notification:', error);
-          // Continue even if notification fails
         }
       }
 
       // Create alert for assigned guard
       await base44.entities.Alert.create({
-        type: "system", // Changed from "assignment" to "system" as per typical alert types
+        type: "system",
         priority: alarmPayload.priority,
-        title: `ALARM DISPATCH: ${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()}`, // Updated title format
-        message: `You have been assigned to respond to ${alarmPayload.address}. ${alarmPayload.description}`, // Updated message
+        title: "Alarm Response Assigned",
+        message: `You have been assigned to respond to ${alarmPayload.alarm_type.replace(/_/g, ' ')} at ${alarmPayload.address}`,
         guard_id: alarmPayload.assigned_to,
         guard_name: alarmPayload.assigned_to_name,
         status: "active",
-        metadata: { 
-          alarm_response_id: alarm.id,
-          requires_acknowledgment: true 
-        }
+        metadata: { alarm_id: alarm.id }
       });
 
       return alarm;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["alarmResponses"]);
-      alert("Alarm dispatched successfully!"); // Keep alert for now
       onSuccess();
-    },
-    onError: (error) => {
-      console.error("Failed to dispatch alarm:", error);
-      alert("Failed to dispatch alarm"); // Keep alert for now
     }
   });
 
@@ -182,33 +159,21 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       return;
     }
 
-    // setSubmitting(true); // Replaced by dispatchMutation.isLoading
+    const assignedGuard = activeGuards.find(g => g.guard_id === formData.assigned_to);
+    const distance = assignedGuard?.last_location ? calculateDistance(
+      formData.location.lat,
+      formData.location.lng,
+      assignedGuard.last_location.lat,
+      assignedGuard.last_location.lng
+    ) : 0;
 
-    try {
-      const assignedGuard = activeGuards.find(g => g.guard_id === formData.assigned_to);
-      const distance = assignedGuard?.last_location ? calculateDistance(
-        formData.location.lat,
-        formData.location.lng,
-        assignedGuard.last_location.lat,
-        assignedGuard.last_location.lng
-      ) : 0;
+    const payload = {
+      ...formData,
+      assigned_to_name: assignedGuard?.guard_full_name,
+      distance_to_scene_km: distance
+    };
 
-      const payload = {
-        ...formData,
-        assigned_to_name: assignedGuard?.guard_full_name,
-        distance_to_scene_km: distance
-      };
-
-      await dispatchMutation.mutateAsync(payload);
-
-      // alert("Alarm dispatched successfully!"); // Moved to onSuccess
-      // onSuccess(); // Moved to onSuccess
-    } catch (error) {
-      // alert("Failed to dispatch alarm"); // Moved to onError
-      // console.error(error); // Moved to onError
-    } finally {
-      // setSubmitting(false); // Replaced by dispatchMutation.isLoading
-    }
+    dispatchMutation.mutate(payload);
   };
 
   const nearestGuard = findNearestGuard();
@@ -363,10 +328,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               </Button>
               <Button
                 onClick={handleDispatch}
-                disabled={dispatchMutation.isLoading} // Use mutation loading state
+                disabled={dispatchMutation.isPending}
                 className="flex-1 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
               >
-                {dispatchMutation.isLoading ? ( // Use mutation loading state
+                {dispatchMutation.isPending ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Dispatching...
