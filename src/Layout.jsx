@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
-import { useOfflineMode } from "@/hooks/useOfflineMode.js";
+import { useOfflineMode } from "@/hooks/useOfflineMode";
 import {
   Shield,
   Radio,

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +24,7 @@ import StayAwakeAlert from "../components/guard/StayAwakeAlert";
 import QuickActions from "../components/guard/QuickActions";
 import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
-import { useOfflineMode } from "@/hooks/useOfflineMode.js";
+import { useOfflineMode } from "@/hooks/useOfflineMode";
 
 export default function GuardShift() {
   const navigate = useNavigate();
