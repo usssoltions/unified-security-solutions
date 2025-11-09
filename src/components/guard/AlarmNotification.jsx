@@ -9,18 +9,35 @@ import { AlertOctagon, Navigation, CheckCircle2, MapPin, Phone, Clock } from "lu
 export default function AlarmNotification({ user }) {
   const queryClient = useQueryClient();
   const [acknowledging, setAcknowledging] = useState(false);
+  const [trackingIntervals, setTrackingIntervals] = useState({});
 
   const { data: activeAlarms } = useQuery({
     queryKey: ["activeAlarms", user.id],
     queryFn: async () => {
-      return await base44.entities.AlarmResponse.filter({
-        assigned_to: user.id,
-        status: ["dispatched", "acknowledged", "en_route"]
-      }, "-dispatched_at");
+      try {
+        return await base44.entities.AlarmResponse.filter({
+          assigned_to: user.id,
+          status: ["dispatched", "acknowledged", "en_route"]
+        }, "-dispatched_at");
+      } catch (error) {
+        if (!error?.message?.includes('WebSocket')) {
+          console.error("Failed to load alarms:", error);
+        }
+        return [];
+      }
     },
     refetchInterval: 5000,
-    initialData: []
+    initialData: [],
+    retry: 3,
+    retryDelay: 1000
   });
+
+  useEffect(() => {
+    // Cleanup tracking intervals on unmount
+    return () => {
+      Object.values(trackingIntervals).forEach(interval => clearInterval(interval));
+    };
+  }, [trackingIntervals]);
 
   const handleAcknowledge = async (alarm) => {
     setAcknowledging(true);
@@ -33,77 +50,105 @@ export default function AlarmNotification({ user }) {
       // Update user location
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(async (position) => {
-          await base44.auth.updateMe({
-            last_location: {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              timestamp: new Date().toISOString()
-            }
-          });
+          try {
+            await base44.auth.updateMe({
+              last_location: {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                timestamp: new Date().toISOString()
+              }
+            });
+          } catch (error) {
+            console.error("Failed to update location:", error);
+          }
         });
       }
 
       queryClient.invalidateQueries(["activeAlarms"]);
+    } catch (error) {
+      alert("Failed to acknowledge alarm");
     } finally {
       setAcknowledging(false);
     }
   };
 
   const handleNavigate = async (alarm) => {
-    // Update status to en_route
-    await base44.entities.AlarmResponse.update(alarm.id, {
-      status: "en_route",
-      en_route_at: new Date().toISOString()
-    });
+    try {
+      // Update status to en_route
+      await base44.entities.AlarmResponse.update(alarm.id, {
+        status: "en_route",
+        en_route_at: new Date().toISOString()
+      });
 
-    // Open navigation (Google Maps on mobile, browser otherwise)
-    const destination = `${alarm.location.lat},${alarm.location.lng}`;
-    const url = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-      ? `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
-      : `https://www.google.com/maps/search/?api=1&query=${destination}`;
-    
-    window.open(url, '_blank');
+      // Open navigation (Google Maps on mobile, browser otherwise)
+      const destination = `${alarm.location.lat},${alarm.location.lng}`;
+      const url = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+        ? `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
+        : `https://www.google.com/maps/search/?api=1&query=${destination}`;
+      
+      window.open(url, '_blank');
 
-    // Start tracking arrival
-    startArrivalTracking(alarm);
+      // Start tracking arrival
+      startArrivalTracking(alarm);
+    } catch (error) {
+      alert("Failed to start navigation");
+    }
   };
 
   const startArrivalTracking = (alarm) => {
-    const checkArrival = setInterval(() => {
+    // Clear existing interval if any
+    if (trackingIntervals[alarm.id]) {
+      clearInterval(trackingIntervals[alarm.id]);
+    }
+
+    const interval = setInterval(() => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(async (position) => {
-          const distance = calculateDistance(
-            position.coords.latitude,
-            position.coords.longitude,
-            alarm.location.lat,
-            alarm.location.lng
-          );
+          try {
+            const distance = calculateDistance(
+              position.coords.latitude,
+              position.coords.longitude,
+              alarm.location.lat,
+              alarm.location.lng
+            );
 
-          // If within 100m, mark as arrived
-          if (distance < 0.1 && alarm.status !== "arrived") {
-            await base44.entities.AlarmResponse.update(alarm.id, {
-              status: "arrived",
-              arrived_at: new Date().toISOString(),
-              response_time_minutes: Math.round(
-                (new Date() - new Date(alarm.dispatched_at)) / 60000
-              )
-            });
+            // If within 100m, mark as arrived
+            if (distance < 0.1) {
+              await base44.entities.AlarmResponse.update(alarm.id, {
+                status: "arrived",
+                arrived_at: new Date().toISOString(),
+                response_time_minutes: Math.round(
+                  (new Date() - new Date(alarm.dispatched_at)) / 60000
+                )
+              });
 
-            // Notify control room
-            await base44.entities.Alert.create({
-              type: "system",
-              priority: "medium",
-              title: "Responder Arrived",
-              message: `${user.full_name} has arrived at ${alarm.address}`,
-              status: "active"
-            });
+              // Notify control room
+              await base44.entities.Alert.create({
+                type: "system",
+                priority: "medium",
+                title: "Responder Arrived",
+                message: `${user.full_name} has arrived at ${alarm.address}`,
+                status: "active"
+              });
 
-            clearInterval(checkArrival);
-            queryClient.invalidateQueries(["activeAlarms"]);
+              clearInterval(interval);
+              delete trackingIntervals[alarm.id];
+              queryClient.invalidateQueries(["activeAlarms"]);
+            }
+          } catch (error) {
+            console.error("Arrival tracking error:", error);
           }
+        }, (error) => {
+          console.error("Geolocation error:", error);
+        }, {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
         });
       }
-    }, 10000); // Check every 10 seconds
+    }, 10000);
+
+    setTrackingIntervals(prev => ({ ...prev, [alarm.id]: interval }));
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {

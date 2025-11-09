@@ -13,10 +13,12 @@ import {
   Menu,
   X,
   LogOut,
-  Bell
+  Bell,
+  Package
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
@@ -29,6 +31,15 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     loadUser();
     loadAlerts();
+    
+    // Suppress WebSocket errors globally
+    const originalError = console.error;
+    console.error = (...args) => {
+      if (args[0]?.toString().includes('WebSocket')) {
+        return; // Suppress WebSocket errors
+      }
+      originalError.apply(console, args);
+    };
   }, []);
 
   const loadUser = async () => {
@@ -36,7 +47,9 @@ export default function Layout({ children, currentPageName }) {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
     } catch (error) {
-      console.error("Failed to load user:", error);
+      if (!error?.message?.includes('WebSocket')) {
+        console.error("Failed to load user:", error);
+      }
     } finally {
       setLoading(false);
     }
@@ -47,7 +60,9 @@ export default function Layout({ children, currentPageName }) {
       const alertList = await base44.entities.Alert.filter({ status: "active" }, "-created_date", 5);
       setAlerts(alertList);
     } catch (error) {
-      console.error("Failed to load alerts:", error);
+      if (!error?.message?.includes('WebSocket')) {
+        console.error("Failed to load alerts:", error);
+      }
     }
   };
 
@@ -93,8 +108,8 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio },
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
-        { title: "Incidents", url: createPageUrl("IncidentManagement"), icon: AlertTriangle },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
+        { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Users", url: createPageUrl("UserManagement"), icon: Users }
       ];
     }
@@ -113,65 +128,90 @@ export default function Layout({ children, currentPageName }) {
   const navigationItems = getNavigationItems();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Top Bar */}
-      <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
-        <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden text-slate-300"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X /> : <Menu />}
-            </Button>
-            <Shield className="w-8 h-8 text-sky-400" />
-            <div>
-              <h1 className="font-bold text-white text-lg">SecureGuard</h1>
-              <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {/* Top Bar */}
+        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
+          <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden text-slate-300"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? <X /> : <Menu />}
+              </Button>
+              <Shield className="w-8 h-8 text-sky-400" />
+              <div>
+                <h1 className="font-bold text-white text-lg">SecureGuard</h1>
+                <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" className="relative text-slate-300">
+                <Bell className="w-5 h-5" />
+                {alerts.length > 0 && (
+                  <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-rose-500 text-white text-xs">
+                    {alerts.length}
+                  </Badge>
+                )}
+              </Button>
+              <div className="hidden md:flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-lg">
+                <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm">
+                    {user.full_name?.[0]?.toUpperCase() || "U"}
+                  </span>
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-white">{user.full_name}</p>
+                  <p className="text-xs text-slate-400">{user.badge_number || user.email}</p>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="text-slate-300">
+                <LogOut className="w-5 h-5" />
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="relative text-slate-300">
-              <Bell className="w-5 h-5" />
-              {alerts.length > 0 && (
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-rose-500 text-white text-xs">
-                  {alerts.length}
-                </Badge>
-              )}
-            </Button>
-            <div className="hidden md:flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-lg">
-              <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold text-sm">
-                  {user.full_name?.[0]?.toUpperCase() || "U"}
-                </span>
-              </div>
-              <div className="text-left">
-                <p className="text-sm font-medium text-white">{user.full_name}</p>
-                <p className="text-xs text-slate-400">{user.badge_number || user.email}</p>
-              </div>
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <div className="lg:hidden bg-slate-800 border-t border-slate-700/50">
+              <nav className="p-4 space-y-2">
+                {navigationItems.map((item) => (
+                  <Link
+                    key={item.title}
+                    to={item.url}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                      location.pathname === item.url
+                        ? "bg-sky-500 text-white"
+                        : "text-slate-300 hover:bg-slate-700"
+                    }`}
+                  >
+                    <item.icon className="w-5 h-5" />
+                    <span className="font-medium">{item.title}</span>
+                  </Link>
+                ))}
+              </nav>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="text-slate-300">
-              <LogOut className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
+          )}
+        </header>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden bg-slate-800 border-t border-slate-700/50">
-            <nav className="p-4 space-y-2">
+        {/* Desktop Sidebar + Content */}
+        <div className="flex">
+          {/* Desktop Sidebar */}
+          <aside className="hidden lg:flex flex-col w-64 bg-slate-900/60 backdrop-blur-lg border-r border-slate-700/50 min-h-screen">
+            <nav className="flex-1 p-4 space-y-2">
               {navigationItems.map((item) => (
                 <Link
                   key={item.title}
                   to={item.url}
-                  onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                     location.pathname === item.url
-                      ? "bg-sky-500 text-white"
-                      : "text-slate-300 hover:bg-slate-700"
+                      ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20"
+                      : "text-slate-300 hover:bg-slate-800"
                   }`}
                 >
                   <item.icon className="w-5 h-5" />
@@ -179,49 +219,26 @@ export default function Layout({ children, currentPageName }) {
                 </Link>
               ))}
             </nav>
-          </div>
-        )}
-      </header>
 
-      {/* Desktop Sidebar + Content */}
-      <div className="flex">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex flex-col w-64 bg-slate-900/60 backdrop-blur-lg border-r border-slate-700/50 min-h-screen">
-          <nav className="flex-1 p-4 space-y-2">
-            {navigationItems.map((item) => (
-              <Link
-                key={item.title}
-                to={item.url}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  location.pathname === item.url
-                    ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20"
-                    : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.title}</span>
-              </Link>
-            ))}
-          </nav>
-
-          {/* Status Indicator */}
-          {user.role_type === "guard" && user.is_clocked_in && (
-            <div className="p-4 border-t border-slate-700/50">
-              <div className="px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                <div className="flex items-center gap-2 text-emerald-400">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                  <span className="text-sm font-medium">On Duty</span>
+            {/* Status Indicator */}
+            {user.role_type === "guard" && user.is_clocked_in && (
+              <div className="p-4 border-t border-slate-700/50">
+                <div className="px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                    <span className="text-sm font-medium">On Duty</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </aside>
+            )}
+          </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 min-h-screen">
-          {children}
-        </main>
+          {/* Main Content */}
+          <main className="flex-1 min-h-screen">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }
