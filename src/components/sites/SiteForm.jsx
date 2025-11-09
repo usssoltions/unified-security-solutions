@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Plus, Trash2, MapPin, QrCode } from "lucide-react";
+import { X, Plus, Trash2, MapPin, QrCode, Loader2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -24,6 +24,43 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     checkpoints: site?.checkpoints || []
   });
   const [loading, setLoading] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+
+  const geocodeAddress = async () => {
+    if (!formData.address || formData.address.trim().length < 5) {
+      alert("Please enter a valid address first");
+      return;
+    }
+
+    setGeocoding(true);
+    try {
+      // Using OpenStreetMap Nominatim API for geocoding (free, no API key required)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(formData.address)}&limit=1`
+      );
+      
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        const result = data[0];
+        setFormData({
+          ...formData,
+          location: {
+            lat: parseFloat(result.lat),
+            lng: parseFloat(result.lon)
+          }
+        });
+        alert(`✅ Location found: ${result.display_name}`);
+      } else {
+        alert("❌ Address not found. Please check the address or enter coordinates manually.");
+      }
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      alert("Failed to geocode address. Please enter coordinates manually.");
+    } finally {
+      setGeocoding(false);
+    }
+  };
 
   const handleAddCheckpoint = () => {
     setFormData({
@@ -115,13 +152,35 @@ export default function SiteForm({ site, onClose, onSuccess }) {
 
               <div>
                 <label className="text-sm text-slate-400 mb-2 block">Address *</label>
-                <Textarea
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="bg-slate-900/50 border-slate-700 text-white"
-                  rows={2}
-                  required
-                />
+                <div className="space-y-2">
+                  <Textarea
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="bg-slate-900/50 border-slate-700 text-white"
+                    rows={2}
+                    required
+                    placeholder="Enter full address (e.g., 123 Main Street, Cape Town, South Africa)"
+                  />
+                  <Button
+                    type="button"
+                    onClick={geocodeAddress}
+                    disabled={geocoding || !formData.address}
+                    variant="outline"
+                    className="w-full border-sky-500/50 text-sky-400 hover:bg-sky-500/10"
+                  >
+                    {geocoding ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Finding Location...
+                      </>
+                    ) : (
+                      <>
+                        <MapPin className="w-4 h-4 mr-2" />
+                        Generate GPS Coordinates from Address
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div>
@@ -166,6 +225,9 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                 <MapPin className="w-5 h-5" />
                 <span>GPS Location</span>
               </div>
+              <p className="text-xs text-slate-400">
+                Use "Generate GPS Coordinates" button above or enter manually
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm text-slate-400 mb-2 block">Latitude</label>
@@ -196,6 +258,12 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                   />
                 </div>
               </div>
+              {formData.location.lat !== 0 && formData.location.lng !== 0 && (
+                <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                  <MapPin className="w-4 h-4" />
+                  <span>Location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}</span>
+                </div>
+              )}
             </div>
 
             {/* Checkpoints */}
