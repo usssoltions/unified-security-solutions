@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -17,7 +16,8 @@ import {
   Bell,
   Package,
   Settings,
-  Sliders
+  Sliders,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +28,13 @@ export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     loadUser();
-    loadAlerts();
     
     // Suppress WebSocket errors globally
     const originalError = console.error;
@@ -43,16 +44,23 @@ export default function Layout({ children, currentPageName }) {
       }
       originalError.apply(console, args);
     };
-  }, []);
+  }, [retryCount]);
 
   const loadUser = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
-    } catch (error) {
-      if (!error?.message?.includes('WebSocket')) {
-        console.error("Failed to load user:", error);
+      
+      // Only load alerts if user is authenticated
+      if (currentUser) {
+        loadAlerts();
       }
+    } catch (err) {
+      console.error("Failed to load user:", err);
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -70,17 +78,59 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const handleLogout = async () => {
-    await base44.auth.logout();
+    try {
+      await base44.auth.logout();
+    } catch (err) {
+      console.error("Logout error:", err);
+      window.location.reload();
+    }
   };
 
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
+
+  // Loading State
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400" />
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400 mx-auto mb-4" />
+          <p className="text-slate-400">Loading Security Guard System...</p>
+        </div>
       </div>
     );
   }
 
+  // Error State
+  if (error && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+        <div className="text-center max-w-md">
+          <Shield className="w-16 h-16 text-rose-400 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-white mb-2">Connection Error</h1>
+          <p className="text-slate-400 mb-6">
+            Unable to connect to the server. Please check your internet connection and try again.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={handleRetry} className="bg-sky-500 hover:bg-sky-600">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+            <Button 
+              onClick={() => window.location.reload()} 
+              variant="outline" 
+              className="border-slate-600 text-slate-300"
+            >
+              Reload Page
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not Authenticated
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">

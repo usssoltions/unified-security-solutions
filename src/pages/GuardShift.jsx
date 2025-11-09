@@ -32,6 +32,7 @@ export default function GuardShift() {
   const [location, setLocation] = useState(null);
   const [showStayAwake, setShowStayAwake] = useState(false);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(true);
 
   useEffect(() => {
     loadUser();
@@ -39,8 +40,15 @@ export default function GuardShift() {
   }, []);
 
   const loadUser = async () => {
-    const currentUser = await base44.auth.me();
-    setUser(currentUser);
+    setLoadingUser(true);
+    try {
+      const currentUser = await base44.auth.me();
+      setUser(currentUser);
+    } catch (error) {
+      console.error("Failed to load user:", error);
+    } finally {
+      setLoadingUser(false);
+    }
   };
 
   const startLocationTracking = () => {
@@ -58,7 +66,7 @@ export default function GuardShift() {
     }
   };
 
-  const { data: activeShift } = useQuery({
+  const { data: activeShift, isLoading: shiftsLoading } = useQuery({
     queryKey: ["activeShift", user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -69,7 +77,9 @@ export default function GuardShift() {
       return shifts[0] || null;
     },
     enabled: !!user,
-    refetchInterval: 30000
+    refetchInterval: 30000,
+    retry: 3,
+    retryDelay: 1000
   });
 
   const { data: upcomingShifts } = useQuery({
@@ -86,7 +96,8 @@ export default function GuardShift() {
       );
     },
     enabled: !!user,
-    initialData: []
+    initialData: [],
+    retry: 3
   });
 
   const { data: pendingAssignments } = useQuery({
@@ -99,7 +110,8 @@ export default function GuardShift() {
       });
     },
     enabled: !!user,
-    initialData: []
+    initialData: [],
+    retry: 3
   });
 
   const { data: arrivedAlarms } = useQuery({
@@ -112,7 +124,8 @@ export default function GuardShift() {
       });
     },
     enabled: !!user,
-    initialData: []
+    initialData: [],
+    retry: 3
   });
 
   // Simulate Stay Awake Alert (in production, this would come from backend)
@@ -128,10 +141,27 @@ export default function GuardShift() {
     }
   }, [activeShift]);
 
+  if (loadingUser || shiftsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400 mx-auto mb-4" />
+          <p className="text-slate-400">Loading your shift...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400" />
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-rose-400 mx-auto mb-4" />
+          <p className="text-white text-lg mb-2">Unable to load user data</p>
+          <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700">
+            Reload Page
+          </Button>
+        </div>
       </div>
     );
   }
