@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -9,7 +10,7 @@ import {
   AlertTriangle,
   MapPin,
   BarChart3,
-  Users,
+  Users, // Ensure Users icon is imported
   Menu,
   X,
   LogOut,
@@ -164,6 +165,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
+        { title: "Guard Activity", url: createPageUrl("GuardActivity"), icon: Users }, // Added Guard Activity
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
         { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings }

@@ -10,6 +10,7 @@ import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
 import SiteManagement from './pages/SiteManagement';
 import Configuration from './pages/Configuration';
+import GuardActivity from './pages/GuardActivity';
 import Layout from './Layout.jsx';
 
 
@@ -26,6 +27,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "SiteManagement": SiteManagement,
     "Configuration": Configuration,
+    "GuardActivity": GuardActivity,
 }
 
 export const pagesConfig = {

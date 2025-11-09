@@ -23,6 +23,7 @@ import StayAwakeAlert from "../components/guard/StayAwakeAlert";
 import QuickActions from "../components/guard/QuickActions";
 import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
+import LocationTracker from "../components/guard/LocationTracker";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -183,6 +184,13 @@ export default function GuardShift() {
 
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6">
+      {/* Real-time Location Tracker - runs in background */}
+      <LocationTracker 
+        user={user} 
+        shift={activeShift} 
+        enabled={!!activeShift && user.is_clocked_in} 
+      />
+
       {/* Stay Awake Alert Modal */}
       {showStayAwake && (
         <StayAwakeAlert
