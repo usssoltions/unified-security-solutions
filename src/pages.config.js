@@ -4,6 +4,7 @@ import GuardIncidents from './pages/GuardIncidents';
 import GuardMaintenance from './pages/GuardMaintenance';
 import ControlRoom from './pages/ControlRoom';
 import Scheduling from './pages/Scheduling';
+import Analytics from './pages/Analytics';
 import Layout from './Layout.jsx';
 
 
@@ -14,6 +15,7 @@ export const PAGES = {
     "GuardMaintenance": GuardMaintenance,
     "ControlRoom": ControlRoom,
     "Scheduling": Scheduling,
+    "Analytics": Analytics,
 }
 
 export const pagesConfig = {
