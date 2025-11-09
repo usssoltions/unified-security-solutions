@@ -1,18 +1,67 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Database, Loader2, CheckCircle2, AlertCircle, Zap, LogOut } from "lucide-react";
+import { Database, Loader2, CheckCircle2, AlertCircle, Zap, LogOut, RefreshCw, Shield } from "lucide-react";
 
 export default function SystemSetup() {
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [needsRelogin, setNeedsRelogin] = useState(false);
+  const [roleStatus, setRoleStatus] = useState(null);
+
+  useEffect(() => {
+    checkCurrentRole();
+  }, []);
 
   const addStatus = (message, type = "info") => {
     setStatus(prev => [...prev, { message, type, timestamp: new Date() }]);
+  };
+
+  const checkCurrentRole = async () => {
+    setChecking(true);
+    try {
+      const user = await base44.auth.me();
+      setCurrentUser(user);
+      
+      if (user.role_type === 'admin' || user.role_type === 'dispatcher') {
+        setRoleStatus({ hasPermission: true, role: user.role_type });
+      } else {
+        setRoleStatus({ hasPermission: false, role: user.role_type || 'none' });
+      }
+    } catch (error) {
+      console.error("Failed to check role:", error);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const forceRoleUpdate = async () => {
+    setLoading(true);
+    try {
+      // Direct role update
+      await base44.auth.updateMe({ 
+        role_type: "admin",
+        badge_number: "ADMIN-001",
+        phone: "+27123456789"
+      });
+      
+      addStatus("✅ Role updated to Admin in database", "success");
+      addStatus("🔄 Please wait 3 seconds, then the page will force refresh...", "warning");
+      
+      // Force hard refresh after delay
+      setTimeout(() => {
+        window.location.href = window.location.href;
+      }, 3000);
+      
+    } catch (error) {
+      addStatus(`❌ Error: ${error.message}`, "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const setupTestData = async () => {
@@ -27,27 +76,17 @@ export default function SystemSetup() {
       addStatus(`Logged in as: ${user.full_name} (${user.email})`, "success");
       addStatus(`Current role: ${user.role_type || 'Not set'}`, "info");
 
-      // Check if already admin
-      if (user.role_type === 'admin' || user.role_type === 'dispatcher') {
-        addStatus("✅ You already have admin/dispatcher permissions", "success");
-      } else {
-        // Update current user to admin
-        addStatus("Setting your role to Admin...", "info");
-        await base44.auth.updateMe({ 
-          role_type: "admin",
-          badge_number: user.badge_number || "ADMIN-001",
-          phone: user.phone || "+27123456789"
-        });
-        
-        addStatus("✅ Role updated in database!", "success");
-        addStatus("⚠️ You need to logout and login again for permissions to take effect", "warning");
-        setNeedsRelogin(true);
+      // Check permissions
+      if (user.role_type !== 'admin' && user.role_type !== 'dispatcher') {
+        addStatus("❌ You don't have admin/dispatcher role yet!", "error");
+        addStatus("Please use 'Force Role to Admin' button first", "warning");
         setLoading(false);
         return;
       }
 
-      // Continue with setup only if already admin
-      // Create Sites - UPDATED TO YOUR LOCATION
+      addStatus("✅ You have admin/dispatcher permissions", "success");
+
+      // Create Sites
       addStatus("Creating test sites at your location...", "info");
       const sites = await Promise.all([
         base44.entities.Site.create({
@@ -115,11 +154,10 @@ export default function SystemSetup() {
       ]);
       addStatus(`✅ Created ${templates.length} checklist templates`, "success");
 
-      // Create Shifts for current user at YOUR LOCATION
+      // Create Shifts
       addStatus("Creating shifts at 131 Atlantic Drive...", "info");
       const now = new Date();
       const shifts = await Promise.all([
-        // Active shift (started 2 hours ago, ends in 6 hours)
         base44.entities.Shift.create({
           guard_id: user.id,
           guard_name: user.full_name,
@@ -129,7 +167,6 @@ export default function SystemSetup() {
           end_time: new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString(),
           status: "scheduled"
         }),
-        // Upcoming shift tomorrow
         base44.entities.Shift.create({
           guard_id: user.id,
           guard_name: user.full_name,
@@ -140,11 +177,11 @@ export default function SystemSetup() {
           status: "scheduled"
         })
       ]);
-      addStatus(`✅ Created ${shifts.length} shifts (1 ready to clock in at 131 Atlantic Drive)`, "success");
+      addStatus(`✅ Created ${shifts.length} shifts`, "success");
 
-      // Create sample Assets
+      // Create Assets
       addStatus("Creating sample assets...", "info");
-      const assets = await Promise.all([
+      await Promise.all([
         base44.entities.Asset.create({
           asset_name: "Patrol Vehicle #1",
           asset_number: "VEH-001",
@@ -154,10 +191,7 @@ export default function SystemSetup() {
           site_name: sites[0].name,
           purchase_date: "2023-01-15",
           purchase_cost: 250000,
-          current_value: 200000,
-          last_service_date: "2024-09-01",
-          next_service_date: new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          service_interval_days: 90
+          current_value: 200000
         }),
         base44.entities.Asset.create({
           asset_name: "Radio Set #12",
@@ -171,9 +205,9 @@ export default function SystemSetup() {
           current_value: 3000
         })
       ]);
-      addStatus(`✅ Created ${assets.length} assets`, "success");
+      addStatus("✅ Created sample assets", "success");
 
-      // Create sample incidents
+      // Create Incidents
       addStatus("Creating sample incidents...", "info");
       await base44.entities.Incident.create({
         title: "Suspicious Vehicle Near Beach",
@@ -190,11 +224,11 @@ export default function SystemSetup() {
       });
       addStatus("✅ Created sample incident", "success");
 
-      // Create sample maintenance request
+      // Create Maintenance
       addStatus("Creating sample maintenance...", "info");
       await base44.entities.MaintenanceRequest.create({
         title: "Broken Gate Light",
-        description: "Main gate light fixture not working - needs replacement",
+        description: "Main gate light fixture not working",
         category: "lighting",
         urgency: "medium",
         status: "reported",
@@ -206,7 +240,7 @@ export default function SystemSetup() {
       });
       addStatus("✅ Created maintenance request", "success");
 
-      // Create custom report schedule
+      // Create Report Schedule
       addStatus("Creating report schedule...", "info");
       await base44.entities.ReportSchedule.create({
         name: "Daily Morning Report - Yzerfontein",
@@ -222,7 +256,6 @@ export default function SystemSetup() {
 
       addStatus("🎉 SETUP COMPLETE! All test data created.", "success");
       addStatus("📍 Shift location: 131 Atlantic Drive, Yzerfontein", "success");
-      addStatus("💡 Go to 'My Shift' to clock in (200m geofence radius)", "info");
 
     } catch (error) {
       addStatus(`❌ Error: ${error.message}`, "error");
@@ -230,10 +263,6 @@ export default function SystemSetup() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleLogoutAndRelogin = async () => {
-    await base44.auth.logout(window.location.href);
   };
 
   return (
@@ -247,69 +276,122 @@ export default function SystemSetup() {
               </div>
               <div>
                 <CardTitle className="text-white text-2xl">System Setup & Test Data</CardTitle>
-                <p className="text-slate-400 mt-1">Quickly populate your database with sample data</p>
+                <p className="text-slate-400 mt-1">Set up your admin role and create test data</p>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {needsRelogin && (
-              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-6 h-6 text-amber-400 flex-shrink-0 mt-0.5" />
+            {/* Current Role Status */}
+            <Card className={`${
+              roleStatus?.hasPermission 
+                ? 'bg-emerald-500/10 border-emerald-500/30' 
+                : 'bg-rose-500/10 border-rose-500/30'
+            }`}>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <Shield className={`w-8 h-8 ${
+                    roleStatus?.hasPermission ? 'text-emerald-400' : 'text-rose-400'
+                  }`} />
                   <div className="flex-1">
-                    <h3 className="text-amber-400 font-semibold mb-2">Action Required: Logout & Login</h3>
-                    <p className="text-sm text-slate-300 mb-4">
-                      Your role has been updated to Admin, but you need to logout and login again 
-                      for the permissions to take effect in your session.
-                    </p>
-                    <Button
-                      onClick={handleLogoutAndRelogin}
-                      className="w-full bg-amber-600 hover:bg-amber-700"
-                    >
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Logout & Return to Login
-                    </Button>
-                    <p className="text-xs text-slate-400 mt-2">
-                      After logging back in, click "Generate Test Data" again to create the test sites.
+                    <p className="text-sm text-slate-400">Current Permission Status</p>
+                    <p className={`text-lg font-bold ${
+                      roleStatus?.hasPermission ? 'text-emerald-400' : 'text-rose-400'
+                    }`}>
+                      {roleStatus?.hasPermission 
+                        ? `✅ Admin Access (Role: ${roleStatus.role})`
+                        : `❌ No Admin Access (Role: ${roleStatus?.role || 'none'})`
+                      }
                     </p>
                   </div>
+                  <Button
+                    onClick={checkCurrentRole}
+                    disabled={checking}
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-600"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
+                  </Button>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+
+            {/* Step 1: Force Role Update */}
+            {!roleStatus?.hasPermission && (
+              <Card className="bg-amber-500/10 border-amber-500/30">
+                <CardHeader>
+                  <CardTitle className="text-amber-400 flex items-center gap-2">
+                    <span className="text-2xl">1️⃣</span>
+                    STEP 1: Get Admin Access
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-slate-300">
+                    You need admin permissions to create sites. Click the button below to upgrade your account.
+                  </p>
+                  <Button
+                    onClick={forceRoleUpdate}
+                    disabled={loading}
+                    className="w-full bg-amber-600 hover:bg-amber-700 h-12"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Updating Role...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-5 h-5 mr-2" />
+                        Force Role to Admin (Will Refresh Page)
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
             )}
 
-            <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg">
-              <h3 className="text-sky-400 font-semibold mb-2">📍 Test Location Setup:</h3>
-              <p className="text-white font-medium mb-2">131 Atlantic Drive, Yzerfontein, 7351</p>
-              <ul className="space-y-1 text-sm text-slate-300">
-                <li>✅ 3 test sites in Yzerfontein area</li>
-                <li>✅ Main site at YOUR LOCATION (200m geofence)</li>
-                <li>✅ 2 checklist templates with QR codes</li>
-                <li>✅ 2 shifts (1 active shift you can clock into now)</li>
-                <li>✅ 2 sample assets (vehicle & equipment)</li>
-                <li>✅ Sample incident report</li>
-                <li>✅ Sample maintenance request</li>
-                <li>✅ Daily automated report schedule</li>
-                <li>✅ Your account upgraded to Admin role</li>
-              </ul>
-            </div>
-
-            <Button
-              onClick={setupTestData}
-              disabled={loading}
-              className="w-full h-14 text-lg bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-6 h-6 mr-2 animate-spin" />
-                  Setting up system...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-6 h-6 mr-2" />
-                  Generate Test Data
-                </>
-              )}
-            </Button>
+            {/* Step 2: Generate Test Data */}
+            <Card className="bg-sky-500/10 border-sky-500/30">
+              <CardHeader>
+                <CardTitle className="text-sky-400 flex items-center gap-2">
+                  <span className="text-2xl">2️⃣</span>
+                  STEP 2: Generate Test Data
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-sm text-slate-300 space-y-1">
+                  <p className="font-semibold">📍 Location: 131 Atlantic Drive, Yzerfontein</p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li>3 test sites in Yzerfontein area</li>
+                    <li>2 checklist templates with QR codes</li>
+                    <li>2 shifts (1 ready to clock in)</li>
+                    <li>Sample assets, incidents & maintenance</li>
+                  </ul>
+                </div>
+                <Button
+                  onClick={setupTestData}
+                  disabled={loading || !roleStatus?.hasPermission}
+                  className="w-full h-12 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Creating Test Data...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-5 h-5 mr-2" />
+                      Generate Test Data
+                    </>
+                  )}
+                </Button>
+                {!roleStatus?.hasPermission && (
+                  <p className="text-xs text-amber-400 text-center">
+                    ⚠️ Complete Step 1 first to enable this button
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
             {currentUser && (
               <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
@@ -347,19 +429,6 @@ export default function SystemSetup() {
                 </CardContent>
               </Card>
             )}
-
-            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-              <h3 className="text-amber-400 font-semibold mb-2">📱 Setup Steps:</h3>
-              <ol className="space-y-1 text-sm text-slate-300 list-decimal list-inside">
-                <li>Click "Generate Test Data" button above</li>
-                <li>If prompted, logout and login again (for role permissions)</li>
-                <li>Click "Generate Test Data" again after re-login</li>
-                <li>Test data will be created at your location</li>
-                <li>Go to "Sites" to create additional sites</li>
-                <li>Go to "My Shift" to test guard features</li>
-                <li>Test QR scanning (codes: YZER_MAIN_001, YZER_PERI_002)</li>
-              </ol>
-            </div>
           </CardContent>
         </Card>
       </div>
