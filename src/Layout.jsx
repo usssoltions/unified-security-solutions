@@ -1,10 +1,7 @@
-
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
-import { useOfflineMode } from "@/hooks/useOfflineMode";
-import { useNotifications } from "@/hooks/useNotifications";
 import {
   Shield,
   Radio,
@@ -20,12 +17,7 @@ import {
   Package,
   Settings,
   Sliders,
-  RefreshCw,
-  WifiOff,
-  CloudOff,
-  CheckCircle2,
-  BellRing,
-  AlertCircle // Added AlertCircle import
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,23 +32,6 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [retryCount, setRetryCount] = useState(0);
-  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
-  const [showSyncDetails, setShowSyncDetails] = useState(false); // Added state for sync details
-  
-  const { 
-    isOnline, 
-    pendingSyncCount, 
-    failedSyncCount, // Added failedSyncCount
-    isSyncing, 
-    syncStatus, // Added syncStatus
-    lastSyncTime, // Added lastSyncTime
-    syncOfflineData, // Added syncOfflineData
-    retryFailedAction, // Added retryFailedAction
-    failedActions, // Added failedActions
-    clearFailedActions // Added clearFailedActions
-  } = useOfflineMode();
-  
-  const { permission, isSupported, requestPermission } = useNotifications();
 
   useEffect(() => {
     loadUser();
@@ -70,17 +45,6 @@ export default function Layout({ children, currentPageName }) {
       originalError.apply(console, args);
     };
   }, [retryCount]);
-
-  useEffect(() => {
-    // Show notification prompt for guards if not already granted
-    if (user && user.role_type === "guard" && isSupported && permission === "default") {
-      // Show prompt after a short delay
-      const timer = setTimeout(() => {
-        setShowNotificationPrompt(true);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [user, isSupported, permission]);
 
   const loadUser = async () => {
     setLoading(true);
@@ -124,20 +88,6 @@ export default function Layout({ children, currentPageName }) {
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
-  };
-
-  const handleEnableNotifications = async () => {
-    const granted = await requestPermission();
-    if (granted) {
-      setShowNotificationPrompt(false);
-    }
-  };
-
-  const handleManualSync = async () => {
-    const result = await syncOfflineData(true);
-    if (result.success) {
-      console.log(`Synced ${result.synced} actions`);
-    }
   };
 
   // Loading State
@@ -239,189 +189,6 @@ export default function Layout({ children, currentPageName }) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        {/* Notification Permission Prompt */}
-        {showNotificationPrompt && (
-          <div className="bg-gradient-to-r from-sky-500 to-sky-600 text-white px-4 py-3 text-center text-sm font-medium">
-            <div className="flex items-center justify-center gap-3">
-              <BellRing className="w-5 h-5 animate-pulse" />
-              <span>Enable notifications to receive critical alerts and shift updates</span>
-              <Button
-                size="sm"
-                onClick={handleEnableNotifications}
-                className="bg-white text-sky-600 hover:bg-slate-100"
-              >
-                Enable
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowNotificationPrompt(false)}
-                className="text-white hover:bg-sky-700"
-              >
-                Later
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Enhanced Offline Banner */}
-        {!isOnline && (
-          <div className="bg-amber-500 text-white px-4 py-2 text-sm font-medium">
-            <div className="flex items-center justify-between max-w-7xl mx-auto">
-              <div className="flex items-center gap-2">
-                <WifiOff className="w-4 h-4" />
-                <span>You're offline. Data will sync when connection is restored.</span>
-                {pendingSyncCount > 0 && (
-                  <span className="bg-white/20 px-2 py-0.5 rounded">
-                    {pendingSyncCount} queued
-                  </span>
-                )}
-                {failedSyncCount > 0 && (
-                  <span className="bg-rose-500 px-2 py-0.5 rounded">
-                    {failedSyncCount} failed
-                  </span>
-                )}
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowSyncDetails(!showSyncDetails)}
-                className="text-white hover:bg-amber-600 h-7"
-              >
-                Details
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Enhanced Syncing Banner with Progress */}
-        {isOnline && isSyncing && (
-          <div className="bg-sky-500 text-white px-4 py-2 text-sm font-medium">
-            <div className="flex items-center justify-center gap-3">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-              <span>
-                Syncing... {syncStatus.completed}/{syncStatus.total} completed
-                {syncStatus.failed > 0 && `, ${syncStatus.failed} failed`}
-              </span>
-              <div className="w-32 bg-white/20 rounded-full h-2">
-                <div 
-                  className="bg-white h-2 rounded-full transition-all"
-                  style={{ width: `${(syncStatus.completed / syncStatus.total) * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Sync Success Banner */}
-        {isOnline && !isSyncing && pendingSyncCount === 0 && lastSyncTime && (
-          <div className="bg-emerald-500 text-white px-4 py-2 text-center text-sm font-medium">
-            <div className="flex items-center justify-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>All data synced • Last sync: {new Date(lastSyncTime).toLocaleTimeString()}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Sync Failed Banner */}
-        {isOnline && !isSyncing && failedSyncCount > 0 && (
-          <div className="bg-rose-500 text-white px-4 py-2 text-sm font-medium">
-            <div className="flex items-center justify-between max-w-7xl mx-auto">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                <span>{failedSyncCount} action{failedSyncCount > 1 ? 's' : ''} failed to sync</span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setShowSyncDetails(!showSyncDetails)}
-                  className="text-white hover:bg-rose-600 h-7"
-                >
-                  View Details
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleManualSync}
-                  className="bg-white text-rose-600 hover:bg-slate-100 h-7"
-                >
-                  Retry All
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Sync Details Dropdown */}
-        {showSyncDetails && (pendingSyncCount > 0 || failedSyncCount > 0) && (
-          <div className="bg-slate-800 border-b border-slate-700">
-            <div className="max-w-7xl mx-auto p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-white font-semibold">Sync Queue Details</h3>
-                <div className="flex gap-2">
-                  {isOnline && (
-                    <Button
-                      size="sm"
-                      onClick={handleManualSync}
-                      disabled={isSyncing}
-                      className="bg-sky-600 hover:bg-sky-700"
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                      Sync Now
-                    </Button>
-                  )}
-                  {failedSyncCount > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={clearFailedActions}
-                      className="border-slate-600 text-slate-300"
-                    >
-                      Clear Failed
-                    </Button>
-                  )}
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                {failedActions.map((action) => (
-                  <div
-                    key={action.id}
-                    className="flex items-center justify-between p-3 bg-slate-900 rounded-lg border border-rose-500/20"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-rose-500">Failed</Badge>
-                        <Badge variant="outline" className={
-                          action.priority === "critical" ? "border-rose-500 text-rose-400" :
-                          action.priority === "high" ? "border-orange-500 text-orange-400" :
-                          "border-slate-500 text-slate-400"
-                        }>
-                          {action.priority}
-                        </Badge>
-                        <span className="text-white text-sm font-medium">
-                          {action.type || "Unknown action"}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1">
-                        {action.error || "Sync failed"} • Attempted {action.retryCount} time{action.retryCount > 1 ? 's' : ''}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => retryFailedAction(action.id)}
-                      className="text-sky-400 hover:text-sky-300"
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Top Bar */}
         <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
@@ -437,49 +204,11 @@ export default function Layout({ children, currentPageName }) {
               <Shield className="w-8 h-8 text-sky-400" />
               <div>
                 <h1 className="font-bold text-white text-lg">SecureGuard</h1>
-                <div className="flex items-center gap-2">
-                  <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
-                  {!isOnline && (
-                    <CloudOff className="w-3 h-3 text-amber-400" />
-                  )}
-                  {permission === "granted" && (
-                    <Bell className="w-3 h-3 text-emerald-400" />
-                  )}
-                  {pendingSyncCount > 0 && (
-                    <Badge className="bg-amber-500 h-4 px-1.5 text-xs">
-                      {pendingSyncCount}
-                    </Badge>
-                  )}
-                </div>
+                <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Sync Status Indicator */}
-              {(pendingSyncCount > 0 || failedSyncCount > 0 || isSyncing) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowSyncDetails(!showSyncDetails)}
-                  className="relative text-slate-300 hover:text-white"
-                >
-                  {isSyncing ? (
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                  ) : failedSyncCount > 0 ? (
-                    <AlertCircle className="w-5 h-5 text-rose-400" />
-                  ) : (
-                    <CloudOff className="w-5 h-5 text-amber-400" />
-                  )}
-                  {(pendingSyncCount > 0 || failedSyncCount > 0) && (
-                    <Badge className={`absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs ${
-                      failedSyncCount > 0 ? 'bg-rose-500' : 'bg-amber-500'
-                    }`}>
-                      {pendingSyncCount + failedSyncCount}
-                    </Badge>
-                  )}
-                </Button>
-              )}
-              
               <Button variant="ghost" size="icon" className="relative text-slate-300">
                 <Bell className="w-5 h-5" />
                 {alerts.length > 0 && (

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -6,14 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertOctagon, Navigation, CheckCircle2, MapPin, Phone, Clock } from "lucide-react";
-import { useNotifications } from "../../hooks/useNotifications";
 
 export default function AlarmNotification({ user }) {
   const queryClient = useQueryClient();
   const [acknowledging, setAcknowledging] = useState(false);
   const [trackingIntervals, setTrackingIntervals] = useState({});
-  const [notifiedAlarms, setNotifiedAlarms] = useState(new Set());
-  const { sendAlarmNotification, permission } = useNotifications();
 
   const { data: activeAlarms } = useQuery({
     queryKey: ["activeAlarms", user.id],
@@ -35,30 +31,6 @@ export default function AlarmNotification({ user }) {
     retry: 3,
     retryDelay: 1000
   });
-
-  // Send push notifications for new alarms
-  useEffect(() => {
-    if (activeAlarms && activeAlarms.length > 0 && permission === "granted") {
-      activeAlarms.forEach((alarm) => {
-        // Only notify for dispatched alarms that haven't been notified yet
-        if (alarm.status === "dispatched" && !notifiedAlarms.has(alarm.id)) {
-          sendAlarmNotification(alarm);
-          setNotifiedAlarms(prev => new Set([...prev, alarm.id]));
-          
-          // Play alert sound (optional)
-          try {
-            const audio = new Audio('/alert-sound.mp3');
-            audio.play().catch(() => {
-              // Handle play() rejection (e.g., user hasn't interacted with the page yet)
-              console.warn("Audio playback failed, likely due to user interaction policy.");
-            });
-          } catch (err) {
-            console.error("Error playing audio:", err);
-          }
-        }
-      });
-    }
-  }, [activeAlarms, permission, notifiedAlarms, sendAlarmNotification]);
 
   useEffect(() => {
     // Cleanup tracking intervals on unmount
