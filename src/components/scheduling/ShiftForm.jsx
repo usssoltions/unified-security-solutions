@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -5,41 +6,122 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Loader2, Calendar } from "lucide-react";
+import { useMutation } from '@tanstack/react-query'; // Import useMutation
 
-export default function ShiftForm({ guards, sites, onClose, onSuccess }) {
-  const [formData, setFormData] = useState({
-    guard_id: "",
-    site_id: "",
-    start_time: "",
-    end_time: "",
-    status: "scheduled"
+// Helper function to format ISO date strings for datetime-local input
+const formatDateTimeForInput = (isoString) => {
+  if (!isoString) return "";
+  const date = new Date(isoString);
+  // Using methods that respect the local time zone to format for datetime-local input
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) {
+  const [formData, setFormData] = useState(() => {
+    if (shift) {
+      return {
+        guard_id: shift.guard_id || null, // Ensure null if unassigned
+        site_id: shift.site_id,
+        start_time: formatDateTimeForInput(shift.start_time),
+        end_time: formatDateTimeForInput(shift.end_time),
+        status: shift.status
+      };
+    } else {
+      return {
+        guard_id: null, // Default to null for new shifts, representing "open shift"
+        site_id: "",
+        start_time: "",
+        end_time: "",
+        status: "scheduled"
+      };
+    }
   });
-  const [submitting, setSubmitting] = useState(false);
+
+  const createShiftMutation = useMutation({
+    mutationFn: async (shiftData) => {
+      if (shift) {
+        // Update existing shift
+        const updated = await base44.entities.Shift.update(shift.id, shiftData);
+        
+        // Notify guard of shift change if assigned and guard_id changed
+        // This includes new assignments to existing shifts or changing guards on a shift
+        if (shiftData.guard_id && shiftData.guard_id !== shift.guard_id) {
+          try {
+            await base44.functions.invoke('sendPushNotification', {
+              user_ids: [shiftData.guard_id],
+              title: '📅 Shift Updated',
+              body: `Your shift at ${shiftData.site_name} has been updated`,
+              priority: 'medium',
+              data: {
+                type: 'shift',
+                id: updated.id,
+                action: 'updated'
+              }
+            });
+          } catch (error) {
+            console.error('Failed to send notification for updated shift:', error);
+          }
+        }
+        
+        return updated;
+      } else {
+        // Create new shift
+        const created = await base44.entities.Shift.create(shiftData);
+        
+        // Notify guard of new shift assignment
+        if (shiftData.guard_id) {
+          try {
+            await base44.functions.invoke('sendPushNotification', {
+              user_ids: [shiftData.guard_id],
+              title: '📅 New Shift Assigned',
+              body: `You have been assigned a shift at ${shiftData.site_name}`,
+              priority: 'medium',
+              data: {
+                type: 'shift',
+                id: created.id,
+                action: 'created'
+              }
+            });
+          } catch (error) {
+            console.error('Failed to send notification for new shift:', error);
+          }
+        }
+        
+        return created;
+      }
+    },
+    onSuccess: () => {
+      onSuccess();
+    },
+    onError: (error) => {
+      console.error("Shift operation failed:", error);
+      alert(`Failed to ${shift ? 'update' : 'create'} shift: ${error.message || 'Unknown error'}`);
+    }
+  });
 
   const handleSubmit = async () => {
+    // Basic validation
     if (!formData.site_id || !formData.start_time || !formData.end_time) {
-      alert("Please fill in all required fields");
+      alert("Please fill in all required fields (Site, Start Time, End Time)");
       return;
     }
 
-    setSubmitting(true);
+    const guard = guards.find(g => g.id === formData.guard_id);
+    const site = sites.find(s => s.id === formData.site_id);
 
-    try {
-      const guard = guards.find(g => g.id === formData.guard_id);
-      const site = sites.find(s => s.id === formData.site_id);
+    // Prepare data for mutation, ensuring guard_id is null if not selected, and names are included for notifications
+    const dataToSend = {
+      ...formData,
+      guard_name: guard?.full_name || null, // Set to null if no guard is assigned
+      site_name: site?.name || ""
+    };
 
-      await base44.entities.Shift.create({
-        ...formData,
-        guard_name: guard?.full_name || "",
-        site_name: site?.name || ""
-      });
-
-      onSuccess();
-    } catch (error) {
-      alert("Failed to create shift");
-    } finally {
-      setSubmitting(false);
-    }
+    createShiftMutation.mutate(dataToSend);
   };
 
   return (
@@ -52,7 +134,9 @@ export default function ShiftForm({ guards, sites, onClose, onSuccess }) {
                 <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center">
                   <Calendar className="w-6 h-6 text-white" />
                 </div>
-                <CardTitle className="text-white text-xl">Create New Shift</CardTitle>
+                <CardTitle className="text-white text-xl">
+                  {shift ? "Edit Shift" : "Create New Shift"}
+                </CardTitle>
               </div>
               <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400">
                 <X />
@@ -128,21 +212,22 @@ export default function ShiftForm({ guards, sites, onClose, onSuccess }) {
                 variant="outline"
                 onClick={onClose}
                 className="flex-1 border-slate-600 text-slate-300"
+                disabled={createShiftMutation.isPending}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={createShiftMutation.isPending}
                 className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
               >
-                {submitting ? (
+                {createShiftMutation.isPending ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Creating...
+                    {shift ? "Saving..." : "Creating..."}
                   </>
                 ) : (
-                  "Create Shift"
+                  shift ? "Save Changes" : "Create Shift"
                 )}
               </Button>
             </div>

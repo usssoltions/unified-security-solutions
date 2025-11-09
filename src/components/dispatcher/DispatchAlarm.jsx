@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Added useMutation, useQueryClient
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,17 +20,21 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     description: "",
     assigned_to: ""
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [user, setUser] = useState(null);
+  // submitting state is replaced by dispatchMutation.isLoading
+  // const [submitting, setSubmitting] = useState(false);
+  // user state and loadUser effect are removed as user is fetched within the mutationFn
+  // const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    loadUser();
-  }, []);
+  // useEffect(() => {
+  //   loadUser();
+  // }, []);
 
-  const loadUser = async () => {
-    const currentUser = await base44.auth.me();
-    setUser(currentUser);
-  };
+  // const loadUser = async () => {
+  //   const currentUser = await base44.auth.me();
+  //   setUser(currentUser);
+  // };
+
+  const queryClient = useQueryClient(); // Initialize query client
 
   const { data: activeGuards } = useQuery({
     queryKey: ["activeGuardsForDispatch"],
@@ -106,11 +111,70 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
           minDistance = distance;
           nearest = { guard, distance };
         }
-      }
-    });
+      });
 
     return nearest;
   };
+
+  const dispatchMutation = useMutation({
+    mutationFn: async (alarmPayload) => {
+      const currentUser = await base44.auth.me(); // Fetch user within mutation
+
+      const alarm = await base44.entities.AlarmResponse.create({
+        ...alarmPayload,
+        dispatched_by: currentUser.id,
+        dispatched_by_name: currentUser.full_name,
+        dispatched_at: new Date().toISOString(),
+        status: "dispatched"
+      });
+
+      // Send push notification to assigned guard for critical/high priority alarms
+      if ((alarmPayload.priority === 'critical' || alarmPayload.priority === 'high') && alarmPayload.assigned_to) {
+        try {
+          await base44.functions.invoke('sendPushNotification', {
+            user_ids: [alarmPayload.assigned_to],
+            title: '🚨 Emergency Alarm Response',
+            body: `${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()} at ${alarmPayload.address}`,
+            priority: alarmPayload.priority,
+            data: {
+              type: 'alarm_response', // Changed from 'alarm' for clarity
+              id: alarm.id,
+              alarm_type: alarmPayload.alarm_type
+            }
+          });
+        } catch (error) {
+          console.error('Failed to send push notification:', error);
+          // Continue even if notification fails
+        }
+      }
+
+      // Create alert for assigned guard
+      await base44.entities.Alert.create({
+        type: "system", // Changed from "assignment" to "system" as per typical alert types
+        priority: alarmPayload.priority,
+        title: `ALARM DISPATCH: ${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()}`, // Updated title format
+        message: `You have been assigned to respond to ${alarmPayload.address}. ${alarmPayload.description}`, // Updated message
+        guard_id: alarmPayload.assigned_to,
+        guard_name: alarmPayload.assigned_to_name,
+        status: "active",
+        metadata: { 
+          alarm_response_id: alarm.id,
+          requires_acknowledgment: true 
+        }
+      });
+
+      return alarm;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["alarmResponses"]);
+      alert("Alarm dispatched successfully!"); // Keep alert for now
+      onSuccess();
+    },
+    onError: (error) => {
+      console.error("Failed to dispatch alarm:", error);
+      alert("Failed to dispatch alarm"); // Keep alert for now
+    }
+  });
 
   const handleDispatch = async () => {
     if (!formData.address || !formData.assigned_to) {
@@ -118,7 +182,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       return;
     }
 
-    setSubmitting(true);
+    // setSubmitting(true); // Replaced by dispatchMutation.isLoading
 
     try {
       const assignedGuard = activeGuards.find(g => g.guard_id === formData.assigned_to);
@@ -129,38 +193,21 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         assignedGuard.last_location.lng
       ) : 0;
 
-      const alarm = await base44.entities.AlarmResponse.create({
+      const payload = {
         ...formData,
-        dispatched_by: user.id,
-        dispatched_by_name: user.full_name,
         assigned_to_name: assignedGuard?.guard_full_name,
-        dispatched_at: new Date().toISOString(),
-        status: "dispatched",
         distance_to_scene_km: distance
-      });
+      };
 
-      // Create alert for the guard
-      await base44.entities.Alert.create({
-        type: "assignment",
-        priority: formData.priority,
-        title: `ALARM DISPATCH: ${formData.alarm_type.toUpperCase()}`,
-        message: `Respond to ${formData.address}. ${formData.description}`,
-        guard_id: formData.assigned_to,
-        guard_name: assignedGuard?.guard_full_name,
-        status: "active",
-        metadata: {
-          alarm_response_id: alarm.id,
-          requires_acknowledgment: true
-        }
-      });
+      await dispatchMutation.mutateAsync(payload);
 
-      alert("Alarm dispatched successfully!");
-      onSuccess();
+      // alert("Alarm dispatched successfully!"); // Moved to onSuccess
+      // onSuccess(); // Moved to onSuccess
     } catch (error) {
-      alert("Failed to dispatch alarm");
-      console.error(error);
+      // alert("Failed to dispatch alarm"); // Moved to onError
+      // console.error(error); // Moved to onError
     } finally {
-      setSubmitting(false);
+      // setSubmitting(false); // Replaced by dispatchMutation.isLoading
     }
   };
 
@@ -316,10 +363,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               </Button>
               <Button
                 onClick={handleDispatch}
-                disabled={submitting}
+                disabled={dispatchMutation.isLoading} // Use mutation loading state
                 className="flex-1 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
               >
-                {submitting ? (
+                {dispatchMutation.isLoading ? ( // Use mutation loading state
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Dispatching...

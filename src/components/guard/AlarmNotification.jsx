@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -5,11 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertOctagon, Navigation, CheckCircle2, MapPin, Phone, Clock } from "lucide-react";
+import { useNotifications } from "@/hooks/useNotifications";
 
 export default function AlarmNotification({ user }) {
   const queryClient = useQueryClient();
   const [acknowledging, setAcknowledging] = useState(false);
   const [trackingIntervals, setTrackingIntervals] = useState({});
+  const [notifiedAlarms, setNotifiedAlarms] = useState(new Set());
+  const { sendAlarmNotification, permission } = useNotifications();
 
   const { data: activeAlarms } = useQuery({
     queryKey: ["activeAlarms", user.id],
@@ -31,6 +35,30 @@ export default function AlarmNotification({ user }) {
     retry: 3,
     retryDelay: 1000
   });
+
+  // Send push notifications for new alarms
+  useEffect(() => {
+    if (activeAlarms && activeAlarms.length > 0 && permission === "granted") {
+      activeAlarms.forEach((alarm) => {
+        // Only notify for dispatched alarms that haven't been notified yet
+        if (alarm.status === "dispatched" && !notifiedAlarms.has(alarm.id)) {
+          sendAlarmNotification(alarm);
+          setNotifiedAlarms(prev => new Set([...prev, alarm.id]));
+          
+          // Play alert sound (optional)
+          try {
+            const audio = new Audio('/alert-sound.mp3');
+            audio.play().catch(() => {
+              // Handle play() rejection (e.g., user hasn't interacted with the page yet)
+              console.warn("Audio playback failed, likely due to user interaction policy.");
+            });
+          } catch (err) {
+            console.error("Error playing audio:", err);
+          }
+        }
+      });
+    }
+  }, [activeAlarms, permission, notifiedAlarms, sendAlarmNotification]); // Added `sendAlarmNotification` to dependencies for completeness
 
   useEffect(() => {
     // Cleanup tracking intervals on unmount
@@ -113,7 +141,7 @@ export default function AlarmNotification({ user }) {
             );
 
             // If within 100m, mark as arrived
-            if (distance < 0.1) {
+            if (distance < 0.1) { // 0.1 km = 100 meters
               await base44.entities.AlarmResponse.update(alarm.id, {
                 status: "arrived",
                 arrived_at: new Date().toISOString(),
@@ -132,7 +160,11 @@ export default function AlarmNotification({ user }) {
               });
 
               clearInterval(interval);
-              delete trackingIntervals[alarm.id];
+              setTrackingIntervals(prev => {
+                const newIntervals = { ...prev };
+                delete newIntervals[alarm.id];
+                return newIntervals;
+              });
               queryClient.invalidateQueries(["activeAlarms"]);
             }
           } catch (error) {
@@ -146,20 +178,20 @@ export default function AlarmNotification({ user }) {
           maximumAge: 0
         });
       }
-    }, 10000);
+    }, 10000); // Check every 10 seconds
 
     setTrackingIntervals(prev => ({ ...prev, [alarm.id]: interval }));
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371;
+    const R = 6371; // Radius of Earth in kilometers
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
               Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+    return R * c; // Distance in kilometers
   };
 
   if (activeAlarms.length === 0) return null;

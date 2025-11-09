@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { useOfflineMode } from "@/hooks/useOfflineMode";
+import { useNotifications } from "@/hooks/useNotifications";
 import {
   Shield,
   Radio,
@@ -22,7 +23,8 @@ import {
   RefreshCw,
   WifiOff,
   CloudOff,
-  CheckCircle2
+  CheckCircle2,
+  BellRing
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +39,9 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [retryCount, setRetryCount] = useState(0);
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const { isOnline, pendingSyncCount, isSyncing } = useOfflineMode();
+  const { permission, isSupported, requestPermission } = useNotifications();
 
   useEffect(() => {
     loadUser();
@@ -51,6 +55,17 @@ export default function Layout({ children, currentPageName }) {
       originalError.apply(console, args);
     };
   }, [retryCount]);
+
+  useEffect(() => {
+    // Show notification prompt for guards if not already granted
+    if (user && user.role_type === "guard" && isSupported && permission === "default") {
+      // Show prompt after a short delay
+      const timer = setTimeout(() => {
+        setShowNotificationPrompt(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, isSupported, permission]);
 
   const loadUser = async () => {
     setLoading(true);
@@ -94,6 +109,13 @@ export default function Layout({ children, currentPageName }) {
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
+  };
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestPermission();
+    if (granted) {
+      setShowNotificationPrompt(false);
+    }
   };
 
   // Loading State
@@ -195,6 +217,31 @@ export default function Layout({ children, currentPageName }) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {/* Notification Permission Prompt */}
+        {showNotificationPrompt && (
+          <div className="bg-gradient-to-r from-sky-500 to-sky-600 text-white px-4 py-3 text-center text-sm font-medium">
+            <div className="flex items-center justify-center gap-3">
+              <BellRing className="w-5 h-5 animate-pulse" />
+              <span>Enable notifications to receive critical alerts and shift updates</span>
+              <Button
+                size="sm"
+                onClick={handleEnableNotifications}
+                className="bg-white text-sky-600 hover:bg-slate-100"
+              >
+                Enable
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowNotificationPrompt(false)}
+                className="text-white hover:bg-sky-700"
+              >
+                Later
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Offline Banner */}
         {!isOnline && (
           <div className="bg-amber-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2">
@@ -243,6 +290,9 @@ export default function Layout({ children, currentPageName }) {
                   <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
                   {!isOnline && (
                     <CloudOff className="w-3 h-3 text-amber-400" />
+                  )}
+                  {permission === "granted" && (
+                    <Bell className="w-3 h-3 text-emerald-400" />
                   )}
                 </div>
               </div>

@@ -25,6 +25,7 @@ import QuickActions from "../components/guard/QuickActions";
 import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import { useOfflineMode } from "@/hooks/useOfflineMode";
+import { useNotifications } from "@/hooks/useNotifications";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export default function GuardShift() {
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const { isOnline, saveOfflineData, getOfflineItem } = useOfflineMode();
+  const { sendShiftNotification, sendAssignmentNotification, permission } = useNotifications();
 
   useEffect(() => {
     loadUser();
@@ -125,11 +127,32 @@ export default function GuardShift() {
       );
       
       saveOfflineData("upcoming_shifts", shifts);
+      
+      // Check for upcoming shifts and send reminders
+      if (permission === "granted") {
+        shifts.forEach(shift => {
+          const startTime = new Date(shift.start_time);
+          const now = new Date();
+          const minutesUntil = (startTime.getTime() - now.getTime()) / 60000;
+          
+          // Send notification 30 minutes before shift
+          if (minutesUntil > 25 && minutesUntil <= 35) {
+            // Use local storage to prevent sending the same notification multiple times
+            const notifiedKey = `notified_shift_reminder_${shift.id}`;
+            if (!localStorage.getItem(notifiedKey)) {
+              sendShiftNotification(shift, "reminder");
+              localStorage.setItem(notifiedKey, "true");
+            }
+          }
+        });
+      }
+      
       return shifts;
     },
     enabled: !!user,
     initialData: [],
-    retry: isOnline ? 3 : 0
+    retry: isOnline ? 3 : 0,
+    refetchInterval: isOnline ? 60000 : false // Check every minute
   });
 
   const { data: pendingAssignments } = useQuery({
@@ -147,11 +170,26 @@ export default function GuardShift() {
       });
       
       saveOfflineData("pending_assignments", assignments);
+      
+      // Send notifications for new critical/high priority assignments
+      if (permission === "granted") {
+        assignments.forEach(assignment => {
+          if (assignment.priority === "critical" || assignment.priority === "high") {
+            const notifiedKey = `notified_assignment_${assignment.id}`;
+            if (!localStorage.getItem(notifiedKey)) {
+              sendAssignmentNotification(assignment);
+              localStorage.setItem(notifiedKey, "true");
+            }
+          }
+        });
+      }
+      
       return assignments;
     },
     enabled: !!user,
     initialData: [],
-    retry: isOnline ? 3 : 0
+    retry: isOnline ? 3 : 0,
+    refetchInterval: isOnline ? 15000 : false // Check every 15 seconds
   });
 
   const { data: arrivedAlarms } = useQuery({
@@ -340,6 +378,8 @@ export default function GuardShift() {
                         accepted_at: new Date().toISOString()
                       });
                       queryClient.invalidateQueries(["pendingAssignments"]);
+                      // Also clear the notification flag from local storage
+                      localStorage.removeItem(`notified_assignment_${assignment.id}`);
                     }}
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                   >
@@ -353,6 +393,8 @@ export default function GuardShift() {
                         status: "declined"
                       });
                       queryClient.invalidateQueries(["pendingAssignments"]);
+                      // Also clear the notification flag from local storage
+                      localStorage.removeItem(`notified_assignment_${assignment.id}`);
                     }}
                     className="flex-1 border-slate-600 text-slate-300"
                   >
