@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -14,7 +15,8 @@ import {
   X,
   LogOut,
   Bell,
-  Package
+  Package,
+  Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -100,7 +102,8 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
-        { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin }
+        { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
+        { title: "Setup", url: createPageUrl("SystemSetup"), icon: Settings }
       ];
     }
 
@@ -110,7 +113,8 @@ export default function Layout({ children, currentPageName }) {
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
-        { title: "Users", url: createPageUrl("UserManagement"), icon: Users }
+        { title: "Users", url: createPageUrl("UserManagement"), icon: Users },
+        { title: "Setup", url: createPageUrl("SystemSetup"), icon: Settings }
       ];
     }
 
@@ -122,7 +126,7 @@ export default function Layout({ children, currentPageName }) {
       ];
     }
 
-    return [];
+    return [{ title: "Setup", url: createPageUrl("SystemSetup"), icon: Settings }];
   };
 
   const navigationItems = getNavigationItems();
