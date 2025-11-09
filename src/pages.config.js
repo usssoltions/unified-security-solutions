@@ -8,6 +8,7 @@ import Analytics from './pages/Analytics';
 import AssetManagement from './pages/AssetManagement';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
+import SiteManagement from './pages/SiteManagement';
 import Layout from './Layout.jsx';
 
 
@@ -22,6 +23,7 @@ export const PAGES = {
     "AssetManagement": AssetManagement,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
+    "SiteManagement": SiteManagement,
 }
 
 export const pagesConfig = {

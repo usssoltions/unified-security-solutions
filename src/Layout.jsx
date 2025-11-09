@@ -111,6 +111,7 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio },
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
+        { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Users", url: createPageUrl("UserManagement"), icon: Users },
