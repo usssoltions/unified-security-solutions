@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -6,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertOctagon, Navigation, CheckCircle2, MapPin, Phone, Clock } from "lucide-react";
-import { useNotifications } from "@/hooks/useNotifications";
+import { useNotifications } from "@/hooks/useNotifications.js";
 
 export default function AlarmNotification({ user }) {
   const queryClient = useQueryClient();
@@ -58,7 +57,7 @@ export default function AlarmNotification({ user }) {
         }
       });
     }
-  }, [activeAlarms, permission, notifiedAlarms, sendAlarmNotification]); // Added `sendAlarmNotification` to dependencies for completeness
+  }, [activeAlarms, permission, notifiedAlarms, sendAlarmNotification]);
 
   useEffect(() => {
     // Cleanup tracking intervals on unmount
