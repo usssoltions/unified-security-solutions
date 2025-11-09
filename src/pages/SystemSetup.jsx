@@ -23,11 +23,23 @@ export default function SystemSetup() {
       const user = await base44.auth.me();
       setCurrentUser(user);
       addStatus(`Logged in as: ${user.full_name} (${user.email})`, "success");
+      addStatus(`Current role: ${user.role_type || 'Not set'}`, "info");
 
       // Update current user to admin
       addStatus("Setting your role to Admin...", "info");
-      await base44.auth.updateMe({ role_type: "admin" });
-      addStatus("✅ You are now an Admin!", "success");
+      await base44.auth.updateMe({ 
+        role_type: "admin",
+        badge_number: user.badge_number || "ADMIN-001",
+        phone: user.phone || "+27123456789"
+      });
+      
+      // Reload user to confirm role change
+      const updatedUser = await base44.auth.me();
+      setCurrentUser(updatedUser);
+      addStatus(`✅ Role updated! You are now: ${updatedUser.role_type}`, "success");
+      
+      // Small delay to ensure role propagation
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Create Sites - UPDATED TO YOUR LOCATION
       addStatus("Creating test sites at your location...", "info");
@@ -103,8 +115,8 @@ export default function SystemSetup() {
       const shifts = await Promise.all([
         // Active shift (started 2 hours ago, ends in 6 hours)
         base44.entities.Shift.create({
-          guard_id: user.id,
-          guard_name: user.full_name,
+          guard_id: updatedUser.id,
+          guard_name: updatedUser.full_name,
           site_id: sites[0].id,
           site_name: sites[0].name,
           start_time: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
@@ -113,8 +125,8 @@ export default function SystemSetup() {
         }),
         // Upcoming shift tomorrow
         base44.entities.Shift.create({
-          guard_id: user.id,
-          guard_name: user.full_name,
+          guard_id: updatedUser.id,
+          guard_name: updatedUser.full_name,
           site_id: sites[1].id,
           site_name: sites[1].name,
           start_time: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
@@ -146,8 +158,8 @@ export default function SystemSetup() {
           asset_number: "RAD-012",
           category: "electronics",
           status: "active",
-          assigned_to: user.id,
-          assigned_to_name: user.full_name,
+          assigned_to: updatedUser.id,
+          assigned_to_name: updatedUser.full_name,
           purchase_date: "2024-03-20",
           purchase_cost: 3500,
           current_value: 3000
@@ -163,8 +175,8 @@ export default function SystemSetup() {
         category: "suspicious_activity",
         priority: "medium",
         status: "reported",
-        guard_id: user.id,
-        guard_name: user.full_name,
+        guard_id: updatedUser.id,
+        guard_name: updatedUser.full_name,
         site_id: sites[0].id,
         site_name: sites[0].name,
         location: { lat: -33.3482, lng: 18.1615 },
@@ -180,8 +192,8 @@ export default function SystemSetup() {
         category: "lighting",
         urgency: "medium",
         status: "reported",
-        guard_id: user.id,
-        guard_name: user.full_name,
+        guard_id: updatedUser.id,
+        guard_name: updatedUser.full_name,
         site_id: sites[0].id,
         site_name: sites[0].name,
         reported_at: new Date().toISOString()
@@ -195,16 +207,21 @@ export default function SystemSetup() {
         report_type: "daily_activity",
         frequency: "daily",
         send_time: "08:00",
-        recipients: [user.email],
+        recipients: [updatedUser.email],
         sites: sites.map(s => s.id),
         status: "active",
-        created_by: user.id
+        created_by: updatedUser.id
       });
       addStatus("✅ Created automated report schedule", "success");
 
-      addStatus("🎉 SETUP COMPLETE! You can now test all features.", "success");
+      addStatus("🎉 SETUP COMPLETE! Reloading page...", "success");
       addStatus("📍 Shift location: 131 Atlantic Drive, Yzerfontein", "success");
       addStatus("💡 Go to 'My Shift' to clock in (200m geofence radius)", "info");
+      
+      // Reload page to refresh user role in UI
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
 
     } catch (error) {
       addStatus(`❌ Error: ${error.message}`, "error");
@@ -269,6 +286,7 @@ export default function SystemSetup() {
                 <p className="text-sm text-slate-400">Current User:</p>
                 <p className="text-white font-semibold">{currentUser.full_name}</p>
                 <p className="text-xs text-slate-500">{currentUser.email}</p>
+                <p className="text-xs text-emerald-400 mt-1">Role: {currentUser.role_type || 'Not set'}</p>
               </div>
             )}
 
@@ -304,12 +322,12 @@ export default function SystemSetup() {
               <h3 className="text-amber-400 font-semibold mb-2">📱 Testing Instructions:</h3>
               <ol className="space-y-1 text-sm text-slate-300 list-decimal list-inside">
                 <li>Click "Generate Test Data" above</li>
-                <li>Go to "My Shift" page</li>
+                <li>Page will reload with your Admin role</li>
+                <li>Try creating a site again - should work now!</li>
+                <li>Go to "My Shift" page to test guard features</li>
                 <li>Be within 200m of 131 Atlantic Drive to clock in</li>
-                <li>Or temporarily disable geofence for testing</li>
                 <li>Test QR scanning (codes: YZER_MAIN_001, YZER_PERI_002)</li>
                 <li>Report incidents, maintenance, etc.</li>
-                <li>Switch to Dispatcher role to test Control Room</li>
               </ol>
             </div>
           </CardContent>
