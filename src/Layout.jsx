@@ -16,7 +16,8 @@ import {
   LogOut,
   Bell,
   Package,
-  Settings
+  Settings,
+  Sliders
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -103,7 +104,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
-        { title: "Setup", url: createPageUrl("SystemSetup"), icon: Settings }
+        { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings }
       ];
     }
 
@@ -114,8 +115,8 @@ export default function Layout({ children, currentPageName }) {
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
-        { title: "Users", url: createPageUrl("UserManagement"), icon: Users },
-        { title: "Setup", url: createPageUrl("SystemSetup"), icon: Settings }
+        { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
+        { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings }
       ];
     }
 
@@ -127,7 +128,10 @@ export default function Layout({ children, currentPageName }) {
       ];
     }
 
-    return [{ title: "Setup", url: createPageUrl("SystemSetup"), icon: Settings }];
+    return [
+      { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings },
+      { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders }
+    ];
   };
 
   const navigationItems = getNavigationItems();
