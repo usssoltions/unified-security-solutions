@@ -26,6 +26,7 @@ import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import { useOfflineMode } from "@/hooks/useOfflineMode";
 import { useNotifications } from "@/hooks/useNotifications";
+import OfflineSyncIndicator from "../components/guard/OfflineSyncIndicator";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -275,6 +276,9 @@ export default function GuardShift() {
           </CardContent>
         </Card>
       )}
+
+      {/* Offline Sync Indicator */}
+      <OfflineSyncIndicator />
 
       {/* Stay Awake Alert Modal */}
       {showStayAwake && (
