@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -10,7 +9,7 @@ import {
   AlertTriangle,
   MapPin,
   BarChart3,
-  Users, // Ensure Users icon is imported
+  Users,
   Menu,
   X,
   LogOut,
@@ -18,7 +17,8 @@ import {
   Package,
   Settings,
   Sliders,
-  RefreshCw
+  RefreshCw,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,11 +37,10 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     loadUser();
     
-    // Suppress WebSocket errors globally
     const originalError = console.error;
     console.error = (...args) => {
       if (args[0]?.toString().includes('WebSocket')) {
-        return; // Suppress WebSocket errors
+        return;
       }
       originalError.apply(console, args);
     };
@@ -55,7 +54,6 @@ export default function Layout({ children, currentPageName }) {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
       
-      // Only load alerts if user is authenticated
       if (currentUser) {
         loadAlerts();
       }
@@ -91,7 +89,6 @@ export default function Layout({ children, currentPageName }) {
     setRetryCount(prev => prev + 1);
   };
 
-  // Loading State
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -103,7 +100,6 @@ export default function Layout({ children, currentPageName }) {
     );
   }
 
-  // Error State
   if (error && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -131,7 +127,6 @@ export default function Layout({ children, currentPageName }) {
     );
   }
 
-  // Not Authenticated
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -165,7 +160,8 @@ export default function Layout({ children, currentPageName }) {
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
-        { title: "Guard Activity", url: createPageUrl("GuardActivity"), icon: Users }, // Added Guard Activity
+        { title: "Guard Activity", url: createPageUrl("GuardActivity"), icon: Users },
+        { title: "AI Reports", url: createPageUrl("AIReports"), icon: Sparkles },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
         { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings }
@@ -191,7 +187,6 @@ export default function Layout({ children, currentPageName }) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        {/* Top Bar */}
         <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -237,7 +232,6 @@ export default function Layout({ children, currentPageName }) {
             </div>
           </div>
 
-          {/* Mobile Menu */}
           {mobileMenuOpen && (
             <div className="lg:hidden bg-slate-800 border-t border-slate-700/50">
               <nav className="p-4 space-y-2">
@@ -261,9 +255,7 @@ export default function Layout({ children, currentPageName }) {
           )}
         </header>
 
-        {/* Desktop Sidebar + Content */}
         <div className="flex">
-          {/* Desktop Sidebar */}
           <aside className="hidden lg:flex flex-col w-64 bg-slate-900/60 backdrop-blur-lg border-r border-slate-700/50 min-h-screen">
             <nav className="flex-1 p-4 space-y-2">
               {navigationItems.map((item) => (
@@ -282,7 +274,6 @@ export default function Layout({ children, currentPageName }) {
               ))}
             </nav>
 
-            {/* Status Indicator */}
             {user.role_type === "guard" && user.is_clocked_in && (
               <div className="p-4 border-t border-slate-700/50">
                 <div className="px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
@@ -295,7 +286,6 @@ export default function Layout({ children, currentPageName }) {
             )}
           </aside>
 
-          {/* Main Content */}
           <main className="flex-1 min-h-screen">
             {children}
           </main>

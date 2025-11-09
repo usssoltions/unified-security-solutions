@@ -11,6 +11,7 @@ import UserManagement from './pages/UserManagement';
 import SiteManagement from './pages/SiteManagement';
 import Configuration from './pages/Configuration';
 import GuardActivity from './pages/GuardActivity';
+import AIReports from './pages/AIReports';
 import Layout from './Layout.jsx';
 
 
@@ -28,6 +29,7 @@ export const PAGES = {
     "SiteManagement": SiteManagement,
     "Configuration": Configuration,
     "GuardActivity": GuardActivity,
+    "AIReports": AIReports,
 }
 
 export const pagesConfig = {
