@@ -24,6 +24,7 @@ import StayAwakeAlert from "../components/guard/StayAwakeAlert";
 import QuickActions from "../components/guard/QuickActions";
 import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
+import { useOfflineMode } from "@/hooks/useOfflineMode";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -33,6 +34,7 @@ export default function GuardShift() {
   const [showStayAwake, setShowStayAwake] = useState(false);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const { isOnline, saveOfflineData, getOfflineItem } = useOfflineMode();
 
   useEffect(() => {
     loadUser();
@@ -44,8 +46,17 @@ export default function GuardShift() {
     try {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
+      
+      // Cache user data for offline access
+      saveOfflineData("current_user", currentUser);
     } catch (error) {
       console.error("Failed to load user:", error);
+      
+      // Try to load from offline cache
+      const cachedUser = getOfflineItem("current_user");
+      if (cachedUser) {
+        setUser(cachedUser);
+      }
     } finally {
       setLoadingUser(false);
     }
@@ -70,15 +81,28 @@ export default function GuardShift() {
     queryKey: ["activeShift", user?.id],
     queryFn: async () => {
       if (!user) return null;
+      
+      if (!isOnline) {
+        // Load from offline cache
+        return getOfflineItem("active_shift");
+      }
+      
       const shifts = await base44.entities.Shift.filter({
         guard_id: user.id,
         status: "active"
       });
-      return shifts[0] || null;
+      const shift = shifts[0] || null;
+      
+      // Cache for offline access
+      if (shift) {
+        saveOfflineData("active_shift", shift);
+      }
+      
+      return shift;
     },
     enabled: !!user,
-    refetchInterval: 30000,
-    retry: 3,
+    refetchInterval: isOnline ? 30000 : false,
+    retry: isOnline ? 3 : 0,
     retryDelay: 1000
   });
 
@@ -86,7 +110,12 @@ export default function GuardShift() {
     queryKey: ["upcomingShifts", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      return await base44.entities.Shift.filter(
+      
+      if (!isOnline) {
+        return getOfflineItem("upcoming_shifts") || [];
+      }
+      
+      const shifts = await base44.entities.Shift.filter(
         {
           guard_id: user.id,
           status: "scheduled"
@@ -94,38 +123,57 @@ export default function GuardShift() {
         "start_time",
         5
       );
+      
+      saveOfflineData("upcoming_shifts", shifts);
+      return shifts;
     },
     enabled: !!user,
     initialData: [],
-    retry: 3
+    retry: isOnline ? 3 : 0
   });
 
   const { data: pendingAssignments } = useQuery({
     queryKey: ["pendingAssignments", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      return await base44.entities.Assignment.filter({
+      
+      if (!isOnline) {
+        return getOfflineItem("pending_assignments") || [];
+      }
+      
+      const assignments = await base44.entities.Assignment.filter({
         assigned_to: user.id,
         status: "pending"
       });
+      
+      saveOfflineData("pending_assignments", assignments);
+      return assignments;
     },
     enabled: !!user,
     initialData: [],
-    retry: 3
+    retry: isOnline ? 3 : 0
   });
 
   const { data: arrivedAlarms } = useQuery({
     queryKey: ["arrivedAlarms", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      return await base44.entities.AlarmResponse.filter({
+      
+      if (!isOnline) {
+        return getOfflineItem("arrived_alarms") || [];
+      }
+      
+      const alarms = await base44.entities.AlarmResponse.filter({
         assigned_to: user.id,
         status: "arrived"
       });
+      
+      saveOfflineData("arrived_alarms", alarms);
+      return alarms;
     },
     enabled: !!user,
     initialData: [],
-    retry: 3
+    retry: isOnline ? 3 : 0
   });
 
   // Simulate Stay Awake Alert (in production, this would come from backend)
@@ -172,6 +220,24 @@ export default function GuardShift() {
 
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6">
+      {/* Offline Mode Indicator for Guard */}
+      {!isOnline && (
+        <Card className="bg-amber-500/10 border-amber-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-amber-400 font-semibold mb-1">Offline Mode</h3>
+                <p className="text-sm text-slate-300">
+                  You can still view your shift details and fill out forms. 
+                  Data will sync automatically when you're back online.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stay Awake Alert Modal */}
       {showStayAwake && (
         <StayAwakeAlert

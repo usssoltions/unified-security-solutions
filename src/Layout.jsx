@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
+import { useOfflineMode } from "@/hooks/useOfflineMode";
 import {
   Shield,
   Radio,
@@ -17,7 +19,10 @@ import {
   Package,
   Settings,
   Sliders,
-  RefreshCw
+  RefreshCw,
+  WifiOff,
+  CloudOff,
+  CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +37,7 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [retryCount, setRetryCount] = useState(0);
+  const { isOnline, pendingSyncCount, isSyncing } = useOfflineMode();
 
   useEffect(() => {
     loadUser();
@@ -189,6 +195,35 @@ export default function Layout({ children, currentPageName }) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {/* Offline Banner */}
+        {!isOnline && (
+          <div className="bg-amber-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2">
+            <WifiOff className="w-4 h-4" />
+            <span>You're offline. Data will sync when connection is restored.</span>
+            {pendingSyncCount > 0 && (
+              <span className="bg-white/20 px-2 py-0.5 rounded">
+                {pendingSyncCount} pending
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Syncing Banner */}
+        {isOnline && isSyncing && (
+          <div className="bg-sky-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+            <span>Syncing offline data...</span>
+          </div>
+        )}
+
+        {/* Sync Success Banner - show briefly after sync */}
+        {isOnline && !isSyncing && pendingSyncCount === 0 && (
+          <div className="bg-emerald-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>All data synced</span>
+          </div>
+        )}
+
         {/* Top Bar */}
         <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
@@ -204,7 +239,12 @@ export default function Layout({ children, currentPageName }) {
               <Shield className="w-8 h-8 text-sky-400" />
               <div>
                 <h1 className="font-bold text-white text-lg">SecureGuard</h1>
-                <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
+                  {!isOnline && (
+                    <CloudOff className="w-3 h-3 text-amber-400" />
+                  )}
+                </div>
               </div>
             </div>
 

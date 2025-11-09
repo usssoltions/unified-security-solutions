@@ -1,242 +1,269 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, X, Loader2, Wrench } from "lucide-react";
+import { X, Camera, Upload, CloudOff } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useOfflineMode } from "@/hooks/useOfflineMode";
+import { Badge } from "@/components/ui/badge";
 
 export default function MaintenanceForm({ user, shift, location, onClose, onSuccess }) {
+  const { isOnline, savePendingSync } = useOfflineMode();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     category: "lighting",
-    urgency: "medium"
+    urgency: "medium",
+    guard_id: user.id,
+    guard_name: user.full_name,
+    site_id: shift?.site_id || "",
+    site_name: shift?.site_name || "",
+    location: location,
+    media: [],
+    reported_at: new Date().toISOString()
   });
-  const [media, setMedia] = useState([]);
-  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const categories = [
-    { value: "lighting", label: "Lighting" },
-    { value: "locks", label: "Locks & Doors" },
-    { value: "fencing", label: "Fencing" },
-    { value: "gate", label: "Gate" },
-    { value: "alarm_system", label: "Alarm System" },
-    { value: "camera", label: "Security Camera" },
-    { value: "plumbing", label: "Plumbing" },
-    { value: "electrical", label: "Electrical" },
-    { value: "structural", label: "Structural" },
-    { value: "other", label: "Other" }
-  ];
-
-  const urgencies = [
-    { value: "critical", label: "Critical" },
-    { value: "high", label: "High" },
-    { value: "medium", label: "Medium" },
-    { value: "low", label: "Low" }
-  ];
-
-  const handlePhotoUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    setUploading(true);
-
-    try {
-      const uploadPromises = files.map(async (file) => {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        return { type: "photo", url: file_url };
-      });
-
-      const uploaded = await Promise.all(uploadPromises);
-      setMedia([...media, ...uploaded]);
-    } catch (error) {
-      alert("Failed to upload photos");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!formData.title.trim() || !formData.description.trim()) {
-      alert("Please fill in all required fields");
-      return;
-    }
-
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setSubmitting(true);
 
     try {
-      await base44.entities.MaintenanceRequest.create({
-        ...formData,
-        guard_id: user.id,
-        guard_name: user.full_name,
-        site_id: shift?.site_id || "",
-        site_name: shift?.site_name || "",
-        location: location,
-        media: media,
-        reported_at: new Date().toISOString(),
-        status: "reported"
-      });
-
-      onSuccess();
+      if (!isOnline) {
+        const success = savePendingSync("maintenance", formData);
+        if (success) {
+          alert("📱 Maintenance request saved offline. Will sync when online.");
+          onSuccess();
+        } else {
+          alert("❌ Failed to save maintenance request offline.");
+        }
+      } else {
+        await base44.entities.MaintenanceRequest.create(formData);
+        alert("✅ Maintenance request submitted successfully!");
+        onSuccess();
+      }
     } catch (error) {
-      alert("Failed to submit maintenance request");
+      alert(`Error: ${error.message}`);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleMediaCapture = async (e) => {
+    const files = Array.from(e.target.files);
+    
+    for (const file of files) {
+      if (!isOnline) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setFormData(prev => ({
+            ...prev,
+            media: [...prev.media, {
+              type: file.type.startsWith('video') ? 'video' : 'photo',
+              url: reader.result,
+              offline: true
+            }]
+          }));
+        };
+        reader.readAsDataURL(file);
+      } else {
+        try {
+          const { file_url } = await base44.integrations.Core.UploadFile({ file });
+          setFormData(prev => ({
+            ...prev,
+            media: [...prev.media, {
+              type: file.type.startsWith('video') ? 'video' : 'photo',
+              url: file_url
+            }]
+          }));
+        } catch (error) {
+          alert(`Failed to upload ${file.name}`);
+        }
+      }
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
-      <div className="min-h-screen p-4 flex items-start justify-center pt-20">
-        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-amber-500 rounded-full flex items-center justify-center">
-                  <Wrench className="w-6 h-6 text-white" />
-                </div>
-                <CardTitle className="text-white text-xl">Maintenance Request</CardTitle>
-              </div>
-              <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400">
-                <X />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-8">
+        <CardHeader className="border-b border-slate-700">
+          <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm text-slate-300 font-medium block mb-2">
-                Issue Title <span className="text-rose-400">*</span>
-              </label>
+              <CardTitle className="text-white flex items-center gap-2">
+                Maintenance Request
+                {!isOnline && (
+                  <Badge className="bg-amber-500 flex items-center gap-1">
+                    <CloudOff className="w-3 h-3" />
+                    Offline
+                  </Badge>
+                )}
+              </CardTitle>
+              {!isOnline && (
+                <p className="text-xs text-amber-400 mt-1">
+                  Request will be saved and synced when online
+                </p>
+              )}
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Issue Title *</label>
               <Input
-                placeholder="Brief description of the issue"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="bg-slate-900 border-slate-700 text-white"
+                className="bg-slate-900/50 border-slate-700 text-white"
+                required
+                placeholder="Brief description"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Description *</label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="bg-slate-900/50 border-slate-700 text-white h-32"
+                required
+                placeholder="Detailed description of the maintenance issue..."
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm text-slate-300 font-medium block mb-2">Category</label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value })}
-                >
-                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                <label className="text-sm text-slate-400 mb-2 block">Category</label>
+                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.value} value={cat.value}>
-                        {cat.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="lighting">Lighting</SelectItem>
+                    <SelectItem value="locks">Locks & Keys</SelectItem>
+                    <SelectItem value="fencing">Fencing</SelectItem>
+                    <SelectItem value="gate">Gate/Barrier</SelectItem>
+                    <SelectItem value="alarm_system">Alarm System</SelectItem>
+                    <SelectItem value="camera">Camera/CCTV</SelectItem>
+                    <SelectItem value="plumbing">Plumbing</SelectItem>
+                    <SelectItem value="electrical">Electrical</SelectItem>
+                    <SelectItem value="structural">Structural</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <label className="text-sm text-slate-300 font-medium block mb-2">Urgency</label>
-                <Select
-                  value={formData.urgency}
-                  onValueChange={(value) => setFormData({ ...formData, urgency: value })}
-                >
-                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                <label className="text-sm text-slate-400 mb-2 block">Urgency</label>
+                <Select value={formData.urgency} onValueChange={(value) => setFormData({ ...formData, urgency: value })}>
+                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {urgencies.map((urg) => (
-                      <SelectItem key={urg.value} value={urg.value}>
-                        {urg.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="critical">Critical</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div>
-              <label className="text-sm text-slate-300 font-medium block mb-2">
-                Description <span className="text-rose-400">*</span>
-              </label>
-              <Textarea
-                placeholder="Detailed description of the maintenance issue..."
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="bg-slate-900 border-slate-700 text-white min-h-32"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm text-slate-300 font-medium block mb-2">Photos</label>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                capture="environment"
-                onChange={handlePhotoUpload}
-                className="hidden"
-                id="maintenance-photos"
-              />
-              <label htmlFor="maintenance-photos">
-                <div className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center cursor-pointer hover:border-amber-500 transition-colors">
-                  <Camera className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-sm text-slate-400">
-                    {uploading ? "Uploading..." : "Add Photos of Issue"}
-                  </p>
-                </div>
-              </label>
-
-              {media.length > 0 && (
-                <div className="flex gap-2 mt-3 overflow-x-auto">
-                  {media.map((item, idx) => (
-                    <div key={idx} className="relative flex-shrink-0">
+              <label className="text-sm text-slate-400 mb-2 block">Photos/Videos</label>
+              <div className="flex gap-2">
+                <label className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    capture="environment"
+                    multiple
+                    onChange={handleMediaCapture}
+                    className="hidden"
+                  />
+                  <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
+                    <div>
+                      <Camera className="w-4 h-4 mr-2" />
+                      Take Photo/Video
+                    </div>
+                  </Button>
+                </label>
+                <label className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    onChange={handleMediaCapture}
+                    className="hidden"
+                  />
+                  <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
+                    <div>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload Media
+                    </div>
+                  </Button>
+                </label>
+              </div>
+              {formData.media.length > 0 && (
+                <div className="mt-3 flex gap-2 overflow-x-auto">
+                  {formData.media.map((media, idx) => (
+                    <div key={idx} className="relative">
                       <img
-                        src={item.url}
+                        src={media.url}
                         alt="Issue"
-                        className="h-24 w-24 object-cover rounded-lg border border-slate-700"
+                        className="h-20 w-20 object-cover rounded border border-slate-700"
                       />
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="absolute -top-2 -right-2 h-6 w-6 bg-slate-900 border border-slate-700"
-                        onClick={() => setMedia(media.filter((_, i) => i !== idx))}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
+                      {media.offline && (
+                        <Badge className="absolute top-1 right-1 bg-amber-500 text-xs">
+                          Offline
+                        </Badge>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
+            {location && (
+              <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400 mb-1">GPS Location</p>
+                <p className="text-sm text-white font-mono">
+                  {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+                </p>
+              </div>
+            )}
+
             <div className="flex gap-3 pt-4">
               <Button
+                type="button"
                 variant="outline"
                 onClick={onClose}
-                className="flex-1 border-slate-600 text-slate-300"
+                className="flex-1 border-slate-600"
               >
                 Cancel
               </Button>
               <Button
-                onClick={handleSubmit}
-                disabled={submitting || uploading}
-                className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700"
+                type="submit"
+                disabled={submitting}
+                className="flex-1 bg-amber-600 hover:bg-amber-700"
               >
-                {submitting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  "Submit Request"
-                )}
+                {submitting ? "Submitting..." : isOnline ? "Submit Request" : "Save Offline"}
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
