@@ -3,12 +3,13 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Database, Loader2, CheckCircle2, AlertCircle, Zap } from "lucide-react";
+import { Database, Loader2, CheckCircle2, AlertCircle, Zap, LogOut } from "lucide-react";
 
 export default function SystemSetup() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [needsRelogin, setNeedsRelogin] = useState(false);
 
   const addStatus = (message, type = "info") => {
     setStatus(prev => [...prev, { message, type, timestamp: new Date() }]);
@@ -17,6 +18,7 @@ export default function SystemSetup() {
   const setupTestData = async () => {
     setLoading(true);
     setStatus([]);
+    setNeedsRelogin(false);
     
     try {
       // Get current user
@@ -25,22 +27,26 @@ export default function SystemSetup() {
       addStatus(`Logged in as: ${user.full_name} (${user.email})`, "success");
       addStatus(`Current role: ${user.role_type || 'Not set'}`, "info");
 
-      // Update current user to admin
-      addStatus("Setting your role to Admin...", "info");
-      await base44.auth.updateMe({ 
-        role_type: "admin",
-        badge_number: user.badge_number || "ADMIN-001",
-        phone: user.phone || "+27123456789"
-      });
-      
-      // Reload user to confirm role change
-      const updatedUser = await base44.auth.me();
-      setCurrentUser(updatedUser);
-      addStatus(`✅ Role updated! You are now: ${updatedUser.role_type}`, "success");
-      
-      // Small delay to ensure role propagation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Check if already admin
+      if (user.role_type === 'admin' || user.role_type === 'dispatcher') {
+        addStatus("✅ You already have admin/dispatcher permissions", "success");
+      } else {
+        // Update current user to admin
+        addStatus("Setting your role to Admin...", "info");
+        await base44.auth.updateMe({ 
+          role_type: "admin",
+          badge_number: user.badge_number || "ADMIN-001",
+          phone: user.phone || "+27123456789"
+        });
+        
+        addStatus("✅ Role updated in database!", "success");
+        addStatus("⚠️ You need to logout and login again for permissions to take effect", "warning");
+        setNeedsRelogin(true);
+        setLoading(false);
+        return;
+      }
 
+      // Continue with setup only if already admin
       // Create Sites - UPDATED TO YOUR LOCATION
       addStatus("Creating test sites at your location...", "info");
       const sites = await Promise.all([
@@ -115,8 +121,8 @@ export default function SystemSetup() {
       const shifts = await Promise.all([
         // Active shift (started 2 hours ago, ends in 6 hours)
         base44.entities.Shift.create({
-          guard_id: updatedUser.id,
-          guard_name: updatedUser.full_name,
+          guard_id: user.id,
+          guard_name: user.full_name,
           site_id: sites[0].id,
           site_name: sites[0].name,
           start_time: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
@@ -125,8 +131,8 @@ export default function SystemSetup() {
         }),
         // Upcoming shift tomorrow
         base44.entities.Shift.create({
-          guard_id: updatedUser.id,
-          guard_name: updatedUser.full_name,
+          guard_id: user.id,
+          guard_name: user.full_name,
           site_id: sites[1].id,
           site_name: sites[1].name,
           start_time: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
@@ -158,8 +164,8 @@ export default function SystemSetup() {
           asset_number: "RAD-012",
           category: "electronics",
           status: "active",
-          assigned_to: updatedUser.id,
-          assigned_to_name: updatedUser.full_name,
+          assigned_to: user.id,
+          assigned_to_name: user.full_name,
           purchase_date: "2024-03-20",
           purchase_cost: 3500,
           current_value: 3000
@@ -175,8 +181,8 @@ export default function SystemSetup() {
         category: "suspicious_activity",
         priority: "medium",
         status: "reported",
-        guard_id: updatedUser.id,
-        guard_name: updatedUser.full_name,
+        guard_id: user.id,
+        guard_name: user.full_name,
         site_id: sites[0].id,
         site_name: sites[0].name,
         location: { lat: -33.3482, lng: 18.1615 },
@@ -192,8 +198,8 @@ export default function SystemSetup() {
         category: "lighting",
         urgency: "medium",
         status: "reported",
-        guard_id: updatedUser.id,
-        guard_name: updatedUser.full_name,
+        guard_id: user.id,
+        guard_name: user.full_name,
         site_id: sites[0].id,
         site_name: sites[0].name,
         reported_at: new Date().toISOString()
@@ -207,21 +213,16 @@ export default function SystemSetup() {
         report_type: "daily_activity",
         frequency: "daily",
         send_time: "08:00",
-        recipients: [updatedUser.email],
+        recipients: [user.email],
         sites: sites.map(s => s.id),
         status: "active",
-        created_by: updatedUser.id
+        created_by: user.id
       });
       addStatus("✅ Created automated report schedule", "success");
 
-      addStatus("🎉 SETUP COMPLETE! Reloading page...", "success");
+      addStatus("🎉 SETUP COMPLETE! All test data created.", "success");
       addStatus("📍 Shift location: 131 Atlantic Drive, Yzerfontein", "success");
       addStatus("💡 Go to 'My Shift' to clock in (200m geofence radius)", "info");
-      
-      // Reload page to refresh user role in UI
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
 
     } catch (error) {
       addStatus(`❌ Error: ${error.message}`, "error");
@@ -229,6 +230,10 @@ export default function SystemSetup() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogoutAndRelogin = async () => {
+    await base44.auth.logout(window.location.href);
   };
 
   return (
@@ -247,6 +252,31 @@ export default function SystemSetup() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {needsRelogin && (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-6 h-6 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-amber-400 font-semibold mb-2">Action Required: Logout & Login</h3>
+                    <p className="text-sm text-slate-300 mb-4">
+                      Your role has been updated to Admin, but you need to logout and login again 
+                      for the permissions to take effect in your session.
+                    </p>
+                    <Button
+                      onClick={handleLogoutAndRelogin}
+                      className="w-full bg-amber-600 hover:bg-amber-700"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Logout & Return to Login
+                    </Button>
+                    <p className="text-xs text-slate-400 mt-2">
+                      After logging back in, click "Generate Test Data" again to create the test sites.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg">
               <h3 className="text-sky-400 font-semibold mb-2">📍 Test Location Setup:</h3>
               <p className="text-white font-medium mb-2">131 Atlantic Drive, Yzerfontein, 7351</p>
@@ -319,15 +349,15 @@ export default function SystemSetup() {
             )}
 
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-              <h3 className="text-amber-400 font-semibold mb-2">📱 Testing Instructions:</h3>
+              <h3 className="text-amber-400 font-semibold mb-2">📱 Setup Steps:</h3>
               <ol className="space-y-1 text-sm text-slate-300 list-decimal list-inside">
-                <li>Click "Generate Test Data" above</li>
-                <li>Page will reload with your Admin role</li>
-                <li>Try creating a site again - should work now!</li>
-                <li>Go to "My Shift" page to test guard features</li>
-                <li>Be within 200m of 131 Atlantic Drive to clock in</li>
+                <li>Click "Generate Test Data" button above</li>
+                <li>If prompted, logout and login again (for role permissions)</li>
+                <li>Click "Generate Test Data" again after re-login</li>
+                <li>Test data will be created at your location</li>
+                <li>Go to "Sites" to create additional sites</li>
+                <li>Go to "My Shift" to test guard features</li>
                 <li>Test QR scanning (codes: YZER_MAIN_001, YZER_PERI_002)</li>
-                <li>Report incidents, maintenance, etc.</li>
               </ol>
             </div>
           </CardContent>
