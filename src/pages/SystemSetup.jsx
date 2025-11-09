@@ -29,71 +29,67 @@ export default function SystemSetup() {
       await base44.auth.updateMe({ role_type: "admin" });
       addStatus("✅ You are now an Admin!", "success");
 
-      // Create Sites
-      addStatus("Creating test sites...", "info");
+      // Create Sites - UPDATED TO YOUR LOCATION
+      addStatus("Creating test sites at your location...", "info");
       const sites = await Promise.all([
         base44.entities.Site.create({
-          name: "Corporate Plaza",
-          address: "123 Business Ave, Cape Town",
-          client_name: "ABC Corporation",
-          location: { lat: -33.9249, lng: 18.4241 },
-          geofence_radius: 100,
+          name: "Yzerfontein Security Post",
+          address: "131 Atlantic Drive, Yzerfontein, 7351",
+          client_name: "Coastal Properties",
+          location: { lat: -33.3482, lng: 18.1615 },
+          geofence_radius: 200,
           status: "active",
           checkpoints: [
-            { id: "cp1", name: "Main Entrance", qr_code: "CORP_MAIN_001", location: { lat: -33.9249, lng: 18.4241 } },
-            { id: "cp2", name: "Parking Garage", qr_code: "CORP_PARK_002", location: { lat: -33.9250, lng: 18.4242 } }
+            { id: "cp1", name: "Main Gate", qr_code: "YZER_MAIN_001", location: { lat: -33.3482, lng: 18.1615 } },
+            { id: "cp2", name: "Perimeter Fence", qr_code: "YZER_PERI_002", location: { lat: -33.3483, lng: 18.1616 } }
           ]
         }),
         base44.entities.Site.create({
-          name: "Retail Center",
-          address: "456 Shopping St, Cape Town",
-          client_name: "Retail Group Ltd",
-          location: { lat: -33.9189, lng: 18.4232 },
+          name: "Beach Front Property",
+          address: "45 Beach Road, Yzerfontein, 7351",
+          client_name: "Ocean View Estates",
+          location: { lat: -33.3490, lng: 18.1620 },
           geofence_radius: 150,
           status: "active",
           checkpoints: [
-            { id: "cp3", name: "North Gate", qr_code: "RETAIL_NORTH_001", location: { lat: -33.9189, lng: 18.4232 } }
+            { id: "cp3", name: "Beach Access", qr_code: "BEACH_ACC_001", location: { lat: -33.3490, lng: 18.1620 } }
           ]
         }),
         base44.entities.Site.create({
-          name: "Industrial Park",
-          address: "789 Factory Rd, Cape Town",
-          client_name: "Manufacturing Co",
-          location: { lat: -33.9300, lng: 18.4300 },
+          name: "Town Center Complex",
+          address: "Main Street, Yzerfontein, 7351",
+          client_name: "Local Business Council",
+          location: { lat: -33.3500, lng: 18.1600 },
           geofence_radius: 200,
           status: "active"
         })
       ]);
-      addStatus(`✅ Created ${sites.length} sites`, "success");
-
-      // Create Guard Users (via invitations in real scenario, here we simulate)
-      addStatus("Creating test guard accounts...", "info");
-      addStatus("Note: In production, create users via Dashboard → Users → Invite", "warning");
+      addStatus(`✅ Created ${sites.length} sites in Yzerfontein area`, "success");
 
       // Create Checklist Templates
       addStatus("Creating checklist templates...", "info");
       const templates = await Promise.all([
         base44.entities.ChecklistTemplate.create({
-          name: "Main Entrance Security Check",
+          name: "Main Gate Security Check",
           site_id: sites[0].id,
           checkpoint_id: "cp1",
           items: [
-            { id: "i1", text: "Doors locked and secure", required: true, type: "checkbox" },
+            { id: "i1", text: "Gate locked and secure", required: true, type: "checkbox" },
             { id: "i2", text: "Alarm system armed", required: true, type: "checkbox" },
             { id: "i3", text: "Area clear of obstructions", required: true, type: "checkbox" },
-            { id: "i4", text: "Take photo of entrance", required: true, type: "photo" }
+            { id: "i4", text: "Take photo of gate", required: true, type: "photo" }
           ],
           requires_signature: true,
           status: "active"
         }),
         base44.entities.ChecklistTemplate.create({
-          name: "Parking Garage Patrol",
+          name: "Perimeter Patrol",
           site_id: sites[0].id,
           checkpoint_id: "cp2",
           items: [
-            { id: "i1", text: "Vehicle count", required: true, type: "text" },
+            { id: "i1", text: "Fence condition check", required: true, type: "checkbox" },
             { id: "i2", text: "Lighting functional", required: true, type: "checkbox" },
-            { id: "i3", text: "Emergency exits clear", required: true, type: "checkbox" }
+            { id: "i3", text: "No unauthorized access", required: true, type: "checkbox" }
           ],
           requires_signature: true,
           status: "active"
@@ -101,8 +97,8 @@ export default function SystemSetup() {
       ]);
       addStatus(`✅ Created ${templates.length} checklist templates`, "success");
 
-      // Create Shifts for current user
-      addStatus("Creating shifts for you...", "info");
+      // Create Shifts for current user at YOUR LOCATION
+      addStatus("Creating shifts at 131 Atlantic Drive...", "info");
       const now = new Date();
       const shifts = await Promise.all([
         // Active shift (started 2 hours ago, ends in 6 hours)
@@ -126,7 +122,7 @@ export default function SystemSetup() {
           status: "scheduled"
         })
       ]);
-      addStatus(`✅ Created ${shifts.length} shifts (1 ready to clock in)`, "success");
+      addStatus(`✅ Created ${shifts.length} shifts (1 ready to clock in at 131 Atlantic Drive)`, "success");
 
       // Create sample Assets
       addStatus("Creating sample assets...", "info");
@@ -162,8 +158,8 @@ export default function SystemSetup() {
       // Create sample incidents
       addStatus("Creating sample incidents...", "info");
       await base44.entities.Incident.create({
-        title: "Suspicious Vehicle in Parking",
-        description: "Unidentified vehicle parked in restricted area for 30+ minutes",
+        title: "Suspicious Vehicle Near Beach",
+        description: "Unidentified vehicle parked near restricted beach access",
         category: "suspicious_activity",
         priority: "medium",
         status: "reported",
@@ -171,7 +167,7 @@ export default function SystemSetup() {
         guard_name: user.full_name,
         site_id: sites[0].id,
         site_name: sites[0].name,
-        location: { lat: -33.9249, lng: 18.4241 },
+        location: { lat: -33.3482, lng: 18.1615 },
         reported_at: new Date().toISOString()
       });
       addStatus("✅ Created sample incident", "success");
@@ -179,8 +175,8 @@ export default function SystemSetup() {
       // Create sample maintenance request
       addStatus("Creating sample maintenance...", "info");
       await base44.entities.MaintenanceRequest.create({
-        title: "Broken Light in Garage",
-        description: "Light fixture #4 in parking garage not working",
+        title: "Broken Gate Light",
+        description: "Main gate light fixture not working - needs replacement",
         category: "lighting",
         urgency: "medium",
         status: "reported",
@@ -195,7 +191,7 @@ export default function SystemSetup() {
       // Create custom report schedule
       addStatus("Creating report schedule...", "info");
       await base44.entities.ReportSchedule.create({
-        name: "Daily Morning Report",
+        name: "Daily Morning Report - Yzerfontein",
         report_type: "daily_activity",
         frequency: "daily",
         send_time: "08:00",
@@ -207,7 +203,8 @@ export default function SystemSetup() {
       addStatus("✅ Created automated report schedule", "success");
 
       addStatus("🎉 SETUP COMPLETE! You can now test all features.", "success");
-      addStatus("💡 Go to 'My Shift' to clock in and start testing", "info");
+      addStatus("📍 Shift location: 131 Atlantic Drive, Yzerfontein", "success");
+      addStatus("💡 Go to 'My Shift' to clock in (200m geofence radius)", "info");
 
     } catch (error) {
       addStatus(`❌ Error: ${error.message}`, "error");
@@ -234,9 +231,11 @@ export default function SystemSetup() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg">
-              <h3 className="text-sky-400 font-semibold mb-2">What will be created:</h3>
+              <h3 className="text-sky-400 font-semibold mb-2">📍 Test Location Setup:</h3>
+              <p className="text-white font-medium mb-2">131 Atlantic Drive, Yzerfontein, 7351</p>
               <ul className="space-y-1 text-sm text-slate-300">
-                <li>✅ 3 test sites with GPS locations and checkpoints</li>
+                <li>✅ 3 test sites in Yzerfontein area</li>
+                <li>✅ Main site at YOUR LOCATION (200m geofence)</li>
                 <li>✅ 2 checklist templates with QR codes</li>
                 <li>✅ 2 shifts (1 active shift you can clock into now)</li>
                 <li>✅ 2 sample assets (vehicle & equipment)</li>
@@ -302,14 +301,15 @@ export default function SystemSetup() {
             )}
 
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-              <h3 className="text-amber-400 font-semibold mb-2">📱 Next Steps:</h3>
+              <h3 className="text-amber-400 font-semibold mb-2">📱 Testing Instructions:</h3>
               <ol className="space-y-1 text-sm text-slate-300 list-decimal list-inside">
                 <li>Click "Generate Test Data" above</li>
-                <li>Go to "My Shift" page (you'll be set as a Guard)</li>
-                <li>Clock in to your scheduled shift</li>
-                <li>Test QR scanning, incidents, maintenance, etc.</li>
+                <li>Go to "My Shift" page</li>
+                <li>Be within 200m of 131 Atlantic Drive to clock in</li>
+                <li>Or temporarily disable geofence for testing</li>
+                <li>Test QR scanning (codes: YZER_MAIN_001, YZER_PERI_002)</li>
+                <li>Report incidents, maintenance, etc.</li>
                 <li>Switch to Dispatcher role to test Control Room</li>
-                <li>Use Analytics page to view reports</li>
               </ol>
             </div>
           </CardContent>
