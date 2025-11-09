@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -162,6 +163,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
         { title: "Guard Activity", url: createPageUrl("GuardActivity"), icon: Users },
         { title: "AI Reports", url: createPageUrl("AIReports"), icon: Sparkles },
+        { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
         { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings }

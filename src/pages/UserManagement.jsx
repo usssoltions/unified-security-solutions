@@ -1,78 +1,74 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Users, 
-  UserPlus, 
-  Shield, 
-  Radio, 
-  User, 
-  Mail,
-  Phone,
-  Search,
-  Eye
-} from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Users, Plus, Search, Shield, Radio, UserCheck, Building } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import UserForm from "../components/users/UserForm";
+import UserCard from "../components/users/UserCard";
 
 export default function UserManagement() {
+  const queryClient = useQueryClient();
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
 
   const { data: users, isLoading } = useQuery({
-    queryKey: ["users"],
+    queryKey: ["allUsers"],
     queryFn: async () => {
       return await base44.entities.User.list();
     },
     initialData: []
   });
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = 
-      user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.badge_number?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesRole = roleFilter === "all" || user.role_type === roleFilter;
-    
-    return matchesSearch && matchesRole;
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId) => {
+      await base44.entities.User.delete(userId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["allUsers"]);
+    }
   });
 
-  const roleConfig = {
-    admin: { color: "bg-purple-500", icon: Shield, label: "Admin" },
-    dispatcher: { color: "bg-sky-500", icon: Radio, label: "Dispatcher" },
-    guard: { color: "bg-emerald-500", icon: Shield, label: "Guard" },
-    client: { color: "bg-amber-500", icon: User, label: "Client" }
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setShowUserForm(true);
   };
 
-  const getRoleStats = () => {
-    return {
-      total: users.length,
-      admin: users.filter(u => u.role_type === "admin").length,
-      dispatcher: users.filter(u => u.role_type === "dispatcher").length,
-      guard: users.filter(u => u.role_type === "guard").length,
-      client: users.filter(u => u.role_type === "client").length
-    };
+  const handleDelete = async (userId) => {
+    if (window.confirm("Are you sure you want to delete this user?")) {
+      await deleteUserMutation.mutateAsync(userId);
+    }
   };
 
-  const stats = getRoleStats();
+  const filterUsers = (roleType) => {
+    let filtered = users;
+    
+    if (roleType !== "all") {
+      filtered = users.filter(u => u.role_type === roleType);
+    }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400" />
-      </div>
-    );
-  }
+    if (searchQuery) {
+      filtered = filtered.filter(u => 
+        u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.badge_number?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
+  const userStats = {
+    total: users.length,
+    admins: users.filter(u => u.role_type === "admin").length,
+    dispatchers: users.filter(u => u.role_type === "dispatcher").length,
+    guards: users.filter(u => u.role_type === "guard").length,
+    clients: users.filter(u => u.role_type === "client").length
+  };
 
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6">
@@ -84,166 +80,203 @@ export default function UserManagement() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white">User Management</h1>
-            <p className="text-slate-400">Manage system users and roles</p>
+            <p className="text-slate-400">Create and manage system users</p>
           </div>
         </div>
+
+        <Button
+          onClick={() => {
+            setEditingUser(null);
+            setShowUserForm(true);
+          }}
+          className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Add User
+        </Button>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="bg-slate-800/50 border-slate-700">
-          <CardContent className="p-4">
-            <p className="text-xs text-slate-400 mb-1">Total Users</p>
-            <p className="text-2xl font-bold text-white">{stats.total}</p>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Users className="w-8 h-8 text-sky-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{userStats.total}</p>
+              <p className="text-sm text-slate-400">Total Users</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="bg-purple-500/10 border-purple-500/20">
-          <CardContent className="p-4">
-            <p className="text-xs text-purple-400 mb-1">Admins</p>
-            <p className="text-2xl font-bold text-white">{stats.admin}</p>
+
+        <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border-purple-500/20">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Shield className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{userStats.admins}</p>
+              <p className="text-sm text-slate-400">Admins</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="bg-sky-500/10 border-sky-500/20">
-          <CardContent className="p-4">
-            <p className="text-xs text-sky-400 mb-1">Dispatchers</p>
-            <p className="text-2xl font-bold text-white">{stats.dispatcher}</p>
+
+        <Card className="bg-gradient-to-br from-sky-500/10 to-sky-600/10 border-sky-500/20">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Radio className="w-8 h-8 text-sky-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{userStats.dispatchers}</p>
+              <p className="text-sm text-slate-400">Dispatchers</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="bg-emerald-500/10 border-emerald-500/20">
-          <CardContent className="p-4">
-            <p className="text-xs text-emerald-400 mb-1">Guards</p>
-            <p className="text-2xl font-bold text-white">{stats.guard}</p>
+
+        <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <UserCheck className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{userStats.guards}</p>
+              <p className="text-sm text-slate-400">Guards</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="bg-amber-500/10 border-amber-500/20">
-          <CardContent className="p-4">
-            <p className="text-xs text-amber-400 mb-1">Clients</p>
-            <p className="text-2xl font-bold text-white">{stats.client}</p>
+
+        <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/10 border-amber-500/20">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Building className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{userStats.clients}</p>
+              <p className="text-sm text-slate-400">Clients</p>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Info Banner */}
-      <Card className="bg-sky-500/10 border-sky-500/20">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <UserPlus className="w-5 h-5 text-sky-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-sky-400 font-semibold mb-1">How to Add New Users</h3>
-              <p className="text-sm text-slate-300 mb-2">
-                Users must be invited through the Base44 Dashboard. This page displays existing users.
-              </p>
-              <p className="text-xs text-slate-400">
-                To invite: Dashboard → Users → Invite User → Enter email & role → Send invitation
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filters */}
+      {/* Search Bar */}
       <Card className="bg-slate-800/50 border-slate-700">
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder="Search by name, email, or badge number..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-slate-900/50 border-slate-700 text-white"
-              />
-            </div>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-full md:w-48 bg-slate-900/50 border-slate-700 text-white">
-                <SelectValue placeholder="Filter by role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="dispatcher">Dispatcher</SelectItem>
-                <SelectItem value="guard">Guard</SelectItem>
-                <SelectItem value="client">Client</SelectItem>
-              </SelectContent>
-            </Select>
+        <CardContent className="pt-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <Input
+              placeholder="Search by name, email, or badge number..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-slate-900 border-slate-700 text-white"
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Users List */}
-      <div className="grid gap-4">
-        {filteredUsers.length === 0 ? (
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="p-12 text-center">
-              <Users className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-              <p className="text-slate-400">No users found</p>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredUsers.map((user) => {
-            const config = roleConfig[user.role_type] || roleConfig.guard;
-            const RoleIcon = config.icon;
-            
-            return (
-              <Card key={user.id} className="bg-slate-800/50 border-slate-700 hover:border-slate-600 transition-colors">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className={`w-12 h-12 ${config.color} rounded-full flex items-center justify-center flex-shrink-0`}>
-                        <RoleIcon className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="text-white font-semibold">{user.full_name || "Unnamed User"}</h3>
-                          <Badge className={config.color}>
-                            {config.label}
-                          </Badge>
-                          {user.is_clocked_in && (
-                            <Badge className="bg-emerald-500">
-                              <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-1" />
-                              On Duty
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="space-y-1 text-sm">
-                          {user.email && (
-                            <div className="flex items-center gap-2 text-slate-400">
-                              <Mail className="w-4 h-4" />
-                              <span>{user.email}</span>
-                            </div>
-                          )}
-                          {user.phone && (
-                            <div className="flex items-center gap-2 text-slate-400">
-                              <Phone className="w-4 h-4" />
-                              <span>{user.phone}</span>
-                            </div>
-                          )}
-                          {user.badge_number && (
-                            <div className="flex items-center gap-2 text-slate-400">
-                              <Shield className="w-4 h-4" />
-                              <span>Badge: {user.badge_number}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 text-slate-500 text-xs mt-2">
-                            <span>Joined: {new Date(user.created_date).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      className="text-slate-400 hover:text-white"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
+      {/* User Tabs */}
+      <Tabs defaultValue="all" className="w-full">
+        <TabsList className="bg-slate-800/50">
+          <TabsTrigger value="all">All Users</TabsTrigger>
+          <TabsTrigger value="admin">Admins</TabsTrigger>
+          <TabsTrigger value="dispatcher">Dispatchers</TabsTrigger>
+          <TabsTrigger value="guard">Guards</TabsTrigger>
+          <TabsTrigger value="client">Clients</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {isLoading ? (
+              <p className="text-slate-400 col-span-full text-center py-8">Loading users...</p>
+            ) : filterUsers("all").length === 0 ? (
+              <p className="text-slate-400 col-span-full text-center py-8">No users found</p>
+            ) : (
+              filterUsers("all").map(user => (
+                <UserCard
+                  key={user.id}
+                  user={user}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="admin" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filterUsers("admin").length === 0 ? (
+              <p className="text-slate-400 col-span-full text-center py-8">No admins found</p>
+            ) : (
+              filterUsers("admin").map(user => (
+                <UserCard
+                  key={user.id}
+                  user={user}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="dispatcher" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filterUsers("dispatcher").length === 0 ? (
+              <p className="text-slate-400 col-span-full text-center py-8">No dispatchers found</p>
+            ) : (
+              filterUsers("dispatcher").map(user => (
+                <UserCard
+                  key={user.id}
+                  user={user}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="guard" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filterUsers("guard").length === 0 ? (
+              <p className="text-slate-400 col-span-full text-center py-8">No guards found</p>
+            ) : (
+              filterUsers("guard").map(user => (
+                <UserCard
+                  key={user.id}
+                  user={user}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="client" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filterUsers("client").length === 0 ? (
+              <p className="text-slate-400 col-span-full text-center py-8">No clients found</p>
+            ) : (
+              filterUsers("client").map(user => (
+                <UserCard
+                  key={user.id}
+                  user={user}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* User Form Modal */}
+      {showUserForm && (
+        <UserForm
+          user={editingUser}
+          onClose={() => {
+            setShowUserForm(false);
+            setEditingUser(null);
+          }}
+          onSuccess={() => {
+            setShowUserForm(false);
+            setEditingUser(null);
+            queryClient.invalidateQueries(["allUsers"]);
+          }}
+        />
+      )}
     </div>
   );
 }
