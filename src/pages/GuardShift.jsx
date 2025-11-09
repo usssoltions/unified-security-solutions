@@ -24,8 +24,8 @@ import StayAwakeAlert from "../components/guard/StayAwakeAlert";
 import QuickActions from "../components/guard/QuickActions";
 import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
-import { useOfflineMode } from "../hooks/useOfflineMode";
-import { useNotifications } from "../hooks/useNotifications";
+import { useOfflineMode } from "@/hooks/useOfflineMode";
+import { useNotifications } from "@/hooks/useNotifications";
 
 export default function GuardShift() {
   const navigate = useNavigate();
