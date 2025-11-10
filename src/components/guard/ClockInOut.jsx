@@ -3,7 +3,8 @@ import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock, MapPin, Shield, Loader2, AlertCircle, Fingerprint, Scan } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Clock, MapPin, Shield, Loader2, AlertCircle, Fingerprint, Lock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function ClockInOut({ user, location }) {
@@ -12,7 +13,9 @@ export default function ClockInOut({ user, location }) {
   const [assignedSite, setAssignedSite] = useState(null);
   const [geofenceValid, setGeofenceValid] = useState(false);
   const [distanceToSite, setDistanceToSite] = useState(null);
-  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [authMethod, setAuthMethod] = useState("pin"); // "biometric" or "pin"
+  const [pin, setPin] = useState("");
+  const [showPinInput, setShowPinInput] = useState(false);
 
   // Fetch the guard's assigned shift
   const { data: assignedShift } = useQuery({
@@ -30,20 +33,10 @@ export default function ClockInOut({ user, location }) {
   });
 
   useEffect(() => {
-    checkBiometricSupport();
-  }, []);
-
-  useEffect(() => {
     if (assignedShift && location) {
       loadAssignedSite();
     }
   }, [assignedShift, location]);
-
-  const checkBiometricSupport = () => {
-    if (window.PublicKeyCredential) {
-      setBiometricSupported(true);
-    }
-  };
 
   const loadAssignedSite = async () => {
     if (!assignedShift?.site_id) return;
@@ -81,7 +74,7 @@ export default function ClockInOut({ user, location }) {
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3; // Earth's radius in meters
+    const R = 6371e3;
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
     const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -92,25 +85,41 @@ export default function ClockInOut({ user, location }) {
       Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-    return R * c; // Distance in meters
+    return R * c;
   };
 
   const handleBiometricAuth = async () => {
     try {
-      // Web Authentication API for fingerprint/face
+      if (!window.PublicKeyCredential) {
+        throw new Error("Biometric authentication not supported");
+      }
+
+      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      if (!available) {
+        throw new Error("No biometric authenticator available");
+      }
+
       const credential = await navigator.credentials.get({
         publicKey: {
           challenge: new Uint8Array(32),
           timeout: 60000,
-          userVerification: "required"
+          userVerification: "required",
+          rpId: window.location.hostname,
+          allowCredentials: []
         }
       });
 
       return true;
     } catch (err) {
-      console.error("Biometric auth failed:", err);
+      console.error("Biometric auth error:", err);
       return false;
     }
+  };
+
+  const validatePin = () => {
+    // Simple PIN validation - in production, this should be stored securely
+    const userPin = user.security_pin || "1234"; // Default PIN
+    return pin === userPin;
   };
 
   const clockInMutation = useMutation({
@@ -127,7 +136,6 @@ export default function ClockInOut({ user, location }) {
         throw new Error(`You must be within ${assignedSite?.geofence_radius || 100}m of ${assignedSite?.name || 'your assigned site'}`);
       }
 
-      // Update shift to active with clock-in data
       await base44.entities.Shift.update(assignedShift.id, {
         status: "active",
         clock_in: {
@@ -137,7 +145,6 @@ export default function ClockInOut({ user, location }) {
         }
       });
 
-      // Update user status
       await base44.auth.updateMe({
         is_clocked_in: true,
         current_shift_id: assignedShift.id,
@@ -186,13 +193,26 @@ export default function ClockInOut({ user, location }) {
   });
 
   const handleClockIn = async () => {
-    if (biometricSupported) {
+    if (authMethod === "biometric") {
       const authSuccess = await handleBiometricAuth();
       if (!authSuccess) {
-        setError("Biometric authentication failed");
+        setError("Biometric authentication failed. Please use PIN instead.");
+        setAuthMethod("pin");
+        setShowPinInput(true);
+        return;
+      }
+    } else if (authMethod === "pin") {
+      if (!showPinInput) {
+        setShowPinInput(true);
+        return;
+      }
+      if (!validatePin()) {
+        setError("Invalid PIN. Please try again.");
+        setPin("");
         return;
       }
     }
+
     clockInMutation.mutate();
   };
 
@@ -286,35 +306,87 @@ export default function ClockInOut({ user, location }) {
             </Alert>
           )}
 
-          <Button
-            className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
-            onClick={() => user.is_clocked_in ? clockOutMutation.mutate() : handleClockIn()}
-            disabled={
-              !location || 
-              clockInMutation.isPending || 
-              clockOutMutation.isPending ||
-              (!user.is_clocked_in && !geofenceValid)
-            }
-          >
-            {(clockInMutation.isPending || clockOutMutation.isPending) ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Processing...
-              </>
-            ) : user.is_clocked_in ? (
-              "Clock Out"
-            ) : (
-              <>
-                {biometricSupported && <Fingerprint className="w-5 h-5 mr-2" />}
-                Clock In {biometricSupported && "(with Biometric)"}
-              </>
-            )}
-          </Button>
+          {!user.is_clocked_in && showPinInput && (
+            <div className="space-y-2">
+              <label className="text-sm text-slate-400">Enter your PIN to clock in</label>
+              <Input
+                type="password"
+                placeholder="4-digit PIN"
+                maxLength={4}
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                className="bg-slate-900 border-slate-700 text-white text-center text-lg tracking-widest"
+                autoFocus
+              />
+              <p className="text-xs text-slate-500 text-center">Default PIN: 1234</p>
+            </div>
+          )}
+
+          {!user.is_clocked_in && !showPinInput && (
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                onClick={async () => {
+                  setAuthMethod("biometric");
+                  const success = await handleBiometricAuth();
+                  if (!success) {
+                    setError("Biometric not available. Use PIN instead.");
+                    setAuthMethod("pin");
+                    setShowPinInput(true);
+                  } else {
+                    clockInMutation.mutate();
+                  }
+                }}
+                disabled={!location || !geofenceValid || clockInMutation.isPending}
+              >
+                <Fingerprint className="w-5 h-5 mr-2" />
+                Biometric
+              </Button>
+              <Button
+                variant="outline"
+                className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                onClick={() => {
+                  setAuthMethod("pin");
+                  setShowPinInput(true);
+                }}
+                disabled={!location || !geofenceValid || clockInMutation.isPending}
+              >
+                <Lock className="w-5 h-5 mr-2" />
+                Use PIN
+              </Button>
+            </div>
+          )}
+
+          {(user.is_clocked_in || showPinInput) && (
+            <Button
+              className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
+              onClick={() => user.is_clocked_in ? clockOutMutation.mutate() : handleClockIn()}
+              disabled={
+                !location || 
+                clockInMutation.isPending || 
+                clockOutMutation.isPending ||
+                (!user.is_clocked_in && !geofenceValid) ||
+                (!user.is_clocked_in && authMethod === "pin" && pin.length < 4)
+              }
+            >
+              {(clockInMutation.isPending || clockOutMutation.isPending) ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : user.is_clocked_in ? (
+                "Clock Out"
+              ) : (
+                "Confirm Clock In"
+              )}
+            </Button>
+          )}
 
           <p className="text-xs text-center text-slate-500">
             {user.is_clocked_in 
               ? "Location and time will be recorded"
-              : "Geofence validation required • Biometric authentication enabled"}
+              : "Geofence validation required • PIN or Biometric authentication"}
           </p>
         </CardContent>
       </Card>
