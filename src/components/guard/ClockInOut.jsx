@@ -15,15 +15,9 @@ export default function ClockInOut({ user, location }) {
   const [distanceToSite, setDistanceToSite] = useState(null);
   const [pin, setPin] = useState("");
 
-  // Only fetch shifts for guards
   const { data: assignedShift } = useQuery({
     queryKey: ["assignedShift", user?.id],
     queryFn: async () => {
-      // Only guards should have shifts
-      if (user.role_type !== "guard") {
-        return null;
-      }
-      
       const shifts = await base44.entities.Shift.filter({
         guard_id: user.id,
         status: "scheduled"
@@ -31,7 +25,7 @@ export default function ClockInOut({ user, location }) {
       
       return shifts[0] || null;
     },
-    enabled: !!user && user.role_type === "guard",
+    enabled: !!user,
     initialData: null
   });
 
@@ -111,7 +105,7 @@ export default function ClockInOut({ user, location }) {
       }
 
       if (!validatePin()) {
-        throw new Error("Invalid PIN");
+        throw new Error("Invalid PIN. Please check your PIN and try again.");
       }
 
       await base44.entities.Shift.update(assignedShift.id, {
@@ -241,7 +235,7 @@ export default function ClockInOut({ user, location }) {
                 </p>
                 {assignedSite && distanceToSite !== null && (
                   <p className="text-xs text-slate-500 mt-1">
-                    Nearest: {assignedSite.name}
+                    Distance to site: {Math.round(distanceToSite)}m
                   </p>
                 )}
               </div>
@@ -262,22 +256,23 @@ export default function ClockInOut({ user, location }) {
           )}
 
           {!user.is_clocked_in && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <label className="text-sm text-slate-400 flex items-center gap-2">
-                  <Lock className="w-4 h-4" />
-                  Enter PIN to Clock In
-                </label>
-                <Input
-                  type="password"
-                  placeholder="4-digit PIN (default: 1234)"
-                  maxLength={4}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  className="bg-slate-900 border-slate-700 text-white text-center text-2xl tracking-widest h-14"
-                  autoFocus
-                />
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm text-slate-400 flex items-center gap-2">
+                <Lock className="w-4 h-4" />
+                Enter your 4-digit PIN
+              </label>
+              <Input
+                type="password"
+                placeholder="• • • •"
+                maxLength={4}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                className="bg-slate-900 border-slate-700 text-white text-center text-2xl tracking-widest"
+                autoFocus
+              />
+              <p className="text-xs text-slate-500 text-center">
+                Default PIN: 1234 (contact admin to change)
+              </p>
             </div>
           )}
 
@@ -289,7 +284,7 @@ export default function ClockInOut({ user, location }) {
               clockInMutation.isPending || 
               clockOutMutation.isPending ||
               (!user.is_clocked_in && !geofenceValid) ||
-              (!user.is_clocked_in && pin.length < 4)
+              (!user.is_clocked_in && pin.length !== 4)
             }
           >
             {(clockInMutation.isPending || clockOutMutation.isPending) ? (
@@ -298,22 +293,16 @@ export default function ClockInOut({ user, location }) {
                 Processing...
               </>
             ) : user.is_clocked_in ? (
-              <>
-                <Lock className="w-5 h-5 mr-2" />
-                Clock Out
-              </>
+              "Clock Out"
             ) : (
-              <>
-                <Lock className="w-5 h-5 mr-2" />
-                Clock In with PIN
-              </>
+              "Clock In with PIN"
             )}
           </Button>
 
           <p className="text-xs text-center text-slate-500">
             {user.is_clocked_in 
               ? "Location and time will be recorded"
-              : "Geofence validation required • PIN authentication enabled"}
+              : "Geofence validation required • PIN authentication"}
           </p>
         </CardContent>
       </Card>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -23,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import NotificationPanel from "@/components/layout/NotificationPanel";
+import NotificationsPanel from "@/components/layout/NotificationsPanel";
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
@@ -32,9 +31,9 @@ export default function Layout({ children, currentPageName }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [retryCount, setRetryCount] = useState(0);
-  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -258,13 +257,6 @@ export default function Layout({ children, currentPageName }) {
           )}
         </header>
 
-        {showNotifications && (
-          <NotificationPanel
-            alerts={alerts}
-            onClose={() => setShowNotifications(false)}
-          />
-        )}
-
         <div className="flex">
           <aside className="hidden lg:flex flex-col w-64 bg-slate-900/60 backdrop-blur-lg border-r border-slate-700/50 min-h-screen">
             <nav className="flex-1 p-4 space-y-2">
@@ -300,6 +292,16 @@ export default function Layout({ children, currentPageName }) {
             {children}
           </main>
         </div>
+
+        {showNotifications && (
+          <NotificationsPanel
+            user={user}
+            onClose={() => {
+              setShowNotifications(false);
+              loadAlerts();
+            }}
+          />
+        )}
       </div>
     </ErrorBoundary>
   );
