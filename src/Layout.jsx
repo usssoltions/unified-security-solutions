@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -16,7 +15,6 @@ import {
   LogOut,
   Bell,
   Package,
-  Settings,
   Sliders,
   RefreshCw,
   Sparkles
@@ -150,8 +148,7 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
-        { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
-        { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings }
+        { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin }
       ];
     }
 
@@ -165,8 +162,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "AI Reports", url: createPageUrl("AIReports"), icon: Sparkles },
         { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
-        { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
-        { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings }
+        { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders }
       ];
     }
 
@@ -178,10 +174,7 @@ export default function Layout({ children, currentPageName }) {
       ];
     }
 
-    return [
-      { title: "Setup Data", url: createPageUrl("SystemSetup"), icon: Settings },
-      { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders }
-    ];
+    return [];
   };
 
   const navigationItems = getNavigationItems();

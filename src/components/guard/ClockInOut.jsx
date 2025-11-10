@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, MapPin, Shield, Loader2, AlertCircle, Fingerprint, Scan } from "lucide-react";
@@ -9,21 +9,35 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 export default function ClockInOut({ user, location }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState(null);
-  const [nearestSite, setNearestSite] = useState(null);
+  const [assignedSite, setAssignedSite] = useState(null);
   const [geofenceValid, setGeofenceValid] = useState(false);
-  const [sites, setSites] = useState([]);
+  const [distanceToSite, setDistanceToSite] = useState(null);
   const [biometricSupported, setBiometricSupported] = useState(false);
 
+  // Fetch the guard's assigned shift
+  const { data: assignedShift } = useQuery({
+    queryKey: ["assignedShift", user?.id],
+    queryFn: async () => {
+      const shifts = await base44.entities.Shift.filter({
+        guard_id: user.id,
+        status: "scheduled"
+      }, "start_time", 1);
+      
+      return shifts[0] || null;
+    },
+    enabled: !!user,
+    initialData: null
+  });
+
   useEffect(() => {
-    loadSites();
     checkBiometricSupport();
   }, []);
 
   useEffect(() => {
-    if (location && sites.length > 0) {
-      validateGeofence();
+    if (assignedShift && location) {
+      loadAssignedSite();
     }
-  }, [location, sites]);
+  }, [assignedShift, location]);
 
   const checkBiometricSupport = () => {
     if (window.PublicKeyCredential) {
@@ -31,9 +45,39 @@ export default function ClockInOut({ user, location }) {
     }
   };
 
-  const loadSites = async () => {
-    const allSites = await base44.entities.Site.list();
-    setSites(allSites);
+  const loadAssignedSite = async () => {
+    if (!assignedShift?.site_id) return;
+    
+    try {
+      const site = await base44.entities.Site.get(assignedShift.site_id);
+      setAssignedSite(site);
+      
+      if (site.location && location) {
+        const distance = calculateDistance(
+          location.lat,
+          location.lng,
+          site.location.lat,
+          site.location.lng
+        );
+        
+        setDistanceToSite(distance);
+        
+        const radius = site.geofence_radius || 100;
+        const isValid = distance <= radius;
+        setGeofenceValid(isValid);
+        
+        if (!isValid) {
+          setError(
+            `You are ${Math.round(distance)}m from ${site.name}. You must be within ${radius}m to clock in.`
+          );
+        } else {
+          setError(null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load assigned site:", err);
+      setError("Failed to load your assigned site");
+    }
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -49,49 +93,6 @@ export default function ClockInOut({ user, location }) {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c; // Distance in meters
-  };
-
-  const validateGeofence = () => {
-    if (!location) return;
-
-    // Find nearest site and check if within geofence
-    let nearestDistance = Infinity;
-    let nearest = null;
-    let isValid = false;
-
-    for (const site of sites) {
-      if (site.location) {
-        const distance = calculateDistance(
-          location.lat,
-          location.lng,
-          site.location.lat,
-          site.location.lng
-        );
-
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearest = site;
-        }
-
-        // Check if within geofence radius
-        if (distance <= (site.geofence_radius || 100)) {
-          isValid = true;
-        }
-      }
-    }
-
-    setNearestSite(nearest);
-    setGeofenceValid(isValid);
-
-    if (!isValid && nearest) {
-      setError(
-        `You are ${Math.round(nearestDistance)}m from ${nearest.name}. You must be within ${
-          nearest.geofence_radius || 100
-        }m to clock in.`
-      );
-    } else {
-      setError(null);
-    }
   };
 
   const handleBiometricAuth = async () => {
@@ -118,25 +119,16 @@ export default function ClockInOut({ user, location }) {
         throw new Error("Location services must be enabled");
       }
 
+      if (!assignedShift) {
+        throw new Error("No scheduled shift found for you");
+      }
+
       if (!geofenceValid) {
-        throw new Error("You must be at your assigned site to clock in");
+        throw new Error(`You must be within ${assignedSite?.geofence_radius || 100}m of ${assignedSite?.name || 'your assigned site'}`);
       }
-
-      // Find scheduled shift at this site
-      const shifts = await base44.entities.Shift.filter({
-        guard_id: user.id,
-        status: "scheduled",
-        site_id: nearestSite.id
-      }, "start_time", 1);
-
-      if (!shifts.length) {
-        throw new Error(`No scheduled shift found at ${nearestSite.name}`);
-      }
-
-      const shift = shifts[0];
 
       // Update shift to active with clock-in data
-      await base44.entities.Shift.update(shift.id, {
+      await base44.entities.Shift.update(assignedShift.id, {
         status: "active",
         clock_in: {
           timestamp: new Date().toISOString(),
@@ -148,14 +140,14 @@ export default function ClockInOut({ user, location }) {
       // Update user status
       await base44.auth.updateMe({
         is_clocked_in: true,
-        current_shift_id: shift.id,
+        current_shift_id: assignedShift.id,
         last_location: {
           ...location,
           timestamp: new Date().toISOString()
         }
       });
 
-      return shift;
+      return assignedShift;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["activeShift"]);
@@ -204,6 +196,22 @@ export default function ClockInOut({ user, location }) {
     clockInMutation.mutate();
   };
 
+  if (!assignedShift) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-slate-800/50 border-slate-700">
+          <CardContent className="py-12 text-center">
+            <Shield className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+            <p className="text-white text-lg mb-2">No Scheduled Shift</p>
+            <p className="text-slate-400">
+              You don't have any scheduled shifts at this time. Please contact your dispatcher.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-md bg-slate-800/50 border-slate-700">
@@ -228,6 +236,14 @@ export default function ClockInOut({ user, location }) {
             </Alert>
           )}
 
+          {assignedSite && (
+            <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg">
+              <p className="text-sm text-slate-400 mb-1">Your Assigned Site</p>
+              <p className="text-white font-semibold text-lg">{assignedSite.name}</p>
+              <p className="text-xs text-slate-500 mt-1">{assignedSite.address}</p>
+            </div>
+          )}
+
           <div className="space-y-3 p-4 bg-slate-900/50 rounded-lg">
             <div className="flex items-center gap-3 text-slate-300">
               <Clock className="w-5 h-5 text-sky-400" />
@@ -248,9 +264,9 @@ export default function ClockInOut({ user, location }) {
                     ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`
                     : "Acquiring..."}
                 </p>
-                {nearestSite && (
+                {assignedSite && distanceToSite !== null && (
                   <p className="text-xs text-slate-500 mt-1">
-                    Nearest: {nearestSite.name}
+                    Distance to site: {Math.round(distanceToSite)}m
                   </p>
                 )}
               </div>
@@ -260,12 +276,12 @@ export default function ClockInOut({ user, location }) {
             </div>
           </div>
 
-          {!user.is_clocked_in && !geofenceValid && location && nearestSite && (
+          {!user.is_clocked_in && !geofenceValid && location && assignedSite && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-sm">
-                Move closer to {nearestSite.name} to clock in. You must be within{" "}
-                {nearestSite.geofence_radius || 100}m of the site.
+                Move closer to {assignedSite.name} to clock in. You must be within{" "}
+                {assignedSite.geofence_radius || 100}m of the site.
               </AlertDescription>
             </Alert>
           )}

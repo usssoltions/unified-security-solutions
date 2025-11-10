@@ -6,7 +6,6 @@ import ControlRoom from './pages/ControlRoom';
 import Scheduling from './pages/Scheduling';
 import Analytics from './pages/Analytics';
 import AssetManagement from './pages/AssetManagement';
-import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
 import SiteManagement from './pages/SiteManagement';
 import Configuration from './pages/Configuration';
@@ -24,7 +23,6 @@ export const PAGES = {
     "Scheduling": Scheduling,
     "Analytics": Analytics,
     "AssetManagement": AssetManagement,
-    "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
     "SiteManagement": SiteManagement,
     "Configuration": Configuration,
