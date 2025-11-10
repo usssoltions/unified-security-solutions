@@ -27,10 +27,19 @@ export default function SystemSetup() {
       const user = await base44.auth.me();
       setCurrentUser(user);
       
-      if (user.role_type === 'admin' || user.role_type === 'dispatcher') {
-        setRoleStatus({ hasPermission: true, role: user.role_type });
+      // Check BOTH role and role_type
+      const hasAdminRole = user.role === 'admin';
+      const hasAdminRoleType = user.role_type === 'admin' || user.role_type === 'dispatcher';
+      
+      if (hasAdminRole && hasAdminRoleType) {
+        setRoleStatus({ hasPermission: true, role: user.role_type, bothSet: true });
       } else {
-        setRoleStatus({ hasPermission: false, role: user.role_type || 'none' });
+        setRoleStatus({ 
+          hasPermission: false, 
+          role: user.role_type || 'none',
+          builtInRole: user.role || 'user',
+          bothSet: false
+        });
       }
     } catch (error) {
       console.error("Failed to check role:", error);
@@ -41,16 +50,21 @@ export default function SystemSetup() {
 
   const forceRoleUpdate = async () => {
     setLoading(true);
+    setStatus([]);
+    
     try {
-      // Direct role update
+      // Update BOTH role and role_type fields
       await base44.auth.updateMe({ 
-        role_type: "admin",
+        role: "admin",           // Built-in role field
+        role_type: "admin",      // Custom role_type field
         badge_number: "ADMIN-001",
         phone: "+27123456789"
       });
       
-      addStatus("✅ Role updated to Admin in database", "success");
-      addStatus("🔄 Please wait 3 seconds, then the page will force refresh...", "warning");
+      addStatus("✅ Updated role field to 'admin'", "success");
+      addStatus("✅ Updated role_type field to 'admin'", "success");
+      addStatus("✅ All permissions set correctly", "success");
+      addStatus("🔄 Page will refresh in 3 seconds...", "warning");
       
       // Force hard refresh after delay
       setTimeout(() => {
@@ -59,6 +73,7 @@ export default function SystemSetup() {
       
     } catch (error) {
       addStatus(`❌ Error: ${error.message}`, "error");
+      console.error("Role update error:", error);
     } finally {
       setLoading(false);
     }
@@ -74,17 +89,27 @@ export default function SystemSetup() {
       const user = await base44.auth.me();
       setCurrentUser(user);
       addStatus(`Logged in as: ${user.full_name} (${user.email})`, "success");
-      addStatus(`Current role: ${user.role_type || 'Not set'}`, "info");
+      addStatus(`Current role: ${user.role}`, "info");
+      addStatus(`Current role_type: ${user.role_type || 'Not set'}`, "info");
 
-      // Check permissions
-      if (user.role_type !== 'admin' && user.role_type !== 'dispatcher') {
-        addStatus("❌ You don't have admin/dispatcher role yet!", "error");
+      // Check BOTH permissions
+      const hasAdminRole = user.role === 'admin';
+      const hasAdminRoleType = user.role_type === 'admin' || user.role_type === 'dispatcher';
+      
+      if (!hasAdminRole || !hasAdminRoleType) {
+        addStatus("❌ Missing required permissions!", "error");
+        if (!hasAdminRole) {
+          addStatus("   - 'role' field must be 'admin' (currently: " + (user.role || 'not set') + ")", "error");
+        }
+        if (!hasAdminRoleType) {
+          addStatus("   - 'role_type' field must be 'admin' or 'dispatcher' (currently: " + (user.role_type || 'not set') + ")", "error");
+        }
         addStatus("Please use 'Force Role to Admin' button first", "warning");
         setLoading(false);
         return;
       }
 
-      addStatus("✅ You have admin/dispatcher permissions", "success");
+      addStatus("✅ You have all required permissions", "success");
 
       // Create Sites
       addStatus("Creating test sites at your location...", "info");
@@ -298,10 +323,16 @@ export default function SystemSetup() {
                       roleStatus?.hasPermission ? 'text-emerald-400' : 'text-rose-400'
                     }`}>
                       {roleStatus?.hasPermission 
-                        ? `✅ Admin Access (Role: ${roleStatus.role})`
-                        : `❌ No Admin Access (Role: ${roleStatus?.role || 'none'})`
+                        ? `✅ Full Admin Access`
+                        : `❌ Incomplete Permissions`
                       }
                     </p>
+                    {roleStatus && !roleStatus.hasPermission && (
+                      <div className="text-xs text-slate-400 mt-1">
+                        <p>Built-in role: {roleStatus.builtInRole || 'not set'}</p>
+                        <p>Role type: {roleStatus.role || 'not set'}</p>
+                      </div>
+                    )}
                   </div>
                   <Button
                     onClick={checkCurrentRole}
@@ -322,13 +353,21 @@ export default function SystemSetup() {
                 <CardHeader>
                   <CardTitle className="text-amber-400 flex items-center gap-2">
                     <span className="text-2xl">1️⃣</span>
-                    STEP 1: Get Admin Access
+                    STEP 1: Get Full Admin Permissions
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-slate-300">
-                    You need admin permissions to create sites. Click the button below to upgrade your account.
+                    You need BOTH the built-in 'role' and custom 'role_type' fields set to admin. Click below to set both.
                   </p>
+                  <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700 text-xs text-slate-400">
+                    <p className="font-semibold text-amber-400 mb-1">What this does:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>Sets <code className="text-sky-400">role = "admin"</code> (built-in field)</li>
+                      <li>Sets <code className="text-sky-400">role_type = "admin"</code> (custom field)</li>
+                      <li>Both are required for RLS (Row Level Security) rules</li>
+                    </ul>
+                  </div>
                   <Button
                     onClick={forceRoleUpdate}
                     disabled={loading}
@@ -337,12 +376,12 @@ export default function SystemSetup() {
                     {loading ? (
                       <>
                         <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Updating Role...
+                        Setting Admin Permissions...
                       </>
                     ) : (
                       <>
                         <Shield className="w-5 h-5 mr-2" />
-                        Force Role to Admin (Will Refresh Page)
+                        Set Full Admin Permissions
                       </>
                     )}
                   </Button>
@@ -398,7 +437,10 @@ export default function SystemSetup() {
                 <p className="text-sm text-slate-400">Current User:</p>
                 <p className="text-white font-semibold">{currentUser.full_name}</p>
                 <p className="text-xs text-slate-500">{currentUser.email}</p>
-                <p className="text-xs text-emerald-400 mt-1">Role: {currentUser.role_type || 'Not set'}</p>
+                <div className="text-xs mt-1 space-y-0.5">
+                  <p className="text-slate-400">Built-in role: <span className="text-emerald-400">{currentUser.role || 'not set'}</span></p>
+                  <p className="text-slate-400">Role type: <span className="text-emerald-400">{currentUser.role_type || 'not set'}</span></p>
+                </div>
               </div>
             )}
 
