@@ -47,6 +47,14 @@ export default function Layout({ children, currentPageName }) {
     };
   }, [retryCount]);
 
+  useEffect(() => {
+    if (user) {
+      loadAlerts();
+      const interval = setInterval(loadAlerts, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
   const loadUser = async () => {
     setLoading(true);
     setError(null);
@@ -54,10 +62,6 @@ export default function Layout({ children, currentPageName }) {
     try {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
-      
-      if (currentUser) {
-        loadAlerts();
-      }
     } catch (err) {
       console.error("Failed to load user:", err);
       setError(err);
@@ -69,11 +73,12 @@ export default function Layout({ children, currentPageName }) {
   const loadAlerts = async () => {
     try {
       const alertList = await base44.entities.Alert.filter({ status: "active" }, "-created_date", 5);
-      setAlerts(alertList);
+      setAlerts(Array.isArray(alertList) ? alertList : []);
     } catch (error) {
       if (!error?.message?.includes('WebSocket')) {
         console.error("Failed to load alerts:", error);
       }
+      setAlerts([]);
     }
   };
 
@@ -180,6 +185,7 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const navigationItems = getNavigationItems();
+  const safeAlerts = Array.isArray(alerts) ? alerts : [];
 
   return (
     <ErrorBoundary>
@@ -210,9 +216,9 @@ export default function Layout({ children, currentPageName }) {
                 onClick={() => setShowNotifications(true)}
               >
                 <Bell className="w-5 h-5" />
-                {alerts.length > 0 && (
+                {safeAlerts.length > 0 && (
                   <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-rose-500 text-white text-xs">
-                    {alerts.length}
+                    {safeAlerts.length}
                   </Badge>
                 )}
               </Button>

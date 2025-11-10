@@ -9,47 +9,54 @@ import { X, Bell, CheckCircle2, AlertTriangle, Info, Clock } from "lucide-react"
 export default function NotificationsPanel({ user, onClose }) {
   const queryClient = useQueryClient();
 
-  const { data: alerts } = useQuery({
+  const { data: alerts = [] } = useQuery({
     queryKey: ["userAlerts", user?.id],
     queryFn: async () => {
       if (!user) return [];
       
-      const allAlerts = await base44.entities.Alert.filter(
-        { status: "active" },
-        "-created_date",
-        20
-      );
-      
-      // Filter alerts for this user
-      return allAlerts.filter(alert => 
-        !alert.guard_id || alert.guard_id === user.id
-      );
+      try {
+        const allAlerts = await base44.entities.Alert.filter(
+          { status: "active" },
+          "-created_date",
+          20
+        );
+        
+        // Filter alerts for this user
+        return allAlerts.filter(alert => 
+          !alert.guard_id || alert.guard_id === user.id
+        );
+      } catch (error) {
+        console.error("Failed to load alerts:", error);
+        return [];
+      }
     },
     enabled: !!user,
     initialData: [],
-    refetchInterval: 10000
+    refetchInterval: 10000,
+    retry: 1
   });
 
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (alertId) => {
       await base44.entities.Alert.update(alertId, {
         status: "acknowledged",
-        acknowledged_by: user.id,
+        acknowledged_by: user?.id,
         acknowledged_at: new Date().toISOString()
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["userAlerts"]);
-      queryClient.invalidateQueries(["activeAlerts"]);
     }
   });
 
   const clearAllMutation = useMutation({
     mutationFn: async () => {
+      if (!alerts || !Array.isArray(alerts) || alerts.length === 0) return;
+      
       const promises = alerts.map(alert =>
         base44.entities.Alert.update(alert.id, {
           status: "acknowledged",
-          acknowledged_by: user.id,
+          acknowledged_by: user?.id,
           acknowledged_at: new Date().toISOString()
         })
       );
@@ -57,7 +64,6 @@ export default function NotificationsPanel({ user, onClose }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["userAlerts"]);
-      queryClient.invalidateQueries(["activeAlerts"]);
     }
   });
 
@@ -82,6 +88,8 @@ export default function NotificationsPanel({ user, onClose }) {
     return colors[priority] || colors.low;
   };
 
+  const safeAlerts = Array.isArray(alerts) ? alerts : [];
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end md:items-start md:justify-end z-50">
       <Card className="w-full md:w-96 md:m-4 bg-slate-800 border-slate-700 md:max-h-[80vh] flex flex-col rounded-t-2xl md:rounded-2xl">
@@ -90,8 +98,8 @@ export default function NotificationsPanel({ user, onClose }) {
             <div className="flex items-center gap-2">
               <Bell className="w-5 h-5 text-sky-400" />
               <CardTitle className="text-white">Notifications</CardTitle>
-              {alerts.length > 0 && (
-                <Badge className="bg-rose-500">{alerts.length}</Badge>
+              {safeAlerts.length > 0 && (
+                <Badge className="bg-rose-500">{safeAlerts.length}</Badge>
               )}
             </div>
             <Button
@@ -106,7 +114,7 @@ export default function NotificationsPanel({ user, onClose }) {
         </CardHeader>
 
         <CardContent className="p-4 space-y-3 overflow-y-auto flex-1">
-          {alerts.length > 0 && (
+          {safeAlerts.length > 0 && (
             <Button
               size="sm"
               variant="outline"
@@ -119,13 +127,13 @@ export default function NotificationsPanel({ user, onClose }) {
             </Button>
           )}
 
-          {alerts.length === 0 ? (
+          {safeAlerts.length === 0 ? (
             <div className="text-center py-12">
               <Bell className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <p className="text-slate-400">No new notifications</p>
             </div>
           ) : (
-            alerts.map((alert) => {
+            safeAlerts.map((alert) => {
               const Icon = getAlertIcon(alert.type);
               return (
                 <div
