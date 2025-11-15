@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +36,46 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
 
     try {
       await base44.entities.MaintenanceRequest.create(formData);
+
+      // Send real-time email notifications to management
+      try {
+        const allUsers = await base44.entities.User.list();
+        const managementEmails = allUsers
+          .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type))
+          .map(u => u.email)
+          .filter(Boolean); // Ensure no null/undefined emails
+
+        const maintenanceMessage = `
+🔧 NEW MAINTENANCE REQUEST
+
+Title: ${formData.title}
+Category: ${formData.category}
+Urgency: ${formData.urgency}
+Site: ${formData.site_name}
+Reported by: ${formData.guard_name}
+Time: ${new Date().toLocaleString()}
+
+Description:
+${formData.description}
+
+${formData.location ? `Location: ${formData.location.lat}, ${formData.location.lng}` : ''}
+
+Status: Reported
+        `.trim();
+
+        for (const email of managementEmails) {
+          if (email) { // Double-check email existence before sending
+            await base44.integrations.Core.SendEmail({
+              to: email,
+              subject: `🔧 ${formData.urgency.toUpperCase()} MAINTENANCE: ${formData.title}`,
+              body: maintenanceMessage
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to send maintenance notification emails:', error);
+      }
+
       alert("✅ Maintenance request submitted successfully!");
       onSuccess();
     } catch (error) {

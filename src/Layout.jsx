@@ -56,6 +56,21 @@ export default function Layout({ children, currentPageName }) {
     }
   }, [user]);
 
+  // Keep-alive mechanism for admin/dispatcher/supervisor
+  useEffect(() => {
+    if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
+      const keepAlive = setInterval(async () => {
+        try {
+          await base44.auth.me();
+        } catch (error) {
+          console.error('Keep-alive check failed:', error);
+        }
+      }, 5 * 60 * 1000); // Every 5 minutes
+
+      return () => clearInterval(keepAlive);
+    }
+  }, [user]);
+
   const loadUser = async () => {
     setLoading(true);
     setError(null);

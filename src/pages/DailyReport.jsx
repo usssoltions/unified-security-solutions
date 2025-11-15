@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -146,6 +147,46 @@ ${report.notes || 'None'}
         shift_id: activeShift.id,
         reported_at: new Date().toISOString()
       });
+
+      // Send real-time email notifications to management
+      try {
+        const allUsers = await base44.entities.User.list();
+        const managementEmails = allUsers
+          .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type))
+          .map(u => u.email)
+          .filter(Boolean);
+
+        const reportMessage = `
+📊 DAILY ACTIVITY REPORT
+
+Guard: ${user.full_name}
+Site: ${activeShift.site_name}
+Date: ${new Date().toLocaleDateString()}
+Shift Time: ${new Date(activeShift.start_time).toLocaleString()}
+
+STATISTICS:
+- Incidents Reported: ${report.incidents_count}
+- Patrols Completed: ${report.patrols_completed}
+- Maintenance Issues: ${report.maintenance_issues}
+
+SHIFT SUMMARY:
+${report.summary}
+
+${report.notes ? `ADDITIONAL NOTES:\n${report.notes}` : ''}
+
+Report submitted: ${new Date().toLocaleString()}
+        `.trim();
+
+        for (const email of managementEmails) {
+          await base44.integrations.Core.SendEmail({
+            to: email,
+            subject: `📊 Daily Report: ${user.full_name} - ${activeShift.site_name}`,
+            body: reportMessage
+          });
+        }
+      } catch (error) {
+        console.error('Failed to send daily report notification emails:', error);
+      }
 
       setSubmitted(true);
       setTimeout(() => {

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,10 +38,53 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
         data.dispatcher_notes = `AI Analysis:\n${aiSuggestions.summary}\n\nSuggested Actions:\n${aiSuggestions.actions.join('\n')}\n\nRecommended Personnel: ${aiSuggestions.personnel.join(', ')}`;
       }
       
-      return await base44.entities.Incident.create({
+      const incident = await base44.entities.Incident.create({
         ...data,
         reported_at: new Date().toISOString()
       });
+
+      // Send real-time email notifications to management
+      try {
+        const allUsers = await base44.entities.User.list();
+        const managementEmails = allUsers
+          .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type))
+          .map(u => u.email)
+          .filter(Boolean); // Ensure no empty emails
+
+        const incidentMessage = `
+🚨 NEW INCIDENT REPORT
+
+Title: ${data.title}
+Category: ${data.category}
+Priority: ${data.priority}
+Site: ${data.site_name}
+Reported by: ${data.guard_name}
+Time: ${new Date().toLocaleString()}
+
+Description:
+${data.description}
+
+${data.location ? `Location: ${data.location.lat}, ${data.location.lng}` : ''}
+
+${aiSuggestions ? `\nAI Analysis: ${aiSuggestions.summary}` : ''}
+
+Status: ${data.status || 'Reported'}
+        `.trim();
+
+        for (const email of managementEmails) {
+          await base44.integrations.Core.SendEmail({
+            to: email,
+            subject: `🚨 ${data.priority.toUpperCase()} INCIDENT: ${data.title}`,
+            body: incidentMessage
+          });
+        }
+      } catch (error) {
+        console.error('Failed to send incident notification emails:', error);
+        // Optionally, you might want to alert the user here, but not stop incident creation
+        // alert("Warning: Failed to send management notifications.");
+      }
+
+      return incident;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["incidents"]);
