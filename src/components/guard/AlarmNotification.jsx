@@ -127,7 +127,7 @@ export default function AlarmNotification({ user }) {
                 type: "system",
                 priority: "medium",
                 title: "Responder Arrived",
-                message: `${user.full_name} has arrived at ${alarm.address}`,
+                message: `${user.full_name} has arrived at ${alarm.address || 'the incident location'}`,
                 status: "active"
               });
 
@@ -180,23 +180,23 @@ export default function AlarmNotification({ user }) {
       {activeAlarms.map((alarm) => (
         <Card
           key={alarm.id}
-          className={`bg-gradient-to-r ${priorityColors[alarm.priority]}/20 border-${alarm.priority === 'critical' ? 'rose' : alarm.priority === 'high' ? 'orange' : 'amber'}-500/50`}
+          className={`bg-gradient-to-r ${priorityColors[alarm.priority || 'medium']}/20 border-${alarm.priority === 'critical' ? 'rose' : alarm.priority === 'high' ? 'orange' : 'amber'}-500/50`}
         >
           <CardHeader>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 bg-gradient-to-br ${priorityColors[alarm.priority]} rounded-full flex items-center justify-center animate-pulse`}>
+                <div className={`w-12 h-12 bg-gradient-to-br ${priorityColors[alarm.priority || 'medium']} rounded-full flex items-center justify-center animate-pulse`}>
                   <AlertOctagon className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <CardTitle className="text-white text-lg">
-                    {alarm.alarm_type.replace(/_/g, ' ').toUpperCase()}
+                    {alarm.alarm_type ? alarm.alarm_type.replace(/_/g, ' ').toUpperCase() : 'ALARM'}
                   </CardTitle>
-                  <p className="text-sm text-slate-300">{alarm.address}</p>
+                  <p className="text-sm text-slate-300">{alarm.address || 'Location not specified'}</p>
                 </div>
               </div>
               <Badge className={`bg-${alarm.status === 'dispatched' ? 'rose' : alarm.status === 'acknowledged' ? 'amber' : 'emerald'}-500`}>
-                {alarm.status}
+                {alarm.status || 'pending'}
               </Badge>
             </div>
           </CardHeader>
@@ -220,10 +220,12 @@ export default function AlarmNotification({ user }) {
                   </a>
                 </div>
               )}
-              <div className="flex items-center gap-2 text-slate-300">
-                <Clock className="w-4 h-4" />
-                <span>{new Date(alarm.dispatched_at).toLocaleTimeString()}</span>
-              </div>
+              {alarm.dispatched_at && (
+                <div className="flex items-center gap-2 text-slate-300">
+                  <Clock className="w-4 h-4" />
+                  <span>{new Date(alarm.dispatched_at).toLocaleTimeString()}</span>
+                </div>
+              )}
               {alarm.distance_to_scene_km && (
                 <div className="flex items-center gap-2 text-slate-300">
                   <Navigation className="w-4 h-4" />
@@ -243,7 +245,7 @@ export default function AlarmNotification({ user }) {
                   Acknowledge
                 </Button>
               )}
-              {(alarm.status === "acknowledged" || alarm.status === "en_route") && (
+              {(alarm.status === "acknowledged" || alarm.status === "en_route") && alarm.location && (
                 <Button
                   onClick={() => handleNavigate(alarm)}
                   className="flex-1 bg-sky-600 hover:bg-sky-700"
