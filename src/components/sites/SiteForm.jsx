@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Plus, Trash2, MapPin, QrCode, Loader2 } from "lucide-react";
+import { X, Plus, Trash2, MapPin, QrCode, Loader2, Sparkles } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import CheckpointQRGenerator from "./CheckpointQRGenerator";
 
 export default function SiteForm({ site, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -34,7 +35,6 @@ export default function SiteForm({ site, onClose, onSuccess }) {
 
     setGeocoding(true);
     try {
-      // Using OpenStreetMap Nominatim API for geocoding (free, no API key required)
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(formData.address)}&limit=1`
       );
@@ -62,18 +62,24 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     }
   };
 
+  const generateQRCode = (checkpointName) => {
+    const sitePart = formData.name.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
+    const checkpointPart = checkpointName.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
+    const randomPart = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `${sitePart}_${checkpointPart}_${randomPart}`;
+  };
+
   const handleAddCheckpoint = () => {
+    const newCheckpoint = {
+      id: `cp${Date.now()}`,
+      name: "",
+      qr_code: "",
+      location: { lat: formData.location.lat, lng: formData.location.lng }
+    };
+    
     setFormData({
       ...formData,
-      checkpoints: [
-        ...formData.checkpoints,
-        {
-          id: `cp${Date.now()}`,
-          name: "",
-          qr_code: "",
-          location: { lat: formData.location.lat, lng: formData.location.lng }
-        }
-      ]
+      checkpoints: [...formData.checkpoints, newCheckpoint]
     });
   };
 
@@ -81,6 +87,12 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     const updated = [...formData.checkpoints];
     if (field === "lat" || field === "lng") {
       updated[index].location[field] = parseFloat(value) || 0;
+    } else if (field === "name") {
+      updated[index][field] = value;
+      // Auto-generate QR code when name is entered
+      if (value && !updated[index].qr_code) {
+        updated[index].qr_code = generateQRCode(value);
+      }
     } else {
       updated[index][field] = value;
     }
@@ -124,7 +136,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <Card className="w-full max-w-3xl bg-slate-800 border-slate-700 my-8">
+      <Card className="w-full max-w-5xl bg-slate-800 border-slate-700 my-8">
         <CardHeader className="border-b border-slate-700">
           <div className="flex items-center justify-between">
             <CardTitle className="text-white">
@@ -138,7 +150,6 @@ export default function SiteForm({ site, onClose, onSuccess }) {
 
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Basic Information */}
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-slate-400 mb-2 block">Site Name *</label>
@@ -219,7 +230,6 @@ export default function SiteForm({ site, onClose, onSuccess }) {
               </div>
             </div>
 
-            {/* GPS Location */}
             <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg space-y-3">
               <div className="flex items-center gap-2 text-sky-400 font-semibold">
                 <MapPin className="w-5 h-5" />
@@ -261,12 +271,11 @@ export default function SiteForm({ site, onClose, onSuccess }) {
               {formData.location.lat !== 0 && formData.location.lng !== 0 && (
                 <div className="flex items-center gap-2 text-emerald-400 text-sm">
                   <MapPin className="w-4 h-4" />
-                  <span>Location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}</span>
+                  <span>Location set: {formData.location.lat}, {formData.location.lng}</span>
                 </div>
               )}
             </div>
 
-            {/* Checkpoints */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-white font-semibold">
@@ -299,38 +308,51 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      placeholder="Checkpoint Name"
-                      value={checkpoint.name}
-                      onChange={(e) => handleUpdateCheckpoint(index, "name", e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                    <Input
-                      placeholder="QR Code (e.g. SITE_MAIN_001)"
-                      value={checkpoint.qr_code}
-                      onChange={(e) => handleUpdateCheckpoint(index, "qr_code", e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-2 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          placeholder="Checkpoint Name"
+                          value={checkpoint.name}
+                          onChange={(e) => handleUpdateCheckpoint(index, "name", e.target.value)}
+                          className="bg-slate-800 border-slate-700 text-white"
+                        />
+                        <div className="relative">
+                          <Input
+                            placeholder="QR Code (auto-generated)"
+                            value={checkpoint.qr_code}
+                            onChange={(e) => handleUpdateCheckpoint(index, "qr_code", e.target.value)}
+                            className="bg-slate-800 border-slate-700 text-white pr-10"
+                          />
+                          {checkpoint.qr_code && (
+                            <Sparkles className="w-4 h-4 text-emerald-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                          )}
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="Latitude"
-                      value={checkpoint.location.lat}
-                      onChange={(e) => handleUpdateCheckpoint(index, "lat", e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white text-sm"
-                    />
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="Longitude"
-                      value={checkpoint.location.lng}
-                      onChange={(e) => handleUpdateCheckpoint(index, "lng", e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white text-sm"
-                    />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="Latitude"
+                          value={checkpoint.location.lat}
+                          onChange={(e) => handleUpdateCheckpoint(index, "lat", e.target.value)}
+                          className="bg-slate-800 border-slate-700 text-white text-sm"
+                        />
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="Longitude"
+                          value={checkpoint.location.lng}
+                          onChange={(e) => handleUpdateCheckpoint(index, "lng", e.target.value)}
+                          className="bg-slate-800 border-slate-700 text-white text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {checkpoint.qr_code && (
+                      <CheckpointQRGenerator checkpoint={checkpoint} siteName={formData.name} />
+                    )}
                   </div>
                 </div>
               ))}
@@ -342,7 +364,6 @@ export default function SiteForm({ site, onClose, onSuccess }) {
               )}
             </div>
 
-            {/* Submit Buttons */}
             <div className="flex gap-3 pt-4 border-t border-slate-700">
               <Button
                 type="button"
