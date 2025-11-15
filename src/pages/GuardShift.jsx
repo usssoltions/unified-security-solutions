@@ -24,6 +24,7 @@ import QuickActions from "../components/guard/QuickActions";
 import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import LocationTracker from "../components/guard/LocationTracker";
+import ShiftEndNotification from "../components/guard/ShiftEndNotification";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -54,11 +55,24 @@ export default function GuardShift() {
   const startLocationTracking = () => {
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
-        (position) => {
-          setLocation({
+        async (position) => {
+          const newLocation = {
             lat: position.coords.latitude,
             lng: position.coords.longitude
-          });
+          };
+          setLocation(newLocation);
+          
+          // Update user's last location in database
+          try {
+            await base44.auth.updateMe({
+              last_location: {
+                ...newLocation,
+                timestamp: new Date().toISOString()
+              }
+            });
+          } catch (error) {
+            console.error("Failed to update location:", error);
+          }
         },
         (error) => console.error("Location error:", error),
         { enableHighAccuracy: true, maximumAge: 10000 }
@@ -196,6 +210,15 @@ export default function GuardShift() {
         <StayAwakeAlert
           shift={activeShift}
           onConfirm={() => setShowStayAwake(false)}
+          location={location}
+        />
+      )}
+
+      {/* Shift End Notification */}
+      {activeShift && (
+        <ShiftEndNotification
+          shift={activeShift}
+          user={user}
           location={location}
         />
       )}
