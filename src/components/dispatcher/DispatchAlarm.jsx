@@ -43,10 +43,11 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         const guard = users.find(u => u.id === shift.guard_id);
         return {
           ...shift,
+          guard_id: shift.guard_id,
           guard_full_name: guard?.full_name || shift.guard_name,
-          last_location: guard?.last_location
+          guard_location: guard?.last_location
         };
-      });
+      }).filter(g => g.guard_location?.lat && g.guard_location?.lng);
     },
     initialData: []
   });
@@ -110,12 +111,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     let minDistance = Infinity;
 
     activeGuards.forEach(guard => {
-      if (guard.last_location?.lat && guard.last_location?.lng) {
+      if (guard.guard_location?.lat && guard.guard_location?.lng) {
         const distance = calculateDistance(
           formData.location.lat,
           formData.location.lng,
-          guard.last_location.lat,
-          guard.last_location.lng
+          guard.guard_location.lat,
+          guard.guard_location.lng
         );
         if (distance < minDistance) {
           minDistance = distance;
@@ -160,14 +161,14 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
       // Create alert for assigned guard
       await base44.entities.Alert.create({
-        type: "system",
+        type: "assignment",
         priority: alarmPayload.priority,
-        title: "Alarm Response Assigned",
-        message: `You have been assigned to respond to ${alarmPayload.alarm_type.replace(/_/g, ' ')} at ${alarmPayload.address}`,
+        title: "🚨 Alarm Response Assigned",
+        message: `You have been dispatched to respond to ${alarmPayload.alarm_type.replace(/_/g, ' ')} at ${alarmPayload.address}. ${alarmPayload.client_name ? `Client: ${alarmPayload.client_name}` : ''}`,
         guard_id: alarmPayload.assigned_to,
         guard_name: alarmPayload.assigned_to_name,
         status: "active",
-        metadata: { alarm_id: alarm.id }
+        metadata: { alarm_id: alarm.id, address: alarmPayload.address }
       });
 
       return alarm;
@@ -190,17 +191,18 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     }
 
     const assignedGuard = activeGuards.find(g => g.guard_id === formData.assigned_to);
-    const distance = assignedGuard?.last_location?.lat && assignedGuard?.last_location?.lng ? calculateDistance(
+    const distance = assignedGuard?.guard_location?.lat && assignedGuard?.guard_location?.lng ? calculateDistance(
       formData.location.lat,
       formData.location.lng,
-      assignedGuard.last_location.lat,
-      assignedGuard.last_location.lng
+      assignedGuard.guard_location.lat,
+      assignedGuard.guard_location.lng
     ) : 0;
 
     const payload = {
       ...formData,
       assigned_to_name: assignedGuard?.guard_full_name,
-      distance_to_scene_km: distance
+      distance_to_scene_km: distance,
+      responder_location: assignedGuard?.guard_location
     };
 
     dispatchMutation.mutate(payload);
@@ -273,11 +275,11 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
             <div>
               <label className="text-sm text-slate-300 font-medium block mb-2">
-                Address <span className="text-rose-400">*</span>
+                Incident Address <span className="text-rose-400">*</span>
               </label>
               <div className="flex gap-2">
                 <Input
-                  placeholder="Full street address"
+                  placeholder="Full street address where guard must respond"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="bg-slate-900 border-slate-700 text-white flex-1"
@@ -293,7 +295,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               </div>
               {formData.location && (
                 <p className="text-xs text-emerald-400 mt-1">
-                  ✓ Location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}
+                  ✓ Incident location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}
                 </p>
               )}
             </div>
@@ -332,9 +334,9 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
             {nearestGuard && (
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                <p className="text-xs text-emerald-400 font-semibold mb-1">Nearest Available Guard:</p>
+                <p className="text-xs text-emerald-400 font-semibold mb-1">📍 Nearest Available Guard:</p>
                 <p className="text-sm text-white">{nearestGuard.guard.guard_full_name}</p>
-                <p className="text-xs text-slate-400">{nearestGuard.distance.toFixed(2)} km away</p>
+                <p className="text-xs text-slate-400">{nearestGuard.distance.toFixed(2)} km from incident location</p>
               </div>
             )}
 
@@ -349,7 +351,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                   setFormData({ ...formData, assigned_to: value });
                   
                   // Show guard location on map if available
-                  if (guard?.last_location?.lat && guard?.last_location?.lng && formData.location) {
+                  if (guard?.guard_location?.lat && guard?.guard_location?.lng && formData.location) {
                     setShowMap(true);
                   }
                 }}
@@ -361,6 +363,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                   {activeGuards.map((guard) => (
                     <SelectItem key={guard.guard_id} value={guard.guard_id}>
                       {guard.guard_full_name} - {guard.site_name}
+                      {formData.location && guard.guard_location && ` (${calculateDistance(
+                        formData.location.lat,
+                        formData.location.lng,
+                        guard.guard_location.lat,
+                        guard.guard_location.lng
+                      ).toFixed(1)}km away)`}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -379,16 +387,16 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                     attribution='&copy; OpenStreetMap contributors'
                   />
                   <Marker position={[formData.location.lat, formData.location.lng]}>
-                    <Popup>Alarm Location</Popup>
+                    <Popup>Incident Location (Where Guard Responds)</Popup>
                   </Marker>
-                  {formData.assigned_to && activeGuards.find(g => g.guard_id === formData.assigned_to)?.last_location && (
+                  {formData.assigned_to && activeGuards.find(g => g.guard_id === formData.assigned_to)?.guard_location && (
                     <Marker 
                       position={[
-                        activeGuards.find(g => g.guard_id === formData.assigned_to).last_location.lat,
-                        activeGuards.find(g => g.guard_id === formData.assigned_to).last_location.lng
+                        activeGuards.find(g => g.guard_id === formData.assigned_to).guard_location.lat,
+                        activeGuards.find(g => g.guard_id === formData.assigned_to).guard_location.lng
                       ]}
                     >
-                      <Popup>Guard Location</Popup>
+                      <Popup>Guard's Current Location</Popup>
                     </Marker>
                   )}
                 </MapContainer>

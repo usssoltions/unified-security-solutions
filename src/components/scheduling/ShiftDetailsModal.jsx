@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
@@ -8,12 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle } from "lucide-react";
+import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle, Share2, Mail, MessageSquare, Printer } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function ShiftDetailsModal({ shift, onClose }) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
   const [formData, setFormData] = useState({
     guard_id: shift.guard_id || "",
     site_id: shift.site_id || "",
@@ -63,8 +65,8 @@ export default function ShiftDetailsModal({ shift, onClose }) {
         await base44.entities.Alert.create({
           type: "shift_reminder",
           priority: "medium",
-          title: "Shift Updated",
-          message: `Your shift at ${selectedSite?.name} has been updated. New time: ${new Date(data.start_time).toLocaleString()}`,
+          title: "✏️ Shift Updated",
+          message: `Your shift at ${selectedSite?.name} has been updated. New time: ${new Date(data.start_time).toLocaleString()} - ${new Date(data.end_time).toLocaleTimeString()}`,
           guard_id: selectedGuard.id,
           guard_name: selectedGuard.full_name,
           shift_id: shift.id,
@@ -87,7 +89,7 @@ export default function ShiftDetailsModal({ shift, onClose }) {
         await base44.entities.Alert.create({
           type: "shift_reminder",
           priority: "high",
-          title: "Shift Cancelled",
+          title: "❌ Shift Cancelled",
           message: `Your shift at ${shift.site_name} on ${new Date(shift.start_time).toLocaleString()} has been cancelled.`,
           guard_id: shift.guard_id,
           guard_name: shift.guard_name,
@@ -100,6 +102,74 @@ export default function ShiftDetailsModal({ shift, onClose }) {
     onSuccess: () => {
       queryClient.invalidateQueries(["allShifts"]);
       onClose();
+    }
+  });
+
+  const shareShiftMutation = useMutation({
+    mutationFn: async (method) => {
+      const currentSelectedGuard = guards.find(g => g.id === shift.guard_id);
+      if (!currentSelectedGuard) {
+        throw new Error("Guard not found");
+      }
+
+      const shiftDetails = `
+🛡️ SHIFT SCHEDULE
+
+Guard: ${shift.guard_name}
+Site: ${shift.site_name}
+Date: ${new Date(shift.start_time).toLocaleDateString()}
+Time: ${new Date(shift.start_time).toLocaleTimeString()} - ${new Date(shift.end_time).toLocaleTimeString()}
+Status: ${shift.status}
+${shift.notes ? `\nNotes: ${shift.notes}` : ''}
+      `.trim();
+
+      if (method === 'email' && currentSelectedGuard.email) {
+        await base44.integrations.Core.SendEmail({
+          to: currentSelectedGuard.email,
+          subject: `Shift Schedule - ${new Date(shift.start_time).toLocaleDateString()}`,
+          body: shiftDetails
+        });
+        return 'email';
+      } else if (method === 'whatsapp' && currentSelectedGuard.phone_number) {
+        const message = encodeURIComponent(shiftDetails);
+        window.open(`https://wa.me/${currentSelectedGuard.phone_number.replace(/\D/g, '')}?text=${message}`, '_blank');
+        return 'whatsapp';
+      } else if (method === 'print') {
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Shift Schedule</title>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                h1 { color: #0284c7; }
+                .detail { margin: 10px 0; }
+                .detail span { font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <h1>🛡️ Shift Schedule</h1>
+              <p class="detail"><span>Guard:</span> ${shift.guard_name}</p>
+              <p class="detail"><span>Site:</span> ${shift.site_name}</p>
+              <p class="detail"><span>Date:</span> ${new Date(shift.start_time).toLocaleDateString()}</p>
+              <p class="detail"><span>Time:</span> ${new Date(shift.start_time).toLocaleTimeString()} - ${new Date(shift.end_time).toLocaleTimeString()}</p>
+              <p class="detail"><span>Status:</span> ${shift.status}</p>
+              ${shift.notes ? `<p class="detail"><span>Notes:</span> ${shift.notes}</p>` : ''}
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+        return 'print';
+      }
+      throw new Error("Sharing method not available or guard contact info missing.");
+    },
+    onSuccess: (method) => {
+      alert(method === 'email' ? 'Shift schedule sent via email!' : method === 'whatsapp' ? 'Opening WhatsApp...' : 'Opening print dialog...');
+      setShowShareMenu(false);
+    },
+    onError: (error) => {
+      alert("Failed to share shift: " + error.message);
     }
   });
 
@@ -121,6 +191,8 @@ export default function ShiftDetailsModal({ shift, onClose }) {
     missed: "bg-rose-500"
   };
 
+  const selectedGuard = guards.find(g => g.id === shift.guard_id);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-8">
@@ -136,6 +208,56 @@ export default function ShiftDetailsModal({ shift, onClose }) {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {!isEditing && shift.guard_id && (
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowShareMenu(!showShareMenu)}
+                    className="border-sky-600 text-sky-400"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </Button>
+                  {showShareMenu && (
+                    <div className="absolute right-0 top-12 bg-slate-900 border border-slate-700 rounded-lg shadow-lg p-2 space-y-1 z-10">
+                      {selectedGuard?.email && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-slate-300 hover:bg-slate-700"
+                          onClick={() => shareShiftMutation.mutate('email')}
+                          disabled={shareShiftMutation.isPending}
+                        >
+                          <Mail className="w-4 h-4 mr-2" />
+                          Email
+                        </Button>
+                      )}
+                      {selectedGuard?.phone_number && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-slate-300 hover:bg-slate-700"
+                          onClick={() => shareShiftMutation.mutate('whatsapp')}
+                          disabled={shareShiftMutation.isPending}
+                        >
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          WhatsApp
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-slate-300 hover:bg-slate-700"
+                        onClick={() => shareShiftMutation.mutate('print')}
+                        disabled={shareShiftMutation.isPending}
+                      >
+                        <Printer className="w-4 h-4 mr-2" />
+                        Print
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
               {!isEditing && (
                 <>
                   <Button
