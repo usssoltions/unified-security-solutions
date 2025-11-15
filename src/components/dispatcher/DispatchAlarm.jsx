@@ -7,18 +7,30 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Send, Loader2, AlertOctagon, MapPin } from "lucide-react";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// Fix Leaflet default marker
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
 
 export default function DispatchAlarm({ onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     alarm_type: "burglary",
     priority: "high",
     address: "",
-    location: { lat: 0, lng: 0 },
+    location: null,
     client_name: "",
     client_phone: "",
     description: "",
     assigned_to: ""
   });
+  const [showMap, setShowMap] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -57,35 +69,48 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     { value: "low", label: "Low" }
   ];
 
-  const geocodeAddress = async () => {
-    if (!formData.address) return;
-    
-    // Simple geocoding - in production, use Google Maps Geocoding API
-    setFormData({
-      ...formData,
-      location: { lat: -33.9249 + Math.random() * 0.1, lng: 18.4241 + Math.random() * 0.1 }
-    });
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setFormData({
+            ...formData,
+            location: {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            }
+          });
+          setShowMap(true);
+        },
+        (error) => {
+          alert("Unable to get current location. Please enable location services.");
+          console.error("Geolocation error:", error);
+        }
+      );
+    } else {
+      alert("Geolocation is not supported by this browser.");
+    }
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371;
+    const R = 6371; // Radius of Earth in km
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
               Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+    return R * c; // Distance in km
   };
 
   const findNearestGuard = () => {
-    if (!formData.location.lat || activeGuards.length === 0) return null;
+    if (!formData.location?.lat || activeGuards.length === 0) return null;
 
     let nearest = null;
     let minDistance = Infinity;
 
     activeGuards.forEach(guard => {
-      if (guard.last_location?.lat) {
+      if (guard.last_location?.lat && guard.last_location?.lng) {
         const distance = calculateDistance(
           formData.location.lat,
           formData.location.lng,
@@ -159,8 +184,13 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       return;
     }
 
+    if (!formData.location) {
+      alert("Please set location using the GPS button");
+      return;
+    }
+
     const assignedGuard = activeGuards.find(g => g.guard_id === formData.assigned_to);
-    const distance = assignedGuard?.last_location ? calculateDistance(
+    const distance = assignedGuard?.last_location?.lat && assignedGuard?.last_location?.lng ? calculateDistance(
       formData.location.lat,
       formData.location.lng,
       assignedGuard.last_location.lat,
@@ -179,23 +209,24 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   const nearestGuard = findNearestGuard();
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
-      <div className="min-h-screen p-4 flex items-start justify-center pt-20">
-        <Card className="w-full max-w-2xl bg-slate-800 border-rose-500/50">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center animate-pulse">
-                  <AlertOctagon className="w-6 h-6 text-white" />
-                </div>
-                <CardTitle className="text-white text-xl">Dispatch Alarm Response</CardTitle>
+    <div className="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-2xl bg-slate-800 border-rose-500/50 max-h-[90vh] flex flex-col">
+        <CardHeader className="border-b border-slate-700 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center animate-pulse">
+                <AlertOctagon className="w-6 h-6 text-white" />
               </div>
-              <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400">
-                <X />
-              </Button>
+              <CardTitle className="text-white text-xl">Dispatch Alarm Response</CardTitle>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400">
+              <X />
+            </Button>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="overflow-y-auto flex-1 p-6">
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-slate-300 font-medium block mb-2">
@@ -251,10 +282,20 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="bg-slate-900 border-slate-700 text-white flex-1"
                 />
-                <Button onClick={geocodeAddress} variant="outline" className="border-slate-600">
+                <Button 
+                  onClick={getCurrentLocation} 
+                  variant="outline" 
+                  className="border-slate-600"
+                  type="button"
+                >
                   <MapPin className="w-4 h-4" />
                 </Button>
               </div>
+              {formData.location && (
+                <p className="text-xs text-emerald-400 mt-1">
+                  ✓ Location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -285,7 +326,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 placeholder="Additional details about the alarm..."
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="bg-slate-900 border-slate-700 text-white min-h-24"
+                className="bg-slate-900 border-slate-700 text-white min-h-20"
               />
             </div>
 
@@ -303,7 +344,15 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               </label>
               <Select
                 value={formData.assigned_to}
-                onValueChange={(value) => setFormData({ ...formData, assigned_to: value })}
+                onValueChange={(value) => {
+                  const guard = activeGuards.find(g => g.guard_id === value);
+                  setFormData({ ...formData, assigned_to: value });
+                  
+                  // Show guard location on map if available
+                  if (guard?.last_location?.lat && guard?.last_location?.lng && formData.location) {
+                    setShowMap(true);
+                  }
+                }}
               >
                 <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
                   <SelectValue placeholder="Select guard..." />
@@ -318,35 +367,65 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               </Select>
             </div>
 
-            <div className="flex gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={onClose}
-                className="flex-1 border-slate-600 text-slate-300"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleDispatch}
-                disabled={dispatchMutation.isPending}
-                className="flex-1 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
-              >
-                {dispatchMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Dispatching...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5 mr-2" />
-                    Dispatch Now
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            {showMap && formData.location && (
+              <div className="h-48 rounded-lg overflow-hidden border border-slate-700">
+                <MapContainer
+                  center={[formData.location.lat, formData.location.lng]}
+                  zoom={13}
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; OpenStreetMap contributors'
+                  />
+                  <Marker position={[formData.location.lat, formData.location.lng]}>
+                    <Popup>Alarm Location</Popup>
+                  </Marker>
+                  {formData.assigned_to && activeGuards.find(g => g.guard_id === formData.assigned_to)?.last_location && (
+                    <Marker 
+                      position={[
+                        activeGuards.find(g => g.guard_id === formData.assigned_to).last_location.lat,
+                        activeGuards.find(g => g.guard_id === formData.assigned_to).last_location.lng
+                      ]}
+                    >
+                      <Popup>Guard Location</Popup>
+                    </Marker>
+                  )}
+                </MapContainer>
+              </div>
+            )}
+          </div>
+        </CardContent>
+
+        <div className="border-t border-slate-700 p-4 flex-shrink-0">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="flex-1 border-slate-600 text-slate-300"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDispatch}
+              disabled={dispatchMutation.isPending}
+              className="flex-1 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
+            >
+              {dispatchMutation.isPending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Dispatching...
+                </>
+              ) : (
+                <>
+                  <Send className="w-5 h-5 mr-2" />
+                  Dispatch Now
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
