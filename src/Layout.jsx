@@ -17,7 +17,8 @@ import {
   Package,
   Sliders,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +57,7 @@ export default function Layout({ children, currentPageName }) {
     }
   }, [user]);
 
-  // Keep-alive mechanism for admin/dispatcher/supervisor
+  // Keep-alive mechanism for admin/dispatcher/supervisor/management
   useEffect(() => {
     if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
       const keepAlive = setInterval(async () => {
@@ -65,7 +66,7 @@ export default function Layout({ children, currentPageName }) {
         } catch (error) {
           console.error('Keep-alive check failed:', error);
         }
-      }, 5 * 60 * 1000); // Every 5 minutes
+      }, 5 * 60 * 1000);
 
       return () => clearInterval(keepAlive);
     }
@@ -185,6 +186,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "AI Reports", url: createPageUrl("AIReports"), icon: Sparkles },
         { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
+        { title: "Stay Awake", url: createPageUrl("StayAwakeConfiguration"), icon: Zap },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders }
       ];
     }

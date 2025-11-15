@@ -12,6 +12,7 @@ import Configuration from './pages/Configuration';
 import GuardActivity from './pages/GuardActivity';
 import AIReports from './pages/AIReports';
 import DailyReport from './pages/DailyReport';
+import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import Layout from './Layout.jsx';
 
 
@@ -30,6 +31,7 @@ export const PAGES = {
     "GuardActivity": GuardActivity,
     "AIReports": AIReports,
     "DailyReport": DailyReport,
+    "StayAwakeConfiguration": StayAwakeConfiguration,
 }
 
 export const pagesConfig = {
