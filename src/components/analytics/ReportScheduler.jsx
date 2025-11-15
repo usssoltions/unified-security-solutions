@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { X, Plus, Loader2, Calendar, Send } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { X, Plus, Loader2, Calendar, Send, Mail, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function ReportScheduler({ onClose }) {
@@ -20,7 +21,8 @@ export default function ReportScheduler({ onClose }) {
     compare_with: "previous_day",
     status: "active"
   });
-  const [recipients, setRecipients] = useState([""]);
+  const [emailRecipients, setEmailRecipients] = useState([""]);
+  const [whatsappRecipients, setWhatsappRecipients] = useState([{ name: "", phone: "" }]);
   const [selectedSites, setSelectedSites] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -64,25 +66,40 @@ export default function ReportScheduler({ onClose }) {
     { value: "same_period_last_year", label: "Same Period Last Year" }
   ];
 
-  const addRecipient = () => {
-    setRecipients([...recipients, ""]);
+  const addEmailRecipient = () => {
+    setEmailRecipients([...emailRecipients, ""]);
   };
 
-  const updateRecipient = (index, value) => {
-    const newRecipients = [...recipients];
+  const updateEmailRecipient = (index, value) => {
+    const newRecipients = [...emailRecipients];
     newRecipients[index] = value;
-    setRecipients(newRecipients);
+    setEmailRecipients(newRecipients);
   };
 
-  const removeRecipient = (index) => {
-    setRecipients(recipients.filter((_, i) => i !== index));
+  const removeEmailRecipient = (index) => {
+    setEmailRecipients(emailRecipients.filter((_, i) => i !== index));
+  };
+
+  const addWhatsAppRecipient = () => {
+    setWhatsappRecipients([...whatsappRecipients, { name: "", phone: "" }]);
+  };
+
+  const updateWhatsAppRecipient = (index, field, value) => {
+    const newRecipients = [...whatsappRecipients];
+    newRecipients[index][field] = value;
+    setWhatsappRecipients(newRecipients);
+  };
+
+  const removeWhatsAppRecipient = (index) => {
+    setWhatsappRecipients(whatsappRecipients.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
-    const validRecipients = recipients.filter(r => r.trim().length > 0);
+    const validEmailRecipients = emailRecipients.filter(r => r.trim().length > 0);
+    const validWhatsAppRecipients = whatsappRecipients.filter(r => r.name.trim() && r.phone.trim());
     
-    if (!formData.name || validRecipients.length === 0) {
-      alert("Please fill in required fields");
+    if (!formData.name || (validEmailRecipients.length === 0 && validWhatsAppRecipients.length === 0)) {
+      alert("Please provide a schedule name and at least one recipient");
       return;
     }
 
@@ -91,14 +108,15 @@ export default function ReportScheduler({ onClose }) {
     try {
       await base44.entities.ReportSchedule.create({
         ...formData,
-        recipients: validRecipients,
+        email_recipients: validEmailRecipients,
+        whatsapp_recipients: validWhatsAppRecipients,
         sites: selectedSites
       });
 
-      alert("Report schedule created successfully!");
+      alert("Report schedule created successfully! Reports will be sent automatically.");
       onClose();
     } catch (error) {
-      alert("Failed to create report schedule");
+      alert("Failed to create report schedule: " + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -116,7 +134,7 @@ export default function ReportScheduler({ onClose }) {
                 </div>
                 <div>
                   <CardTitle className="text-white text-xl">Schedule Automated Report</CardTitle>
-                  <p className="text-sm text-slate-400 mt-1">Send reports automatically on a schedule</p>
+                  <p className="text-sm text-slate-400 mt-1">Send reports via Email & WhatsApp automatically</p>
                 </div>
               </div>
               <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400">
@@ -125,7 +143,6 @@ export default function ReportScheduler({ onClose }) {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Existing Schedules */}
             {schedules.length > 0 && (
               <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
                 <h3 className="text-sm font-semibold text-white mb-3">Active Schedules</h3>
@@ -133,9 +150,23 @@ export default function ReportScheduler({ onClose }) {
                   {schedules.slice(0, 3).map((schedule) => (
                     <div key={schedule.id} className="flex items-center justify-between text-sm">
                       <span className="text-slate-300">{schedule.name}</span>
-                      <Badge className={schedule.status === "active" ? "bg-emerald-500" : "bg-slate-500"}>
-                        {schedule.frequency}
-                      </Badge>
+                      <div className="flex gap-2">
+                        {schedule.email_recipients?.length > 0 && (
+                          <Badge variant="outline" className="border-sky-500 text-sky-400">
+                            <Mail className="w-3 h-3 mr-1" />
+                            {schedule.email_recipients.length}
+                          </Badge>
+                        )}
+                        {schedule.whatsapp_recipients?.length > 0 && (
+                          <Badge variant="outline" className="border-emerald-500 text-emerald-400">
+                            <MessageSquare className="w-3 h-3 mr-1" />
+                            {schedule.whatsapp_recipients.length}
+                          </Badge>
+                        )}
+                        <Badge className={schedule.status === "active" ? "bg-emerald-500" : "bg-slate-500"}>
+                          {schedule.frequency}
+                        </Badge>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -269,31 +300,40 @@ export default function ReportScheduler({ onClose }) {
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm text-slate-300 font-medium">
-                  Recipients <span className="text-rose-400">*</span>
-                </label>
-                <Button size="sm" onClick={addRecipient} variant="outline" className="border-slate-600">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Recipient
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {recipients.map((recipient, index) => (
+            <Tabs defaultValue="email" className="w-full">
+              <TabsList className="bg-slate-900 w-full">
+                <TabsTrigger value="email" className="flex-1">
+                  <Mail className="w-4 h-4 mr-2" />
+                  Email Recipients
+                </TabsTrigger>
+                <TabsTrigger value="whatsapp" className="flex-1">
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  WhatsApp Recipients
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="email" className="space-y-2 mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-slate-300 font-medium">Email Addresses</label>
+                  <Button size="sm" onClick={addEmailRecipient} variant="outline" className="border-slate-600">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Email
+                  </Button>
+                </div>
+                {emailRecipients.map((email, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
                       type="email"
                       placeholder="email@example.com"
-                      value={recipient}
-                      onChange={(e) => updateRecipient(index, e.target.value)}
+                      value={email}
+                      onChange={(e) => updateEmailRecipient(index, e.target.value)}
                       className="bg-slate-900 border-slate-700 text-white"
                     />
-                    {recipients.length > 1 && (
+                    {emailRecipients.length > 1 && (
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => removeRecipient(index)}
+                        onClick={() => removeEmailRecipient(index)}
                         className="text-slate-400"
                       >
                         <X className="w-4 h-4" />
@@ -301,8 +341,47 @@ export default function ReportScheduler({ onClose }) {
                     )}
                   </div>
                 ))}
-              </div>
-            </div>
+              </TabsContent>
+
+              <TabsContent value="whatsapp" className="space-y-2 mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-slate-300 font-medium">WhatsApp Contacts</label>
+                  <Button size="sm" onClick={addWhatsAppRecipient} variant="outline" className="border-slate-600">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Contact
+                  </Button>
+                </div>
+                {whatsappRecipients.map((contact, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder="Name"
+                      value={contact.name}
+                      onChange={(e) => updateWhatsAppRecipient(index, "name", e.target.value)}
+                      className="bg-slate-900 border-slate-700 text-white"
+                    />
+                    <Input
+                      placeholder="+27123456789"
+                      value={contact.phone}
+                      onChange={(e) => updateWhatsAppRecipient(index, "phone", e.target.value)}
+                      className="bg-slate-900 border-slate-700 text-white"
+                    />
+                    {whatsappRecipients.length > 1 && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeWhatsAppRecipient(index)}
+                        className="text-slate-400"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <p className="text-xs text-slate-500 mt-2">
+                  Note: Phone numbers must include country code (e.g., +27 for South Africa)
+                </p>
+              </TabsContent>
+            </Tabs>
 
             <div className="flex gap-3 pt-4">
               <Button
