@@ -2,48 +2,34 @@ import React, { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { QrCode, Printer, Mail, MessageSquare, Download } from "lucide-react";
-import QRCode from "qrcode";
 import { base44 } from "@/api/base44Client";
 
 export default function CheckpointQRGenerator({ checkpoint, siteName }) {
-  const canvasRef = useRef(null);
-  const [qrGenerated, setQrGenerated] = React.useState(false);
+  const [qrUrl, setQrUrl] = React.useState("");
 
   React.useEffect(() => {
-    if (checkpoint.qr_code && canvasRef.current) {
+    if (checkpoint.qr_code) {
       generateQR();
     }
   }, [checkpoint.qr_code]);
 
-  const generateQR = async () => {
-    try {
-      const qrData = JSON.stringify({
-        checkpoint_id: checkpoint.id,
-        qr_code: checkpoint.qr_code,
-        site_name: siteName,
-        checkpoint_name: checkpoint.name,
-        location: checkpoint.location,
-        generated_at: new Date().toISOString()
-      });
+  const generateQR = () => {
+    const qrData = JSON.stringify({
+      checkpoint_id: checkpoint.id,
+      qr_code: checkpoint.qr_code,
+      site_name: siteName,
+      checkpoint_name: checkpoint.name,
+      location: checkpoint.location,
+      generated_at: new Date().toISOString()
+    });
 
-      await QRCode.toCanvas(canvasRef.current, qrData, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-      setQrGenerated(true);
-    } catch (error) {
-      console.error('Error generating QR code:', error);
-    }
+    // Use free QR code API
+    const url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`;
+    setQrUrl(url);
   };
 
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
-    const canvas = canvasRef.current;
-    const dataUrl = canvas.toDataURL();
 
     printWindow.document.write(`
       <html>
@@ -71,7 +57,7 @@ export default function CheckpointQRGenerator({ checkpoint, siteName }) {
           <div class="qr-container">
             <h1>${siteName}</h1>
             <h2>${checkpoint.name}</h2>
-            <img src="${dataUrl}" alt="QR Code" />
+            <img src="${qrUrl}" alt="QR Code" />
             <div class="code">${checkpoint.qr_code}</div>
             <div class="details">
               <p>Scan this QR code to log checkpoint visit</p>
@@ -86,16 +72,13 @@ export default function CheckpointQRGenerator({ checkpoint, siteName }) {
   };
 
   const handleDownload = () => {
-    const canvas = canvasRef.current;
     const link = document.createElement('a');
     link.download = `QR_${checkpoint.qr_code}.png`;
-    link.href = canvas.toDataURL();
+    link.href = qrUrl;
     link.click();
   };
 
   const handleEmail = async () => {
-    const canvas = canvasRef.current;
-    const dataUrl = canvas.toDataURL();
     const email = prompt('Enter email address:');
     
     if (!email) return;
@@ -107,7 +90,7 @@ export default function CheckpointQRGenerator({ checkpoint, siteName }) {
         body: `
           <h2>${siteName} - ${checkpoint.name}</h2>
           <p><strong>QR Code:</strong> ${checkpoint.qr_code}</p>
-          <img src="${dataUrl}" alt="QR Code" style="width: 300px; height: 300px;" />
+          <img src="${qrUrl}" alt="QR Code" style="width: 300px; height: 300px;" />
           <p>Location: ${checkpoint.location.lat.toFixed(6)}, ${checkpoint.location.lng.toFixed(6)}</p>
           <p>Print this QR code and place it at the checkpoint location.</p>
         `
@@ -125,7 +108,7 @@ export default function CheckpointQRGenerator({ checkpoint, siteName }) {
       `Checkpoint: ${checkpoint.name}\n` +
       `Code: ${checkpoint.qr_code}\n` +
       `Location: ${checkpoint.location.lat.toFixed(6)}, ${checkpoint.location.lng.toFixed(6)}\n\n` +
-      `Download and print the QR code from the system.`
+      `QR Code: ${qrUrl}`
     );
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
@@ -138,9 +121,11 @@ export default function CheckpointQRGenerator({ checkpoint, siteName }) {
     <Card className="bg-slate-900/50 border-slate-700">
       <CardContent className="p-4">
         <div className="flex flex-col items-center gap-4">
-          <canvas ref={canvasRef} className="bg-white p-2 rounded" />
+          {qrUrl && (
+            <img src={qrUrl} alt="QR Code" className="w-full max-w-[200px] bg-white p-2 rounded" />
+          )}
           
-          {qrGenerated && (
+          {qrUrl && (
             <div className="grid grid-cols-2 gap-2 w-full">
               <Button
                 size="sm"
