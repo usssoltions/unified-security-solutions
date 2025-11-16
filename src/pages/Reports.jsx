@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Wrench, Calendar, MapPin, User, Download, Search, Filter, Camera, Video, Mic } from "lucide-react";
+import { AlertTriangle, Wrench, Calendar, MapPin, User, Download, Search, Filter, Camera, Video, Mic, X } from "lucide-react";
 
 export default function Reports() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -185,7 +186,14 @@ export default function Reports() {
     const media = report.media || [];
 
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div 
+        className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+      >
         <Card className="w-full max-w-4xl bg-slate-800 border-slate-700 my-8">
           <CardHeader className="border-b border-slate-700">
             <div className="flex items-center justify-between">
@@ -200,8 +208,13 @@ export default function Reports() {
                   </p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <span className="text-white text-2xl">×</span>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={onClose}
+                className="text-slate-400 hover:text-white hover:bg-slate-700"
+              >
+                <X className="w-6 h-6" />
               </Button>
             </div>
           </CardHeader>
