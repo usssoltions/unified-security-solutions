@@ -18,7 +18,8 @@ import {
   Sliders,
   RefreshCw,
   Sparkles,
-  Zap
+  Zap,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -208,6 +209,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio },
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
+        { title: "Reports", url: createPageUrl("Reports"), icon: FileText },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
         { title: "Guard Activity", url: createPageUrl("GuardActivity"), icon: Users },
         { title: "AI Reports", url: createPageUrl("AIReports"), icon: Sparkles },
