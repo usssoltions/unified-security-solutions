@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +14,8 @@ import {
   Navigation,
   Wrench,
   ChevronRight,
-  MessageCircle
+  MessageCircle,
+  GraduationCap
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
@@ -29,6 +29,7 @@ import LocationTracker from "../components/guard/LocationTracker";
 import ShiftEndNotification from "../components/guard/ShiftEndNotification";
 import AIPatrolGuidance from "../components/guard/AIPatrolGuidance";
 import GuardChat from "../components/chat/GuardChat";
+import GuardTrainingView from "../components/training/GuardTrainingView";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -40,6 +41,7 @@ export default function GuardShift() {
   const [loadingUser, setLoadingUser] = useState(true);
   const [forceDailyReport, setForceDailyReport] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showTraining, setShowTraining] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -177,6 +179,20 @@ export default function GuardShift() {
     refetchInterval: 5000
   });
 
+  const { data: pendingTrainings = 0 } = useQuery({
+    queryKey: ["pendingTrainings", user?.id],
+    queryFn: async () => {
+      if (!user) return 0;
+      const trainings = await base44.entities.TrainingAssignment.filter({
+        assigned_to: user.id,
+        status: { $in: ["pending", "in_progress"] }
+      });
+      return trainings.length;
+    },
+    enabled: !!user,
+    refetchInterval: 30000
+  });
+
   useEffect(() => {
     if (user && user.is_clocked_in && user.needs_daily_report) {
       setForceDailyReport(true);
@@ -220,7 +236,6 @@ export default function GuardShift() {
     );
   }
 
-  // Force daily report after clock in
   if (forceDailyReport) {
     return (
       <div className="fixed inset-0 bg-slate-900/98 z-[9999] overflow-y-auto">
@@ -249,9 +264,24 @@ export default function GuardShift() {
     );
   }
 
-  // Guard must clock in through proper workflow
   if (!user.is_clocked_in && user.role_type === "guard") {
     return <ClockInOut user={user} location={location} />;
+  }
+
+  if (showTraining) {
+    return (
+      <div className="min-h-screen p-4 lg:p-6">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-white">Training Center</h1>
+            <Button variant="ghost" onClick={() => setShowTraining(false)}>
+              Back to Shift
+            </Button>
+          </div>
+          <GuardTrainingView user={user} />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -262,18 +292,32 @@ export default function GuardShift() {
         enabled={!!activeShift && user.is_clocked_in} 
       />
 
-      {/* Floating Chat Button */}
-      <Button
-        onClick={() => setShowChat(true)}
-        className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-sky-600 hover:bg-sky-700 shadow-2xl z-40"
-      >
-        <MessageCircle className="w-6 h-6" />
-        {unreadMessages > 0 && (
-          <Badge className="absolute -top-2 -right-2 bg-rose-500 h-6 w-6 p-0 flex items-center justify-center">
-            {unreadMessages}
-          </Badge>
-        )}
-      </Button>
+      {/* Floating Action Buttons */}
+      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
+        <Button
+          onClick={() => setShowTraining(true)}
+          className="w-16 h-16 rounded-full bg-purple-600 hover:bg-purple-700 shadow-2xl"
+        >
+          <GraduationCap className="w-6 h-6" />
+          {pendingTrainings > 0 && (
+            <Badge className="absolute -top-2 -right-2 bg-rose-500 h-6 w-6 p-0 flex items-center justify-center">
+              {pendingTrainings}
+            </Badge>
+          )}
+        </Button>
+        
+        <Button
+          onClick={() => setShowChat(true)}
+          className="w-16 h-16 rounded-full bg-sky-600 hover:bg-sky-700 shadow-2xl"
+        >
+          <MessageCircle className="w-6 h-6" />
+          {unreadMessages > 0 && (
+            <Badge className="absolute -top-2 -right-2 bg-rose-500 h-6 w-6 p-0 flex items-center justify-center">
+              {unreadMessages}
+            </Badge>
+          )}
+        </Button>
+      </div>
 
       {showChat && <GuardChat user={user} onClose={() => setShowChat(false)} />}
 

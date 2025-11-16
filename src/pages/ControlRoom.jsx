@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles, MessageCircle, Navigation } from "lucide-react";
+import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles, MessageCircle, Navigation, GraduationCap } from "lucide-react";
 import LiveMap from "../components/dispatcher/LiveMap";
 import AlertPanel from "../components/dispatcher/AlertPanel";
 import ActiveGuardsPanel from "../components/dispatcher/ActiveGuardsPanel";
@@ -14,6 +14,7 @@ import AIIncidentAnalysis from "../components/dispatcher/AIIncidentAnalysis";
 import AIRiskPredictor from "../components/analytics/AIRiskPredictor";
 import SupervisorChat from "../components/chat/SupervisorChat";
 import SupervisorPatrolPlanner from "../components/patrol/SupervisorPatrolPlanner";
+import SupervisorTrainingManager from "../components/training/SupervisorTrainingManager";
 
 export default function ControlRoom() {
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
@@ -21,6 +22,7 @@ export default function ControlRoom() {
   const [showRiskPredictor, setShowRiskPredictor] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showPatrolPlanner, setShowPatrolPlanner] = useState(false);
+  const [showTrainingManager, setShowTrainingManager] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -108,6 +110,13 @@ export default function ControlRoom() {
           </div>
           <div className="flex gap-3">
             <Button
+              onClick={() => setShowTrainingManager(true)}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <GraduationCap className="w-5 h-5 mr-2" />
+              Training Manager
+            </Button>
+            <Button
               onClick={() => setShowPatrolPlanner(true)}
               className="bg-purple-600 hover:bg-purple-700"
             >
@@ -129,14 +138,14 @@ export default function ControlRoom() {
               className="bg-purple-600 hover:bg-purple-700"
             >
               <Sparkles className="w-5 h-5 mr-2" />
-              {showRiskPredictor ? "Hide" : "Show"} AI Risk Predictor
+              {showRiskPredictor ? "Hide" : "Show"} AI Risk
             </Button>
             <Button
               onClick={() => setShowAIAnalysis(true)}
               className="bg-purple-600 hover:bg-purple-700"
             >
               <Sparkles className="w-5 h-5 mr-2" />
-              AI Incident Analysis
+              AI Analysis
             </Button>
             <Button
               onClick={() => setShowDispatchAlarm(true)}
@@ -245,6 +254,10 @@ export default function ControlRoom() {
 
       {showPatrolPlanner && (
         <SupervisorPatrolPlanner user={user} onClose={() => setShowPatrolPlanner(false)} />
+      )}
+
+      {showTrainingManager && (
+        <SupervisorTrainingManager user={user} onClose={() => setShowTrainingManager(false)} />
       )}
     </div>
   );
