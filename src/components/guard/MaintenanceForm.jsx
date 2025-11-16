@@ -1,11 +1,10 @@
-
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Upload } from "lucide-react";
+import { X, Camera, Upload, Mic, StopCircle, Sparkles, PenTool, Loader2, Send } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -13,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import SignaturePad from "./SignaturePad";
 
 export default function MaintenanceForm({ user, shift, location, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -26,26 +26,37 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
     site_name: shift?.site_name || "",
     location: location,
     media: [],
+    voice_notes: [],
+    signature: null,
     reported_at: new Date().toISOString()
   });
+  
   const [submitting, setSubmitting] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [aiAssisting, setAiAssisting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!formData.signature) {
+      setShowSignature(true);
+      return;
+    }
+    
     setSubmitting(true);
 
     try {
       await base44.entities.MaintenanceRequest.create(formData);
 
-      // Send real-time email notifications to management
-      try {
-        const allUsers = await base44.entities.User.list();
-        const managementEmails = allUsers
-          .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type))
-          .map(u => u.email)
-          .filter(Boolean); // Ensure no null/undefined emails
+      // Send real-time notifications
+      const allUsers = await base44.entities.User.list();
+      const recipients = allUsers.filter(u => 
+        ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type)
+      );
 
-        const maintenanceMessage = `
+      const maintenanceMessage = `
 🔧 NEW MAINTENANCE REQUEST
 
 Title: ${formData.title}
@@ -61,19 +72,18 @@ ${formData.description}
 ${formData.location ? `Location: ${formData.location.lat}, ${formData.location.lng}` : ''}
 
 Status: Reported
-        `.trim();
+Officer Signature: Signed
+Voice Notes: ${formData.voice_notes.length} attached
+      `.trim();
 
-        for (const email of managementEmails) {
-          if (email) { // Double-check email existence before sending
-            await base44.integrations.Core.SendEmail({
-              to: email,
-              subject: `🔧 ${formData.urgency.toUpperCase()} MAINTENANCE: ${formData.title}`,
-              body: maintenanceMessage
-            });
-          }
+      for (const recipient of recipients) {
+        if (recipient.email) {
+          await base44.integrations.Core.SendEmail({
+            to: recipient.email,
+            subject: `🔧 ${formData.urgency.toUpperCase()} MAINTENANCE: ${formData.title} - ${formData.site_name}`,
+            body: maintenanceMessage
+          });
         }
-      } catch (error) {
-        console.error('Failed to send maintenance notification emails:', error);
       }
 
       alert("✅ Maintenance request submitted successfully!");
@@ -104,15 +114,120 @@ Status: Reported
     }
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const file = new File([blob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
+        
+        try {
+          const { file_url } = await base44.integrations.Core.UploadFile({ file });
+          setFormData(prev => ({
+            ...prev,
+            voice_notes: [...prev.voice_notes, file_url]
+          }));
+        } catch (error) {
+          alert("Failed to upload voice note");
+        }
+        
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setRecording(true);
+    } catch (error) {
+      alert("Failed to access microphone");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setRecording(false);
+      setMediaRecorder(null);
+    }
+  };
+
+  const getAIAssistance = async () => {
+    setAiAssisting(true);
+    try {
+      const prompt = `Based on this maintenance issue, provide professional recommendations:
+
+Category: ${formData.category}
+Title: ${formData.title}
+Description: ${formData.description}
+Urgency: ${formData.urgency}
+
+Please provide:
+1. Enhanced description with technical details
+2. Recommended immediate actions
+3. Safety considerations`;
+
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt: prompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            enhanced_description: { type: "string" },
+            recommendations: { type: "string" }
+          }
+        }
+      });
+
+      setFormData(prev => ({
+        ...prev,
+        description: prev.description + "\n\nAI Enhancement: " + response.enhanced_description + "\n\nRecommendations: " + response.recommendations
+      }));
+    } catch (error) {
+      alert("AI assistance failed");
+    } finally {
+      setAiAssisting(false);
+    }
+  };
+
+  if (showSignature) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
+        <div className="min-h-screen p-4">
+          <SignaturePad
+            onSave={(sig) => {
+              setFormData({ ...formData, signature: sig });
+              setShowSignature(false);
+            }}
+            onCancel={() => setShowSignature(false)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-8">
         <CardHeader className="border-b border-slate-700">
           <div className="flex items-center justify-between">
             <CardTitle className="text-white">Maintenance Request</CardTitle>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-5 h-5" />
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={getAIAssistance}
+                disabled={aiAssisting || !formData.title}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                <Sparkles className="w-4 h-4 mr-1" />
+                {aiAssisting ? "AI Assisting..." : "AI Assist"}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
 
@@ -227,12 +342,56 @@ Status: Reported
               )}
             </div>
 
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Voice Notes</label>
+              <Button
+                type="button"
+                onClick={recording ? stopRecording : startRecording}
+                className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'}`}
+              >
+                {recording ? (
+                  <>
+                    <StopCircle className="w-5 h-5 mr-2 animate-pulse" />
+                    Stop Recording
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-5 h-5 mr-2" />
+                    Record Voice Note
+                  </>
+                )}
+              </Button>
+              {formData.voice_notes.length > 0 && (
+                <p className="text-sm text-emerald-400 mt-2">
+                  {formData.voice_notes.length} voice note(s) recorded
+                </p>
+              )}
+            </div>
+
             {location && (
               <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
                 <p className="text-xs text-slate-400 mb-1">GPS Location</p>
                 <p className="text-sm text-white font-mono">
                   {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
                 </p>
+              </div>
+            )}
+
+            {formData.signature && (
+              <div className="p-4 bg-slate-900/50 rounded-lg border border-emerald-500/20">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-400">Officer Signature</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowSignature(true)}
+                    className="text-sky-400"
+                  >
+                    Re-sign
+                  </Button>
+                </div>
+                <img src={formData.signature} alt="Signature" className="h-24 bg-white rounded" />
               </div>
             )}
 
@@ -250,7 +409,22 @@ Status: Reported
                 disabled={submitting}
                 className="flex-1 bg-amber-600 hover:bg-amber-700"
               >
-                {submitting ? "Submitting..." : "Submit Request"}
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : !formData.signature ? (
+                  <>
+                    <PenTool className="w-5 h-5 mr-2" />
+                    Sign & Submit
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5 mr-2" />
+                    Submit Request
+                  </>
+                )}
               </Button>
             </div>
           </form>
