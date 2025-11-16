@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { base44 } from "@/api/base44Client";
 import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -15,13 +16,12 @@ L.Icon.Default.mergeOptions({
 const createGuardIcon = (workload, isHighPerformer) => {
   const color = workload === 0 ? '#10b981' : workload === 1 ? '#f59e0b' : '#ef4444';
   const size = isHighPerformer ? 36 : 32;
-  const badge = isHighPerformer ? '⭐' : '🛡️';
   
   return new L.Icon({
     iconUrl: 'data:image/svg+xml;base64,' + btoa(`
       <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
         <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" stroke="white" stroke-width="2"/>
-        <text x="${size/2}" y="${size/2 + 6}" font-size="16" text-anchor="middle" fill="white">${badge}</text>
+        ${isHighPerformer ? `<polygon points="${size/2},${size/2 - 6} ${size/2 + 4},${size/2 + 2} ${size/2 - 4},${size/2 + 2}" fill="white"/>` : `<circle cx="${size/2}" cy="${size/2}" r="4" fill="white"/>`}
       </svg>
     `),
     iconSize: [size, size],
@@ -94,7 +94,7 @@ export default function LiveMap({ activeGuards }) {
           <span className="text-slate-400">Overloaded (2+ tasks)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-lg">⭐</span>
+          <div className="w-4 h-4 rounded-full bg-sky-500 border-2 border-white"></div>
           <span className="text-slate-400">High Performer</span>
         </div>
       </div>
@@ -120,7 +120,7 @@ export default function LiveMap({ activeGuards }) {
                 <div className="min-w-[200px]">
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-bold text-slate-900">{guard.guard_name}</p>
-                    {guard.performance >= 4.5 && <span className="text-lg">⭐</span>}
+                    {guard.performance >= 4.5 && <span className="text-amber-500 font-bold">★</span>}
                   </div>
                   
                   <div className="space-y-1 text-xs text-slate-600">
