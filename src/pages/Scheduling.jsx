@@ -4,18 +4,22 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar as CalendarIcon, List, Clock, History } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, List, Clock, History, Printer } from "lucide-react";
 import ShiftForm from "../components/scheduling/ShiftForm";
 import BulkScheduler from "../components/scheduling/BulkScheduler";
 import CalendarView from "../components/scheduling/CalendarView";
 import ShiftDetailsModal from "../components/scheduling/ShiftDetailsModal";
 import ShiftHistory from "../components/scheduling/ShiftHistory";
+import PrintableSchedule from "../components/scheduling/PrintableSchedule";
 
 export default function Scheduling() {
   const [showShiftForm, setShowShiftForm] = useState(false);
   const [showBulkScheduler, setShowBulkScheduler] = useState(false);
   const [selectedShift, setSelectedShift] = useState(null);
   const [view, setView] = useState("calendar");
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printMonth, setPrintMonth] = useState(new Date().getMonth());
+  const [printYear, setPrintYear] = useState(new Date().getFullYear());
 
   const { data: shifts = [], refetch } = useQuery({
     queryKey: ["allShifts"],
@@ -53,6 +57,10 @@ export default function Scheduling() {
     refetch();
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   const statusColors = {
     scheduled: "bg-sky-500",
     open: "bg-amber-500",
@@ -70,6 +78,57 @@ export default function Scheduling() {
 
   const openShifts = shifts.filter(s => s.status === "open" || !s.guard_id);
 
+  if (showPrintPreview) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="no-print p-4 bg-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button
+              onClick={() => setShowPrintPreview(false)}
+              variant="outline"
+              className="border-slate-600 text-slate-300"
+            >
+              ← Back
+            </Button>
+            <div className="flex items-center gap-2">
+              <select
+                value={printMonth}
+                onChange={(e) => setPrintMonth(parseInt(e.target.value))}
+                className="bg-slate-900 border border-slate-700 text-white rounded-md px-3 py-2"
+              >
+                {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, i) => (
+                  <option key={i} value={i}>{m}</option>
+                ))}
+              </select>
+              <select
+                value={printYear}
+                onChange={(e) => setPrintYear(parseInt(e.target.value))}
+                className="bg-slate-900 border border-slate-700 text-white rounded-md px-3 py-2"
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 1 + i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <Button
+            onClick={handlePrint}
+            className="bg-sky-600 hover:bg-sky-700"
+          >
+            <Printer className="w-5 h-5 mr-2" />
+            Print Schedule
+          </Button>
+        </div>
+        <PrintableSchedule 
+          shifts={shifts} 
+          guards={guards}
+          month={printMonth}
+          year={printYear}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -79,6 +138,14 @@ export default function Scheduling() {
             <p className="text-slate-400 mt-1">Schedule and manage guard shifts</p>
           </div>
           <div className="flex gap-3">
+            <Button
+              onClick={() => setShowPrintPreview(true)}
+              variant="outline"
+              className="border-slate-600 text-slate-300"
+            >
+              <Printer className="w-4 h-4 mr-2" />
+              Print
+            </Button>
             <Button
               onClick={() => setView(view === "calendar" ? "list" : "calendar")}
               variant="outline"
