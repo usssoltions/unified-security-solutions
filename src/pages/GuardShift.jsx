@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -64,14 +63,16 @@ export default function GuardShift() {
           };
           setLocation(newLocation);
           
-          // Update user's last location in database
           try {
-            await base44.auth.updateMe({
-              last_location: {
-                ...newLocation,
-                timestamp: new Date().toISOString()
-              }
-            });
+            const currentUser = await base44.auth.me();
+            if (currentUser && currentUser.is_clocked_in) {
+              await base44.auth.updateMe({
+                last_location: {
+                  ...newLocation,
+                  timestamp: new Date().toISOString()
+                }
+              });
+            }
           } catch (error) {
             console.error("Failed to update location:", error);
           }
@@ -81,14 +82,6 @@ export default function GuardShift() {
       );
     }
   };
-
-  useEffect(() => {
-    if (user && user.is_clocked_in && user.needs_daily_report) {
-      setForceDailyReport(true);
-    } else if (user && !user.needs_daily_report) {
-      setForceDailyReport(false); // Reset if report is no longer needed
-    }
-  }, [user]);
 
   const { data: activeShift, isLoading: shiftsLoading } = useQuery({
     queryKey: ["activeShift", user?.id],
@@ -164,11 +157,16 @@ export default function GuardShift() {
     retry: 3
   });
 
-  // Simulate Stay Awake Alert (in production, this would come from backend)
+  useEffect(() => {
+    if (user && user.is_clocked_in && user.needs_daily_report) {
+      setForceDailyReport(true);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (activeShift) {
       const interval = setInterval(() => {
-        const shouldAlert = Math.random() > 0.9; // 10% chance every 30s for demo
+        const shouldAlert = Math.random() > 0.9;
         if (shouldAlert) {
           setShowStayAwake(true);
         }
@@ -202,23 +200,25 @@ export default function GuardShift() {
     );
   }
 
+  // Force daily report after clock in
   if (forceDailyReport) {
     return (
       <div className="fixed inset-0 bg-slate-900/98 z-[9999] overflow-y-auto">
-        <div className="min-h-screen p-4 flex items-center justify-center"> {/* Added flex for centering */}
-          <Card className="max-w-2xl mx-auto bg-slate-800 border-sky-500">
-            <CardHeader className="border-b border-sky-500/30">
+        <div className="min-h-screen p-4 flex items-center justify-center">
+          <Card className="max-w-md bg-slate-800 border-sky-500 shadow-2xl">
+            <CardHeader className="border-b border-sky-500/30 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-purple-500 rounded-full flex items-center justify-center">
+                <Shield className="w-8 h-8 text-white" />
+              </div>
               <CardTitle className="text-white text-xl">⚠️ Daily Report Required</CardTitle>
               <p className="text-slate-300 text-sm mt-2">
-                You must complete your daily activity report before continuing.
+                You must complete your daily activity report before continuing
               </p>
             </CardHeader>
             <CardContent className="pt-6">
               <Button
-                onClick={() => {
-                  navigate(createPageUrl("DailyReport"));
-                }}
-                className="w-full h-14 text-lg bg-sky-600 hover:bg-sky-700 font-semibold"
+                onClick={() => navigate(createPageUrl("DailyReport"))}
+                className="w-full h-14 text-lg bg-purple-600 hover:bg-purple-700 font-semibold"
               >
                 Complete Daily Report Now
               </Button>
@@ -229,20 +229,19 @@ export default function GuardShift() {
     );
   }
 
-  if (!user.is_clocked_in && !activeShift) {
+  // Guard must clock in through proper workflow
+  if (!user.is_clocked_in && user.role_type === "guard") {
     return <ClockInOut user={user} location={location} />;
   }
 
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6">
-      {/* Real-time Location Tracker - runs in background */}
       <LocationTracker 
         user={user} 
         shift={activeShift} 
         enabled={!!activeShift && user.is_clocked_in} 
       />
 
-      {/* Stay Awake Alert Modal */}
       {showStayAwake && (
         <StayAwakeAlert
           shift={activeShift}
@@ -251,7 +250,6 @@ export default function GuardShift() {
         />
       )}
 
-      {/* Shift End Notification */}
       {activeShift && (
         <ShiftEndNotification
           shift={activeShift}
@@ -260,10 +258,8 @@ export default function GuardShift() {
         />
       )}
 
-      {/* Alarm Notifications */}
       {user && <AlarmNotification user={user} />}
 
-      {/* Complete Alarm Response */}
       {alarmToComplete && (
         <CompleteAlarmResponse
           alarm={alarmToComplete}
@@ -275,7 +271,6 @@ export default function GuardShift() {
         />
       )}
 
-      {/* Arrived Alarms - Ready to Complete */}
       {arrivedAlarms.length > 0 && (
         <Card className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
           <CardHeader>
@@ -306,12 +301,10 @@ export default function GuardShift() {
         </Card>
       )}
 
-      {/* Active Shift Card */}
       {activeShift && (
         <ActiveShiftCard shift={activeShift} user={user} location={location} />
       )}
 
-      {/* Pending Assignments */}
       {pendingAssignments.length > 0 && (
         <Card className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20">
           <CardHeader>
@@ -378,10 +371,8 @@ export default function GuardShift() {
         </Card>
       )}
 
-      {/* Quick Actions */}
       <QuickActions location={location} shiftId={activeShift?.id} siteId={activeShift?.site_id} />
 
-      {/* Upcoming Shifts */}
       {upcomingShifts.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
