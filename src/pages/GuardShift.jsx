@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+
+import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ import AutoReportGenerator from "../components/reports/AutoReportGenerator";
 import GeneratedReportsView from "../components/reports/GeneratedReportsView";
 import MobileOptimizedGuardNav from "../components/MobileOptimizedGuardNav";
 import MobileInstallPrompt from "../components/MobileInstallPrompt";
+import PatrolReminderAlert from "../components/guard/PatrolReminderAlert";
+import ForceSignOutModal from "../components/guard/ForceSignOutModal";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -42,11 +45,15 @@ export default function GuardShift() {
   const [user, setUser] = useState(null);
   const [location, setLocation] = useState(null);
   const [showStayAwake, setShowStayAwake] = useState(false);
+  const [showPatrolReminder, setShowPatrolReminder] = useState(false);
+  const [showForceSignOut, setShowForceSignOut] = useState(false);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [showChat, setShowChat] = useState(false);
   const [showTraining, setShowTraining] = useState(false);
   const [showReports, setShowReports] = useState(false);
+  const lastStayAwakeCheck = useRef(null);
+  const lastPatrolCheck = useRef(null);
 
   useEffect(() => {
     loadUser();
@@ -198,17 +205,77 @@ export default function GuardShift() {
     refetchInterval: 30000
   });
 
+  // Stay Awake Alert System
   useEffect(() => {
-    if (activeShift) {
-      const interval = setInterval(() => {
-        const shouldAlert = Math.random() > 0.9;
-        if (shouldAlert) {
-          setShowStayAwake(true);
+    if (!user || !activeShift || !user.stay_awake_enabled) return;
+
+    const checkStayAwake = () => {
+      const now = Date.now();
+      const interval = (user.stay_awake_interval_minutes || 30) * 60 * 1000;
+
+      if (!lastStayAwakeCheck.current || (now - lastStayAwakeCheck.current) >= interval) {
+        lastStayAwakeCheck.current = now;
+        setShowStayAwake(true);
+      }
+    };
+
+    // Run immediately on mount/update if conditions met, then set interval
+    checkStayAwake(); 
+    const intervalId = setInterval(checkStayAwake, 60000); // Check every minute
+
+    return () => clearInterval(intervalId);
+  }, [user, activeShift]);
+
+  // Patrol Reminder System
+  useEffect(() => {
+    if (!user || !activeShift || !user.patrol_reminder_enabled) return;
+
+    const checkPatrolReminder = () => {
+      const now = Date.now();
+      const interval = (user.patrol_reminder_interval_minutes || 60) * 60 * 1000; // Default 60 minutes
+
+      if (!lastPatrolCheck.current || (now - lastPatrolCheck.current) >= interval) {
+        lastPatrolCheck.current = now;
+        setShowPatrolReminder(true);
+      }
+    };
+
+    // Run immediately on mount/update if conditions met, then set interval
+    checkPatrolReminder();
+    const intervalId = setInterval(checkPatrolReminder, 60000); // Check every minute
+
+    return () => clearInterval(intervalId);
+  }, [user, activeShift]);
+
+  // Check for force sign out after clock out
+  useEffect(() => {
+    if (user && !user.is_clocked_in && user.role_type === 'guard') {
+      const checkForceSignOut = async () => {
+        try {
+          const recentShift = await base44.entities.Shift.filter(
+            { guard_id: user.id, status: 'completed' },
+            '-clock_out.timestamp', // Order by clock_out timestamp descending
+            1 // Limit to 1 result
+          );
+
+          if (recentShift.length > 0) {
+            const clockOutTime = new Date(recentShift[0].clock_out?.timestamp);
+            const now = new Date();
+            const minutesSinceClockOut = (now.getTime() - clockOutTime.getTime()) / 1000 / 60;
+
+            // If clocked out within last 2 minutes, show force sign out
+            if (minutesSinceClockOut >= 0 && minutesSinceClockOut < 2) {
+              setShowForceSignOut(true);
+            }
+          }
+        } catch (error) {
+          console.error("Error checking sign out status:", error);
         }
-      }, 30000);
-      return () => clearInterval(interval);
+      };
+
+      checkForceSignOut();
     }
-  }, [activeShift]);
+  }, [user]);
 
   if (loadingUser || shiftsLoading) {
     return (
@@ -233,6 +300,11 @@ export default function GuardShift() {
         </div>
       </div>
     );
+  }
+
+  // Show force sign out modal
+  if (showForceSignOut) {
+    return <ForceSignOutModal user={user} />;
   }
 
   // Show clock in/out screen if not clocked in
@@ -331,8 +403,24 @@ export default function GuardShift() {
       {showStayAwake && (
         <StayAwakeAlert
           shift={activeShift}
-          onConfirm={() => setShowStayAwake(false)}
+          user={user}
+          onConfirm={() => {
+            setShowStayAwake(false);
+            lastStayAwakeCheck.current = Date.now(); // Reset timer on confirmation
+          }}
           location={location}
+        />
+      )}
+
+      {showPatrolReminder && (
+        <PatrolReminderAlert
+          user={user}
+          shift={activeShift}
+          location={location}
+          onDismiss={() => {
+            setShowPatrolReminder(false);
+            lastPatrolCheck.current = Date.now(); // Reset timer on dismissal
+          }}
         />
       )}
 
