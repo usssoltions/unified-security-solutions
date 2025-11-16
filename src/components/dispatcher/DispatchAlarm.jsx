@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+
+import React, { useState, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -6,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Send, Loader2, AlertOctagon, MapPin, Navigation, Car, Clock } from "lucide-react";
+import { X, Send, Loader2, AlertOctagon, MapPin, Navigation, Car, Clock, Sparkles } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import AIDispatchRecommendation from "./AIDispatchRecommendation";
 
 // Fix Leaflet default marker
 delete L.Icon.Default.prototype._getIconUrl;
@@ -44,7 +46,8 @@ const guardIcon = new L.Icon({
   popupAnchor: [0, -32]
 });
 
-const nearestGuardIcon = new L.Icon({
+// This icon is now used for the *assigned* guard
+const assignedGuardIcon = new L.Icon({
   iconUrl: 'data:image/svg+xml;base64,' + btoa(`
     <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
       <circle cx="20" cy="20" r="18" fill="#3b82f6" stroke="white" stroke-width="3"/>
@@ -82,6 +85,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   const [mapZoom, setMapZoom] = useState(10);
   const [routeCoordinates, setRouteCoordinates] = useState(null);
   const [estimatedTime, setEstimatedTime] = useState(null);
+  const [showAIRecommendations, setShowAIRecommendations] = useState(true);
 
   const queryClient = useQueryClient();
 
@@ -193,7 +197,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     return minutes;
   };
 
-  const findNearestGuard = () => {
+  // Keep findNearestGuard for potential use in manual select or other displays
+  const findNearestGuard = useMemo(() => {
     if (!formData.location?.lat || !formData.location?.lng || activeGuards.length === 0) {
       return null;
     }
@@ -210,6 +215,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
           guard.guard_location.lng
         );
         
+        // Only consider guards if distance is positive (not exactly at incident)
         if (distance < minDistance && distance > 0) {
           minDistance = distance;
           nearest = { guard, distance };
@@ -218,20 +224,34 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     });
 
     return nearest;
-  };
+  }, [formData.location, activeGuards, calculateDistance]);
 
-  const nearestGuard = findNearestGuard();
+  // Derive the currently assigned guard for map routes and ETA
+  const selectedAssignedGuard = useMemo(() => {
+    if (!formData.assigned_to || !formData.location) return null;
+    const guard = activeGuards.find(g => g.guard_id === formData.assigned_to);
+    if (guard && guard.guard_location?.lat && guard.guard_location?.lng) {
+      const distance = calculateDistance(
+        formData.location.lat,
+        formData.location.lng,
+        guard.guard_location.lat,
+        guard.guard_location.lng
+      );
+      return { guard, distance };
+    }
+    return null;
+  }, [formData.assigned_to, formData.location, activeGuards, calculateDistance]);
 
-  // Update route and ETA when nearest guard or incident location changes
+  // Update route and ETA when selected assigned guard or incident location changes
   useEffect(() => {
-    if (nearestGuard && formData.location) {
+    if (selectedAssignedGuard && formData.location) {
       const coords = [
-        [nearestGuard.guard.guard_location.lat, nearestGuard.guard.guard_location.lng],
+        [selectedAssignedGuard.guard.guard_location.lat, selectedAssignedGuard.guard.guard_location.lng],
         [formData.location.lat, formData.location.lng]
       ];
       setRouteCoordinates(coords);
       
-      const eta = calculateETA(nearestGuard.distance);
+      const eta = calculateETA(selectedAssignedGuard.distance);
       setEstimatedTime(eta);
 
       // Center map to show both points
@@ -242,8 +262,16 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     } else {
       setRouteCoordinates(null);
       setEstimatedTime(null);
+      // If no assigned guard, or no incident location, reset map to incident location or default
+      if (formData.location) {
+        setMapCenter([formData.location.lat, formData.location.lng]);
+        setMapZoom(15);
+      } else {
+        setMapCenter([-33.9249, 18.4241]); // Default Cape Town if no incident
+        setMapZoom(10);
+      }
     }
-  }, [nearestGuard, formData.location]);
+  }, [selectedAssignedGuard, formData.location, calculateETA]);
 
   const dispatchMutation = useMutation({
     mutationFn: async (alarmPayload) => {
@@ -296,12 +324,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
   const handleDispatch = async () => {
     if (!formData.address || !formData.assigned_to) {
-      alert("Please fill in required fields");
+      alert("Please fill in required fields and assign a guard.");
       return;
     }
 
     if (!formData.location) {
-      alert("Please set location using the GPS button");
+      alert("Please set location using the GPS button.");
       return;
     }
 
@@ -451,76 +479,72 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 />
               </div>
 
-              {nearestGuard && nearestGuard.distance > 0 && (
-                <div className="p-4 bg-gradient-to-r from-sky-500/10 to-sky-600/10 border border-sky-500/30 rounded-lg">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Navigation className="w-5 h-5 text-sky-400" />
-                    <p className="text-sm font-semibold text-sky-400">Nearest Available Guard</p>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-white font-medium">{nearestGuard.guard.guard_full_name}</span>
-                      <Badge className="bg-sky-500">Closest</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Car className="w-4 h-4 text-emerald-400" />
-                        <span className="text-slate-300">{nearestGuard.distance.toFixed(1)} km away</span>
-                      </div>
-                      {estimatedTime && (
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-amber-400" />
-                          <span className="text-slate-300">~{estimatedTime} min ETA</span>
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-400">Based on current location and typical traffic</p>
-                  </div>
+              {formData.location && (
+                <div className="flex items-center gap-2">
+                  <input
+                    id="ai-recommendations-toggle"
+                    type="checkbox"
+                    checked={showAIRecommendations}
+                    onChange={(e) => setShowAIRecommendations(e.target.checked)}
+                    className="w-4 h-4 text-sky-600 bg-slate-900 border-slate-700 rounded focus:ring-sky-500"
+                  />
+                  <label htmlFor="ai-recommendations-toggle" className="text-sm text-slate-300 flex items-center gap-1">
+                    <Sparkles className="w-4 h-4 text-sky-400" /> Show AI recommendations
+                  </label>
                 </div>
               )}
 
-              <div>
-                <label className="text-sm text-slate-300 font-medium block mb-2">
-                  Assign Responder <span className="text-rose-400">*</span>
-                </label>
-                {guardsLoading ? (
-                  <div className="text-slate-400 text-sm">Loading guards...</div>
-                ) : activeGuards.length === 0 ? (
-                  <div className="text-amber-400 text-sm p-3 bg-amber-500/10 border border-amber-500/20 rounded">
-                    No active guards available with location data
-                  </div>
-                ) : (
-                  <select
-                    value={formData.assigned_to}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setFormData(prev => ({ ...prev, assigned_to: value }));
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
-                  >
-                    <option value="">Select guard...</option>
-                    {activeGuards.map((guard) => {
-                      const dist = formData.location?.lat && formData.location?.lng && guard.guard_location?.lat && guard.guard_location?.lng 
-                        ? calculateDistance(
-                            formData.location.lat,
-                            formData.location.lng,
-                            guard.guard_location.lat,
-                            guard.guard_location.lng
-                          )
-                        : null;
-                      
-                      const isNearest = nearestGuard?.guard.guard_id === guard.guard_id;
-                      
-                      return (
-                        <option key={guard.guard_id} value={guard.guard_id}>
-                          {isNearest ? '⭐ ' : ''}{guard.guard_full_name} - {guard.site_name}
-                          {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km, ~${calculateETA(dist)}min)` : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                )}
-              </div>
+              {formData.location && showAIRecommendations ? (
+                <AIDispatchRecommendation
+                  incident={formData}
+                  activeGuards={activeGuards}
+                  guardsLoading={guardsLoading}
+                  calculateDistance={calculateDistance}
+                  calculateETA={calculateETA}
+                  onSelectGuard={(guardId) => setFormData(prev => ({ ...prev, assigned_to: guardId }))}
+                  selectedGuard={formData.assigned_to}
+                />
+              ) : (
+                <div>
+                  <label className="text-sm text-slate-300 font-medium block mb-2">
+                    Manual Guard Selection <span className="text-rose-400">*</span>
+                  </label>
+                  {guardsLoading ? (
+                    <div className="text-slate-400 text-sm">Loading guards...</div>
+                  ) : activeGuards.length === 0 ? (
+                    <div className="text-amber-400 text-sm p-3 bg-amber-500/10 border border-amber-500/20 rounded">
+                      No active guards available
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.assigned_to}
+                      onChange={(e) => setFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                    >
+                      <option value="">Select guard...</option>
+                      {activeGuards.map((guard) => {
+                        const dist = formData.location?.lat && formData.location?.lng && guard.guard_location?.lat && guard.guard_location?.lng 
+                          ? calculateDistance(
+                              formData.location.lat,
+                              formData.location.lng,
+                              guard.guard_location.lat,
+                              guard.guard_location.lng
+                            )
+                          : null;
+                        
+                        const isCurrentlyNearest = findNearestGuard?.guard.guard_id === guard.guard_id;
+                        
+                        return (
+                          <option key={guard.guard_id} value={guard.guard_id}>
+                            {isCurrentlyNearest ? '⭐ ' : ''}{guard.guard_full_name} - {guard.site_name}
+                            {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km, ~${calculateETA(dist)}min)` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right Column - Map */}
@@ -563,7 +587,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                     {activeGuards.map((guard) => {
                       if (!guard.guard_location?.lat || !guard.guard_location?.lng) return null;
                       
-                      const isNearest = nearestGuard?.guard.guard_id === guard.guard_id;
+                      const isSelected = formData.assigned_to === guard.guard_id;
                       const dist = calculateDistance(
                         formData.location.lat,
                         formData.location.lng,
@@ -575,12 +599,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                         <Marker 
                           key={guard.guard_id}
                           position={[guard.guard_location.lat, guard.guard_location.lng]}
-                          icon={isNearest ? nearestGuardIcon : guardIcon}
+                          icon={isSelected ? assignedGuardIcon : guardIcon}
                         >
                           <Popup>
                             <div className="text-center">
                               <p className="font-bold text-emerald-600">{guard.guard_full_name}</p>
-                              {isNearest && <p className="text-xs text-sky-500 font-bold">⭐ NEAREST GUARD</p>}
+                              {isSelected && <p className="text-xs text-sky-500 font-bold">✓ ASSIGNED</p>}
                               <p className="text-sm">{guard.site_name}</p>
                               <p className="text-xs text-gray-600">{dist.toFixed(1)} km from incident</p>
                               <p className="text-xs text-amber-600">~{calculateETA(dist)} min ETA</p>
@@ -590,8 +614,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                       );
                     })}
                     
-                    {/* Route line to nearest guard */}
-                    {routeCoordinates && (
+                    {/* Route line to assigned guard */}
+                    {routeCoordinates && formData.assigned_to && (
                       <Polyline
                         positions={routeCoordinates}
                         pathOptions={{ 
@@ -619,30 +643,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                   </div>
                 )}
               </div>
-              
-              {formData.location && activeGuards.length > 0 && (
-                <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                  <p className="text-xs text-slate-400 mb-2">Map Legend</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-rose-500"></div>
-                      <span className="text-slate-300">Incident Location</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-emerald-500"></div>
-                      <span className="text-slate-300">Available Guards</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-sky-500"></div>
-                      <span className="text-slate-300">Nearest Guard</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-1 bg-sky-500" style={{borderTop: '2px dashed'}}></div>
-                      <span className="text-slate-300">Route</span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </CardContent>
