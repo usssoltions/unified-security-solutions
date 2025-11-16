@@ -17,6 +17,7 @@ import Reports from './pages/Reports';
 import PatrolChecklists from './pages/PatrolChecklists';
 import GuardPatrolChecklist from './pages/GuardPatrolChecklist';
 import CompletedPatrols from './pages/CompletedPatrols';
+import NotificationPreferences from './pages/NotificationPreferences';
 import Layout from './Layout.jsx';
 
 
@@ -40,6 +41,7 @@ export const PAGES = {
     "PatrolChecklists": PatrolChecklists,
     "GuardPatrolChecklist": GuardPatrolChecklist,
     "CompletedPatrols": CompletedPatrols,
+    "NotificationPreferences": NotificationPreferences,
 }
 
 export const pagesConfig = {
