@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+
+import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,15 +11,49 @@ export default function AlarmNotification({ user }) {
   const queryClient = useQueryClient();
   const [acknowledging, setAcknowledging] = useState(false);
   const [trackingIntervals, setTrackingIntervals] = useState({});
+  const audioRef = useRef(null);
+
+  const playAlertSound = () => {
+    try {
+      if (!audioRef.current) { // Only play if not already playing or reference is null
+        // Base64 encoded WAV audio for a short alert sound
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmGMgjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE');
+        audio.loop = true;
+        audio.volume = 0.8; // Set desired volume
+        audio.play();
+        audioRef.current = audio;
+      }
+    } catch (error) {
+      console.error("Failed to play alert sound:", error);
+    }
+  };
+
+  const stopAlertSound = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0; // Reset playback to the beginning
+      audioRef.current = null;
+    }
+  };
 
   const { data: activeAlarms } = useQuery({
     queryKey: ["activeAlarms", user.id],
     queryFn: async () => {
       try {
-        return await base44.entities.AlarmResponse.filter({
+        const alarms = await base44.entities.AlarmResponse.filter({
           assigned_to: user.id,
           status: ["dispatched", "acknowledged", "en_route"]
         }, "-dispatched_at");
+
+        // Play sound if new alarms are fetched and sound is not already playing
+        if (alarms.length > 0 && (!audioRef.current || audioRef.current.paused)) {
+          playAlertSound();
+        } else if (alarms.length === 0 && audioRef.current) {
+          // Stop sound if no active alarms and sound is playing
+          stopAlertSound();
+        }
+
+        return alarms;
       } catch (error) {
         if (!error?.message?.includes('WebSocket')) {
           console.error("Failed to load alarms:", error);
@@ -33,9 +68,10 @@ export default function AlarmNotification({ user }) {
   });
 
   useEffect(() => {
-    // Cleanup tracking intervals on unmount
+    // Cleanup tracking intervals and audio on unmount
     return () => {
       Object.values(trackingIntervals).forEach(interval => clearInterval(interval));
+      stopAlertSound(); // Ensure sound stops when component unmounts
     };
   }, [trackingIntervals]);
 
@@ -166,7 +202,10 @@ export default function AlarmNotification({ user }) {
     return R * c; // Distance in kilometers
   };
 
-  if (activeAlarms.length === 0) return null;
+  if (activeAlarms.length === 0) {
+    stopAlertSound(); // Ensure sound stops if all alarms are gone or initially none
+    return null;
+  }
 
   const priorityColors = {
     critical: "from-rose-500 to-rose-600",

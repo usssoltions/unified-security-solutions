@@ -159,8 +159,7 @@ export default function ActiveShiftCard({ shift, user, location }) {
             Scan Checkpoint
           </Button>
           <Button
-            variant="outline"
-            className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
+            className="bg-rose-600 hover:bg-rose-700"
             onClick={() => setShowClockOut(true)}
           >
             <LogOut className="w-4 h-4 mr-2" />
