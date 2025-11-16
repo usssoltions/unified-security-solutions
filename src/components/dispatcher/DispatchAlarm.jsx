@@ -48,7 +48,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               ...shift,
               guard_id: shift.guard_id,
               guard_full_name: user.full_name || shift.guard_name,
-              guard_location: user.last_location
+              guard_location: {
+                lat: parseFloat(user.last_location.lat),
+                lng: parseFloat(user.last_location.lng)
+              }
             });
           }
         } catch (error) {
@@ -83,13 +86,15 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setFormData({
-            ...formData,
-            location: {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude
-            }
-          });
+          const newLocation = {
+            lat: parseFloat(position.coords.latitude),
+            lng: parseFloat(position.coords.longitude)
+          };
+          
+          setFormData(prev => ({
+            ...prev,
+            location: newLocation
+          }));
           setShowMap(true);
         },
         (error) => {
@@ -103,23 +108,37 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    // Ensure all values are numbers
+    const lat1Num = parseFloat(lat1);
+    const lon1Num = parseFloat(lon1);
+    const lat2Num = parseFloat(lat2);
+    const lon2Num = parseFloat(lon2);
+    
+    // Validate inputs
+    if (isNaN(lat1Num) || isNaN(lon1Num) || isNaN(lat2Num) || isNaN(lon2Num)) {
+      console.error('Invalid coordinates:', { lat1, lon1, lat2, lon2 });
+      return 0;
+    }
+    
     const R = 6371; // Earth radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const dLat = (lat2Num - lat1Num) * Math.PI / 180;
+    const dLon = (lon2Num - lon1Num) * Math.PI / 180;
     
     const a = 
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.cos(lat1Num * Math.PI / 180) * Math.cos(lat2Num * Math.PI / 180) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
     
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c;
     
-    return Math.round(distance * 10) / 10; // Round to 1 decimal
+    return Math.round(distance * 10) / 10;
   };
 
   const findNearestGuard = () => {
-    if (!formData.location?.lat || activeGuards.length === 0) return null;
+    if (!formData.location?.lat || !formData.location?.lng || activeGuards.length === 0) {
+      return null;
+    }
 
     let nearest = null;
     let minDistance = Infinity;
@@ -132,7 +151,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
           guard.guard_location.lat,
           guard.guard_location.lng
         );
-        if (distance < minDistance) {
+        
+        if (distance < minDistance && distance > 0) {
           minDistance = distance;
           nearest = { guard, distance };
         }
@@ -154,7 +174,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         status: "dispatched"
       });
 
-      // Send push notification to assigned guard for critical/high priority alarms
       if ((alarmPayload.priority === 'critical' || alarmPayload.priority === 'high') && alarmPayload.assigned_to) {
         try {
           await base44.functions.invoke('sendPushNotification', {
@@ -173,7 +192,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         }
       }
 
-      // Create alert for assigned guard
       await base44.entities.Alert.create({
         type: "assignment",
         priority: alarmPayload.priority,
@@ -205,12 +223,16 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     }
 
     const assignedGuard = activeGuards.find(g => g.guard_id === formData.assigned_to);
-    const distance = assignedGuard?.guard_location?.lat && assignedGuard?.guard_location?.lng ? calculateDistance(
-      formData.location.lat,
-      formData.location.lng,
-      assignedGuard.guard_location.lat,
-      assignedGuard.guard_location.lng
-    ) : 0;
+    
+    let distance = 0;
+    if (assignedGuard?.guard_location?.lat && assignedGuard?.guard_location?.lng) {
+      distance = calculateDistance(
+        formData.location.lat,
+        formData.location.lng,
+        assignedGuard.guard_location.lat,
+        assignedGuard.guard_location.lng
+      );
+    }
 
     const payload = {
       ...formData,
@@ -250,7 +272,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 </label>
                 <Select
                   value={formData.alarm_type}
-                  onValueChange={(value) => setFormData({ ...formData, alarm_type: value })}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, alarm_type: value }))}
                 >
                   <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
                     <SelectValue />
@@ -271,7 +293,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 </label>
                 <Select
                   value={formData.priority}
-                  onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}
                 >
                   <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
                     <SelectValue />
@@ -295,7 +317,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 <Input
                   placeholder="Full street address where guard must respond"
                   value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                   className="bg-slate-900 border-slate-700 text-white flex-1"
                 />
                 <Button 
@@ -320,7 +342,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 <Input
                   placeholder="Client name"
                   value={formData.client_name}
-                  onChange={(e) => setFormData({ ...formData, client_name: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, client_name: e.target.value }))}
                   className="bg-slate-900 border-slate-700 text-white"
                 />
               </div>
@@ -330,7 +352,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 <Input
                   placeholder="Contact number"
                   value={formData.client_phone}
-                  onChange={(e) => setFormData({ ...formData, client_phone: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, client_phone: e.target.value }))}
                   className="bg-slate-900 border-slate-700 text-white"
                 />
               </div>
@@ -341,12 +363,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               <Textarea
                 placeholder="Additional details about the alarm..."
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 className="bg-slate-900 border-slate-700 text-white min-h-20"
               />
             </div>
 
-            {nearestGuard && (
+            {nearestGuard && nearestGuard.distance > 0 && (
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                 <p className="text-xs text-emerald-400 font-semibold mb-1">📍 Nearest Available Guard:</p>
                 <p className="text-sm text-white">{nearestGuard.guard.guard_full_name}</p>
@@ -370,7 +392,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                   onChange={(e) => {
                     const value = e.target.value;
                     const guard = activeGuards.find(g => g.guard_id === value);
-                    setFormData({ ...formData, assigned_to: value });
+                    setFormData(prev => ({ ...prev, assigned_to: value }));
                     
                     if (guard?.guard_location?.lat && guard?.guard_location?.lng && formData.location) {
                       setShowMap(true);
@@ -379,17 +401,23 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                   className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
                 >
                   <option value="">Select guard...</option>
-                  {activeGuards.map((guard) => (
-                    <option key={guard.guard_id} value={guard.guard_id}>
-                      {guard.guard_full_name} - {guard.site_name}
-                      {formData.location && guard.guard_location && ` (${calculateDistance(
-                        formData.location.lat,
-                        formData.location.lng,
-                        guard.guard_location.lat,
-                        guard.guard_location.lng
-                      ).toFixed(1)}km away)`}
-                    </option>
-                  ))}
+                  {activeGuards.map((guard) => {
+                    const dist = formData.location?.lat && formData.location?.lng && guard.guard_location?.lat && guard.guard_location?.lng 
+                      ? calculateDistance(
+                          formData.location.lat,
+                          formData.location.lng,
+                          guard.guard_location.lat,
+                          guard.guard_location.lng
+                        )
+                      : null;
+                    
+                    return (
+                      <option key={guard.guard_id} value={guard.guard_id}>
+                        {guard.guard_full_name} - {guard.site_name}
+                        {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km away)` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               )}
             </div>
