@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +28,7 @@ export default function ActiveShiftCard({ shift, user, location }) {
         throw new Error("Location services must be enabled");
       }
 
+      // First update shift
       await base44.entities.Shift.update(shift.id, {
         status: "completed",
         clock_out: {
@@ -37,17 +37,23 @@ export default function ActiveShiftCard({ shift, user, location }) {
         }
       });
 
+      // Then clear user clock-in status
       await base44.auth.updateMe({
         is_clocked_in: false,
         current_shift_id: null,
-        needs_daily_report: false
+        needs_daily_report: false,
+        last_clock_out: new Date().toISOString()
       });
 
-      // Force logout
+      // Wait a moment for updates to propagate
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Force logout and redirect to login
+      window.location.href = '/';
       await base44.auth.logout();
     },
     onSuccess: () => {
-      // Will redirect to login automatically
+      // Will redirect automatically
     },
     onError: (error) => {
       alert("Clock out failed: " + error.message);
