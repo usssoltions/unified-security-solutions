@@ -18,7 +18,7 @@ import PatrolChecklists from './pages/PatrolChecklists';
 import GuardPatrolChecklist from './pages/GuardPatrolChecklist';
 import CompletedPatrols from './pages/CompletedPatrols';
 import NotificationPreferences from './pages/NotificationPreferences';
-import Layout from './Layout.jsx';
+import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
@@ -47,5 +47,5 @@ export const PAGES = {
 export const pagesConfig = {
     mainPage: "GuardShift",
     Pages: PAGES,
-    Layout: Layout,
+    Layout: __Layout,
 };

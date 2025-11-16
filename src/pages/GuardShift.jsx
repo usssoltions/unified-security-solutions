@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -45,7 +44,6 @@ export default function GuardShift() {
   const [showStayAwake, setShowStayAwake] = useState(false);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
-  const [forceDailyReport, setForceDailyReport] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showTraining, setShowTraining] = useState(false);
   const [showReports, setShowReports] = useState(false);
@@ -201,12 +199,6 @@ export default function GuardShift() {
   });
 
   useEffect(() => {
-    if (user && user.is_clocked_in && user.needs_daily_report) {
-      setForceDailyReport(true);
-    }
-  }, [user]);
-
-  useEffect(() => {
     if (activeShift) {
       const interval = setInterval(() => {
         const shouldAlert = Math.random() > 0.9;
@@ -243,34 +235,7 @@ export default function GuardShift() {
     );
   }
 
-  if (forceDailyReport) {
-    return (
-      <div className="fixed inset-0 bg-slate-900/98 z-[9999] overflow-y-auto">
-        <div className="min-h-screen p-4 flex items-center justify-center">
-          <Card className="max-w-md bg-slate-800 border-sky-500 shadow-2xl">
-            <CardHeader className="border-b border-sky-500/30 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 bg-purple-500 rounded-full flex items-center justify-center">
-                <Shield className="w-8 h-8 text-white" />
-              </div>
-              <CardTitle className="text-white text-xl">⚠️ Daily Report Required</CardTitle>
-              <p className="text-slate-300 text-sm mt-2">
-                You must complete your daily activity report before continuing
-              </p>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <Button
-                onClick={() => navigate(createPageUrl("DailyReport"))}
-                className="w-full h-14 text-lg bg-purple-600 hover:bg-purple-700 font-semibold"
-              >
-                Complete Daily Report Now
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
+  // Show clock in/out screen if not clocked in
   if (!user.is_clocked_in && user.role_type === "guard") {
     return <ClockInOut user={user} location={location} />;
   }

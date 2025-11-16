@@ -29,14 +29,13 @@ export default function ShiftEndNotification({ shift, user, location }) {
     };
 
     checkShiftEnd();
-    const interval = setInterval(checkShiftEnd, 30000); // Check every 30 seconds
+    const interval = setInterval(checkShiftEnd, 30000);
 
     return () => clearInterval(interval);
   }, [shift, showNotification]);
 
   const playAlertSound = () => {
     try {
-      // Try to use device notification sound
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE');
       audio.loop = true;
       audio.volume = 1.0;
