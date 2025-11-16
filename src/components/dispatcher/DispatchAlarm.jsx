@@ -11,7 +11,7 @@ import { X, Send, Loader2, AlertOctagon, MapPin } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import AIDispatchRecommendation from "./AIDispatchRecommendation";
+import AIDispatchRecommendation from "./AIDispatchRecommendation"; // Keep import, but remove usage
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -82,7 +82,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   const [mapZoom, setMapZoom] = useState(10);
   const [routeCoordinates, setRouteCoordinates] = useState(null);
   const [estimatedTime, setEstimatedTime] = useState(null);
-  const [showAIRecommendations, setShowAIRecommendations] = useState(true);
+  const [showAIRecommendations, setShowAIRecommendations] = useState(false); // Changed to false
 
   const queryClient = useQueryClient();
 
@@ -203,11 +203,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
     activeGuards.forEach(guard => {
       if (guard.guard_location?.lat && guard.guard_location?.lng) {
+        // Incident first, then guard
         const distance = calculateDistance(
-          guard.guard_location.lat,
-          guard.guard_location.lng,
           formData.location.lat,
-          formData.location.lng
+          formData.location.lng,
+          guard.guard_location.lat,
+          guard.guard_location.lng
         );
         
         if (distance < minDistance && distance > 0) {
@@ -293,8 +294,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   });
 
   const handleDispatch = async () => {
-    if (!formData.address || !formData.assigned_to) {
-      alert("Please fill in required fields");
+    if (!formData.address?.trim()) { // Trim check added
+      alert("Please enter incident address");
       return;
     }
 
@@ -303,23 +304,35 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       return;
     }
 
+    if (!formData.assigned_to) { // New validation
+      alert("Please select a guard to dispatch");
+      return;
+    }
+
     const assignedGuard = activeGuards.find(g => g.guard_id === formData.assigned_to);
     
+    if (!assignedGuard) { // New validation
+      alert("Selected guard not found");
+      return;
+    }
+    
     let distance = 0;
-    if (assignedGuard?.guard_location?.lat && assignedGuard?.guard_location?.lng) {
+    if (assignedGuard.guard_location?.lat && assignedGuard.guard_location?.lng && 
+        formData.location?.lat && formData.location?.lng) {
+      // Incident first, then guard
       distance = calculateDistance(
-        assignedGuard.guard_location.lat,
-        assignedGuard.guard_location.lng,
         formData.location.lat,
-        formData.location.lng
+        formData.location.lng,
+        assignedGuard.guard_location.lat,
+        assignedGuard.guard_location.lng
       );
     }
 
     const payload = {
       ...formData,
-      assigned_to_name: assignedGuard?.guard_full_name,
+      assigned_to_name: assignedGuard.guard_full_name,
       distance_to_scene_km: distance,
-      responder_location: assignedGuard?.guard_location
+      responder_location: assignedGuard.guard_location
     };
 
     dispatchMutation.mutate(payload);
@@ -448,65 +461,44 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 />
               </div>
 
-              {formData.location && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={showAIRecommendations}
-                    onChange={(e) => setShowAIRecommendations(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <label className="text-sm text-slate-300">Show AI recommendations</label>
-                </div>
-              )}
-
-              {formData.location && showAIRecommendations && (
-                <AIDispatchRecommendation
-                  incident={formData}
-                  onSelectGuard={(guardId, guardName) => setFormData(prev => ({ ...prev, assigned_to: guardId }))}
-                  selectedGuard={formData.assigned_to}
-                />
-              )}
-
-              {!showAIRecommendations && (
-                <div>
-                  <label className="text-sm text-slate-300 font-medium block mb-2">
-                    Manual Guard Selection <span className="text-rose-400">*</span>
-                  </label>
-                  {guardsLoading ? (
-                    <div className="text-slate-400 text-sm">Loading guards...</div>
-                  ) : activeGuards.length === 0 ? (
-                    <div className="text-amber-400 text-sm p-3 bg-amber-500/10 border border-amber-500/20 rounded">
-                      No active guards available
-                    </div>
-                  ) : (
-                    <select
-                      value={formData.assigned_to}
-                      onChange={(e) => setFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
-                      className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
-                    >
-                      <option value="">Select guard...</option>
-                      {activeGuards.map((guard) => {
-                        const dist = formData.location?.lat && guard.guard_location?.lat 
-                          ? calculateDistance(
-                              guard.guard_location.lat,
-                              guard.guard_location.lng,
-                              formData.location.lat,
-                              formData.location.lng
-                            )
-                          : null;
-                        
-                        return (
-                          <option key={guard.guard_id} value={guard.guard_id}>
-                            {guard.guard_full_name} - {guard.site_name}
-                            {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km)` : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  )}
-                </div>
-              )}
+              {/* AI recommendations removed, manual guard selection is now default */}
+              <div>
+                <label className="text-sm text-slate-300 font-medium block mb-2">
+                  Assign Guard <span className="text-rose-400">*</span>
+                </label>
+                {guardsLoading ? (
+                  <div className="text-slate-400 text-sm">Loading guards...</div>
+                ) : activeGuards.length === 0 ? (
+                  <div className="text-amber-400 text-sm p-3 bg-amber-500/10 border border-amber-500/20 rounded">
+                    No active guards available
+                  </div>
+                ) : (
+                  <select
+                    value={formData.assigned_to}
+                    onChange={(e) => setFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
+                    className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                  >
+                    <option value="">Select guard...</option>
+                    {activeGuards.map((guard) => {
+                      const dist = formData.location?.lat && guard.guard_location?.lat 
+                        ? calculateDistance(
+                            formData.location.lat, // Incident first
+                            formData.location.lng,
+                            guard.guard_location.lat,
+                            guard.guard_location.lng
+                          )
+                        : null;
+                      
+                      return (
+                        <option key={guard.guard_id} value={guard.guard_id}>
+                          {guard.guard_full_name} - {guard.site_name}
+                          {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km away)` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -547,10 +539,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                       
                       const isSelected = formData.assigned_to === guard.guard_id;
                       const dist = calculateDistance(
+                        formData.location.lat, // Incident first
+                        formData.location.lng,
                         guard.guard_location.lat,
-                        guard.guard_location.lng,
-                        formData.location.lat,
-                        formData.location.lng
+                        guard.guard_location.lng
                       );
                       
                       return (
