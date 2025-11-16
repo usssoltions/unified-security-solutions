@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -111,15 +110,16 @@ export default function GuardShift() {
         guard_id: user.id,
         status: "active"
       });
-      return shifts[0] || null;
+      return shifts?.[0] || null;
     },
     enabled: !!user,
     refetchInterval: 30000,
     retry: 3,
-    retryDelay: 1000
+    retryDelay: 1000,
+    initialData: null
   });
 
-  const { data: upcomingShifts } = useQuery({
+  const { data: upcomingShifts = [] } = useQuery({
     queryKey: ["upcomingShifts", user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -133,7 +133,7 @@ export default function GuardShift() {
         5
       );
       
-      return shifts;
+      return shifts || [];
     },
     enabled: !!user,
     initialData: [],
@@ -141,7 +141,7 @@ export default function GuardShift() {
     refetchInterval: 60000
   });
 
-  const { data: pendingAssignments } = useQuery({
+  const { data: pendingAssignments = [] } = useQuery({
     queryKey: ["pendingAssignments", user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -151,7 +151,7 @@ export default function GuardShift() {
         status: "pending"
       });
       
-      return assignments;
+      return assignments || [];
     },
     enabled: !!user,
     initialData: [],
@@ -159,7 +159,7 @@ export default function GuardShift() {
     refetchInterval: 15000
   });
 
-  const { data: arrivedAlarms } = useQuery({
+  const { data: arrivedAlarms = [] } = useQuery({
     queryKey: ["arrivedAlarms", user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -169,7 +169,7 @@ export default function GuardShift() {
         status: "arrived"
       });
       
-      return alarms;
+      return alarms || [];
     },
     enabled: !!user,
     initialData: [],
@@ -181,14 +181,15 @@ export default function GuardShift() {
     queryFn: async () => {
       if (!user) return 0;
       const allMessages = await base44.entities.ChatMessage.list("-created_date", 50);
-      const myMessages = allMessages.filter(m => 
+      const myMessages = (allMessages || []).filter(m => 
         (m.recipient_id === user.id || m.is_broadcast) && 
         !m.read_by?.includes(user.id)
       );
       return myMessages.length;
     },
     enabled: !!user,
-    refetchInterval: 5000
+    refetchInterval: 5000,
+    initialData: 0
   });
 
   const { data: pendingTrainings = 0 } = useQuery({
@@ -199,10 +200,11 @@ export default function GuardShift() {
         assigned_to: user.id,
         status: { $in: ["pending", "in_progress"] }
       });
-      return trainings.length;
+      return (trainings || []).length;
     },
     enabled: !!user,
-    refetchInterval: 30000
+    refetchInterval: 30000,
+    initialData: 0
   });
 
   // Stay Awake Alert System
@@ -219,9 +221,8 @@ export default function GuardShift() {
       }
     };
 
-    // Run immediately on mount/update if conditions met, then set interval
-    checkStayAwake(); 
-    const intervalId = setInterval(checkStayAwake, 60000); // Check every minute
+    checkStayAwake();
+    const intervalId = setInterval(checkStayAwake, 60000);
 
     return () => clearInterval(intervalId);
   }, [user, activeShift]);
@@ -232,7 +233,7 @@ export default function GuardShift() {
 
     const checkPatrolReminder = () => {
       const now = Date.now();
-      const interval = (user.patrol_reminder_interval_minutes || 60) * 60 * 1000; // Default 60 minutes
+      const interval = (user.patrol_reminder_interval_minutes || 60) * 60 * 1000;
 
       if (!lastPatrolCheck.current || (now - lastPatrolCheck.current) >= interval) {
         lastPatrolCheck.current = now;
@@ -240,9 +241,8 @@ export default function GuardShift() {
       }
     };
 
-    // Run immediately on mount/update if conditions met, then set interval
     checkPatrolReminder();
-    const intervalId = setInterval(checkPatrolReminder, 60000); // Check every minute
+    const intervalId = setInterval(checkPatrolReminder, 60000);
 
     return () => clearInterval(intervalId);
   }, [user, activeShift]);
@@ -254,16 +254,15 @@ export default function GuardShift() {
         try {
           const recentShift = await base44.entities.Shift.filter(
             { guard_id: user.id, status: 'completed' },
-            '-clock_out.timestamp', // Order by clock_out timestamp descending
-            1 // Limit to 1 result
+            '-clock_out.timestamp',
+            1
           );
 
-          if (recentShift.length > 0) {
+          if (recentShift && recentShift.length > 0) {
             const clockOutTime = new Date(recentShift[0].clock_out?.timestamp);
             const now = new Date();
             const minutesSinceClockOut = (now.getTime() - clockOutTime.getTime()) / 1000 / 60;
 
-            // If clocked out within last 2 minutes, show force sign out
             if (minutesSinceClockOut >= 0 && minutesSinceClockOut < 2) {
               setShowForceSignOut(true);
             }
@@ -302,12 +301,10 @@ export default function GuardShift() {
     );
   }
 
-  // Show force sign out modal
   if (showForceSignOut) {
     return <ForceSignOutModal user={user} />;
   }
 
-  // Show clock in/out screen if not clocked in
   if (!user.is_clocked_in && user.role_type === "guard") {
     return <ClockInOut user={user} location={location} />;
   }
@@ -354,7 +351,6 @@ export default function GuardShift() {
         enabled={!!activeShift && user.is_clocked_in} 
       />
 
-      {/* Mobile-optimized Floating Action Buttons */}
       <div className="hidden md:flex fixed bottom-6 right-6 flex-col gap-3 z-40">
         <Button
           onClick={() => setShowReports(true)}
@@ -388,7 +384,6 @@ export default function GuardShift() {
         </Button>
       </div>
 
-      {/* Mobile Bottom Navigation */}
       <MobileOptimizedGuardNav 
         user={user}
         unreadMessages={unreadMessages}
@@ -406,7 +401,7 @@ export default function GuardShift() {
           user={user}
           onConfirm={() => {
             setShowStayAwake(false);
-            lastStayAwakeCheck.current = Date.now(); // Reset timer on confirmation
+            lastStayAwakeCheck.current = Date.now();
           }}
           location={location}
         />
@@ -419,7 +414,7 @@ export default function GuardShift() {
           location={location}
           onDismiss={() => {
             setShowPatrolReminder(false);
-            lastPatrolCheck.current = Date.now(); // Reset timer on dismissal
+            lastPatrolCheck.current = Date.now();
           }}
         />
       )}
