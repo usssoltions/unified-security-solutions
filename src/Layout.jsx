@@ -40,31 +40,58 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     loadUser();
     
+    // Suppress WebSocket errors globally
     const originalError = console.error;
+    const originalWarn = console.warn;
+    
     console.error = (...args) => {
-      if (args[0]?.toString().includes('WebSocket')) {
+      const msg = args[0]?.toString() || '';
+      if (
+        msg.includes('WebSocket') || 
+        msg.includes('websocket') ||
+        msg.includes('WS') ||
+        msg.includes('socket')
+      ) {
         return;
       }
       originalError.apply(console, args);
+    };
+    
+    console.warn = (...args) => {
+      const msg = args[0]?.toString() || '';
+      if (
+        msg.includes('WebSocket') || 
+        msg.includes('websocket') ||
+        msg.includes('WS') ||
+        msg.includes('socket')
+      ) {
+        return;
+      }
+      originalWarn.apply(console, args);
+    };
+
+    return () => {
+      console.error = originalError;
+      console.warn = originalWarn;
     };
   }, [retryCount]);
 
   useEffect(() => {
     if (user) {
       loadAlerts();
-      const interval = setInterval(loadAlerts, 30000);
+      const interval = setInterval(loadAlerts, 60000); // Reduced to 60 seconds
       return () => clearInterval(interval);
     }
   }, [user]);
 
-  // Keep-alive mechanism for admin/dispatcher/supervisor/management
+  // Keep-alive mechanism
   useEffect(() => {
     if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
       const keepAlive = setInterval(async () => {
         try {
           await base44.auth.me();
         } catch (error) {
-          console.error('Keep-alive check failed:', error);
+          // Silent fail
         }
       }, 5 * 60 * 1000);
 
@@ -92,7 +119,8 @@ export default function Layout({ children, currentPageName }) {
       const alertList = await base44.entities.Alert.filter({ status: "active" }, "-created_date", 5);
       setAlerts(Array.isArray(alertList) ? alertList : []);
     } catch (error) {
-      if (!error?.message?.includes('WebSocket')) {
+      const errMsg = error?.message || '';
+      if (!errMsg.includes('WebSocket') && !errMsg.includes('socket')) {
         console.error("Failed to load alerts:", error);
       }
       setAlerts([]);
@@ -103,7 +131,6 @@ export default function Layout({ children, currentPageName }) {
     try {
       await base44.auth.logout();
     } catch (err) {
-      console.error("Logout error:", err);
       window.location.reload();
     }
   };
