@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,13 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Send, Loader2, AlertOctagon, MapPin, Navigation, Car, Clock, Sparkles } from "lucide-react";
+import { X, Send, Loader2, AlertOctagon, MapPin } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import AIDispatchRecommendation from "./AIDispatchRecommendation";
 
-// Fix Leaflet default marker
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
@@ -21,7 +19,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
-// Custom icons
 const incidentIcon = new L.Icon({
   iconUrl: 'data:image/svg+xml;base64,' + btoa(`
     <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
@@ -38,7 +35,7 @@ const guardIcon = new L.Icon({
   iconUrl: 'data:image/svg+xml;base64,' + btoa(`
     <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <circle cx="16" cy="16" r="14" fill="#10b981" stroke="white" stroke-width="2"/>
-      <text x="16" y="22" font-size="16" text-anchor="middle" fill="white">🛡️</text>
+      <circle cx="16" cy="16" r="4" fill="white"/>
     </svg>
   `),
   iconSize: [32, 32],
@@ -46,13 +43,12 @@ const guardIcon = new L.Icon({
   popupAnchor: [0, -32]
 });
 
-// This icon is now used for the *assigned* guard
-const assignedGuardIcon = new L.Icon({
+const nearestGuardIcon = new L.Icon({
   iconUrl: 'data:image/svg+xml;base64,' + btoa(`
     <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
       <circle cx="20" cy="20" r="18" fill="#3b82f6" stroke="white" stroke-width="3"/>
       <circle cx="20" cy="20" r="12" fill="white" opacity="0.3"/>
-      <text x="20" y="27" font-size="18" text-anchor="middle" fill="white">🛡️</text>
+      <circle cx="20" cy="20" r="5" fill="white"/>
     </svg>
   `),
   iconSize: [40, 40],
@@ -81,7 +77,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     description: "",
     assigned_to: ""
   });
-  const [mapCenter, setMapCenter] = useState([-33.9249, 18.4241]); // Cape Town default
+  const [mapCenter, setMapCenter] = useState([-33.9249, 18.4241]);
   const [mapZoom, setMapZoom] = useState(10);
   const [routeCoordinates, setRouteCoordinates] = useState(null);
   const [estimatedTime, setEstimatedTime] = useState(null);
@@ -174,7 +170,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       return 0;
     }
     
-    const R = 6371; // Earth radius in km
+    const R = 6371;
     const dLat = (lat2Num - lat1Num) * Math.PI / 180;
     const dLon = (lon2Num - lon1Num) * Math.PI / 180;
     
@@ -190,15 +186,13 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   };
 
   const calculateETA = (distanceKm) => {
-    // Assume average speed of 40 km/h in city traffic
     const avgSpeed = 40;
     const hours = distanceKm / avgSpeed;
     const minutes = Math.round(hours * 60);
     return minutes;
   };
 
-  // Keep findNearestGuard for potential use in manual select or other displays
-  const findNearestGuard = useMemo(() => {
+  const findNearestGuard = () => {
     if (!formData.location?.lat || !formData.location?.lng || activeGuards.length === 0) {
       return null;
     }
@@ -215,7 +209,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
           guard.guard_location.lng
         );
         
-        // Only consider guards if distance is positive (not exactly at incident)
         if (distance < minDistance && distance > 0) {
           minDistance = distance;
           nearest = { guard, distance };
@@ -224,37 +217,21 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     });
 
     return nearest;
-  }, [formData.location, activeGuards, calculateDistance]);
+  };
 
-  // Derive the currently assigned guard for map routes and ETA
-  const selectedAssignedGuard = useMemo(() => {
-    if (!formData.assigned_to || !formData.location) return null;
-    const guard = activeGuards.find(g => g.guard_id === formData.assigned_to);
-    if (guard && guard.guard_location?.lat && guard.guard_location?.lng) {
-      const distance = calculateDistance(
-        formData.location.lat,
-        formData.location.lng,
-        guard.guard_location.lat,
-        guard.guard_location.lng
-      );
-      return { guard, distance };
-    }
-    return null;
-  }, [formData.assigned_to, formData.location, activeGuards, calculateDistance]);
+  const nearestGuard = findNearestGuard();
 
-  // Update route and ETA when selected assigned guard or incident location changes
   useEffect(() => {
-    if (selectedAssignedGuard && formData.location) {
+    if (nearestGuard && formData.location) {
       const coords = [
-        [selectedAssignedGuard.guard.guard_location.lat, selectedAssignedGuard.guard.guard_location.lng],
+        [nearestGuard.guard.guard_location.lat, nearestGuard.guard.guard_location.lng],
         [formData.location.lat, formData.location.lng]
       ];
       setRouteCoordinates(coords);
       
-      const eta = calculateETA(selectedAssignedGuard.distance);
+      const eta = calculateETA(nearestGuard.distance);
       setEstimatedTime(eta);
 
-      // Center map to show both points
       const bounds = L.latLngBounds(coords);
       const center = bounds.getCenter();
       setMapCenter([center.lat, center.lng]);
@@ -262,16 +239,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     } else {
       setRouteCoordinates(null);
       setEstimatedTime(null);
-      // If no assigned guard, or no incident location, reset map to incident location or default
-      if (formData.location) {
-        setMapCenter([formData.location.lat, formData.location.lng]);
-        setMapZoom(15);
-      } else {
-        setMapCenter([-33.9249, 18.4241]); // Default Cape Town if no incident
-        setMapZoom(10);
-      }
     }
-  }, [selectedAssignedGuard, formData.location, calculateETA]);
+  }, [nearestGuard, formData.location]);
 
   const dispatchMutation = useMutation({
     mutationFn: async (alarmPayload) => {
@@ -289,7 +258,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         try {
           await base44.functions.invoke('sendPushNotification', {
             user_ids: [alarmPayload.assigned_to],
-            title: '🚨 Emergency Alarm Response',
+            title: 'Emergency Alarm Response',
             body: `${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()} at ${alarmPayload.address}`,
             priority: alarmPayload.priority,
             data: {
@@ -306,7 +275,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       await base44.entities.Alert.create({
         type: "assignment",
         priority: alarmPayload.priority,
-        title: "🚨 Alarm Response Assigned",
+        title: "Alarm Response Assigned",
         message: `You have been dispatched to respond to ${alarmPayload.alarm_type.replace(/_/g, ' ')} at ${alarmPayload.address}. ${alarmPayload.client_name ? `Client: ${alarmPayload.client_name}` : ''}`,
         guard_id: alarmPayload.assigned_to,
         guard_name: alarmPayload.assigned_to_name,
@@ -324,12 +293,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
   const handleDispatch = async () => {
     if (!formData.address || !formData.assigned_to) {
-      alert("Please fill in required fields and assign a guard.");
+      alert("Please fill in required fields");
       return;
     }
 
     if (!formData.location) {
-      alert("Please set location using the GPS button.");
+      alert("Please set location using the GPS button");
       return;
     }
 
@@ -374,7 +343,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         
         <CardContent className="overflow-y-auto flex-1 p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column - Form */}
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -442,7 +410,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                 </div>
                 {formData.location && (
                   <p className="text-xs text-emerald-400 mt-1">
-                    ✓ Incident location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}
+                    Location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}
                   </p>
                 )}
               </div>
@@ -482,29 +450,24 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               {formData.location && (
                 <div className="flex items-center gap-2">
                   <input
-                    id="ai-recommendations-toggle"
                     type="checkbox"
                     checked={showAIRecommendations}
                     onChange={(e) => setShowAIRecommendations(e.target.checked)}
-                    className="w-4 h-4 text-sky-600 bg-slate-900 border-slate-700 rounded focus:ring-sky-500"
+                    className="w-4 h-4"
                   />
-                  <label htmlFor="ai-recommendations-toggle" className="text-sm text-slate-300 flex items-center gap-1">
-                    <Sparkles className="w-4 h-4 text-sky-400" /> Show AI recommendations
-                  </label>
+                  <label className="text-sm text-slate-300">Show AI recommendations</label>
                 </div>
               )}
 
-              {formData.location && showAIRecommendations ? (
+              {formData.location && showAIRecommendations && (
                 <AIDispatchRecommendation
                   incident={formData}
-                  activeGuards={activeGuards}
-                  guardsLoading={guardsLoading}
-                  calculateDistance={calculateDistance}
-                  calculateETA={calculateETA}
-                  onSelectGuard={(guardId) => setFormData(prev => ({ ...prev, assigned_to: guardId }))}
+                  onSelectGuard={(guardId, guardName) => setFormData(prev => ({ ...prev, assigned_to: guardId }))}
                   selectedGuard={formData.assigned_to}
                 />
-              ) : (
+              )}
+
+              {!showAIRecommendations && (
                 <div>
                   <label className="text-sm text-slate-300 font-medium block mb-2">
                     Manual Guard Selection <span className="text-rose-400">*</span>
@@ -523,7 +486,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                     >
                       <option value="">Select guard...</option>
                       {activeGuards.map((guard) => {
-                        const dist = formData.location?.lat && formData.location?.lng && guard.guard_location?.lat && guard.guard_location?.lng 
+                        const dist = formData.location?.lat && guard.guard_location?.lat 
                           ? calculateDistance(
                               formData.location.lat,
                               formData.location.lng,
@@ -532,12 +495,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                             )
                           : null;
                         
-                        const isCurrentlyNearest = findNearestGuard?.guard.guard_id === guard.guard_id;
-                        
                         return (
                           <option key={guard.guard_id} value={guard.guard_id}>
-                            {isCurrentlyNearest ? '⭐ ' : ''}{guard.guard_full_name} - {guard.site_name}
-                            {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km, ~${calculateETA(dist)}min)` : ''}
+                            {guard.guard_full_name} - {guard.site_name}
+                            {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km)` : ''}
                           </option>
                         );
                       })}
@@ -547,7 +508,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               )}
             </div>
 
-            {/* Right Column - Map */}
             <div className="space-y-4">
               <div className="h-[500px] rounded-lg overflow-hidden border-2 border-slate-700">
                 {formData.location ? (
@@ -563,7 +523,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                       attribution='&copy; OpenStreetMap contributors'
                     />
                     
-                    {/* Incident Location */}
                     <Marker 
                       position={[formData.location.lat, formData.location.lng]}
                       icon={incidentIcon}
@@ -576,14 +535,12 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                       </Popup>
                     </Marker>
                     
-                    {/* Incident radius circle */}
                     <Circle
                       center={[formData.location.lat, formData.location.lng]}
                       radius={500}
                       pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.1 }}
                     />
                     
-                    {/* All Guards */}
                     {activeGuards.map((guard) => {
                       if (!guard.guard_location?.lat || !guard.guard_location?.lng) return null;
                       
@@ -599,22 +556,20 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                         <Marker 
                           key={guard.guard_id}
                           position={[guard.guard_location.lat, guard.guard_location.lng]}
-                          icon={isSelected ? assignedGuardIcon : guardIcon}
+                          icon={isSelected ? nearestGuardIcon : guardIcon}
                         >
                           <Popup>
                             <div className="text-center">
                               <p className="font-bold text-emerald-600">{guard.guard_full_name}</p>
-                              {isSelected && <p className="text-xs text-sky-500 font-bold">✓ ASSIGNED</p>}
+                              {isSelected && <p className="text-xs text-sky-500 font-bold">SELECTED</p>}
                               <p className="text-sm">{guard.site_name}</p>
-                              <p className="text-xs text-gray-600">{dist.toFixed(1)} km from incident</p>
-                              <p className="text-xs text-amber-600">~{calculateETA(dist)} min ETA</p>
+                              <p className="text-xs text-gray-600">{dist.toFixed(1)} km away</p>
                             </div>
                           </Popup>
                         </Marker>
                       );
                     })}
                     
-                    {/* Route line to assigned guard */}
                     {routeCoordinates && formData.assigned_to && (
                       <Polyline
                         positions={routeCoordinates}
