@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -94,14 +95,19 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Radius of Earth in km
+    const R = 6371; // Earth radius in km
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in km
+    
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+    
+    return Math.round(distance * 10) / 10; // Round to 1 decimal
   };
 
   const findNearestGuard = () => {
@@ -336,7 +342,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                 <p className="text-xs text-emerald-400 font-semibold mb-1">📍 Nearest Available Guard:</p>
                 <p className="text-sm text-white">{nearestGuard.guard.guard_full_name}</p>
-                <p className="text-xs text-slate-400">{nearestGuard.distance.toFixed(2)} km from incident location</p>
+                <p className="text-xs text-slate-400">{nearestGuard.distance.toFixed(1)} km from incident location</p>
               </div>
             )}
 

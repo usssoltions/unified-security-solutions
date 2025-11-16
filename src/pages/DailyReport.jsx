@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -143,6 +144,11 @@ PHOTOS: ${report.photos.length} photo(s) attached
 
       await base44.entities.Incident.create(reportData);
 
+      // Mark daily report as completed
+      await base44.auth.updateMe({
+        needs_daily_report: false
+      });
+
       // Send email notifications
       try {
         const allUsers = await base44.entities.User.list();
@@ -164,7 +170,7 @@ PHOTOS: ${report.photos.length} photo(s) attached
 
       setSubmitted(true);
       setTimeout(() => {
-        window.location.reload();
+        window.location.href = '/';
       }, 3000);
     } catch (error) {
       alert("Failed to submit report: " + error.message);

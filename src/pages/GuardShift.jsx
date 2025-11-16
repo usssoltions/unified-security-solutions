@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ export default function GuardShift() {
   const [showStayAwake, setShowStayAwake] = useState(false);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [forceDailyReport, setForceDailyReport] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -79,6 +81,14 @@ export default function GuardShift() {
       );
     }
   };
+
+  useEffect(() => {
+    if (user && user.is_clocked_in && user.needs_daily_report) {
+      setForceDailyReport(true);
+    } else if (user && !user.needs_daily_report) {
+      setForceDailyReport(false); // Reset if report is no longer needed
+    }
+  }, [user]);
 
   const { data: activeShift, isLoading: shiftsLoading } = useQuery({
     queryKey: ["activeShift", user?.id],
@@ -187,6 +197,33 @@ export default function GuardShift() {
           <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700">
             Reload Page
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (forceDailyReport) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/98 z-[9999] overflow-y-auto">
+        <div className="min-h-screen p-4 flex items-center justify-center"> {/* Added flex for centering */}
+          <Card className="max-w-2xl mx-auto bg-slate-800 border-sky-500">
+            <CardHeader className="border-b border-sky-500/30">
+              <CardTitle className="text-white text-xl">⚠️ Daily Report Required</CardTitle>
+              <p className="text-slate-300 text-sm mt-2">
+                You must complete your daily activity report before continuing.
+              </p>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <Button
+                onClick={() => {
+                  navigate(createPageUrl("DailyReport"));
+                }}
+                className="w-full h-14 text-lg bg-sky-600 hover:bg-sky-700 font-semibold"
+              >
+                Complete Daily Report Now
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );

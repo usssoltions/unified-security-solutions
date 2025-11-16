@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -38,12 +39,15 @@ export default function ActiveShiftCard({ shift, user, location }) {
 
       await base44.auth.updateMe({
         is_clocked_in: false,
-        current_shift_id: null
+        current_shift_id: null,
+        needs_daily_report: false
       });
+
+      // Force logout
+      await base44.auth.logout();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries();
-      window.location.reload();
+      // Will redirect to login automatically
     },
     onError: (error) => {
       alert("Clock out failed: " + error.message);

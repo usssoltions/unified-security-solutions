@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
@@ -120,6 +121,7 @@ export default function ClockInOut({ user, location }) {
       await base44.auth.updateMe({
         is_clocked_in: true,
         current_shift_id: assignedShift.id,
+        needs_daily_report: true,
         last_location: {
           ...location,
           timestamp: new Date().toISOString()
