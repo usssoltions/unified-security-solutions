@@ -80,7 +80,7 @@ Voice Notes: ${formData.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
-      const maintenanceRequest = await base44.entities.MaintenanceRequest.create({
+      const maintenanceRequest = await base44.asServiceRole.entities.MaintenanceRequest.create({
         title: `Maintenance: ${formData.maintenance_type}`,
         description: reportContent,
         category: "other",
@@ -95,7 +95,7 @@ Officer Signature: Signed
       });
 
       // Send email notifications to admins, dispatchers, and supervisors
-      const recipients = await base44.entities.User.filter({
+      const recipients = await base44.asServiceRole.entities.User.filter({
         role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
       });
       

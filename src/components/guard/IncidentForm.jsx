@@ -98,7 +98,7 @@ VOICE NOTES: ${data.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
-      const incident = await base44.entities.Incident.create({
+      const incident = await base44.asServiceRole.entities.Incident.create({
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
         category: "other",
@@ -114,7 +114,7 @@ Officer Signature: Signed
       });
 
       // Send email notifications to ALL users with admin/dispatcher/supervisor roles
-      const recipients = await base44.entities.User.filter({
+      const recipients = await base44.asServiceRole.entities.User.filter({
         role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
       });
 
