@@ -14,6 +14,9 @@ import AIReports from './pages/AIReports';
 import DailyReport from './pages/DailyReport';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import Reports from './pages/Reports';
+import PatrolChecklists from './pages/PatrolChecklists';
+import GuardPatrolChecklist from './pages/GuardPatrolChecklist';
+import CompletedPatrols from './pages/CompletedPatrols';
 import Layout from './Layout.jsx';
 
 
@@ -34,6 +37,9 @@ export const PAGES = {
     "DailyReport": DailyReport,
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "Reports": Reports,
+    "PatrolChecklists": PatrolChecklists,
+    "GuardPatrolChecklist": GuardPatrolChecklist,
+    "CompletedPatrols": CompletedPatrols,
 }
 
 export const pagesConfig = {
