@@ -1,41 +1,57 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, MapPin, AlertTriangle, Navigation, TrendingUp, Clock, Loader2, RefreshCw, Target } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Sparkles, Loader2, MapPin, CheckCircle2, Clock, AlertTriangle, Send } from "lucide-react";
 
 export default function AIPatrolGuidance({ user, shift, location }) {
   const [guidance, setGuidance] = useState(null);
+  const [checkpointFeedback, setCheckpointFeedback] = useState({});
+  const queryClient = useQueryClient();
+
+  const { data: assignedPlan } = useQuery({
+    queryKey: ["assignedPatrolPlan", user.id, shift?.id],
+    queryFn: async () => {
+      const plans = await base44.entities.PatrolPlan.filter({
+        assigned_to: user.id,
+        shift_id: shift?.id,
+        status: { $in: ["pending", "active"] }
+      });
+      return plans[0] || null;
+    },
+    enabled: !!user && !!shift,
+    refetchInterval: 10000
+  });
 
   const { data: siteIncidents = [] } = useQuery({
     queryKey: ["siteIncidents", shift?.site_id],
     queryFn: async () => {
       if (!shift?.site_id) return [];
-      const incidents = await base44.entities.Incident.filter(
+      return await base44.entities.Incident.filter(
         { site_id: shift.site_id },
         "-reported_at",
-        100
+        20
       );
-      return incidents;
     },
-    enabled: !!shift?.site_id
+    enabled: !!shift?.site_id,
+    initialData: []
   });
 
-  const { data: sitePatrols = [] } = useQuery({
-    queryKey: ["sitePatrols", shift?.site_id],
+  const { data: patrolLogs = [] } = useQuery({
+    queryKey: ["patrolLogs", shift?.site_id],
     queryFn: async () => {
       if (!shift?.site_id) return [];
-      const patrols = await base44.entities.PatrolLog.filter(
+      return await base44.entities.PatrolLog.filter(
         { site_id: shift.site_id },
         "-timestamp",
-        100
+        50
       );
-      return patrols;
     },
-    enabled: !!shift?.site_id
+    enabled: !!shift?.site_id,
+    initialData: []
   });
 
   const { data: site } = useQuery({
@@ -47,190 +63,357 @@ export default function AIPatrolGuidance({ user, shift, location }) {
     enabled: !!shift?.site_id
   });
 
+  const startPlanMutation = useMutation({
+    mutationFn: async (planId) => {
+      await base44.entities.PatrolPlan.update(planId, {
+        status: "active",
+        started_at: new Date().toISOString()
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["assignedPatrolPlan"]);
+    }
+  });
+
+  const completeCheckpointMutation = useMutation({
+    mutationFn: async ({ planId, checkpointIndex, feedback }) => {
+      const updatedCheckpoints = [...assignedPlan.route_checkpoints];
+      updatedCheckpoints[checkpointIndex] = {
+        ...updatedCheckpoints[checkpointIndex],
+        completed: true,
+        completed_at: new Date().toISOString(),
+        guard_feedback: feedback
+      };
+
+      await base44.entities.PatrolPlan.update(planId, {
+        route_checkpoints: updatedCheckpoints
+      });
+
+      await base44.entities.PatrolLog.create({
+        guard_id: user.id,
+        guard_name: user.full_name,
+        shift_id: shift.id,
+        site_id: shift.site_id,
+        checkpoint_id: updatedCheckpoints[checkpointIndex].checkpoint_id,
+        checkpoint_name: updatedCheckpoints[checkpointIndex].checkpoint_name,
+        location: location,
+        timestamp: new Date().toISOString(),
+        verified: true,
+        notes: feedback || "Patrol plan checkpoint completed"
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["assignedPatrolPlan"]);
+      setCheckpointFeedback({});
+    }
+  });
+
+  const completePlanMutation = useMutation({
+    mutationFn: async ({ planId, notes }) => {
+      await base44.entities.PatrolPlan.update(planId, {
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        guard_notes: notes
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["assignedPatrolPlan"]);
+    }
+  });
+
   const analyzePatrolMutation = useMutation({
     mutationFn: async () => {
-      if (!shift || !site) {
-        throw new Error("Shift and site data required");
-      }
+      const prompt = `Analyze current security situation and provide patrol guidance:
 
-      const currentHour = new Date().getHours();
-      const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+Current Location: ${location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'Unknown'}
+Site: ${shift?.site_name || 'Unknown'}
+Available Checkpoints: ${site?.checkpoints?.map(c => c.name).join(", ") || "None"}
 
-      const incidentSummary = siteIncidents.slice(0, 50).map(inc => ({
-        type: inc.category,
-        time: new Date(inc.reported_at).getHours(),
-        day: new Date(inc.reported_at).toLocaleDateString('en-US', { weekday: 'long' }),
-        priority: inc.priority,
-        description: inc.title
-      }));
+Recent Incidents (Last 30 days):
+${siteIncidents.slice(0, 10).map(i => 
+  `- ${i.category} on ${new Date(i.reported_at).toLocaleDateString()} (Priority: ${i.priority})`
+).join("\n") || "No recent incidents"}
 
-      const patrolSummary = sitePatrols.slice(0, 50).map(patrol => ({
-        checkpoint: patrol.checkpoint_name,
-        time: new Date(patrol.timestamp).getHours(),
-        verified: patrol.verified
-      }));
+Recent Patrol Activity:
+${patrolLogs.slice(0, 10).map(p => 
+  `- ${p.checkpoint_name} at ${new Date(p.timestamp).toLocaleString()}`
+).join("\n") || "No recent patrols"}
 
-      const checkpoints = site.checkpoints || [];
-
-      const prompt = `You are an AI security advisor analyzing patrol data for ${site.name}.
-
-Current Context:
-- Time: ${currentHour}:00 on ${currentDay}
-- Guard Location: ${location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'Unknown'}
-- Available Checkpoints: ${checkpoints.map(c => c.name).join(', ')}
-
-Historical Incident Data (Last 50 incidents):
-${JSON.stringify(incidentSummary, null, 2)}
-
-Recent Patrol History (Last 50 patrols):
-${JSON.stringify(patrolSummary, null, 2)}
-
-Based on this data, provide:
-1. Immediate high-risk areas to focus on RIGHT NOW
-2. Optimized patrol route for the current time
-3. Specific checkpoints to prioritize
-4. Time-based recommendations for the current hour
-5. Actionable security tips
-
-Be specific, concise, and immediately actionable for a guard on duty.`;
+Provide:
+1. Risk level assessment (low/medium/high/critical)
+2. Immediate action items (max 3)
+3. High-risk areas to focus on (max 3)
+4. Suggested patrol route (checkpoint names in order)
+5. Time-specific security tips`;
 
       const response = await base44.integrations.Core.InvokeLLM({
-        prompt: prompt,
+        prompt,
+        add_context_from_internet: false,
         response_json_schema: {
           type: "object",
           properties: {
-            risk_level: {
-              type: "string",
-              enum: ["low", "medium", "high", "critical"]
-            },
-            high_risk_areas: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  area: { type: "string" },
-                  reason: { type: "string" },
-                  priority: { type: "string" }
-                }
-              }
-            },
-            suggested_route: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  checkpoint: { type: "string" },
-                  order: { type: "number" },
-                  estimated_time: { type: "string" },
-                  reason: { type: "string" }
-                }
-              }
-            },
+            risk_level: { type: "string" },
             immediate_actions: {
               type: "array",
               items: { type: "string" }
             },
-            time_based_tips: {
+            high_risk_areas: {
               type: "array",
               items: { type: "string" }
             },
-            overall_assessment: { type: "string" }
+            suggested_route: {
+              type: "array",
+              items: { type: "string" }
+            },
+            time_based_tips: { type: "string" }
           }
         }
       });
 
-      return response;
-    },
-    onSuccess: (data) => {
-      setGuidance(data);
+      setGuidance(response);
     }
   });
 
+  const allCheckpointsCompleted = assignedPlan?.route_checkpoints?.every(cp => cp.completed);
+
   const riskColors = {
-    low: "bg-emerald-500",
-    medium: "bg-amber-500",
-    high: "bg-rose-500",
-    critical: "bg-red-600"
+    low: "text-emerald-400",
+    medium: "text-amber-400",
+    high: "text-orange-400",
+    critical: "text-rose-400"
   };
 
   const priorityColors = {
-    low: "border-emerald-500 bg-emerald-500/10",
-    medium: "border-amber-500 bg-amber-500/10",
-    high: "border-rose-500 bg-rose-500/10",
-    critical: "border-red-500 bg-red-500/10"
+    low: "bg-slate-600",
+    medium: "bg-amber-600",
+    high: "bg-orange-600",
+    critical: "bg-rose-600"
   };
 
-  if (!shift) {
-    return null;
+  if (assignedPlan) {
+    const completedCount = assignedPlan.route_checkpoints.filter(cp => cp.completed).length;
+    const totalCount = assignedPlan.route_checkpoints.length;
+    const progress = (completedCount / totalCount) * 100;
+
+    return (
+      <Card className="bg-gradient-to-br from-purple-500/10 to-sky-500/10 border-purple-500/30">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-white flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-purple-400" />
+                {assignedPlan.name}
+              </CardTitle>
+              <p className="text-sm text-slate-400 mt-1">
+                Dynamic patrol plan assigned by {assignedPlan.created_by_name}
+              </p>
+            </div>
+            <Badge className={priorityColors[assignedPlan.priority]}>
+              {assignedPlan.priority}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {assignedPlan.status === "pending" && (
+            <Button
+              onClick={() => startPlanMutation.mutate(assignedPlan.id)}
+              className="w-full bg-emerald-600 hover:bg-emerald-700"
+            >
+              Start Patrol Plan
+            </Button>
+          )}
+
+          <div className="p-3 bg-slate-900/50 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-slate-400">Progress</span>
+              <span className="text-sm font-semibold text-white">
+                {completedCount} / {totalCount}
+              </span>
+            </div>
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-sky-500 transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+
+          {assignedPlan.ai_recommendations && (
+            <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+              <p className="text-xs font-semibold text-purple-400 mb-1">AI Recommendations:</p>
+              <p className="text-sm text-slate-300">{assignedPlan.ai_recommendations}</p>
+            </div>
+          )}
+
+          {assignedPlan.high_risk_areas?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-rose-400 mb-2">⚠️ High Risk Areas:</p>
+              <div className="flex flex-wrap gap-2">
+                {assignedPlan.high_risk_areas.map((area, i) => (
+                  <Badge key={i} className="bg-rose-500">{area}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-white mb-2">Checkpoint Route:</p>
+            {assignedPlan.route_checkpoints.map((cp, index) => (
+              <div
+                key={index}
+                className={`p-3 rounded-lg border ${
+                  cp.completed
+                    ? "bg-emerald-500/10 border-emerald-500/30"
+                    : "bg-slate-900/50 border-slate-700"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    cp.completed ? "bg-emerald-600" : "bg-slate-700"
+                  }`}>
+                    {cp.completed ? (
+                      <CheckCircle2 className="w-5 h-5 text-white" />
+                    ) : (
+                      <span className="text-white font-bold text-sm">{cp.order}</span>
+                    )}
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className={`font-medium ${cp.completed ? "text-emerald-400" : "text-white"}`}>
+                        {cp.checkpoint_name}
+                      </p>
+                      <Badge className={priorityColors[cp.risk_level]}>{cp.risk_level}</Badge>
+                    </div>
+                    
+                    {cp.notes && (
+                      <p className="text-xs text-slate-400 mb-2">{cp.notes}</p>
+                    )}
+
+                    {cp.completed ? (
+                      <div className="mt-2">
+                        <p className="text-xs text-emerald-400">
+                          ✓ Completed at {new Date(cp.completed_at).toLocaleTimeString()}
+                        </p>
+                        {cp.guard_feedback && (
+                          <p className="text-xs text-slate-400 mt-1">
+                            Feedback: {cp.guard_feedback}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        <Textarea
+                          placeholder="Add feedback (optional)..."
+                          value={checkpointFeedback[index] || ""}
+                          onChange={(e) => setCheckpointFeedback(prev => ({
+                            ...prev,
+                            [index]: e.target.value
+                          }))}
+                          className="bg-slate-800 border-slate-700 text-white text-sm h-16"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => completeCheckpointMutation.mutate({
+                            planId: assignedPlan.id,
+                            checkpointIndex: index,
+                            feedback: checkpointFeedback[index]
+                          })}
+                          disabled={completeCheckpointMutation.isPending}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          Mark Complete
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {allCheckpointsCompleted && assignedPlan.status === "active" && (
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg space-y-3">
+              <p className="text-emerald-400 font-semibold">
+                🎉 All checkpoints completed!
+              </p>
+              <Textarea
+                placeholder="Add final notes about this patrol..."
+                className="bg-slate-800 border-slate-700 text-white"
+              />
+              <Button
+                onClick={() => completePlanMutation.mutate({
+                  planId: assignedPlan.id,
+                  notes: ""
+                })}
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Complete Patrol Plan
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
-    <Card className="bg-gradient-to-br from-purple-500/10 to-indigo-600/10 border-purple-500/20">
+    <Card className="bg-gradient-to-br from-purple-500/10 to-sky-500/10 border-purple-500/30">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <CardTitle className="text-white text-lg">AI Patrol Guidance</CardTitle>
-              <p className="text-sm text-purple-300">Smart route optimization</p>
-            </div>
-          </div>
-          <Button
-            onClick={() => analyzePatrolMutation.mutate()}
-            disabled={analyzePatrolMutation.isPending}
-            size="sm"
-            className="bg-purple-600 hover:bg-purple-700"
-          >
-            {analyzePatrolMutation.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Get Guidance
-              </>
-            )}
-          </Button>
-        </div>
+        <CardTitle className="text-white flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-purple-400" />
+          AI Patrol Guidance
+        </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {!guidance && (
-          <div className="text-center py-6">
-            <Target className="w-12 h-12 text-purple-400 mx-auto mb-3 opacity-50" />
-            <p className="text-slate-400 text-sm">
-              Get AI-powered patrol recommendations based on historical data
+        {!guidance ? (
+          <div className="text-center py-8">
+            <p className="text-slate-400 mb-4">
+              Get AI-powered patrol recommendations based on current conditions
             </p>
-            <p className="text-xs text-slate-500 mt-2">
-              Analyzing {siteIncidents.length} incidents and {sitePatrols.length} patrol logs
-            </p>
+            <Button
+              onClick={() => analyzePatrolMutation.mutate()}
+              disabled={analyzePatrolMutation.isPending}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {analyzePatrolMutation.isPending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5 mr-2" />
+                  Get AI Guidance
+                </>
+              )}
+            </Button>
           </div>
-        )}
-
-        {guidance && (
-          <div className="space-y-4">
-            <Alert className={`${riskColors[guidance.risk_level]} border-none`}>
-              <AlertTriangle className="w-4 h-4" />
-              <AlertDescription className="text-white font-semibold">
-                {guidance.risk_level.toUpperCase()} Risk Level - {guidance.overall_assessment}
-              </AlertDescription>
-            </Alert>
+        ) : (
+          <>
+            <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-400">Current Risk Level</span>
+                <Badge className={`${riskColors[guidance.risk_level]} font-bold`}>
+                  {guidance.risk_level?.toUpperCase()}
+                </Badge>
+              </div>
+            </div>
 
             {guidance.immediate_actions?.length > 0 && (
-              <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg">
-                <h4 className="text-white font-semibold mb-2 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
-                  Immediate Actions
-                </h4>
-                <ul className="space-y-2">
-                  {guidance.immediate_actions.map((action, idx) => (
-                    <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
-                      <span className="text-rose-400 font-bold">•</span>
-                      <span>{action}</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-400 mb-2">
+                  ⚡ Immediate Actions:
+                </p>
+                <ul className="space-y-1">
+                  {guidance.immediate_actions.map((action, i) => (
+                    <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
+                      <span className="text-amber-400">•</span>
+                      {action}
                     </li>
                   ))}
                 </ul>
@@ -239,24 +422,12 @@ Be specific, concise, and immediately actionable for a guard on duty.`;
 
             {guidance.high_risk_areas?.length > 0 && (
               <div>
-                <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-amber-400" />
-                  High-Risk Areas to Monitor
-                </h4>
-                <div className="space-y-2">
-                  {guidance.high_risk_areas.map((area, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded-lg border ${priorityColors[area.priority?.toLowerCase() || 'medium']}`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="font-semibold text-white">{area.area}</p>
-                        <Badge className={riskColors[area.priority?.toLowerCase() || 'medium']}>
-                          {area.priority}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-slate-300">{area.reason}</p>
-                    </div>
+                <p className="text-sm font-semibold text-rose-400 mb-2">
+                  🎯 High-Risk Areas:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {guidance.high_risk_areas.map((area, i) => (
+                    <Badge key={i} className="bg-rose-500">{area}</Badge>
                   ))}
                 </div>
               </div>
@@ -264,62 +435,32 @@ Be specific, concise, and immediately actionable for a guard on duty.`;
 
             {guidance.suggested_route?.length > 0 && (
               <div>
-                <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-sky-400" />
-                  Suggested Patrol Route
-                </h4>
+                <p className="text-sm font-semibold text-sky-400 mb-2">
+                  🗺️ Suggested Route:
+                </p>
                 <div className="space-y-2">
-                  {guidance.suggested_route
-                    .sort((a, b) => a.order - b.order)
-                    .map((stop, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-sky-500/50 transition-all"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span className="text-white font-bold text-sm">{stop.order}</span>
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-1">
-                              <p className="font-semibold text-white">{stop.checkpoint}</p>
-                              <div className="flex items-center gap-1 text-xs text-slate-400">
-                                <Clock className="w-3 h-3" />
-                                {stop.estimated_time}
-                              </div>
-                            </div>
-                            <p className="text-sm text-slate-400">{stop.reason}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  {guidance.suggested_route.map((checkpoint, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm text-slate-300">
+                      <span className="w-6 h-6 rounded-full bg-sky-600 flex items-center justify-center text-white text-xs">
+                        {i + 1}
+                      </span>
+                      {checkpoint}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {guidance.time_based_tips?.length > 0 && (
-              <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg">
-                <h4 className="text-white font-semibold mb-2 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-sky-400" />
-                  Time-Based Tips (Now: {new Date().toLocaleTimeString()})
-                </h4>
-                <ul className="space-y-1">
-                  {guidance.time_based_tips.map((tip, idx) => (
-                    <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
-                      <span className="text-sky-400">→</span>
-                      <span>{tip}</span>
-                    </li>
-                  ))}
-                </ul>
+            {guidance.time_based_tips && (
+              <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                <p className="text-xs font-semibold text-purple-400 mb-1">
+                  <Clock className="w-3 h-3 inline mr-1" />
+                  Time-Based Tips:
+                </p>
+                <p className="text-sm text-slate-300">{guidance.time_based_tips}</p>
               </div>
             )}
-
-            <div className="pt-3 border-t border-slate-700">
-              <p className="text-xs text-slate-500 text-center">
-                Guidance updated {new Date().toLocaleTimeString()} • Based on {siteIncidents.length} incidents & {sitePatrols.length} patrols
-              </p>
-            </div>
-          </div>
+          </>
         )}
       </CardContent>
     </Card>

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles, MessageCircle } from "lucide-react";
+import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles, MessageCircle, Navigation } from "lucide-react";
 import LiveMap from "../components/dispatcher/LiveMap";
 import AlertPanel from "../components/dispatcher/AlertPanel";
 import ActiveGuardsPanel from "../components/dispatcher/ActiveGuardsPanel";
@@ -13,12 +13,14 @@ import DispatchAlarm from "../components/dispatcher/DispatchAlarm";
 import AIIncidentAnalysis from "../components/dispatcher/AIIncidentAnalysis";
 import AIRiskPredictor from "../components/analytics/AIRiskPredictor";
 import SupervisorChat from "../components/chat/SupervisorChat";
+import SupervisorPatrolPlanner from "../components/patrol/SupervisorPatrolPlanner";
 
 export default function ControlRoom() {
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
   const [showRiskPredictor, setShowRiskPredictor] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showPatrolPlanner, setShowPatrolPlanner] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -105,6 +107,13 @@ export default function ControlRoom() {
             </div>
           </div>
           <div className="flex gap-3">
+            <Button
+              onClick={() => setShowPatrolPlanner(true)}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Navigation className="w-5 h-5 mr-2" />
+              Create Patrol Plan
+            </Button>
             <Button
               onClick={() => setShowChat(true)}
               className="bg-purple-600 hover:bg-purple-700"
@@ -232,6 +241,10 @@ export default function ControlRoom() {
 
       {showChat && (
         <SupervisorChat user={user} onClose={() => setShowChat(false)} />
+      )}
+
+      {showPatrolPlanner && (
+        <SupervisorPatrolPlanner user={user} onClose={() => setShowPatrolPlanner(false)} />
       )}
     </div>
   );
