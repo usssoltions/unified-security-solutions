@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle, Upload, Video } from "lucide-react";
+import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle, Upload, Video, Play } from "lucide-react";
 import SignaturePad from "./SignaturePad";
 
 export default function IncidentForm({ user, shift, location, onClose, onSuccess }) {
@@ -43,6 +43,9 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
   const [videoRecording, setVideoRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [aiAssisting, setAiAssisting] = useState(false);
+  const [videoPreview, setVideoPreview] = useState(null);
+  const [recordedAudio, setRecordedAudio] = useState(null);
+  const videoPreviewRef = useRef(null);
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
@@ -93,7 +96,7 @@ VOICE NOTES: ${data.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
-      return await base44.entities.Incident.create({
+      const incident = await base44.entities.Incident.create({
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
         category: "other",
@@ -107,9 +110,60 @@ Officer Signature: Signed
         reported_at: data.date_time_of_incident,
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
+
+      // Send email notifications to all admins
+      try {
+        const admins = await base44.entities.User.filter({ role_type: 'admin' });
+        
+        for (const admin of admins) {
+          if (admin.email) {
+            await base44.integrations.Core.SendEmail({
+              to: admin.email,
+              subject: `🚨 Incident Report: ${data.incident_type} - ${shift?.site_name || 'Unknown Site'}`,
+              body: `
+<h2>New Incident Report Submitted</h2>
+
+<p><strong>Report #:</strong> ${data.incident_report_number}</p>
+<p><strong>Incident Type:</strong> ${data.incident_type}</p>
+<p><strong>Site:</strong> ${shift?.site_name || 'N/A'}</p>
+<p><strong>Guard:</strong> ${user.full_name}</p>
+<p><strong>Date/Time:</strong> ${new Date(data.date_time_of_incident).toLocaleString()}</p>
+<p><strong>Location:</strong> ${data.incident_location}</p>
+
+<h3>Incident Summary:</h3>
+<p>${data.incident_summary}</p>
+
+<h3>Details:</h3>
+<p>${data.who_what_when_details}</p>
+
+${data.victim_names ? `<p><strong>Victim(s):</strong> ${data.victim_names}</p>` : ''}
+${data.suspect_names ? `<p><strong>Suspect(s):</strong> ${data.suspect_names}</p>` : ''}
+${data.witness_names ? `<p><strong>Witness(es):</strong> ${data.witness_names}</p>` : ''}
+
+<h3>Officer Actions:</h3>
+<p>${data.officer_actions}</p>
+
+${data.police_called === 'Yes' ? `<p><strong>Police Called:</strong> Yes</p>` : ''}
+${data.police_names_badges ? `<p><strong>Police Officers:</strong> ${data.police_names_badges}</p>` : ''}
+
+${data.media.length > 0 ? `<p><strong>Media:</strong> ${data.media.length} file(s) attached</p>` : ''}
+${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_notes.length} recording(s)</p>` : ''}
+
+<p><strong>GPS Location:</strong> ${location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : 'Not available'}</p>
+
+<p>Log into the SecureGuard system to view full details and manage this incident.</p>
+              `
+            });
+          }
+        }
+      } catch (emailError) {
+        console.error("Failed to send email notifications:", emailError);
+      }
+
+      return incident;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["incidents"]);
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
       onSuccess();
     },
     onError: (error) => {
@@ -167,17 +221,8 @@ Officer Signature: Signed
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = async () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        const file = new File([blob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
-        
-        try {
-          const { file_url } = await base44.integrations.Core.UploadFile({ file });
-          setFormData(prev => ({
-            ...prev,
-            voice_notes: [...prev.voice_notes, file_url]
-          }));
-        } catch (error) {
-          alert("Failed to upload voice note");
-        }
+        const audioUrl = URL.createObjectURL(blob);
+        setRecordedAudio(audioUrl);
         
         stream.getTracks().forEach(track => track.stop());
       };
@@ -190,12 +235,41 @@ Officer Signature: Signed
     }
   };
 
+  const saveAudioRecording = async () => {
+    if (!recordedAudio) return;
+
+    try {
+      const response = await fetch(recordedAudio);
+      const blob = await response.blob();
+      const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+      
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setFormData(prev => ({
+        ...prev,
+        voice_notes: [...prev.voice_notes, file_url]
+      }));
+      
+      setRecordedAudio(null);
+      alert("Voice note saved!");
+    } catch (error) {
+      alert("Failed to save voice note");
+    }
+  };
+
   const startVideoRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: "environment" }, 
         audio: true 
       });
+      
+      if (videoPreviewRef.current) {
+        videoPreviewRef.current.srcObject = stream;
+        videoPreviewRef.current.play();
+      }
+      
+      setVideoPreview(stream);
+      
       const recorder = new MediaRecorder(stream);
       const chunks = [];
 
@@ -210,11 +284,13 @@ Officer Signature: Signed
             ...prev,
             media: [...prev.media, { type: 'video', url: file_url }]
           }));
+          alert("Video saved!");
         } catch (error) {
           alert("Failed to upload video");
         }
         
         stream.getTracks().forEach(track => track.stop());
+        setVideoPreview(null);
       };
 
       recorder.start();
@@ -526,6 +602,20 @@ Please provide:
 
               <div>
                 <label className="text-white font-medium block mb-2">Record Video (max 30 seconds)</label>
+                {videoRecording && videoPreview && (
+                  <div className="mb-2 relative">
+                    <video
+                      ref={videoPreviewRef}
+                      className="w-full h-48 bg-black rounded-lg"
+                      playsInline
+                      muted
+                    />
+                    <div className="absolute top-2 right-2 bg-rose-600 px-3 py-1 rounded-full flex items-center gap-2">
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+                      <span className="text-white text-sm font-bold">REC</span>
+                    </div>
+                  </div>
+                )}
                 <Button
                   type="button"
                   onClick={videoRecording ? stopRecording : startVideoRecording}
@@ -547,26 +637,55 @@ Please provide:
 
               <div>
                 <label className="text-white font-medium block mb-2">Voice Notes</label>
-                <Button
-                  type="button"
-                  onClick={recording ? stopRecording : startAudioRecording}
-                  className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                >
-                  {recording ? (
-                    <>
-                      <StopCircle className="w-5 h-5 mr-2 animate-pulse" />
-                      Stop Recording
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-5 h-5 mr-2" />
-                      Record Voice Note
-                    </>
-                  )}
-                </Button>
+                {recordedAudio && (
+                  <div className="mb-2 p-3 bg-slate-900/50 rounded-lg border border-emerald-500/20">
+                    <audio src={recordedAudio} controls className="w-full mb-2" />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={saveAudioRecording}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                      >
+                        Save Voice Note
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRecordedAudio(null)}
+                        className="border-slate-600"
+                      >
+                        Discard
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {!recordedAudio && (
+                  <Button
+                    type="button"
+                    onClick={recording ? stopRecording : startAudioRecording}
+                    className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                  >
+                    {recording ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+                          <Mic className="w-5 h-5" />
+                          <span>Recording... Tap to Stop</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-5 h-5 mr-2" />
+                        Record Voice Note
+                      </>
+                    )}
+                  </Button>
+                )}
                 {formData.voice_notes.length > 0 && (
                   <p className="text-sm text-emerald-400 mt-2">
-                    {formData.voice_notes.length} voice note(s) recorded
+                    ✓ {formData.voice_notes.length} voice note(s) saved
                   </p>
                 )}
               </div>
