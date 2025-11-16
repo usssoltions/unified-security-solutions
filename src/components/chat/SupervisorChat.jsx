@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageCircle, Send, Mic, StopCircle, X, Users, Radio, Volume2 } from "lucide-react";
+import { MessageCircle, Send, Mic, StopCircle, X, Users, Radio, Volume2, Phone } from "lucide-react";
+import VoiceCall from "./VoiceCall";
 
 export default function SupervisorChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -17,6 +18,7 @@ export default function SupervisorChat({ user, onClose }) {
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordedAudio, setRecordedAudio] = useState(null);
+  const [activeCall, setActiveCall] = useState(null);
   const messagesEndRef = useRef(null);
   const queryClient = useQueryClient();
 
@@ -127,11 +129,30 @@ export default function SupervisorChat({ user, onClose }) {
     });
   };
 
+  const initiateCall = (guard) => {
+    setActiveCall({
+      caller: user,
+      recipient: guard,
+      isInitiator: true
+    });
+  };
+
   const priorityColors = {
     normal: "bg-slate-700",
     urgent: "bg-amber-600",
     emergency: "bg-rose-600"
   };
+
+  if (activeCall) {
+    return (
+      <VoiceCall
+        caller={activeCall.caller}
+        recipient={activeCall.recipient}
+        isInitiator={activeCall.isInitiator}
+        onEnd={() => setActiveCall(null)}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-900/95 z-50 flex flex-col">
@@ -175,16 +196,30 @@ export default function SupervisorChat({ user, onClose }) {
           )}
 
           {broadcastType === "specific_user" && (
-            <Select value={selectedGuard} onValueChange={setSelectedGuard}>
-              <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                <SelectValue placeholder="Select guard..." />
-              </SelectTrigger>
-              <SelectContent>
-                {guards.map(guard => (
-                  <SelectItem key={guard.id} value={guard.id}>{guard.full_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={selectedGuard} onValueChange={setSelectedGuard}>
+                <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                  <SelectValue placeholder="Select guard..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {guards.map(guard => (
+                    <SelectItem key={guard.id} value={guard.id}>{guard.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedGuard && (
+                <Button
+                  onClick={() => {
+                    const guard = guards.find(g => g.id === selectedGuard);
+                    if (guard) initiateCall(guard);
+                  }}
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Phone className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
           )}
 
           <Select value={priority} onValueChange={setPriority}>

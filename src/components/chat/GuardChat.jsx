@@ -5,13 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, Send, Mic, StopCircle, Play, X, AlertCircle, Volume2 } from "lucide-react";
+import { MessageCircle, Send, Mic, StopCircle, Play, X, AlertCircle, Volume2, Phone } from "lucide-react";
+import VoiceCall from "./VoiceCall";
 
 export default function GuardChat({ user, onClose }) {
   const [message, setMessage] = useState("");
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordedAudio, setRecordedAudio] = useState(null);
+  const [activeCall, setActiveCall] = useState(null);
   const messagesEndRef = useRef(null);
   const queryClient = useQueryClient();
 
@@ -68,7 +70,6 @@ export default function GuardChat({ user, onClose }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     
-    // Mark unread messages as read
     messages.forEach(msg => {
       if (msg.recipient_id === user.id && !msg.read_by?.includes(user.id)) {
         markAsReadMutation.mutate(msg.id);
@@ -146,11 +147,30 @@ export default function GuardChat({ user, onClose }) {
     });
   };
 
+  const initiateCall = (supervisor) => {
+    setActiveCall({
+      caller: user,
+      recipient: supervisor,
+      isInitiator: true
+    });
+  };
+
   const priorityColors = {
     normal: "bg-slate-700",
     urgent: "bg-amber-600",
     emergency: "bg-rose-600"
   };
+
+  if (activeCall) {
+    return (
+      <VoiceCall
+        caller={activeCall.caller}
+        recipient={activeCall.recipient}
+        isInitiator={activeCall.isInitiator}
+        onEnd={() => setActiveCall(null)}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-900/95 z-50 flex flex-col">
@@ -162,9 +182,21 @@ export default function GuardChat({ user, onClose }) {
             <p className="text-xs text-slate-400">Real-time communication</p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="w-5 h-5 text-white" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {supervisors.length > 0 && (
+            <Button
+              onClick={() => initiateCall(supervisors[0])}
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              <Phone className="w-4 h-4 mr-2" />
+              Call Control Room
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="w-5 h-5 text-white" />
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
