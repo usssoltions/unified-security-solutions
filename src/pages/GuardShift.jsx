@@ -35,7 +35,7 @@ import AutoReportGenerator from "../components/reports/AutoReportGenerator";
 import GeneratedReportsView from "../components/reports/GeneratedReportsView";
 import MobileOptimizedGuardNav from "../components/MobileOptimizedGuardNav";
 import MobileInstallPrompt from "../components/MobileInstallPrompt";
-import PatrolReminderAlert from "../components/guard/PatrolReminderAlert";
+import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
 
 export default function GuardShift() {
@@ -44,7 +44,7 @@ export default function GuardShift() {
   const [user, setUser] = useState(null);
   const [location, setLocation] = useState(null);
   const [showStayAwake, setShowStayAwake] = useState(false);
-  const [showPatrolReminder, setShowPatrolReminder] = useState(false);
+  const [showPatrolRoute, setShowPatrolRoute] = useState(false);
   const [showForceSignOut, setShowForceSignOut] = useState(false);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -227,7 +227,7 @@ export default function GuardShift() {
     return () => clearInterval(intervalId);
   }, [user, activeShift]);
 
-  // Patrol Reminder System
+  // Patrol Route Reminder System
   useEffect(() => {
     if (!user || !activeShift || !user.patrol_reminder_enabled) return;
 
@@ -237,7 +237,7 @@ export default function GuardShift() {
 
       if (!lastPatrolCheck.current || (now - lastPatrolCheck.current) >= interval) {
         lastPatrolCheck.current = now;
-        setShowPatrolReminder(true);
+        setShowPatrolRoute(true);
       }
     };
 
@@ -407,13 +407,13 @@ export default function GuardShift() {
         />
       )}
 
-      {showPatrolReminder && (
-        <PatrolReminderAlert
+      {showPatrolRoute && (
+        <PatrolRouteGuidance
           user={user}
           shift={activeShift}
           location={location}
           onDismiss={() => {
-            setShowPatrolReminder(false);
+            setShowPatrolRoute(false);
             lastPatrolCheck.current = Date.now();
           }}
         />

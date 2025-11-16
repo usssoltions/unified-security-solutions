@@ -1,74 +1,66 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Clock, MapPin, Shield, Loader2, AlertCircle, Lock } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { MapPin, Navigation, Shield, Clock, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 
 export default function ClockInOut({ user, location }) {
   const queryClient = useQueryClient();
-  const [error, setError] = useState(null);
-  const [assignedSite, setAssignedSite] = useState(null);
-  const [geofenceValid, setGeofenceValid] = useState(false);
-  const [distanceToSite, setDistanceToSite] = useState(null);
   const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [distance, setDistance] = useState(null);
+  const [isWithinGeofence, setIsWithinGeofence] = useState(false);
 
-  const { data: assignedShift } = useQuery({
+  const { data: assignedShift, isLoading } = useQuery({
     queryKey: ["assignedShift", user?.id],
     queryFn: async () => {
+      if (!user) return null;
+      
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
       const shifts = await base44.entities.Shift.filter({
         guard_id: user.id,
-        status: "scheduled"
-      }, "start_time", 1);
+        status: { $in: ["scheduled", "accepted"] }
+      });
       
-      return shifts[0] || null;
+      // Find shift for today
+      const todayShift = shifts.find(s => {
+        const shiftDate = new Date(s.start_time);
+        const shiftDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate());
+        return shiftDay.getTime() === today.getTime();
+      });
+      
+      return todayShift || null;
     },
     enabled: !!user,
-    initialData: null
+    refetchInterval: 10000
+  });
+
+  const { data: assignedSite } = useQuery({
+    queryKey: ["assignedSite", assignedShift?.site_id],
+    queryFn: async () => {
+      if (!assignedShift?.site_id) return null;
+      return await base44.entities.Site.get(assignedShift.site_id);
+    },
+    enabled: !!assignedShift?.site_id
   });
 
   useEffect(() => {
-    if (assignedShift && location) {
-      loadAssignedSite();
+    if (assignedSite && location) {
+      const dist = calculateDistance(
+        location.lat,
+        location.lng,
+        assignedSite.location.lat,
+        assignedSite.location.lng
+      );
+      setDistance(dist);
+      setIsWithinGeofence(dist <= (assignedSite.geofence_radius || 100));
     }
-  }, [assignedShift, location]);
-
-  const loadAssignedSite = async () => {
-    if (!assignedShift?.site_id) return;
-    
-    try {
-      const site = await base44.entities.Site.get(assignedShift.site_id);
-      setAssignedSite(site);
-      
-      if (site.location && location) {
-        const distance = calculateDistance(
-          location.lat,
-          location.lng,
-          site.location.lat,
-          site.location.lng
-        );
-        
-        setDistanceToSite(distance);
-        
-        const radius = site.geofence_radius || 100;
-        const isValid = distance <= radius;
-        setGeofenceValid(isValid);
-        
-        if (!isValid) {
-          setError(
-            `You are ${Math.round(distance)}m from ${site.name}. You must be within ${radius}m to clock in.`
-          );
-        } else {
-          setError(null);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load assigned site:", err);
-      setError("Failed to load your assigned site");
-    }
-  };
+  }, [assignedSite, location]);
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371e3;
@@ -85,29 +77,26 @@ export default function ClockInOut({ user, location }) {
     return R * c;
   };
 
-  const validatePin = () => {
-    const userPin = user.security_pin || "1234";
-    return pin === userPin;
+  const validatePin = (enteredPin) => {
+    if (!user.security_pin) return true;
+    return enteredPin === user.security_pin;
   };
 
   const clockInMutation = useMutation({
     mutationFn: async () => {
       if (!location) {
-        throw new Error("Location services must be enabled");
+        throw new Error("Location services must be enabled to clock in");
       }
 
-      if (!assignedShift) {
-        throw new Error("No scheduled shift found for you");
+      if (!isWithinGeofence) {
+        throw new Error(`You must be within ${assignedSite.geofence_radius || 100}m of the site to clock in`);
       }
 
-      if (!geofenceValid) {
-        throw new Error(`You must be within ${assignedSite?.geofence_radius || 100}m of ${assignedSite?.name || 'your assigned site'}`);
+      if (!validatePin(pin)) {
+        throw new Error("Invalid security PIN");
       }
 
-      if (!validatePin()) {
-        throw new Error("Invalid PIN. Please check your PIN and try again.");
-      }
-
+      // Update shift to active status
       await base44.entities.Shift.update(assignedShift.id, {
         status: "active",
         clock_in: {
@@ -117,63 +106,51 @@ export default function ClockInOut({ user, location }) {
         }
       });
 
+      // Update user authentication state
       await base44.auth.updateMe({
         is_clocked_in: true,
         current_shift_id: assignedShift.id,
+        last_clock_in: new Date().toISOString(),
         last_location: {
           ...location,
           timestamp: new Date().toISOString()
         }
       });
-
-      return assignedShift;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(["activeShift"]);
-      window.location.reload();
-    },
-    onError: (err) => {
-      setError(err.message);
-      setPin("");
-    }
-  });
-
-  const clockOutMutation = useMutation({
-    mutationFn: async () => {
-      if (!location) {
-        throw new Error("Location services must be enabled");
-      }
-
-      const shift = await base44.entities.Shift.get(user.current_shift_id);
-
-      await base44.entities.Shift.update(shift.id, {
-        status: "completed",
-        clock_out: {
-          timestamp: new Date().toISOString(),
-          location: location
-        }
-      });
-
-      await base44.auth.updateMe({
-        is_clocked_in: false,
-        current_shift_id: null
-      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries();
       window.location.reload();
+    },
+    onError: (error) => {
+      setPinError(error.message);
     }
   });
 
+  const handleClockIn = () => {
+    setPinError("");
+    clockInMutation.mutate();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
+      </div>
+    );
+  }
+
   if (!assignedShift) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="w-full max-w-md bg-slate-800/50 border-slate-700">
-          <CardContent className="py-12 text-center">
-            <Shield className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-            <p className="text-white text-lg mb-2">No Scheduled Shift</p>
-            <p className="text-slate-400">
-              You don't have any scheduled shifts at this time. Please contact your dispatcher.
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <Card className="max-w-md w-full bg-slate-800/50 border-slate-700">
+          <CardContent className="pt-12 pb-12 text-center">
+            <Clock className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-white mb-2">No Shift Assigned</h2>
+            <p className="text-slate-400 mb-4">
+              You don't have any shifts scheduled for today.
+            </p>
+            <p className="text-sm text-slate-500">
+              Please contact your supervisor if you believe this is an error.
             </p>
           </CardContent>
         </Card>
@@ -182,128 +159,106 @@ export default function ClockInOut({ user, location }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-slate-800/50 border-slate-700">
+    <div className="flex items-center justify-center min-h-screen p-4">
+      <Card className="max-w-md w-full bg-gradient-to-br from-sky-500/10 to-sky-600/10 border-sky-500/30">
         <CardHeader className="text-center">
-          <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-sky-400 to-sky-600 rounded-full flex items-center justify-center">
+          <div className="w-20 h-20 bg-sky-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <Shield className="w-10 h-10 text-white" />
           </div>
-          <CardTitle className="text-2xl text-white">
-            {user.is_clocked_in ? "Clock Out" : "Clock In"}
-          </CardTitle>
-          <p className="text-slate-400 mt-2">
-            {user.is_clocked_in 
-              ? "End your shift and log your final location" 
-              : "Start your shift - must be at assigned site"}
-          </p>
+          <CardTitle className="text-2xl text-white">Clock In to Start Shift</CardTitle>
+          <p className="text-slate-400 mt-2">{assignedSite?.name || "Loading site..."}</p>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
 
-          {assignedSite && (
-            <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">Your Assigned Site</p>
-              <p className="text-white font-semibold text-lg">{assignedSite.name}</p>
-              <p className="text-xs text-slate-500 mt-1">{assignedSite.address}</p>
-            </div>
-          )}
-
-          <div className="space-y-3 p-4 bg-slate-900/50 rounded-lg">
-            <div className="flex items-center gap-3 text-slate-300">
-              <Clock className="w-5 h-5 text-sky-400" />
+        <CardContent className="space-y-6">
+          <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+            <div className="flex items-start gap-3">
+              <Clock className="w-5 h-5 text-sky-400 mt-1" />
               <div>
-                <p className="text-sm text-slate-400">Current Time</p>
-                <p className="font-semibold text-white">
-                  {new Date().toLocaleTimeString()}
+                <p className="text-sm text-slate-400">Shift Time</p>
+                <p className="text-white font-semibold">
+                  {new Date(assignedShift.start_time).toLocaleTimeString()} - 
+                  {new Date(assignedShift.end_time).toLocaleTimeString()}
                 </p>
               </div>
-            </div>
-
-            <div className="flex items-center gap-3 text-slate-300">
-              <MapPin className="w-5 h-5 text-emerald-400" />
-              <div className="flex-1">
-                <p className="text-sm text-slate-400">GPS Location</p>
-                <p className="font-semibold text-white">
-                  {location 
-                    ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`
-                    : "Acquiring..."}
-                </p>
-                {assignedSite && distanceToSite !== null && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    Distance to site: {Math.round(distanceToSite)}m
-                  </p>
-                )}
-              </div>
-              {geofenceValid && !user.is_clocked_in && (
-                <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
-              )}
             </div>
           </div>
 
-          {!user.is_clocked_in && !geofenceValid && location && assignedSite && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="text-sm">
-                Move closer to {assignedSite.name} to clock in. You must be within{" "}
-                {assignedSite.geofence_radius || 100}m of the site.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {!user.is_clocked_in && (
-            <div className="space-y-2">
-              <label className="text-sm text-slate-400 flex items-center gap-2">
-                <Lock className="w-4 h-4" />
-                Enter your 4-digit PIN
-              </label>
-              <Input
-                type="password"
-                placeholder="• • • •"
-                maxLength={4}
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                className="bg-slate-900 border-slate-700 text-white text-center text-2xl tracking-widest"
-                autoFocus
-              />
-              <p className="text-xs text-slate-500 text-center">
-                Default PIN: 1234 (contact admin to change)
-              </p>
+          <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+            <div className="flex items-start gap-3">
+              <MapPin className="w-5 h-5 text-emerald-400 mt-1" />
+              <div className="flex-1">
+                <p className="text-sm text-slate-400 mb-2">Location Status</p>
+                {!location ? (
+                  <Badge className="bg-rose-500">GPS Not Available</Badge>
+                ) : !isWithinGeofence ? (
+                  <div>
+                    <Badge className="bg-orange-500 mb-2">Outside Geofence</Badge>
+                    <p className="text-sm text-slate-400">
+                      Distance: {Math.round(distance)}m (must be within {assignedSite?.geofence_radius || 100}m)
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <Badge className="bg-emerald-500 mb-2">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Within Site Area
+                    </Badge>
+                    <p className="text-sm text-slate-400">
+                      Distance: {Math.round(distance)}m from site
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          </div>
+
+          <div>
+            <label className="text-white font-medium block mb-2">
+              Security PIN {user.security_pin && "*"}
+            </label>
+            <Input
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value);
+                setPinError("");
+              }}
+              placeholder="Enter your PIN"
+              className="bg-slate-900 border-slate-700 text-white text-center text-2xl tracking-widest"
+              maxLength={4}
+            />
+            {pinError && (
+              <div className="flex items-center gap-2 mt-2 text-rose-400 text-sm">
+                <AlertTriangle className="w-4 h-4" />
+                {pinError}
+              </div>
+            )}
+          </div>
 
           <Button
-            className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
-            onClick={() => user.is_clocked_in ? clockOutMutation.mutate() : clockInMutation.mutate()}
-            disabled={
-              !location || 
-              clockInMutation.isPending || 
-              clockOutMutation.isPending ||
-              (!user.is_clocked_in && !geofenceValid) ||
-              (!user.is_clocked_in && pin.length !== 4)
-            }
+            onClick={handleClockIn}
+            disabled={clockInMutation.isPending || !location || !isWithinGeofence || (user.security_pin && pin.length !== 4)}
+            className="w-full h-14 text-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
           >
-            {(clockInMutation.isPending || clockOutMutation.isPending) ? (
+            {clockInMutation.isPending ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Processing...
+                Clocking In...
               </>
-            ) : user.is_clocked_in ? (
-              "Clock Out"
             ) : (
-              "Clock In with PIN"
+              <>
+                <Navigation className="w-5 h-5 mr-2" />
+                Clock In Now
+              </>
             )}
           </Button>
 
-          <p className="text-xs text-center text-slate-500">
-            {user.is_clocked_in 
-              ? "Location and time will be recorded"
-              : "Geofence validation required • PIN authentication"}
-          </p>
+          {!location && (
+            <p className="text-sm text-center text-amber-400">
+              ⚠️ Please enable location services to clock in
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

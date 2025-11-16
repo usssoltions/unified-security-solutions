@@ -44,7 +44,6 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
 
   const playLoudAlarm = () => {
     try {
-      // Create a loud, continuous alarm sound
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -53,12 +52,11 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
       gainNode.connect(audioContext.destination);
       
       oscillator.type = 'square';
-      oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // High pitched alarm
-      gainNode.gain.setValueAtTime(1.0, audioContext.currentTime); // Max volume
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      gainNode.gain.setValueAtTime(1.0, audioContext.currentTime);
       
       oscillator.start();
       
-      // Alternate frequency for siren effect
       setInterval(() => {
         oscillator.frequency.setValueAtTime(
           oscillator.frequency.value === 880 ? 440 : 880,
@@ -68,13 +66,12 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
       
       audioRef.current = { audioContext, oscillator, gainNode };
 
-      // Also try to play notification sound if available
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification('⚡ STAY AWAKE CHECK!', {
           body: 'Confirm you are alert immediately!',
           requireInteraction: true,
           tag: 'stay-awake',
-          vibrate: [200, 100, 200, 100, 200]
+          vibrate: [500, 200, 500, 200, 500]
         });
       }
     } catch (error) {
@@ -117,7 +114,6 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
       status: "active"
     });
 
-    // Send to all supervisors/admins
     const admins = await base44.entities.User.filter({
       role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
     });
