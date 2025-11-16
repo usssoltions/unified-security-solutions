@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles, MessageCircle, Navigation, GraduationCap } from "lucide-react";
+import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles, MessageCircle, Navigation, GraduationCap, FileText } from "lucide-react";
 import LiveMap from "../components/dispatcher/LiveMap";
 import AlertPanel from "../components/dispatcher/AlertPanel";
 import ActiveGuardsPanel from "../components/dispatcher/ActiveGuardsPanel";
@@ -15,6 +16,7 @@ import AIRiskPredictor from "../components/analytics/AIRiskPredictor";
 import SupervisorChat from "../components/chat/SupervisorChat";
 import SupervisorPatrolPlanner from "../components/patrol/SupervisorPatrolPlanner";
 import SupervisorTrainingManager from "../components/training/SupervisorTrainingManager";
+import ReportTemplateManager from "../components/reports/ReportTemplateManager";
 
 export default function ControlRoom() {
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
@@ -23,6 +25,7 @@ export default function ControlRoom() {
   const [showChat, setShowChat] = useState(false);
   const [showPatrolPlanner, setShowPatrolPlanner] = useState(false);
   const [showTrainingManager, setShowTrainingManager] = useState(false);
+  const [showReportTemplates, setShowReportTemplates] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -108,38 +111,31 @@ export default function ControlRoom() {
               <p className="text-slate-400">Real-time fleet monitoring & dispatch</p>
             </div>
           </div>
-          <div className="flex gap-3">
-            <Button
-              onClick={() => setShowTrainingManager(true)}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={() => setShowReportTemplates(true)} className="bg-purple-600 hover:bg-purple-700">
+              <FileText className="w-5 h-5 mr-2" />
+              Report Templates
+            </Button>
+            <Button onClick={() => setShowTrainingManager(true)} className="bg-purple-600 hover:bg-purple-700">
               <GraduationCap className="w-5 h-5 mr-2" />
-              Training Manager
+              Training
             </Button>
-            <Button
-              onClick={() => setShowPatrolPlanner(true)}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
+            <Button onClick={() => setShowPatrolPlanner(true)} className="bg-purple-600 hover:bg-purple-700">
               <Navigation className="w-5 h-5 mr-2" />
-              Create Patrol Plan
+              Patrol Plans
             </Button>
-            <Button
-              onClick={() => setShowChat(true)}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
+            <Button onClick={() => setShowChat(true)} className="bg-purple-600 hover:bg-purple-700">
               <MessageCircle className="w-5 h-5 mr-2" />
-              Team Chat
+              Chat
               {unreadMessages > 0 && (
                 <Badge className="ml-2 bg-rose-500">{unreadMessages}</Badge>
               )}
             </Button>
-            <Button
-              onClick={() => setShowRiskPredictor(!showRiskPredictor)}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
+            <Button onClick={() => setShowRiskPredictor(!showRiskPredictor)} className="bg-purple-600 hover:bg-purple-700">
               <Sparkles className="w-5 h-5 mr-2" />
-              {showRiskPredictor ? "Hide" : "Show"} AI Risk
+              AI Risk
             </Button>
+            {/* Keeping AI Analysis button as its state and modal are still present in the outline */}
             <Button
               onClick={() => setShowAIAnalysis(true)}
               className="bg-purple-600 hover:bg-purple-700"
@@ -147,12 +143,9 @@ export default function ControlRoom() {
               <Sparkles className="w-5 h-5 mr-2" />
               AI Analysis
             </Button>
-            <Button
-              onClick={() => setShowDispatchAlarm(true)}
-              className="bg-rose-600 hover:bg-rose-700"
-            >
+            <Button onClick={() => setShowDispatchAlarm(true)} className="bg-rose-600 hover:bg-rose-700">
               <AlertTriangle className="w-5 h-5 mr-2" />
-              Dispatch Alarm
+              Dispatch
             </Button>
           </div>
         </div>
@@ -258,6 +251,10 @@ export default function ControlRoom() {
 
       {showTrainingManager && (
         <SupervisorTrainingManager user={user} onClose={() => setShowTrainingManager(false)} />
+      )}
+
+      {showReportTemplates && (
+        <ReportTemplateManager user={user} onClose={() => setShowReportTemplates(false)} />
       )}
     </div>
   );
