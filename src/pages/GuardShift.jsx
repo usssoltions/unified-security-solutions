@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,7 +14,8 @@ import {
   CheckCircle2,
   Navigation,
   Wrench,
-  ChevronRight
+  ChevronRight,
+  MessageCircle
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
@@ -26,6 +28,7 @@ import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import LocationTracker from "../components/guard/LocationTracker";
 import ShiftEndNotification from "../components/guard/ShiftEndNotification";
 import AIPatrolGuidance from "../components/guard/AIPatrolGuidance";
+import GuardChat from "../components/chat/GuardChat";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -36,6 +39,7 @@ export default function GuardShift() {
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [forceDailyReport, setForceDailyReport] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -158,6 +162,21 @@ export default function GuardShift() {
     retry: 3
   });
 
+  const { data: unreadMessages = 0 } = useQuery({
+    queryKey: ["unreadMessages", user?.id],
+    queryFn: async () => {
+      if (!user) return 0;
+      const allMessages = await base44.entities.ChatMessage.list("-created_date", 50);
+      const myMessages = allMessages.filter(m => 
+        (m.recipient_id === user.id || m.is_broadcast) && 
+        !m.read_by?.includes(user.id)
+      );
+      return myMessages.length;
+    },
+    enabled: !!user,
+    refetchInterval: 5000
+  });
+
   useEffect(() => {
     if (user && user.is_clocked_in && user.needs_daily_report) {
       setForceDailyReport(true);
@@ -242,6 +261,21 @@ export default function GuardShift() {
         shift={activeShift} 
         enabled={!!activeShift && user.is_clocked_in} 
       />
+
+      {/* Floating Chat Button */}
+      <Button
+        onClick={() => setShowChat(true)}
+        className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-sky-600 hover:bg-sky-700 shadow-2xl z-40"
+      >
+        <MessageCircle className="w-6 h-6" />
+        {unreadMessages > 0 && (
+          <Badge className="absolute -top-2 -right-2 bg-rose-500 h-6 w-6 p-0 flex items-center justify-center">
+            {unreadMessages}
+          </Badge>
+        )}
+      </Button>
+
+      {showChat && <GuardChat user={user} onClose={() => setShowChat(false)} />}
 
       {showStayAwake && (
         <StayAwakeAlert

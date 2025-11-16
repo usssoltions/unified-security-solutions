@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles } from "lucide-react";
+import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles, MessageCircle } from "lucide-react";
 import LiveMap from "../components/dispatcher/LiveMap";
 import AlertPanel from "../components/dispatcher/AlertPanel";
 import ActiveGuardsPanel from "../components/dispatcher/ActiveGuardsPanel";
@@ -12,11 +12,13 @@ import IncidentQueue from "../components/dispatcher/IncidentQueue";
 import DispatchAlarm from "../components/dispatcher/DispatchAlarm";
 import AIIncidentAnalysis from "../components/dispatcher/AIIncidentAnalysis";
 import AIRiskPredictor from "../components/analytics/AIRiskPredictor";
+import SupervisorChat from "../components/chat/SupervisorChat";
 
 export default function ControlRoom() {
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
   const [showRiskPredictor, setShowRiskPredictor] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -67,6 +69,20 @@ export default function ControlRoom() {
     initialData: []
   });
 
+  const { data: unreadMessages = 0 } = useQuery({
+    queryKey: ["unreadMessages"],
+    queryFn: async () => {
+      if (!user) return 0;
+      const allMessages = await base44.entities.ChatMessage.list("-created_date", 50);
+      const myMessages = allMessages.filter(m => 
+        m.recipient_id === user.id && !m.read_by?.includes(user.id)
+      );
+      return myMessages.length;
+    },
+    enabled: !!user,
+    refetchInterval: 5000
+  });
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -89,6 +105,16 @@ export default function ControlRoom() {
             </div>
           </div>
           <div className="flex gap-3">
+            <Button
+              onClick={() => setShowChat(true)}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <MessageCircle className="w-5 h-5 mr-2" />
+              Team Chat
+              {unreadMessages > 0 && (
+                <Badge className="ml-2 bg-rose-500">{unreadMessages}</Badge>
+              )}
+            </Button>
             <Button
               onClick={() => setShowRiskPredictor(!showRiskPredictor)}
               className="bg-purple-600 hover:bg-purple-700"
@@ -202,6 +228,10 @@ export default function ControlRoom() {
         <AIIncidentAnalysis
           onClose={() => setShowAIAnalysis(false)}
         />
+      )}
+
+      {showChat && (
+        <SupervisorChat user={user} onClose={() => setShowChat(false)} />
       )}
     </div>
   );
