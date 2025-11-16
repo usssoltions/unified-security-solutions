@@ -5,10 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle } from "lucide-react";
+import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle, Upload, Video } from "lucide-react";
 import SignaturePad from "./SignaturePad";
 
 export default function IncidentForm({ user, shift, location, onClose, onSuccess }) {
+  const incidentTypes = [
+    "Fire", "Theft", "Vandalism", "Medical Emergency", "Trespassing", 
+    "Suspicious Activity", "Equipment Failure", "Safety Hazard", "Other"
+  ];
+
   const [formData, setFormData] = useState({
     incident_report_number: Date.now().toString(),
     date_time_of_incident: new Date().toISOString().slice(0, 16),
@@ -35,6 +40,7 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
   const [uploading, setUploading] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [videoRecording, setVideoRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [aiAssisting, setAiAssisting] = useState(false);
   const queryClient = useQueryClient();
@@ -81,12 +87,13 @@ ${data.police_names_badges ? `Police Name(s) & Badge(s): ${data.police_names_bad
 ${data.fire_truck_number ? `Fire Truck Number: ${data.fire_truck_number}` : ''}
 ${data.ambulance_number ? `Ambulance Number: ${data.ambulance_number}` : ''}
 
-PHOTOS: ${data.media.length} photo(s) attached
+PHOTOS: ${data.media.filter(m => m.type === 'photo').length} photo(s) attached
+VIDEOS: ${data.media.filter(m => m.type === 'video').length} video(s) attached
 VOICE NOTES: ${data.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
-      const incident = await base44.entities.Incident.create({
+      return await base44.entities.Incident.create({
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
         category: "other",
@@ -100,24 +107,6 @@ Officer Signature: Signed
         reported_at: data.date_time_of_incident,
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
-
-      // Send real-time notifications
-      const allUsers = await base44.entities.User.list();
-      const recipients = allUsers.filter(u => 
-        ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type)
-      );
-
-      for (const recipient of recipients) {
-        if (recipient.email) {
-          await base44.integrations.Core.SendEmail({
-            to: recipient.email,
-            subject: `🚨 INCIDENT REPORT: ${data.incident_type} - ${shift?.site_name}`,
-            body: reportContent
-          });
-        }
-      }
-
-      return incident;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["incidents"]);
@@ -128,29 +117,48 @@ Officer Signature: Signed
     }
   });
 
-  const handleMediaCapture = async (e) => {
+  const handlePhotoCapture = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
     setUploading(true);
     try {
-      const uploadedMedia = [];
       for (const file of files) {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        uploadedMedia.push({ type: 'photo', url: file_url });
+        setFormData(prev => ({
+          ...prev,
+          media: [...prev.media, { type: 'photo', url: file_url }]
+        }));
       }
-      setFormData({
-        ...formData,
-        media: [...formData.media, ...uploadedMedia]
-      });
     } catch (error) {
-      alert("Failed to upload media");
+      alert("Failed to upload photo");
     } finally {
       setUploading(false);
     }
   };
 
-  const startRecording = async () => {
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const type = file.type.startsWith('video') ? 'video' : 'photo';
+        setFormData(prev => ({
+          ...prev,
+          media: [...prev.media, { type, url: file_url }]
+        }));
+      }
+    } catch (error) {
+      alert("Failed to upload file");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const startAudioRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -182,10 +190,52 @@ Officer Signature: Signed
     }
   };
 
+  const startVideoRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "environment" }, 
+        audio: true 
+      });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const file = new File([blob], `video-${Date.now()}.webm`, { type: 'video/webm' });
+        
+        try {
+          const { file_url } = await base44.integrations.Core.UploadFile({ file });
+          setFormData(prev => ({
+            ...prev,
+            media: [...prev.media, { type: 'video', url: file_url }]
+          }));
+        } catch (error) {
+          alert("Failed to upload video");
+        }
+        
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setVideoRecording(true);
+      
+      setTimeout(() => {
+        if (recorder.state === 'recording') {
+          stopRecording();
+        }
+      }, 30000);
+    } catch (error) {
+      alert("Failed to access camera");
+    }
+  };
+
   const stopRecording = () => {
     if (mediaRecorder) {
       mediaRecorder.stop();
       setRecording(false);
+      setVideoRecording(false);
       setMediaRecorder(null);
     }
   };
@@ -301,13 +351,17 @@ Please provide:
 
               <div>
                 <label className="text-white font-medium block mb-2">Incident Type *</label>
-                <Input
+                <select
                   value={formData.incident_type}
                   onChange={(e) => setFormData({ ...formData, incident_type: e.target.value })}
-                  placeholder="e.g., Theft, Trespassing, etc."
-                  className="bg-slate-900 border-slate-700 text-white"
+                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
                   required
-                />
+                >
+                  <option value="">Select incident type...</option>
+                  {incidentTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -436,31 +490,67 @@ Please provide:
                   accept="image/*"
                   capture="environment"
                   multiple
-                  onChange={handleMediaCapture}
+                  onChange={handlePhotoCapture}
                   className="hidden"
-                  id="incident-photos"
+                  id="photo-capture"
                 />
-                <label htmlFor="incident-photos">
-                  <div className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center cursor-pointer hover:border-sky-500">
-                    <Camera className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                    <p className="text-sm text-slate-400">{uploading ? "Uploading..." : "Take/Upload Photos"}</p>
-                  </div>
+                <label htmlFor="photo-capture">
+                  <Button type="button" className="w-full bg-sky-600 hover:bg-sky-700" asChild>
+                    <div>
+                      <Camera className="w-4 h-4 mr-2" />
+                      {uploading ? "Uploading..." : "Take Photo with Camera"}
+                    </div>
+                  </Button>
                 </label>
-                {formData.media.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2 mt-3">
-                    {formData.media.map((item, idx) => (
-                      <img key={idx} src={item.url} alt="Evidence" className="w-full h-24 object-cover rounded" />
-                    ))}
-                  </div>
-                )}
+              </div>
+
+              <div>
+                <label className="text-white font-medium block mb-2">Upload Media</label>
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label htmlFor="file-upload">
+                  <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
+                    <div>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload Photos/Videos from Gallery
+                    </div>
+                  </Button>
+                </label>
+              </div>
+
+              <div>
+                <label className="text-white font-medium block mb-2">Record Video (max 30 seconds)</label>
+                <Button
+                  type="button"
+                  onClick={videoRecording ? stopRecording : startVideoRecording}
+                  className={`w-full ${videoRecording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                >
+                  {videoRecording ? (
+                    <>
+                      <StopCircle className="w-5 h-5 mr-2 animate-pulse" />
+                      Stop Recording Video
+                    </>
+                  ) : (
+                    <>
+                      <Video className="w-5 h-5 mr-2" />
+                      Record Video
+                    </>
+                  )}
+                </Button>
               </div>
 
               <div>
                 <label className="text-white font-medium block mb-2">Voice Notes</label>
                 <Button
                   type="button"
-                  onClick={recording ? stopRecording : startRecording}
-                  className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'}`}
+                  onClick={recording ? stopRecording : startAudioRecording}
+                  className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                 >
                   {recording ? (
                     <>
@@ -480,6 +570,26 @@ Please provide:
                   </p>
                 )}
               </div>
+
+              {formData.media.length > 0 && (
+                <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                  <p className="text-sm text-slate-400 mb-2">Media Attached:</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {formData.media.map((item, idx) => (
+                      <div key={idx} className="relative">
+                        {item.type === 'video' ? (
+                          <video src={item.url} className="w-full h-24 object-cover rounded" />
+                        ) : (
+                          <img src={item.url} alt="Evidence" className="w-full h-24 object-cover rounded" />
+                        )}
+                        <span className="absolute top-1 right-1 bg-black/70 text-white text-xs px-1 rounded">
+                          {item.type === 'video' ? '📹' : '📷'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {formData.signature && (
                 <div className="p-4 bg-slate-900/50 rounded-lg border border-emerald-500/20">

@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tantml:react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,22 +34,31 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
   const queryClient = useQueryClient();
 
-  const { data: activeGuards } = useQuery({
+  const { data: activeGuards = [], isLoading: guardsLoading } = useQuery({
     queryKey: ["activeGuardsForDispatch"],
     queryFn: async () => {
       const shifts = await base44.entities.Shift.filter({ status: "active" });
-      const users = await base44.entities.User.list();
-      return shifts.map(shift => {
-        const guard = users.find(u => u.id === shift.guard_id);
-        return {
-          ...shift,
-          guard_id: shift.guard_id,
-          guard_full_name: guard?.full_name || shift.guard_name,
-          guard_location: guard?.last_location
-        };
-      }).filter(g => g.guard_location?.lat && g.guard_location?.lng);
+      const guardsList = [];
+      
+      for (const shift of shifts) {
+        try {
+          const user = await base44.entities.User.get(shift.guard_id);
+          if (user?.last_location?.lat && user?.last_location?.lng) {
+            guardsList.push({
+              ...shift,
+              guard_id: shift.guard_id,
+              guard_full_name: user.full_name || shift.guard_name,
+              guard_location: user.last_location
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to fetch user for shift ${shift.id}:`, error);
+        }
+      }
+      
+      return guardsList;
     },
-    initialData: []
+    retry: 2
   });
 
   const alarmTypes = [
@@ -350,24 +358,29 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               <label className="text-sm text-slate-300 font-medium block mb-2">
                 Assign Responder <span className="text-rose-400">*</span>
               </label>
-              <Select
-                value={formData.assigned_to}
-                onValueChange={(value) => {
-                  const guard = activeGuards.find(g => g.guard_id === value);
-                  setFormData({ ...formData, assigned_to: value });
-                  
-                  // Show guard location on map if available
-                  if (guard?.guard_location?.lat && guard?.guard_location?.lng && formData.location) {
-                    setShowMap(true);
-                  }
-                }}
-              >
-                <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                  <SelectValue placeholder="Select guard..." />
-                </SelectTrigger>
-                <SelectContent>
+              {guardsLoading ? (
+                <div className="text-slate-400 text-sm">Loading guards...</div>
+              ) : activeGuards.length === 0 ? (
+                <div className="text-amber-400 text-sm p-3 bg-amber-500/10 border border-amber-500/20 rounded">
+                  No active guards available with location data
+                </div>
+              ) : (
+                <select
+                  value={formData.assigned_to}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const guard = activeGuards.find(g => g.guard_id === value);
+                    setFormData({ ...formData, assigned_to: value });
+                    
+                    if (guard?.guard_location?.lat && guard?.guard_location?.lng && formData.location) {
+                      setShowMap(true);
+                    }
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                >
+                  <option value="">Select guard...</option>
                   {activeGuards.map((guard) => (
-                    <SelectItem key={guard.guard_id} value={guard.guard_id}>
+                    <option key={guard.guard_id} value={guard.guard_id}>
                       {guard.guard_full_name} - {guard.site_name}
                       {formData.location && guard.guard_location && ` (${calculateDistance(
                         formData.location.lat,
@@ -375,10 +388,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                         guard.guard_location.lat,
                         guard.guard_location.lng
                       ).toFixed(1)}km away)`}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+              )}
             </div>
 
             {showMap && formData.location && (

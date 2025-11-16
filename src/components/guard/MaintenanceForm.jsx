@@ -8,6 +8,11 @@ import { X, Camera, Upload, Mic, StopCircle, Sparkles, PenTool, Loader2, Send, V
 import SignaturePad from "./SignaturePad";
 
 export default function MaintenanceForm({ user, shift, location, onClose, onSuccess }) {
+  const maintenanceCategories = [
+    "Lighting", "Locks & Keys", "Fencing", "Gate/Barrier", "Alarm System",
+    "Camera/CCTV", "Plumbing", "Electrical", "Structural", "Other"
+  ];
+
   const [formData, setFormData] = useState({
     maintenance_type: "",
     maintenance_type_other: "",
@@ -31,6 +36,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
   const [videoRecording, setVideoRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [aiAssisting, setAiAssisting] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -84,22 +90,6 @@ Officer Signature: Signed
         media: formData.media
       });
 
-      // Send real-time notifications
-      const allUsers = await base44.entities.User.list();
-      const recipients = allUsers.filter(u => 
-        ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type)
-      );
-
-      for (const recipient of recipients) {
-        if (recipient.email) {
-          await base44.integrations.Core.SendEmail({
-            to: recipient.email,
-            subject: `🔧 MAINTENANCE REQUEST: ${formData.maintenance_type} - ${formData.site_name}`,
-            body: reportContent
-          });
-        }
-      }
-
       alert("✅ Maintenance request submitted successfully!");
       onSuccess();
     } catch (error) {
@@ -111,32 +101,42 @@ Officer Signature: Signed
 
   const handlePhotoCapture = async (e) => {
     const files = Array.from(e.target.files);
-    for (const file of files) {
-      try {
+    if (!files.length) return;
+
+    setUploading(true);
+    try {
+      for (const file of files) {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
         setFormData(prev => ({
           ...prev,
           media: [...prev.media, { type: 'photo', url: file_url }]
         }));
-      } catch (error) {
-        alert(`Failed to upload ${file.name}`);
       }
+    } catch (error) {
+      alert("Failed to upload photo");
+    } finally {
+      setUploading(false);
     }
   };
 
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files);
-    for (const file of files) {
-      try {
+    if (!files.length) return;
+
+    setUploading(true);
+    try {
+      for (const file of files) {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
         const type = file.type.startsWith('video') ? 'video' : 'photo';
         setFormData(prev => ({
           ...prev,
           media: [...prev.media, { type, url: file_url }]
         }));
-      } catch (error) {
-        alert(`Failed to upload ${file.name}`);
       }
+    } catch (error) {
+      alert("Failed to upload file");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -203,7 +203,6 @@ Officer Signature: Signed
       setMediaRecorder(recorder);
       setVideoRecording(true);
       
-      // Auto-stop after 30 seconds
       setTimeout(() => {
         if (recorder.state === 'recording') {
           stopRecording();
@@ -307,13 +306,17 @@ Please provide:
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="text-sm text-slate-400 mb-2 block">Maintenance Type *</label>
-              <Input
+              <select
                 value={formData.maintenance_type}
                 onChange={(e) => setFormData({ ...formData, maintenance_type: e.target.value })}
-                placeholder="e.g., Lighting, Security System, Plumbing"
-                className="bg-slate-900/50 border-slate-700 text-white"
+                className="w-full bg-slate-900/50 border border-slate-700 text-white rounded-md p-2"
                 required
-              />
+              >
+                <option value="">Select maintenance type...</option>
+                {maintenanceCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -374,7 +377,7 @@ Please provide:
                 <Button type="button" className="w-full bg-sky-600 hover:bg-sky-700" asChild>
                   <div>
                     <Camera className="w-4 h-4 mr-2" />
-                    Take Photo with Camera
+                    {uploading ? "Uploading..." : "Take Photo with Camera"}
                   </div>
                 </Button>
               </label>
