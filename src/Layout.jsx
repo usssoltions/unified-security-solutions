@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -26,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import NotificationsPanel from "@/components/layout/NotificationsPanel";
 import AutoReportScheduler from "@/components/analytics/AutoReportScheduler";
+import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
@@ -237,6 +239,7 @@ export default function Layout({ children, currentPageName }) {
   return (
     <ErrorBoundary>
       <AutoReportScheduler user={user} />
+      <IncidentEscalationMonitor user={user} />
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
