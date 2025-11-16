@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle, Upload, Video, Play } from "lucide-react";
 import SignaturePad from "./SignaturePad";
-import { createPageUrl } from "@/lib/utils"; // Assuming createPageUrl is available from utils
+import { createPageUrl } from "@/utils";
 
 export default function IncidentForm({ user, shift, location, onClose, onSuccess }) {
   const incidentTypes = [
