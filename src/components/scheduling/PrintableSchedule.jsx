@@ -1,7 +1,7 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 
-export default function PrintableSchedule({ shifts, guards, month, year }) {
+export default function PrintableSchedule({ shifts = [], guards = [], month, year }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
   
@@ -34,12 +34,20 @@ export default function PrintableSchedule({ shifts, guards, month, year }) {
     const dayEnd = new Date(year, month, day, 23, 59, 59);
     
     return shifts.filter(s => {
+      if (!s || !s.start_time) return false;
       const shiftStart = new Date(s.start_time);
       return s.guard_id === guardId && 
              shiftStart >= dayStart && 
              shiftStart <= dayEnd;
     });
   };
+
+  const monthShifts = shifts.filter(s => {
+    if (!s || !s.start_time) return false;
+    const shiftMonth = new Date(s.start_time).getMonth();
+    const shiftYear = new Date(s.start_time).getFullYear();
+    return shiftMonth === month && shiftYear === year;
+  });
 
   return (
     <div className="printable-schedule" style={{ 
@@ -176,11 +184,7 @@ export default function PrintableSchedule({ shifts, guards, month, year }) {
           {monthNames[month]} {year}
         </p>
         <p>Generated on: {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}</p>
-        <p>Total Guards: {guards.length} | Total Shifts: {shifts.filter(s => {
-          const shiftMonth = new Date(s.start_time).getMonth();
-          const shiftYear = new Date(s.start_time).getFullYear();
-          return shiftMonth === month && shiftYear === year;
-        }).length}</p>
+        <p>Total Guards: {guards.length} | Total Shifts: {monthShifts.length}</p>
       </div>
 
       <table className="calendar-table">
