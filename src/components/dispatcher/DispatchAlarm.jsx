@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -170,13 +171,13 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       return 0;
     }
     
-    const R = 6371;
-    const dLat = (lat2Num - lat1Num) * Math.PI / 180;
-    const dLon = (lon2Num - lon1Num) * Math.PI / 180;
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2Num - lat1Num) * (Math.PI / 180);
+    const dLon = (lon2Num - lon1Num) * (Math.PI / 180);
     
     const a = 
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1Num * Math.PI / 180) * Math.cos(lat2Num * Math.PI / 180) *
+      Math.cos(lat1Num * (Math.PI / 180)) * Math.cos(lat2Num * (Math.PI / 180)) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
     
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
@@ -203,10 +204,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     activeGuards.forEach(guard => {
       if (guard.guard_location?.lat && guard.guard_location?.lng) {
         const distance = calculateDistance(
-          formData.location.lat,
-          formData.location.lng,
           guard.guard_location.lat,
-          guard.guard_location.lng
+          guard.guard_location.lng,
+          formData.location.lat,
+          formData.location.lng
         );
         
         if (distance < minDistance && distance > 0) {
@@ -307,10 +308,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     let distance = 0;
     if (assignedGuard?.guard_location?.lat && assignedGuard?.guard_location?.lng) {
       distance = calculateDistance(
-        formData.location.lat,
-        formData.location.lng,
         assignedGuard.guard_location.lat,
-        assignedGuard.guard_location.lng
+        assignedGuard.guard_location.lng,
+        formData.location.lat,
+        formData.location.lng
       );
     }
 
@@ -488,10 +489,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                       {activeGuards.map((guard) => {
                         const dist = formData.location?.lat && guard.guard_location?.lat 
                           ? calculateDistance(
-                              formData.location.lat,
-                              formData.location.lng,
                               guard.guard_location.lat,
-                              guard.guard_location.lng
+                              guard.guard_location.lng,
+                              formData.location.lat,
+                              formData.location.lng
                             )
                           : null;
                         
@@ -546,10 +547,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                       
                       const isSelected = formData.assigned_to === guard.guard_id;
                       const dist = calculateDistance(
-                        formData.location.lat,
-                        formData.location.lng,
                         guard.guard_location.lat,
-                        guard.guard_location.lng
+                        guard.guard_location.lng,
+                        formData.location.lat,
+                        formData.location.lng
                       );
                       
                       return (
