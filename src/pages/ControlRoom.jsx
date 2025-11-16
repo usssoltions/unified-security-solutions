@@ -2,267 +2,205 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Radio, Users, AlertTriangle, MapPin, TrendingUp, Zap, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, Shield, Users, MapPin, Radio, Sparkles } from "lucide-react";
 import LiveMap from "../components/dispatcher/LiveMap";
 import AlertPanel from "../components/dispatcher/AlertPanel";
 import ActiveGuardsPanel from "../components/dispatcher/ActiveGuardsPanel";
 import IncidentQueue from "../components/dispatcher/IncidentQueue";
 import DispatchAlarm from "../components/dispatcher/DispatchAlarm";
 import AIIncidentAnalysis from "../components/dispatcher/AIIncidentAnalysis";
+import AIRiskPredictor from "../components/analytics/AIRiskPredictor";
 
 export default function ControlRoom() {
-  const [user, setUser] = useState(null);
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
-  const [selectedIncident, setSelectedIncident] = useState(null);
+  const [showAIAnalysis, setShowAIAnalysis] = useState(false);
+  const [showRiskPredictor, setShowRiskPredictor] = useState(false);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
+    const loadUser = async () => {
+      const currentUser = await base44.auth.me();
+      setUser(currentUser);
+    };
     loadUser();
   }, []);
 
-  const loadUser = async () => {
-    const currentUser = await base44.auth.me();
-    setUser(currentUser);
-  };
-
-  const { data: activeAlerts } = useQuery({
-    queryKey: ["activeAlerts"],
+  const { data: activeGuards = [] } = useQuery({
+    queryKey: ["activeGuardsControl"],
     queryFn: async () => {
-      try {
-        return await base44.entities.Alert.filter({ status: "active" }, "-created_date", 10);
-      } catch (error) {
-        if (!error?.message?.includes('WebSocket')) {
-          console.error("Failed to load alerts:", error);
-        }
-        return [];
-      }
+      const shifts = await base44.entities.Shift.filter({ status: "active" });
+      return shifts;
     },
-    refetchInterval: 5000,
-    initialData: [],
-    retry: 3
+    refetchInterval: 10000
   });
 
-  const { data: activeGuards } = useQuery({
-    queryKey: ["activeGuards"],
+  const { data: activeAlerts = [] } = useQuery({
+    queryKey: ["activeAlertsControl"],
     queryFn: async () => {
-      try {
-        return await base44.entities.Shift.filter({ status: "active" }, "-start_time", 20);
-      } catch (error) {
-        if (!error?.message?.includes('WebSocket')) {
-          console.error("Failed to load guards:", error);
-        }
-        return [];
-      }
+      return await base44.entities.Alert.filter({ status: "active" }, "-created_date", 10);
+    },
+    refetchInterval: 5000,
+    initialData: []
+  });
+
+  const { data: pendingIncidents = [] } = useQuery({
+    queryKey: ["pendingIncidentsControl"],
+    queryFn: async () => {
+      return await base44.entities.Incident.filter({ 
+        status: { $in: ["reported", "assigned"] }
+      }, "-reported_at", 20);
     },
     refetchInterval: 10000,
-    initialData: [],
-    retry: 3
+    initialData: []
   });
 
-  const { data: pendingIncidents } = useQuery({
-    queryKey: ["pendingIncidents"],
+  const { data: alarmResponses = [] } = useQuery({
+    queryKey: ["alarmResponsesControl"],
     queryFn: async () => {
-      try {
-        return await base44.entities.Incident.filter(
-          { status: ["reported", "assigned"] },
-          "-reported_at",
-          15
-        );
-      } catch (error) {
-        if (!error?.message?.includes('WebSocket')) {
-          console.error("Failed to load incidents:", error);
-        }
-        return [];
-      }
+      return await base44.entities.AlarmResponse.filter({
+        status: { $in: ["dispatched", "acknowledged", "en_route", "arrived"] }
+      }, "-dispatched_at", 10);
     },
     refetchInterval: 5000,
-    initialData: [],
-    retry: 3
+    initialData: []
   });
 
-  const { data: activeAlarms } = useQuery({
-    queryKey: ["activeAlarms"],
-    queryFn: async () => {
-      try {
-        return await base44.entities.AlarmResponse.filter(
-          { status: ["dispatched", "acknowledged", "en_route", "arrived"] },
-          "-dispatched_at",
-          10
-        );
-      } catch (error) {
-        if (!error?.message?.includes('WebSocket')) {
-          console.error("Failed to load alarms:", error);
-        }
-        return [];
-      }
-    },
-    refetchInterval: 5000,
-    initialData: [],
-    retry: 3
-  });
-
-  const criticalAlerts = activeAlerts.filter(a => a.priority === "critical").length;
-  const highPriorityIncidents = pendingIncidents.filter(i => i.priority === "high" || i.priority === "critical").length;
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-400" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen p-4 lg:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-sky-400 to-sky-600 rounded-full flex items-center justify-center animate-pulse">
-            <Radio className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+      <div className="max-w-[1800px] mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center animate-pulse">
+              <Radio className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-white">Control Room</h1>
+              <p className="text-slate-400">Real-time fleet monitoring & dispatch</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Control Room</h1>
-            <p className="text-slate-400">Real-time fleet monitoring & incident management</p>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setShowRiskPredictor(!showRiskPredictor)}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Sparkles className="w-5 h-5 mr-2" />
+              {showRiskPredictor ? "Hide" : "Show"} AI Risk Predictor
+            </Button>
+            <Button
+              onClick={() => setShowAIAnalysis(true)}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Sparkles className="w-5 h-5 mr-2" />
+              AI Incident Analysis
+            </Button>
+            <Button
+              onClick={() => setShowDispatchAlarm(true)}
+              className="bg-rose-600 hover:bg-rose-700"
+            >
+              <AlertTriangle className="w-5 h-5 mr-2" />
+              Dispatch Alarm
+            </Button>
           </div>
         </div>
 
-        <Button
-          onClick={() => setShowDispatchAlarm(true)}
-          className="bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
-        >
-          <Zap className="w-5 h-5 mr-2" />
-          Dispatch Alarm
-        </Button>
-      </div>
-
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-sky-500/10 to-sky-600/10 border-sky-500/20">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Active Guards</p>
-                <p className="text-3xl font-bold text-white">{activeGuards.length}</p>
-              </div>
-              <Users className="w-8 h-8 text-sky-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/10 border-amber-500/20">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Active Alerts</p>
-                <p className="text-3xl font-bold text-white">{activeAlerts.length}</p>
-              </div>
-              <AlertTriangle className="w-8 h-8 text-amber-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-rose-500/10 to-rose-600/10 border-rose-500/20">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Pending Incidents</p>
-                <p className="text-3xl font-bold text-white">{pendingIncidents.length}</p>
-              </div>
-              <MapPin className="w-8 h-8 text-rose-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Active Alarms</p>
-                <p className="text-3xl font-bold text-white">{activeAlarms.length}</p>
-              </div>
-              <Radio className="w-8 h-8 text-emerald-400" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Map */}
-        <div className="lg:col-span-2 space-y-6">
-          <LiveMap 
-            guards={activeGuards} 
-            incidents={pendingIncidents}
-            alarms={activeAlarms}
-          />
-          
-          {/* AI-Powered Incident Analysis */}
-          <Card className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border-purple-500/20">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-400" />
-                AI Incident Intelligence
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {pendingIncidents.length > 0 ? (
-                <div className="space-y-3">
-                  {pendingIncidents.slice(0, 3).map(incident => (
-                    <div 
-                      key={incident.id}
-                      className="p-3 bg-slate-800/50 rounded-lg border border-slate-700 cursor-pointer hover:border-purple-500/50 transition-colors"
-                      onClick={() => setSelectedIncident(incident)}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h4 className="text-white font-semibold">{incident.title}</h4>
-                          <p className="text-xs text-slate-400">{incident.site_name}</p>
-                        </div>
-                        <Badge className={
-                          incident.priority === 'critical' ? 'bg-rose-500' :
-                          incident.priority === 'high' ? 'bg-orange-500' :
-                          'bg-sky-500'
-                        }>
-                          {incident.priority}
-                        </Badge>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedIncident(incident);
-                        }}
-                      >
-                        <Sparkles className="w-3 h-3 mr-2" />
-                        Get AI Analysis
-                      </Button>
-                    </div>
-                  ))}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <Card className="bg-emerald-500/10 border-emerald-500/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-emerald-400">Active Guards</p>
+                  <p className="text-3xl font-bold text-white">{activeGuards.length}</p>
                 </div>
-              ) : (
-                <p className="text-slate-400 text-center py-4">No pending incidents to analyze</p>
-              )}
+                <Shield className="w-8 h-8 text-emerald-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-rose-500/10 border-rose-500/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-rose-400">Active Alerts</p>
+                  <p className="text-3xl font-bold text-white">{activeAlerts.length}</p>
+                </div>
+                <AlertTriangle className="w-8 h-8 text-rose-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-amber-500/10 border-amber-500/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-amber-400">Pending Incidents</p>
+                  <p className="text-3xl font-bold text-white">{pendingIncidents.length}</p>
+                </div>
+                <MapPin className="w-8 h-8 text-amber-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-sky-500/10 border-sky-500/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-sky-400">Active Alarms</p>
+                  <p className="text-3xl font-bold text-white">{alarmResponses.length}</p>
+                </div>
+                <Radio className="w-8 h-8 text-sky-400" />
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column - Alerts & Guards */}
-        <div className="space-y-6">
-          <AlertPanel alerts={activeAlerts} />
-          <ActiveGuardsPanel guards={activeGuards} />
-          <IncidentQueue incidents={pendingIncidents} />
+        {showRiskPredictor && (
+          <AIRiskPredictor user={user} />
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-2 space-y-6">
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white">Live Fleet Map</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <LiveMap activeGuards={activeGuards} />
+              </CardContent>
+            </Card>
+
+            <IncidentQueue incidents={pendingIncidents} />
+          </div>
+
+          <div className="space-y-6">
+            <AlertPanel alerts={activeAlerts} />
+            <ActiveGuardsPanel guards={activeGuards} />
+          </div>
         </div>
       </div>
 
-      {/* Dispatch Alarm Modal */}
       {showDispatchAlarm && (
         <DispatchAlarm
-          dispatcher={user}
           onClose={() => setShowDispatchAlarm(false)}
-          onSuccess={() => setShowDispatchAlarm(false)}
+          onSuccess={() => {
+            setShowDispatchAlarm(false);
+            alert("Alarm dispatched successfully!");
+          }}
         />
       )}
 
-      {/* AI Incident Analysis Modal */}
-      {selectedIncident && (
+      {showAIAnalysis && (
         <AIIncidentAnalysis
-          incident={selectedIncident}
-          onClose={() => setSelectedIncident(null)}
+          onClose={() => setShowAIAnalysis(false)}
         />
       )}
     </div>
