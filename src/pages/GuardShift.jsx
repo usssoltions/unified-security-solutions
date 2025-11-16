@@ -25,6 +25,7 @@ import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import LocationTracker from "../components/guard/LocationTracker";
 import ShiftEndNotification from "../components/guard/ShiftEndNotification";
+import AIPatrolGuidance from "../components/guard/AIPatrolGuidance";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -303,6 +304,10 @@ export default function GuardShift() {
 
       {activeShift && (
         <ActiveShiftCard shift={activeShift} user={user} location={location} />
+      )}
+
+      {activeShift && (
+        <AIPatrolGuidance user={user} shift={activeShift} location={location} />
       )}
 
       {pendingAssignments.length > 0 && (
