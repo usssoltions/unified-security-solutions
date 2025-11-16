@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -6,19 +5,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { FileText, Send, Loader2, CheckCircle2, Clock, MapPin, Shield } from "lucide-react";
+import { FileText, Send, Loader2, Camera, CheckCircle2 } from "lucide-react";
+import SignaturePad from "../components/guard/SignaturePad";
 
 export default function DailyReport() {
   const [user, setUser] = useState(null);
   const [report, setReport] = useState({
-    summary: "",
-    incidents_count: 0,
-    patrols_completed: 0,
-    maintenance_issues: 0,
-    notes: ""
+    shift_post: "",
+    special_instructions: "",
+    post_items_received: "",
+    observations: [{ type: "", time: "", comments: "" }],
+    relieving_officer_first: "",
+    relieving_officer_last: "",
+    additional_notes: "",
+    photos: [],
+    signature: null
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -42,73 +48,44 @@ export default function DailyReport() {
     enabled: !!user
   });
 
-  const { data: todayIncidents } = useQuery({
-    queryKey: ["todayIncidents", user?.id],
+  const { data: site } = useQuery({
+    queryKey: ["site", activeShift?.site_id],
     queryFn: async () => {
-      if (!user) return [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const incidents = await base44.entities.Incident.filter({
-        guard_id: user.id
-      });
-      
-      return incidents.filter(inc => 
-        new Date(inc.reported_at) >= today
-      );
+      if (!activeShift?.site_id) return null;
+      return await base44.entities.Site.get(activeShift.site_id);
     },
-    enabled: !!user,
-    initialData: []
+    enabled: !!activeShift
   });
 
-  const { data: todayPatrols } = useQuery({
-    queryKey: ["todayPatrols", user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const patrols = await base44.entities.PatrolLog.filter({
-        guard_id: user.id
-      });
-      
-      return patrols.filter(patrol => 
-        new Date(patrol.timestamp) >= today
-      );
-    },
-    enabled: !!user,
-    initialData: []
-  });
-
-  const { data: todayMaintenance } = useQuery({
-    queryKey: ["todayMaintenance", user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const maintenance = await base44.entities.MaintenanceRequest.filter({
-        guard_id: user.id
-      });
-      
-      return maintenance.filter(req => 
-        new Date(req.reported_at) >= today
-      );
-    },
-    enabled: !!user,
-    initialData: []
-  });
-
-  useEffect(() => {
-    if (todayIncidents && todayPatrols && todayMaintenance) {
-      setReport(prev => ({
-        ...prev,
-        incidents_count: todayIncidents.length,
-        patrols_completed: todayPatrols.length,
-        maintenance_issues: todayMaintenance.length
-      }));
+  const handlePhotoUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    setUploadingPhoto(true);
+    for (const file of files) {
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        setReport(prev => ({
+          ...prev,
+          photos: [...prev.photos, file_url]
+        }));
+      } catch (error) {
+        alert("Failed to upload photo");
+      }
     }
-  }, [todayIncidents, todayPatrols, todayMaintenance]);
+    setUploadingPhoto(false);
+  };
+
+  const addObservation = () => {
+    setReport(prev => ({
+      ...prev,
+      observations: [...prev.observations, { type: "", time: "", comments: "" }]
+    }));
+  };
+
+  const updateObservation = (index, field, value) => {
+    const newObservations = [...report.observations];
+    newObservations[index][field] = value;
+    setReport(prev => ({ ...prev, observations: newObservations }));
+  };
 
   const handleSubmit = async () => {
     if (!activeShift || !user) {
@@ -116,27 +93,42 @@ export default function DailyReport() {
       return;
     }
 
-    if (!report.summary.trim()) {
-      alert("Please provide a summary of your shift");
+    if (!report.signature) {
+      setShowSignature(true);
       return;
     }
 
     setSubmitting(true);
     try {
-      // Create incident for daily report (using incident entity to store reports)
-      await base44.entities.Incident.create({
-        title: `Daily Shift Report - ${new Date().toLocaleDateString()}`,
+      const reportData = {
+        title: `Daily Activity Report - ${new Date().toLocaleDateString()}`,
         description: `
-Summary: ${report.summary}
+INTERNAL ID: ${Date.now()}
+DATE ENTERED: ${new Date().toLocaleString()}
+CLIENT: ${site?.client_name || 'N/A'}
+SITE: ${activeShift.site_name}
 
-Statistics:
-- Incidents Reported: ${report.incidents_count}
-- Patrols Completed: ${report.patrols_completed}
-- Maintenance Issues: ${report.maintenance_issues}
+OFFICER / ENTERED BY:
+Officer Name: ${user.full_name}
+Entered By: ${user.full_name}
 
-Additional Notes:
-${report.notes || 'None'}
-        `,
+DAILY ACTIVITY REPORT:
+Shift/Post: ${report.shift_post}
+Special Instructions: ${report.special_instructions}
+Post Items Received: ${report.post_items_received}
+
+OBSERVATIONS:
+${report.observations.map((obs, i) => `#${i+1} Type: ${obs.type}, Time: ${obs.time}, Comments: ${obs.comments}`).join('\n')}
+
+RELIEVING OFFICER INFORMATION:
+First Name: ${report.relieving_officer_first}
+Last Name: ${report.relieving_officer_last}
+
+ADDITIONAL NOTES:
+${report.additional_notes}
+
+PHOTOS: ${report.photos.length} photo(s) attached
+        `.trim(),
         category: "other",
         priority: "low",
         status: "reported",
@@ -145,10 +137,13 @@ ${report.notes || 'None'}
         site_id: activeShift.site_id,
         site_name: activeShift.site_name,
         shift_id: activeShift.id,
-        reported_at: new Date().toISOString()
-      });
+        reported_at: new Date().toISOString(),
+        media: report.photos.map(url => ({ type: "photo", url }))
+      };
 
-      // Send real-time email notifications to management
+      await base44.entities.Incident.create(reportData);
+
+      // Send email notifications
       try {
         const allUsers = await base44.entities.User.list();
         const managementEmails = allUsers
@@ -156,48 +151,20 @@ ${report.notes || 'None'}
           .map(u => u.email)
           .filter(Boolean);
 
-        const reportMessage = `
-📊 DAILY ACTIVITY REPORT
-
-Guard: ${user.full_name}
-Site: ${activeShift.site_name}
-Date: ${new Date().toLocaleDateString()}
-Shift Time: ${new Date(activeShift.start_time).toLocaleString()}
-
-STATISTICS:
-- Incidents Reported: ${report.incidents_count}
-- Patrols Completed: ${report.patrols_completed}
-- Maintenance Issues: ${report.maintenance_issues}
-
-SHIFT SUMMARY:
-${report.summary}
-
-${report.notes ? `ADDITIONAL NOTES:\n${report.notes}` : ''}
-
-Report submitted: ${new Date().toLocaleString()}
-        `.trim();
-
         for (const email of managementEmails) {
           await base44.integrations.Core.SendEmail({
             to: email,
-            subject: `📊 Daily Report: ${user.full_name} - ${activeShift.site_name}`,
-            body: reportMessage
+            subject: `📊 Daily Activity Report: ${user.full_name} - ${activeShift.site_name}`,
+            body: reportData.description
           });
         }
       } catch (error) {
-        console.error('Failed to send daily report notification emails:', error);
+        console.error('Failed to send notification emails:', error);
       }
 
       setSubmitted(true);
       setTimeout(() => {
-        setSubmitted(false);
-        setReport({
-          summary: "",
-          incidents_count: todayIncidents.length,
-          patrols_completed: todayPatrols.length,
-          maintenance_issues: todayMaintenance.length,
-          notes: ""
-        });
+        window.location.reload();
       }, 3000);
     } catch (error) {
       alert("Failed to submit report: " + error.message);
@@ -214,18 +181,28 @@ Report submitted: ${new Date().toLocaleString()}
     );
   }
 
+  if (showSignature) {
+    return (
+      <div className="min-h-screen p-4">
+        <SignaturePad
+          onSave={(sig) => {
+            setReport(prev => ({ ...prev, signature: sig }));
+            setShowSignature(false);
+          }}
+          onCancel={() => setShowSignature(false)}
+        />
+      </div>
+    );
+  }
+
   if (submitted) {
     return (
-      <div className="min-h-screen p-4 lg:p-6 flex items-center justify-center">
+      <div className="min-h-screen p-4 flex items-center justify-center">
         <Card className="max-w-md bg-gradient-to-br from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
           <CardContent className="pt-12 pb-12 text-center">
-            <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="w-10 h-10 text-white" />
-            </div>
+            <CheckCircle2 className="w-20 h-20 text-emerald-500 mx-auto mb-6" />
             <h2 className="text-2xl font-bold text-white mb-2">Report Submitted!</h2>
-            <p className="text-slate-400">
-              Your daily activity report has been recorded
-            </p>
+            <p className="text-slate-400">Your daily activity report has been recorded and sent to management</p>
           </CardContent>
         </Card>
       </div>
@@ -233,37 +210,32 @@ Report submitted: ${new Date().toLocaleString()}
   }
 
   return (
-    <div className="min-h-screen p-4 lg:p-6 space-y-6">
+    <div className="min-h-screen p-4 space-y-4">
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full flex items-center justify-center">
           <FileText className="w-6 h-6 text-white" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-white">Daily Activity Report</h1>
-          <p className="text-slate-400">Document your shift activities</p>
+          <p className="text-slate-400">Complete your shift report</p>
         </div>
       </div>
 
-      {activeShift && (
-        <Card className="bg-gradient-to-r from-sky-500/10 to-sky-600/10 border-sky-500/20">
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center gap-2 text-slate-300">
-                <Shield className="w-4 h-4 text-sky-400" />
-                <div>
-                  <p className="text-xs text-slate-500">Site</p>
-                  <p className="text-sm font-semibold text-white">{activeShift.site_name}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-slate-300">
-                <Clock className="w-4 h-4 text-sky-400" />
-                <div>
-                  <p className="text-xs text-slate-500">Shift Time</p>
-                  <p className="text-sm font-semibold text-white">
-                    {new Date(activeShift.start_time).toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
+      {activeShift && site && (
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">ID, DATE, CLIENT, & SITE</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <span className="text-slate-400">Internal ID:</span>
+              <span className="text-white">{Date.now()}</span>
+              <span className="text-slate-400">Date Entered:</span>
+              <span className="text-white">{new Date().toLocaleString()}</span>
+              <span className="text-slate-400">Client:</span>
+              <span className="text-white">{site.client_name}</span>
+              <span className="text-slate-400">Site:</span>
+              <span className="text-white">{activeShift.site_name}</span>
             </div>
           </CardContent>
         </Card>
@@ -271,81 +243,205 @@ Report submitted: ${new Date().toLocaleString()}
 
       <Card className="bg-slate-800/50 border-slate-700">
         <CardHeader>
-          <CardTitle className="text-white">Today's Statistics</CardTitle>
+          <CardTitle className="text-white">OFFICER / ENTERED BY</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg text-center">
-              <p className="text-2xl font-bold text-white">{report.incidents_count}</p>
-              <p className="text-xs text-slate-400 mt-1">Incidents</p>
-            </div>
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-center">
-              <p className="text-2xl font-bold text-white">{report.patrols_completed}</p>
-              <p className="text-xs text-slate-400 mt-1">Patrols</p>
-            </div>
-            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg text-center">
-              <p className="text-2xl font-bold text-white">{report.maintenance_issues}</p>
-              <p className="text-xs text-slate-400 mt-1">Maintenance</p>
-            </div>
+        <CardContent className="space-y-2 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <span className="text-slate-400">Officer Name:</span>
+            <span className="text-white">{user.full_name}</span>
+            <span className="text-slate-400">Entered By:</span>
+            <span className="text-white">{user.full_name}</span>
           </div>
         </CardContent>
       </Card>
 
       <Card className="bg-slate-800/50 border-slate-700">
         <CardHeader>
-          <CardTitle className="text-white">Shift Summary</CardTitle>
+          <CardTitle className="text-white">DAILY ACTIVITY REPORT</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="text-sm text-slate-300 font-medium mb-2 block">
-              Overall Summary <span className="text-rose-400">*</span>
-            </label>
-            <Textarea
-              placeholder="Provide a brief summary of your shift activities, observations, and any notable events..."
-              value={report.summary}
-              onChange={(e) => setReport({ ...report, summary: e.target.value })}
-              className="bg-slate-900 border-slate-700 text-white min-h-32"
-              required
+            <label className="text-white font-medium block mb-2">Shift/Post</label>
+            <Input
+              value={report.shift_post}
+              onChange={(e) => setReport({ ...report, shift_post: e.target.value })}
+              placeholder="e.g., Day shift, Night shift"
+              className="bg-slate-900 border-slate-700 text-white"
             />
           </div>
 
           <div>
-            <label className="text-sm text-slate-300 font-medium mb-2 block">
-              Additional Notes
-            </label>
+            <label className="text-white font-medium block mb-2">Special Instructions</label>
             <Textarea
-              placeholder="Any other information or concerns to report..."
-              value={report.notes}
-              onChange={(e) => setReport({ ...report, notes: e.target.value })}
-              className="bg-slate-900 border-slate-700 text-white min-h-24"
+              value={report.special_instructions}
+              onChange={(e) => setReport({ ...report, special_instructions: e.target.value })}
+              placeholder="Any special instructions for this shift..."
+              className="bg-slate-900 border-slate-700 text-white"
+              rows={2}
             />
           </div>
 
-          <Button
-            onClick={handleSubmit}
-            disabled={submitting || !activeShift}
-            className="w-full h-12 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-lg font-semibold"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Submitting Report...
-              </>
-            ) : (
-              <>
-                <Send className="w-5 h-5 mr-2" />
-                Submit Report
-              </>
-            )}
-          </Button>
+          <div>
+            <label className="text-white font-medium block mb-2">Post Items Received</label>
+            <Input
+              value={report.post_items_received}
+              onChange={(e) => setReport({ ...report, post_items_received: e.target.value })}
+              placeholder="e.g., Phone, Radio, Keys"
+              className="bg-slate-900 border-slate-700 text-white"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-          {!activeShift && (
-            <p className="text-xs text-rose-400 text-center">
-              You must be on an active shift to submit a daily report
-            </p>
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white">OBSERVATIONS</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {report.observations.map((obs, index) => (
+            <div key={index} className="p-4 bg-slate-900/50 rounded-lg space-y-3">
+              <h4 className="text-white font-semibold">Observation #{index + 1}</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  placeholder="Type"
+                  value={obs.type}
+                  onChange={(e) => updateObservation(index, 'type', e.target.value)}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+                <Input
+                  type="time"
+                  value={obs.time}
+                  onChange={(e) => updateObservation(index, 'time', e.target.value)}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+              <Textarea
+                placeholder="Comments"
+                value={obs.comments}
+                onChange={(e) => updateObservation(index, 'comments', e.target.value)}
+                className="bg-slate-800 border-slate-700 text-white"
+                rows={2}
+              />
+            </div>
+          ))}
+          <Button onClick={addObservation} variant="outline" className="w-full border-slate-600">
+            + Add Observation
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white">RELIEVING OFFICER INFORMATION</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Input
+            placeholder="First Name"
+            value={report.relieving_officer_first}
+            onChange={(e) => setReport({ ...report, relieving_officer_first: e.target.value })}
+            className="bg-slate-900 border-slate-700 text-white"
+          />
+          <Input
+            placeholder="Last Name"
+            value={report.relieving_officer_last}
+            onChange={(e) => setReport({ ...report, relieving_officer_last: e.target.value })}
+            className="bg-slate-900 border-slate-700 text-white"
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white">ADDITIONAL NOTES</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={report.additional_notes}
+            onChange={(e) => setReport({ ...report, additional_notes: e.target.value })}
+            placeholder="Any additional information..."
+            className="bg-slate-900 border-slate-700 text-white"
+            rows={4}
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white">PHOTOS</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+            onChange={handlePhotoUpload}
+            className="hidden"
+            id="photos"
+          />
+          <label htmlFor="photos">
+            <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-sky-500">
+              <Camera className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+              <p className="text-slate-400">{uploadingPhoto ? "Uploading..." : "Take/Upload Photos"}</p>
+            </div>
+          </label>
+          {report.photos.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              {report.photos.map((url, i) => (
+                <img key={i} src={url} alt="" className="w-full h-32 object-cover rounded" />
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {report.signature && (
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-white font-medium">Digital Signature</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowSignature(true)}
+                className="text-sky-400"
+              >
+                Re-sign
+              </Button>
+            </div>
+            <img src={report.signature} alt="Signature" className="h-24 bg-white rounded" />
+          </CardContent>
+        </Card>
+      )}
+
+      <Button
+        onClick={handleSubmit}
+        disabled={submitting || !activeShift}
+        className="w-full h-16 text-lg bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 font-bold"
+      >
+        {submitting ? (
+          <>
+            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+            Submitting Report...
+          </>
+        ) : !report.signature ? (
+          <>
+            <Send className="w-5 h-5 mr-2" />
+            Sign & Submit Report
+          </>
+        ) : (
+          <>
+            <Send className="w-5 h-5 mr-2" />
+            Submit Report
+          </>
+        )}
+      </Button>
+
+      {!activeShift && (
+        <p className="text-rose-400 text-center">
+          You must be on an active shift to submit a daily report
+        </p>
+      )}
     </div>
   );
 }
