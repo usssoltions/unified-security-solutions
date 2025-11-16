@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,7 +11,7 @@ import SignaturePad from "./SignaturePad";
 
 export default function IncidentForm({ user, shift, location, onClose, onSuccess }) {
   const incidentTypes = [
-    "Fire", "Theft", "Vandalism", "Medical Emergency", "Trespassing", 
+    "Fire", "Theft", "Vandalism", "Medical Emergency", "Trespassing",
     "Suspicious Activity", "Equipment Failure", "Safety Hazard", "Other"
   ];
 
@@ -111,16 +112,18 @@ Officer Signature: Signed
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send email notifications to all admins
-      try {
-        const admins = await base44.entities.User.filter({ role_type: 'admin' });
-        
-        for (const admin of admins) {
-          if (admin.email) {
-            await base44.integrations.Core.SendEmail({
-              to: admin.email,
-              subject: `🚨 Incident Report: ${data.incident_type} - ${shift?.site_name || 'Unknown Site'}`,
-              body: `
+      // Send email notifications to ALL users with admin/dispatcher/supervisor roles
+      const recipients = await base44.entities.User.filter({
+        role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
+      });
+
+      const emailPromises = recipients
+        .filter(recipient => recipient.email)
+        .map(recipient =>
+          base44.integrations.Core.SendEmail({
+            to: recipient.email,
+            subject: `INCIDENT REPORT: ${data.incident_type} - ${shift?.site_name || 'Unknown Site'}`,
+            body: `
 <h2>New Incident Report Submitted</h2>
 
 <p><strong>Report #:</strong> ${data.incident_report_number}</p>
@@ -152,13 +155,11 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
 <p><strong>GPS Location:</strong> ${location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : 'Not available'}</p>
 
 <p>Log into the SecureGuard system to view full details and manage this incident.</p>
-              `
-            });
-          }
-        }
-      } catch (emailError) {
-        console.error("Failed to send email notifications:", emailError);
-      }
+            `
+          }).catch(err => console.error(`Email failed for ${recipient.email}:`, err))
+        );
+
+      await Promise.allSettled(emailPromises);
 
       return incident;
     },
@@ -223,7 +224,7 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
         const blob = new Blob(chunks, { type: 'audio/webm' });
         const audioUrl = URL.createObjectURL(blob);
         setRecordedAudio(audioUrl);
-        
+
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -242,13 +243,13 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
       const response = await fetch(recordedAudio);
       const blob = await response.blob();
       const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
-      
+
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       setFormData(prev => ({
         ...prev,
         voice_notes: [...prev.voice_notes, file_url]
       }));
-      
+
       setRecordedAudio(null);
       alert("Voice note saved!");
     } catch (error) {
@@ -258,18 +259,18 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
 
   const startVideoRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" }, 
-        audio: true 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: true
       });
-      
+
+      setVideoPreview(stream);
+
       if (videoPreviewRef.current) {
         videoPreviewRef.current.srcObject = stream;
-        videoPreviewRef.current.play();
+        await videoPreviewRef.current.play();
       }
-      
-      setVideoPreview(stream);
-      
+
       const recorder = new MediaRecorder(stream);
       const chunks = [];
 
@@ -277,7 +278,7 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
       recorder.onstop = async () => {
         const blob = new Blob(chunks, { type: 'video/webm' });
         const file = new File([blob], `video-${Date.now()}.webm`, { type: 'video/webm' });
-        
+
         try {
           const { file_url } = await base44.integrations.Core.UploadFile({ file });
           setFormData(prev => ({
@@ -288,7 +289,7 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
         } catch (error) {
           alert("Failed to upload video");
         }
-        
+
         stream.getTracks().forEach(track => track.stop());
         setVideoPreview(null);
       };
@@ -296,14 +297,14 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
       recorder.start();
       setMediaRecorder(recorder);
       setVideoRecording(true);
-      
+
       setTimeout(() => {
         if (recorder.state === 'recording') {
           stopRecording();
         }
       }, 30000);
     } catch (error) {
-      alert("Failed to access camera");
+      alert("Failed to access camera: " + error.message);
     }
   };
 
@@ -608,6 +609,7 @@ Please provide:
                       ref={videoPreviewRef}
                       className="w-full h-48 bg-black rounded-lg"
                       playsInline
+                      autoPlay
                       muted
                     />
                     <div className="absolute top-2 right-2 bg-rose-600 px-3 py-1 rounded-full flex items-center gap-2">
