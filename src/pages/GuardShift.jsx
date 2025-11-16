@@ -34,6 +34,8 @@ import GuardChat from "../components/chat/GuardChat";
 import GuardTrainingView from "../components/training/GuardTrainingView";
 import AutoReportGenerator from "../components/reports/AutoReportGenerator";
 import GeneratedReportsView from "../components/reports/GeneratedReportsView";
+import MobileOptimizedGuardNav from "../components/MobileOptimizedGuardNav";
+import MobileInstallPrompt from "../components/MobileInstallPrompt";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -306,7 +308,8 @@ export default function GuardShift() {
   }
 
   return (
-    <div className="min-h-screen p-4 lg:p-6 space-y-6">
+    <div className="min-h-screen p-4 lg:p-6 space-y-6 pb-24 md:pb-6">
+      <MobileInstallPrompt />
       <AutoReportGenerator user={user} shift={activeShift} />
       <LocationTracker 
         user={user} 
@@ -314,8 +317,8 @@ export default function GuardShift() {
         enabled={!!activeShift && user.is_clocked_in} 
       />
 
-      {/* Floating Action Buttons */}
-      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
+      {/* Mobile-optimized Floating Action Buttons */}
+      <div className="hidden md:flex fixed bottom-6 right-6 flex-col gap-3 z-40">
         <Button
           onClick={() => setShowReports(true)}
           className="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-700 shadow-2xl"
@@ -347,6 +350,16 @@ export default function GuardShift() {
           )}
         </Button>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      <MobileOptimizedGuardNav 
+        user={user}
+        unreadMessages={unreadMessages}
+        pendingTrainings={pendingTrainings}
+        onChatOpen={() => setShowChat(true)}
+        onTrainingOpen={() => setShowTraining(true)}
+        onReportsOpen={() => setShowReports(true)}
+      />
 
       {showChat && <GuardChat user={user} onClose={() => setShowChat(false)} />}
 
