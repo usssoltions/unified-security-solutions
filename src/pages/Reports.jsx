@@ -67,7 +67,6 @@ export default function Reports() {
         await base44.entities.MaintenanceRequest.delete(id);
       }
       
-      // Log deletion reason
       await base44.entities.Alert.create({
         type: "system",
         priority: "low",
@@ -406,22 +405,23 @@ export default function Reports() {
 
     return (
       <div 
-        className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto"
+        className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             onClose();
           }
         }}
       >
-        <Card className="w-full max-w-4xl bg-slate-800 border-slate-700 my-8">
-          <CardHeader className="border-b border-slate-700">
+        <div className="w-full max-w-4xl max-h-[95vh] flex flex-col bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+          {/* Fixed Header */}
+          <div className="flex-shrink-0 p-6 border-b border-slate-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isIncident ? 'bg-rose-500/20' : 'bg-amber-500/20'}`}>
                   {isIncident ? <AlertTriangle className="w-6 h-6 text-rose-400" /> : <Wrench className="w-6 h-6 text-amber-400" />}
                 </div>
                 <div>
-                  <CardTitle className="text-white">{report.title}</CardTitle>
+                  <h2 className="text-xl font-bold text-white">{report.title}</h2>
                   <p className="text-sm text-slate-400">
                     {isIncident ? "Incident Report" : "Maintenance Request"}
                   </p>
@@ -436,9 +436,10 @@ export default function Reports() {
                 <X className="w-6 h-6" />
               </Button>
             </div>
-          </CardHeader>
+          </div>
 
-          <CardContent className="p-6 space-y-6">
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Status Workflow */}
             <div className="p-4 bg-slate-900/50 border border-slate-700 rounded-lg">
               <p className="text-xs text-slate-400 mb-3">Status Workflow</p>
@@ -457,27 +458,6 @@ export default function Reports() {
                   </React.Fragment>
                 ))}
               </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              {nextStatus && (
-                <Button
-                  onClick={() => setShowStatusUpdate(true)}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Move to {nextStatus}
-                </Button>
-              )}
-              <Button
-                onClick={() => setShowDeleteConfirm(true)}
-                variant="outline"
-                className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -595,8 +575,31 @@ export default function Reports() {
                 <p className="text-white">{report.completion_notes}</p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Fixed Footer with Action Buttons */}
+          <div className="flex-shrink-0 p-4 border-t border-slate-700 bg-slate-900/50">
+            <div className="flex gap-3">
+              {nextStatus && (
+                <Button
+                  onClick={() => setShowStatusUpdate(true)}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Move to {nextStatus}
+                </Button>
+              )}
+              <Button
+                onClick={() => setShowDeleteConfirm(true)}
+                variant="outline"
+                className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
