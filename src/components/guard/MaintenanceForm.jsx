@@ -4,22 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Upload, Mic, StopCircle, Sparkles, PenTool, Loader2, Send } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { X, Camera, Upload, Mic, StopCircle, Sparkles, PenTool, Loader2, Send, Video } from "lucide-react";
 import SignaturePad from "./SignaturePad";
 
 export default function MaintenanceForm({ user, shift, location, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    category: "lighting",
-    urgency: "medium",
+    maintenance_type: "",
+    maintenance_type_other: "",
+    details: "",
+    who_notified: "",
+    email_client: "YES",
     guard_id: user.id,
     guard_name: user.full_name,
     site_id: shift?.site_id || "",
@@ -34,6 +28,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
   const [submitting, setSubmitting] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [videoRecording, setVideoRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [aiAssisting, setAiAssisting] = useState(false);
 
@@ -48,7 +43,46 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
     setSubmitting(true);
 
     try {
-      await base44.entities.MaintenanceRequest.create(formData);
+      const reportContent = `
+MAINTENANCE REQUEST
+Time Zone: Africa/Johannesburg
+
+DATE, CLIENT, & SITE
+Date Entered: ${new Date().toLocaleString()}
+Client: ${shift?.client_name || 'N/A'}
+Site: ${formData.site_name}
+
+OFFICER INFORMATION
+Officer Name: ${formData.guard_name}
+
+MAINTENANCE REQUEST
+Maintenance Type: ${formData.maintenance_type}
+${formData.maintenance_type_other ? `If Other, What Type: ${formData.maintenance_type_other}` : ''}
+Details: ${formData.details}
+
+NOTIFICATION
+Who has been notified: ${formData.who_notified}
+Email Client: ${formData.email_client}
+
+PHOTOS: ${formData.media.filter(m => m.type === 'photo').length} photo(s) attached
+MEDIA: ${formData.media.filter(m => m.type === 'video').length} video(s) attached
+Voice Notes: ${formData.voice_notes.length} voice note(s) attached
+Officer Signature: Signed
+      `.trim();
+
+      await base44.entities.MaintenanceRequest.create({
+        title: `Maintenance: ${formData.maintenance_type}`,
+        description: reportContent,
+        category: "other",
+        urgency: "medium",
+        guard_id: formData.guard_id,
+        guard_name: formData.guard_name,
+        site_id: formData.site_id,
+        site_name: formData.site_name,
+        location: formData.location,
+        reported_at: formData.reported_at,
+        media: formData.media
+      });
 
       // Send real-time notifications
       const allUsers = await base44.entities.User.list();
@@ -56,32 +90,12 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
         ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type)
       );
 
-      const maintenanceMessage = `
-🔧 NEW MAINTENANCE REQUEST
-
-Title: ${formData.title}
-Category: ${formData.category}
-Urgency: ${formData.urgency}
-Site: ${formData.site_name}
-Reported by: ${formData.guard_name}
-Time: ${new Date().toLocaleString()}
-
-Description:
-${formData.description}
-
-${formData.location ? `Location: ${formData.location.lat}, ${formData.location.lng}` : ''}
-
-Status: Reported
-Officer Signature: Signed
-Voice Notes: ${formData.voice_notes.length} attached
-      `.trim();
-
       for (const recipient of recipients) {
         if (recipient.email) {
           await base44.integrations.Core.SendEmail({
             to: recipient.email,
-            subject: `🔧 ${formData.urgency.toUpperCase()} MAINTENANCE: ${formData.title} - ${formData.site_name}`,
-            body: maintenanceMessage
+            subject: `🔧 MAINTENANCE REQUEST: ${formData.maintenance_type} - ${formData.site_name}`,
+            body: reportContent
           });
         }
       }
@@ -95,18 +109,14 @@ Voice Notes: ${formData.voice_notes.length} attached
     }
   };
 
-  const handleMediaCapture = async (e) => {
+  const handlePhotoCapture = async (e) => {
     const files = Array.from(e.target.files);
-    
     for (const file of files) {
       try {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
         setFormData(prev => ({
           ...prev,
-          media: [...prev.media, {
-            type: file.type.startsWith('video') ? 'video' : 'photo',
-            url: file_url
-          }]
+          media: [...prev.media, { type: 'photo', url: file_url }]
         }));
       } catch (error) {
         alert(`Failed to upload ${file.name}`);
@@ -114,7 +124,23 @@ Voice Notes: ${formData.voice_notes.length} attached
     }
   };
 
-  const startRecording = async () => {
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    for (const file of files) {
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const type = file.type.startsWith('video') ? 'video' : 'photo';
+        setFormData(prev => ({
+          ...prev,
+          media: [...prev.media, { type, url: file_url }]
+        }));
+      } catch (error) {
+        alert(`Failed to upload ${file.name}`);
+      }
+    }
+  };
+
+  const startAudioRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -123,7 +149,7 @@ Voice Notes: ${formData.voice_notes.length} attached
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = async () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        const file = new File([blob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
         
         try {
           const { file_url } = await base44.integrations.Core.UploadFile({ file });
@@ -146,10 +172,53 @@ Voice Notes: ${formData.voice_notes.length} attached
     }
   };
 
+  const startVideoRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "environment" }, 
+        audio: true 
+      });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const file = new File([blob], `video-${Date.now()}.webm`, { type: 'video/webm' });
+        
+        try {
+          const { file_url } = await base44.integrations.Core.UploadFile({ file });
+          setFormData(prev => ({
+            ...prev,
+            media: [...prev.media, { type: 'video', url: file_url }]
+          }));
+        } catch (error) {
+          alert("Failed to upload video");
+        }
+        
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setVideoRecording(true);
+      
+      // Auto-stop after 30 seconds
+      setTimeout(() => {
+        if (recorder.state === 'recording') {
+          stopRecording();
+        }
+      }, 30000);
+    } catch (error) {
+      alert("Failed to access camera");
+    }
+  };
+
   const stopRecording = () => {
     if (mediaRecorder) {
       mediaRecorder.stop();
       setRecording(false);
+      setVideoRecording(false);
       setMediaRecorder(null);
     }
   };
@@ -157,35 +226,38 @@ Voice Notes: ${formData.voice_notes.length} attached
   const getAIAssistance = async () => {
     setAiAssisting(true);
     try {
-      const prompt = `Based on this maintenance issue, provide professional recommendations:
+      const prompt = `You are a maintenance expert assistant helping a security guard write a professional maintenance request. Based on this information, provide:
 
-Category: ${formData.category}
-Title: ${formData.title}
-Description: ${formData.description}
-Urgency: ${formData.urgency}
+Maintenance Type: ${formData.maintenance_type}
+${formData.maintenance_type_other ? `Specific Type: ${formData.maintenance_type_other}` : ''}
+Current Details: ${formData.details}
 
 Please provide:
-1. Enhanced description with technical details
-2. Recommended immediate actions
-3. Safety considerations`;
+1. Enhanced professional details with technical terminology
+2. Recommended urgency level (critical/high/medium/low) with justification
+3. Suggested immediate actions or safety precautions
+4. Who should be notified (e.g., "Site Manager, Maintenance Team, Client")`;
 
       const response = await base44.integrations.Core.InvokeLLM({
         prompt: prompt,
         response_json_schema: {
           type: "object",
           properties: {
-            enhanced_description: { type: "string" },
-            recommendations: { type: "string" }
+            enhanced_details: { type: "string" },
+            urgency_recommendation: { type: "string" },
+            safety_notes: { type: "string" },
+            notification_suggestions: { type: "string" }
           }
         }
       });
 
       setFormData(prev => ({
         ...prev,
-        description: prev.description + "\n\nAI Enhancement: " + response.enhanced_description + "\n\nRecommendations: " + response.recommendations
+        details: prev.details + "\n\n=== AI ENHANCEMENT ===\n" + response.enhanced_details + "\n\nUrgency: " + response.urgency_recommendation + "\n\nSafety: " + response.safety_notes,
+        who_notified: response.notification_suggestions
       }));
     } catch (error) {
-      alert("AI assistance failed");
+      alert("AI assistance failed: " + error.message);
     } finally {
       setAiAssisting(false);
     }
@@ -218,7 +290,7 @@ Please provide:
                 type="button"
                 size="sm"
                 onClick={getAIAssistance}
-                disabled={aiAssisting || !formData.title}
+                disabled={aiAssisting || !formData.maintenance_type}
                 className="bg-purple-600 hover:bg-purple-700"
               >
                 <Sparkles className="w-4 h-4 mr-1" />
@@ -234,120 +306,127 @@ Please provide:
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-sm text-slate-400 mb-2 block">Issue Title *</label>
+              <label className="text-sm text-slate-400 mb-2 block">Maintenance Type *</label>
               <Input
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                value={formData.maintenance_type}
+                onChange={(e) => setFormData({ ...formData, maintenance_type: e.target.value })}
+                placeholder="e.g., Lighting, Security System, Plumbing"
                 className="bg-slate-900/50 border-slate-700 text-white"
                 required
-                placeholder="Brief description"
               />
             </div>
 
             <div>
-              <label className="text-sm text-slate-400 mb-2 block">Description *</label>
+              <label className="text-sm text-slate-400 mb-2 block">If Other, What Type:</label>
+              <Input
+                value={formData.maintenance_type_other}
+                onChange={(e) => setFormData({ ...formData, maintenance_type_other: e.target.value })}
+                placeholder="Specify if 'Other'"
+                className="bg-slate-900/50 border-slate-700 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Details *</label>
               <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                value={formData.details}
+                onChange={(e) => setFormData({ ...formData, details: e.target.value })}
                 className="bg-slate-900/50 border-slate-700 text-white h-32"
                 required
                 placeholder="Detailed description of the maintenance issue..."
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-slate-400 mb-2 block">Category</label>
-                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lighting">Lighting</SelectItem>
-                    <SelectItem value="locks">Locks & Keys</SelectItem>
-                    <SelectItem value="fencing">Fencing</SelectItem>
-                    <SelectItem value="gate">Gate/Barrier</SelectItem>
-                    <SelectItem value="alarm_system">Alarm System</SelectItem>
-                    <SelectItem value="camera">Camera/CCTV</SelectItem>
-                    <SelectItem value="plumbing">Plumbing</SelectItem>
-                    <SelectItem value="electrical">Electrical</SelectItem>
-                    <SelectItem value="structural">Structural</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm text-slate-400 mb-2 block">Urgency</label>
-                <Select value={formData.urgency} onValueChange={(value) => setFormData({ ...formData, urgency: value })}>
-                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="critical">Critical</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Who has been notified:</label>
+              <Input
+                value={formData.who_notified}
+                onChange={(e) => setFormData({ ...formData, who_notified: e.target.value })}
+                placeholder="e.g., Site Manager, Maintenance Team"
+                className="bg-slate-900/50 border-slate-700 text-white"
+              />
             </div>
 
             <div>
-              <label className="text-sm text-slate-400 mb-2 block">Photos/Videos</label>
-              <div className="flex gap-2">
-                <label className="flex-1">
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    capture="environment"
-                    multiple
-                    onChange={handleMediaCapture}
-                    className="hidden"
-                  />
-                  <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
-                    <div>
-                      <Camera className="w-4 h-4 mr-2" />
-                      Take Photo/Video
-                    </div>
-                  </Button>
-                </label>
-                <label className="flex-1">
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    multiple
-                    onChange={handleMediaCapture}
-                    className="hidden"
-                  />
-                  <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
-                    <div>
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload Media
-                    </div>
-                  </Button>
-                </label>
-              </div>
-              {formData.media.length > 0 && (
-                <div className="mt-3 flex gap-2 overflow-x-auto">
-                  {formData.media.map((media, idx) => (
-                    <img
-                      key={idx}
-                      src={media.url}
-                      alt="Issue"
-                      className="h-20 w-20 object-cover rounded border border-slate-700"
-                    />
-                  ))}
-                </div>
-              )}
+              <label className="text-sm text-slate-400 mb-2 block">Email Client:</label>
+              <select
+                value={formData.email_client}
+                onChange={(e) => setFormData({ ...formData, email_client: e.target.value })}
+                className="w-full bg-slate-900/50 border border-slate-700 text-white rounded-md p-2"
+              >
+                <option value="YES">YES</option>
+                <option value="NO">NO</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Photos</label>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                onChange={handlePhotoCapture}
+                className="hidden"
+                id="photo-capture"
+              />
+              <label htmlFor="photo-capture">
+                <Button type="button" className="w-full bg-sky-600 hover:bg-sky-700" asChild>
+                  <div>
+                    <Camera className="w-4 h-4 mr-2" />
+                    Take Photo with Camera
+                  </div>
+                </Button>
+              </label>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Upload Media</label>
+              <input
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload"
+              />
+              <label htmlFor="file-upload">
+                <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
+                  <div>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Photos/Videos from Gallery
+                  </div>
+                </Button>
+              </label>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400 mb-2 block">Record Video (max 30 seconds)</label>
+              <Button
+                type="button"
+                onClick={videoRecording ? stopRecording : startVideoRecording}
+                className={`w-full ${videoRecording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+              >
+                {videoRecording ? (
+                  <>
+                    <StopCircle className="w-5 h-5 mr-2 animate-pulse" />
+                    Stop Recording Video
+                  </>
+                ) : (
+                  <>
+                    <Video className="w-5 h-5 mr-2" />
+                    Record Video
+                  </>
+                )}
+              </Button>
             </div>
 
             <div>
               <label className="text-sm text-slate-400 mb-2 block">Voice Notes</label>
               <Button
                 type="button"
-                onClick={recording ? stopRecording : startRecording}
-                className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'}`}
+                onClick={recording ? stopRecording : startAudioRecording}
+                className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
               >
                 {recording ? (
                   <>
@@ -367,6 +446,26 @@ Please provide:
                 </p>
               )}
             </div>
+
+            {formData.media.length > 0 && (
+              <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                <p className="text-sm text-slate-400 mb-2">Media Attached:</p>
+                <div className="flex gap-2 overflow-x-auto">
+                  {formData.media.map((media, idx) => (
+                    <div key={idx} className="relative">
+                      {media.type === 'video' ? (
+                        <video src={media.url} className="h-20 w-20 object-cover rounded" />
+                      ) : (
+                        <img src={media.url} alt="Maintenance" className="h-20 w-20 object-cover rounded" />
+                      )}
+                      <span className="absolute top-1 right-1 bg-black/70 text-white text-xs px-1 rounded">
+                        {media.type === 'video' ? '📹' : '📷'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {location && (
               <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
