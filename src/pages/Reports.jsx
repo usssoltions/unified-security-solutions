@@ -1,18 +1,23 @@
-
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Wrench, Calendar, MapPin, User, Download, Search, Filter, Camera, Video, Mic, X } from "lucide-react";
+import { AlertTriangle, Wrench, Calendar, MapPin, User, Download, Search, Filter, Camera, Video, Mic, X, CheckCircle2, Trash2, ChevronRight } from "lucide-react";
 
 export default function Reports() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [selectedReport, setSelectedReport] = useState(null);
+  const [showStatusUpdate, setShowStatusUpdate] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [statusNotes, setStatusNotes] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const queryClient = useQueryClient();
 
   const { data: incidents = [] } = useQuery({
     queryKey: ["allIncidents"],
@@ -24,6 +29,60 @@ export default function Reports() {
     queryKey: ["allMaintenance"],
     queryFn: async () => base44.entities.MaintenanceRequest.list("-reported_at", 200),
     initialData: []
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, entityType, newStatus, notes }) => {
+      const updateData = {
+        status: newStatus
+      };
+
+      if (newStatus === "resolved" || newStatus === "completed") {
+        updateData[entityType === "incident" ? "resolution_notes" : "completion_notes"] = notes;
+        updateData[entityType === "incident" ? "resolved_at" : "completed_at"] = new Date().toISOString();
+      } else if (newStatus === "assigned" || newStatus === "in_progress") {
+        updateData.dispatcher_notes = notes;
+      }
+
+      if (entityType === "incident") {
+        await base44.entities.Incident.update(id, updateData);
+      } else {
+        await base44.entities.MaintenanceRequest.update(id, updateData);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["allIncidents"]);
+      queryClient.invalidateQueries(["allMaintenance"]);
+      setShowStatusUpdate(false);
+      setStatusNotes("");
+      setSelectedReport(null);
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ id, entityType, reason }) => {
+      if (entityType === "incident") {
+        await base44.entities.Incident.delete(id);
+      } else {
+        await base44.entities.MaintenanceRequest.delete(id);
+      }
+      
+      // Log deletion reason
+      await base44.entities.Alert.create({
+        type: "system",
+        priority: "low",
+        title: `${entityType === "incident" ? "Incident" : "Maintenance"} Deleted`,
+        message: `ID: ${id} - Reason: ${reason}`,
+        status: "acknowledged"
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["allIncidents"]);
+      queryClient.invalidateQueries(["allMaintenance"]);
+      setShowDeleteConfirm(false);
+      setDeleteReason("");
+      setSelectedReport(null);
+    }
   });
 
   const filterByDate = (items) => {
@@ -85,6 +144,26 @@ export default function Reports() {
     a.href = url;
     a.download = filename;
     a.click();
+  };
+
+  const getNextStatus = (currentStatus, entityType) => {
+    if (entityType === "incident") {
+      const workflow = {
+        reported: "assigned",
+        assigned: "in_progress",
+        in_progress: "resolved",
+        resolved: "closed"
+      };
+      return workflow[currentStatus] || null;
+    } else {
+      const workflow = {
+        reported: "assigned",
+        assigned: "in_progress",
+        in_progress: "completed",
+        completed: null
+      };
+      return workflow[currentStatus] || null;
+    }
   };
 
   const priorityColors = {
@@ -179,11 +258,151 @@ export default function Reports() {
     );
   };
 
+  const StatusUpdateModal = ({ report, onClose }) => {
+    if (!report || !showStatusUpdate) return null;
+
+    const isIncident = report.reportType === "incident";
+    const nextStatus = getNextStatus(report.status, report.reportType);
+
+    if (!nextStatus) {
+      return null;
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+        <Card className="w-full max-w-md bg-slate-800 border-slate-700">
+          <CardHeader className="border-b border-slate-700">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white">Update Status</CardTitle>
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 space-y-4">
+            <div>
+              <p className="text-slate-400 text-sm mb-2">
+                Move from <Badge className={statusColors[report.status]}>{report.status}</Badge> to <Badge className={statusColors[nextStatus]}>{nextStatus}</Badge>
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-300 block mb-2">
+                {nextStatus === "resolved" || nextStatus === "completed" ? "Resolution Notes" : "Update Notes"}
+              </label>
+              <Textarea
+                value={statusNotes}
+                onChange={(e) => setStatusNotes(e.target.value)}
+                placeholder="Add notes about this status update..."
+                className="bg-slate-900 border-slate-700 text-white"
+                rows={4}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="flex-1 border-slate-600"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => updateStatusMutation.mutate({
+                  id: report.id,
+                  entityType: report.reportType,
+                  newStatus: nextStatus,
+                  notes: statusNotes
+                })}
+                disabled={updateStatusMutation.isPending}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+              >
+                {updateStatusMutation.isPending ? "Updating..." : "Update Status"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const DeleteConfirmModal = ({ report, onClose }) => {
+    if (!report || !showDeleteConfirm) return null;
+
+    const isIncident = report.reportType === "incident";
+
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+        <Card className="w-full max-w-md bg-slate-800 border-rose-500">
+          <CardHeader className="border-b border-slate-700">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+                Confirm Deletion
+              </CardTitle>
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 space-y-4">
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+              <p className="text-rose-400 text-sm">
+                ⚠️ This action cannot be undone. The {isIncident ? "incident" : "maintenance request"} will be permanently deleted.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-300 block mb-2">
+                Reason for Deletion <span className="text-rose-400">*</span>
+              </label>
+              <Textarea
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="Explain why this is being deleted (required)..."
+                className="bg-slate-900 border-slate-700 text-white"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="flex-1 border-slate-600"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!deleteReason.trim()) {
+                    alert("Please provide a reason for deletion");
+                    return;
+                  }
+                  deleteMutation.mutate({
+                    id: report.id,
+                    entityType: report.reportType,
+                    reason: deleteReason
+                  });
+                }}
+                disabled={deleteMutation.isPending || !deleteReason.trim()}
+                className="flex-1 bg-rose-600 hover:bg-rose-700"
+              >
+                {deleteMutation.isPending ? "Deleting..." : "Delete Permanently"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   const ReportDetailModal = ({ report, onClose }) => {
     if (!report) return null;
 
     const isIncident = report.reportType === "incident";
     const media = report.media || [];
+    const nextStatus = getNextStatus(report.status, report.reportType);
 
     return (
       <div 
@@ -220,6 +439,47 @@ export default function Reports() {
           </CardHeader>
 
           <CardContent className="p-6 space-y-6">
+            {/* Status Workflow */}
+            <div className="p-4 bg-slate-900/50 border border-slate-700 rounded-lg">
+              <p className="text-xs text-slate-400 mb-3">Status Workflow</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {(isIncident 
+                  ? ["reported", "assigned", "in_progress", "resolved", "closed"]
+                  : ["reported", "assigned", "in_progress", "completed"]
+                ).map((status, idx, arr) => (
+                  <React.Fragment key={status}>
+                    <Badge 
+                      className={`${statusColors[status]} ${report.status === status ? 'ring-2 ring-white' : 'opacity-50'}`}
+                    >
+                      {status}
+                    </Badge>
+                    {idx < arr.length - 1 && <ChevronRight className="w-4 h-4 text-slate-600" />}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              {nextStatus && (
+                <Button
+                  onClick={() => setShowStatusUpdate(true)}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Move to {nextStatus}
+                </Button>
+              )}
+              <Button
+                onClick={() => setShowDeleteConfirm(true)}
+                variant="outline"
+                className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </Button>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-slate-400 block mb-1">Reported By</label>
@@ -328,6 +588,13 @@ export default function Reports() {
                 <p className="text-white">{report.resolution_notes}</p>
               </div>
             )}
+
+            {report.completion_notes && (
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Completion Notes</label>
+                <p className="text-white">{report.completion_notes}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -340,7 +607,7 @@ export default function Reports() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-white">Reports & Documentation</h1>
-            <p className="text-slate-400 mt-1">Comprehensive incident and maintenance reports</p>
+            <p className="text-slate-400 mt-1">Manage incident and maintenance lifecycle</p>
           </div>
         </div>
 
@@ -479,10 +746,24 @@ export default function Reports() {
         </Tabs>
 
         {selectedReport && (
-          <ReportDetailModal
-            report={selectedReport}
-            onClose={() => setSelectedReport(null)}
-          />
+          <>
+            <ReportDetailModal
+              report={selectedReport}
+              onClose={() => {
+                setSelectedReport(null);
+                setShowStatusUpdate(false);
+                setShowDeleteConfirm(false);
+              }}
+            />
+            <StatusUpdateModal
+              report={selectedReport}
+              onClose={() => setShowStatusUpdate(false)}
+            />
+            <DeleteConfirmModal
+              report={selectedReport}
+              onClose={() => setShowDeleteConfirm(false)}
+            />
+          </>
         )}
       </div>
     </div>
