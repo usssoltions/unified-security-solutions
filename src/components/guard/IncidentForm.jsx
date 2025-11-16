@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle, Upload, Video, Play } from "lucide-react";
 import SignaturePad from "./SignaturePad";
+import { createPageUrl } from "@/lib/utils"; // Assuming createPageUrl is available from utils
 
 export default function IncidentForm({ user, shift, location, onClose, onSuccess }) {
   const incidentTypes = [
@@ -160,6 +161,26 @@ ${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_n
         );
 
       await Promise.allSettled(emailPromises);
+
+      // Send notifications to supervisors
+      const supervisors = recipients.filter(r => r.role_type === 'supervisor' || r.role_type === 'admin' || r.role_type === 'dispatcher');
+      
+      for (const supervisor of supervisors) {
+        try {
+          await base44.functions.invoke('sendNotification', {
+            recipient_id: supervisor.id,
+            type: data.incident_type === 'Fire' || data.incident_type === 'Medical Emergency' ? 'incident_critical' : 'status_change',
+            priority: data.incident_type === 'Fire' || data.incident_type === 'Medical Emergency' ? 'critical' : 'high',
+            title: `New Incident: ${data.incident_type}`,
+            message: `${user.full_name} reported ${data.incident_type} at ${shift?.site_name}`,
+            related_entity: 'incident',
+            related_id: incident.id,
+            action_url: createPageUrl('Reports')
+          });
+        } catch (error) {
+          console.error('Failed to send notification:', error);
+        }
+      }
 
       return incident;
     },
