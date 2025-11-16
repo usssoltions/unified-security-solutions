@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Send, Loader2, AlertOctagon, MapPin } from "lucide-react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { X, Send, Loader2, AlertOctagon, MapPin, Navigation, Car, Clock } from "lucide-react";
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -18,6 +18,54 @@ L.Icon.Default.mergeOptions({
   iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
+
+// Custom icons
+const incidentIcon = new L.Icon({
+  iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="14" fill="#ef4444" stroke="white" stroke-width="2"/>
+      <text x="16" y="22" font-size="20" text-anchor="middle" fill="white">!</text>
+    </svg>
+  `),
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32]
+});
+
+const guardIcon = new L.Icon({
+  iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="14" fill="#10b981" stroke="white" stroke-width="2"/>
+      <text x="16" y="22" font-size="16" text-anchor="middle" fill="white">🛡️</text>
+    </svg>
+  `),
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32]
+});
+
+const nearestGuardIcon = new L.Icon({
+  iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="18" fill="#3b82f6" stroke="white" stroke-width="3"/>
+      <circle cx="20" cy="20" r="12" fill="white" opacity="0.3"/>
+      <text x="20" y="27" font-size="18" text-anchor="middle" fill="white">🛡️</text>
+    </svg>
+  `),
+  iconSize: [40, 40],
+  iconAnchor: [20, 40],
+  popupAnchor: [0, -40]
+});
+
+function MapController({ center, zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.setView(center, zoom);
+    }
+  }, [center, zoom, map]);
+  return null;
+}
 
 export default function DispatchAlarm({ onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -30,7 +78,10 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     description: "",
     assigned_to: ""
   });
-  const [showMap, setShowMap] = useState(false);
+  const [mapCenter, setMapCenter] = useState([-33.9249, 18.4241]); // Cape Town default
+  const [mapZoom, setMapZoom] = useState(10);
+  const [routeCoordinates, setRouteCoordinates] = useState(null);
+  const [estimatedTime, setEstimatedTime] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -95,7 +146,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
             ...prev,
             location: newLocation
           }));
-          setShowMap(true);
+          setMapCenter([newLocation.lat, newLocation.lng]);
+          setMapZoom(15);
         },
         (error) => {
           alert("Unable to get current location. Please enable location services.");
@@ -108,13 +160,11 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    // Ensure all values are numbers
     const lat1Num = parseFloat(lat1);
     const lon1Num = parseFloat(lon1);
     const lat2Num = parseFloat(lat2);
     const lon2Num = parseFloat(lon2);
     
-    // Validate inputs
     if (isNaN(lat1Num) || isNaN(lon1Num) || isNaN(lat2Num) || isNaN(lon2Num)) {
       console.error('Invalid coordinates:', { lat1, lon1, lat2, lon2 });
       return 0;
@@ -133,6 +183,14 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     const distance = R * c;
     
     return Math.round(distance * 10) / 10;
+  };
+
+  const calculateETA = (distanceKm) => {
+    // Assume average speed of 40 km/h in city traffic
+    const avgSpeed = 40;
+    const hours = distanceKm / avgSpeed;
+    const minutes = Math.round(hours * 60);
+    return minutes;
   };
 
   const findNearestGuard = () => {
@@ -161,6 +219,31 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
     return nearest;
   };
+
+  const nearestGuard = findNearestGuard();
+
+  // Update route and ETA when nearest guard or incident location changes
+  useEffect(() => {
+    if (nearestGuard && formData.location) {
+      const coords = [
+        [nearestGuard.guard.guard_location.lat, nearestGuard.guard.guard_location.lng],
+        [formData.location.lat, formData.location.lng]
+      ];
+      setRouteCoordinates(coords);
+      
+      const eta = calculateETA(nearestGuard.distance);
+      setEstimatedTime(eta);
+
+      // Center map to show both points
+      const bounds = L.latLngBounds(coords);
+      const center = bounds.getCenter();
+      setMapCenter([center.lat, center.lng]);
+      setMapZoom(12);
+    } else {
+      setRouteCoordinates(null);
+      setEstimatedTime(null);
+    }
+  }, [nearestGuard, formData.location]);
 
   const dispatchMutation = useMutation({
     mutationFn: async (alarmPayload) => {
@@ -244,11 +327,9 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     dispatchMutation.mutate(payload);
   };
 
-  const nearestGuard = findNearestGuard();
-
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl bg-slate-800 border-rose-500/50 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <Card className="w-full max-w-6xl bg-slate-800 border-rose-500/50 max-h-[95vh] flex flex-col">
         <CardHeader className="border-b border-slate-700 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -264,191 +345,305 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         </CardHeader>
         
         <CardContent className="overflow-y-auto flex-1 p-6">
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-slate-300 font-medium block mb-2">
-                  Alarm Type <span className="text-rose-400">*</span>
-                </label>
-                <Select
-                  value={formData.alarm_type}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, alarm_type: value }))}
-                >
-                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {alarmTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm text-slate-300 font-medium block mb-2">
-                  Priority <span className="text-rose-400">*</span>
-                </label>
-                <Select
-                  value={formData.priority}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}
-                >
-                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {priorities.map((priority) => (
-                      <SelectItem key={priority.value} value={priority.value}>
-                        {priority.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-slate-300 font-medium block mb-2">
-                Incident Address <span className="text-rose-400">*</span>
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Full street address where guard must respond"
-                  value={formData.address}
-                  onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                  className="bg-slate-900 border-slate-700 text-white flex-1"
-                />
-                <Button 
-                  onClick={getCurrentLocation} 
-                  variant="outline" 
-                  className="border-slate-600"
-                  type="button"
-                >
-                  <MapPin className="w-4 h-4" />
-                </Button>
-              </div>
-              {formData.location && (
-                <p className="text-xs text-emerald-400 mt-1">
-                  ✓ Incident location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}
-                </p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-slate-300 font-medium block mb-2">Client Name</label>
-                <Input
-                  placeholder="Client name"
-                  value={formData.client_name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, client_name: e.target.value }))}
-                  className="bg-slate-900 border-slate-700 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm text-slate-300 font-medium block mb-2">Client Phone</label>
-                <Input
-                  placeholder="Contact number"
-                  value={formData.client_phone}
-                  onChange={(e) => setFormData(prev => ({ ...prev, client_phone: e.target.value }))}
-                  className="bg-slate-900 border-slate-700 text-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-slate-300 font-medium block mb-2">Description</label>
-              <Textarea
-                placeholder="Additional details about the alarm..."
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                className="bg-slate-900 border-slate-700 text-white min-h-20"
-              />
-            </div>
-
-            {nearestGuard && nearestGuard.distance > 0 && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                <p className="text-xs text-emerald-400 font-semibold mb-1">📍 Nearest Available Guard:</p>
-                <p className="text-sm text-white">{nearestGuard.guard.guard_full_name}</p>
-                <p className="text-xs text-slate-400">{nearestGuard.distance.toFixed(1)} km from incident location</p>
-              </div>
-            )}
-
-            <div>
-              <label className="text-sm text-slate-300 font-medium block mb-2">
-                Assign Responder <span className="text-rose-400">*</span>
-              </label>
-              {guardsLoading ? (
-                <div className="text-slate-400 text-sm">Loading guards...</div>
-              ) : activeGuards.length === 0 ? (
-                <div className="text-amber-400 text-sm p-3 bg-amber-500/10 border border-amber-500/20 rounded">
-                  No active guards available with location data
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column - Form */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-slate-300 font-medium block mb-2">
+                    Alarm Type <span className="text-rose-400">*</span>
+                  </label>
+                  <Select
+                    value={formData.alarm_type}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, alarm_type: value }))}
+                  >
+                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {alarmTypes.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ) : (
-                <select
-                  value={formData.assigned_to}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    const guard = activeGuards.find(g => g.guard_id === value);
-                    setFormData(prev => ({ ...prev, assigned_to: value }));
-                    
-                    if (guard?.guard_location?.lat && guard?.guard_location?.lng && formData.location) {
-                      setShowMap(true);
-                    }
-                  }}
-                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
-                >
-                  <option value="">Select guard...</option>
-                  {activeGuards.map((guard) => {
-                    const dist = formData.location?.lat && formData.location?.lng && guard.guard_location?.lat && guard.guard_location?.lng 
-                      ? calculateDistance(
-                          formData.location.lat,
-                          formData.location.lng,
-                          guard.guard_location.lat,
-                          guard.guard_location.lng
-                        )
-                      : null;
-                    
-                    return (
-                      <option key={guard.guard_id} value={guard.guard_id}>
-                        {guard.guard_full_name} - {guard.site_name}
-                        {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km away)` : ''}
-                      </option>
-                    );
-                  })}
-                </select>
+
+                <div>
+                  <label className="text-sm text-slate-300 font-medium block mb-2">
+                    Priority <span className="text-rose-400">*</span>
+                  </label>
+                  <Select
+                    value={formData.priority}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}
+                  >
+                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {priorities.map((priority) => (
+                        <SelectItem key={priority.value} value={priority.value}>
+                          {priority.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-slate-300 font-medium block mb-2">
+                  Incident Address <span className="text-rose-400">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Full street address where guard must respond"
+                    value={formData.address}
+                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                    className="bg-slate-900 border-slate-700 text-white flex-1"
+                  />
+                  <Button 
+                    onClick={getCurrentLocation} 
+                    variant="outline" 
+                    className="border-slate-600"
+                    type="button"
+                  >
+                    <MapPin className="w-4 h-4" />
+                  </Button>
+                </div>
+                {formData.location && (
+                  <p className="text-xs text-emerald-400 mt-1">
+                    ✓ Incident location set: {formData.location.lat.toFixed(6)}, {formData.location.lng.toFixed(6)}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-slate-300 font-medium block mb-2">Client Name</label>
+                  <Input
+                    placeholder="Client name"
+                    value={formData.client_name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, client_name: e.target.value }))}
+                    className="bg-slate-900 border-slate-700 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm text-slate-300 font-medium block mb-2">Client Phone</label>
+                  <Input
+                    placeholder="Contact number"
+                    value={formData.client_phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, client_phone: e.target.value }))}
+                    className="bg-slate-900 border-slate-700 text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-slate-300 font-medium block mb-2">Description</label>
+                <Textarea
+                  placeholder="Additional details about the alarm..."
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  className="bg-slate-900 border-slate-700 text-white min-h-20"
+                />
+              </div>
+
+              {nearestGuard && nearestGuard.distance > 0 && (
+                <div className="p-4 bg-gradient-to-r from-sky-500/10 to-sky-600/10 border border-sky-500/30 rounded-lg">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Navigation className="w-5 h-5 text-sky-400" />
+                    <p className="text-sm font-semibold text-sky-400">Nearest Available Guard</p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-medium">{nearestGuard.guard.guard_full_name}</span>
+                      <Badge className="bg-sky-500">Closest</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Car className="w-4 h-4 text-emerald-400" />
+                        <span className="text-slate-300">{nearestGuard.distance.toFixed(1)} km away</span>
+                      </div>
+                      {estimatedTime && (
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-amber-400" />
+                          <span className="text-slate-300">~{estimatedTime} min ETA</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400">Based on current location and typical traffic</p>
+                  </div>
+                </div>
               )}
+
+              <div>
+                <label className="text-sm text-slate-300 font-medium block mb-2">
+                  Assign Responder <span className="text-rose-400">*</span>
+                </label>
+                {guardsLoading ? (
+                  <div className="text-slate-400 text-sm">Loading guards...</div>
+                ) : activeGuards.length === 0 ? (
+                  <div className="text-amber-400 text-sm p-3 bg-amber-500/10 border border-amber-500/20 rounded">
+                    No active guards available with location data
+                  </div>
+                ) : (
+                  <select
+                    value={formData.assigned_to}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData(prev => ({ ...prev, assigned_to: value }));
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                  >
+                    <option value="">Select guard...</option>
+                    {activeGuards.map((guard) => {
+                      const dist = formData.location?.lat && formData.location?.lng && guard.guard_location?.lat && guard.guard_location?.lng 
+                        ? calculateDistance(
+                            formData.location.lat,
+                            formData.location.lng,
+                            guard.guard_location.lat,
+                            guard.guard_location.lng
+                          )
+                        : null;
+                      
+                      const isNearest = nearestGuard?.guard.guard_id === guard.guard_id;
+                      
+                      return (
+                        <option key={guard.guard_id} value={guard.guard_id}>
+                          {isNearest ? '⭐ ' : ''}{guard.guard_full_name} - {guard.site_name}
+                          {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km, ~${calculateETA(dist)}min)` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </div>
             </div>
 
-            {showMap && formData.location && (
-              <div className="h-48 rounded-lg overflow-hidden border border-slate-700">
-                <MapContainer
-                  center={[formData.location.lat, formData.location.lng]}
-                  zoom={13}
-                  style={{ height: "100%", width: "100%" }}
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; OpenStreetMap contributors'
-                  />
-                  <Marker position={[formData.location.lat, formData.location.lng]}>
-                    <Popup>Incident Location (Where Guard Responds)</Popup>
-                  </Marker>
-                  {formData.assigned_to && activeGuards.find(g => g.guard_id === formData.assigned_to)?.guard_location && (
+            {/* Right Column - Map */}
+            <div className="space-y-4">
+              <div className="h-[500px] rounded-lg overflow-hidden border-2 border-slate-700">
+                {formData.location ? (
+                  <MapContainer
+                    center={mapCenter}
+                    zoom={mapZoom}
+                    style={{ height: "100%", width: "100%" }}
+                    scrollWheelZoom={true}
+                  >
+                    <MapController center={mapCenter} zoom={mapZoom} />
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; OpenStreetMap contributors'
+                    />
+                    
+                    {/* Incident Location */}
                     <Marker 
-                      position={[
-                        activeGuards.find(g => g.guard_id === formData.assigned_to).guard_location.lat,
-                        activeGuards.find(g => g.guard_id === formData.assigned_to).guard_location.lng
-                      ]}
+                      position={[formData.location.lat, formData.location.lng]}
+                      icon={incidentIcon}
                     >
-                      <Popup>Guard's Current Location</Popup>
+                      <Popup>
+                        <div className="text-center">
+                          <p className="font-bold text-rose-600">Incident Location</p>
+                          <p className="text-sm">{formData.address}</p>
+                        </div>
+                      </Popup>
                     </Marker>
-                  )}
-                </MapContainer>
+                    
+                    {/* Incident radius circle */}
+                    <Circle
+                      center={[formData.location.lat, formData.location.lng]}
+                      radius={500}
+                      pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.1 }}
+                    />
+                    
+                    {/* All Guards */}
+                    {activeGuards.map((guard) => {
+                      if (!guard.guard_location?.lat || !guard.guard_location?.lng) return null;
+                      
+                      const isNearest = nearestGuard?.guard.guard_id === guard.guard_id;
+                      const dist = calculateDistance(
+                        formData.location.lat,
+                        formData.location.lng,
+                        guard.guard_location.lat,
+                        guard.guard_location.lng
+                      );
+                      
+                      return (
+                        <Marker 
+                          key={guard.guard_id}
+                          position={[guard.guard_location.lat, guard.guard_location.lng]}
+                          icon={isNearest ? nearestGuardIcon : guardIcon}
+                        >
+                          <Popup>
+                            <div className="text-center">
+                              <p className="font-bold text-emerald-600">{guard.guard_full_name}</p>
+                              {isNearest && <p className="text-xs text-sky-500 font-bold">⭐ NEAREST GUARD</p>}
+                              <p className="text-sm">{guard.site_name}</p>
+                              <p className="text-xs text-gray-600">{dist.toFixed(1)} km from incident</p>
+                              <p className="text-xs text-amber-600">~{calculateETA(dist)} min ETA</p>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
+                    
+                    {/* Route line to nearest guard */}
+                    {routeCoordinates && (
+                      <Polyline
+                        positions={routeCoordinates}
+                        pathOptions={{ 
+                          color: '#3b82f6', 
+                          weight: 4, 
+                          opacity: 0.7,
+                          dashArray: '10, 10'
+                        }}
+                      />
+                    )}
+                  </MapContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center bg-slate-900">
+                    <div className="text-center">
+                      <MapPin className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+                      <p className="text-slate-400">Set incident location to view map</p>
+                      <Button
+                        onClick={getCurrentLocation}
+                        className="mt-4 bg-sky-600 hover:bg-sky-700"
+                      >
+                        <MapPin className="w-4 h-4 mr-2" />
+                        Get Current Location
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+              
+              {formData.location && activeGuards.length > 0 && (
+                <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                  <p className="text-xs text-slate-400 mb-2">Map Legend</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-rose-500"></div>
+                      <span className="text-slate-300">Incident Location</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-emerald-500"></div>
+                      <span className="text-slate-300">Available Guards</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-sky-500"></div>
+                      <span className="text-slate-300">Nearest Guard</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-1 bg-sky-500" style={{borderTop: '2px dashed'}}></div>
+                      <span className="text-slate-300">Route</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
 
