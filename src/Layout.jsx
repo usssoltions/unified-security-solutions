@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -25,7 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import NotificationsPanel from "@/components/layout/NotificationsPanel";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
 import AutoReportScheduler from "@/components/analytics/AutoReportScheduler";
 import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
 
@@ -37,7 +36,7 @@ export default function Layout({ children, currentPageName }) {
   const [error, setError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [alerts, setAlerts] = useState([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -81,8 +80,8 @@ export default function Layout({ children, currentPageName }) {
 
   useEffect(() => {
     if (user) {
-      loadAlerts();
-      const interval = setInterval(loadAlerts, 60000); // Reduced to 60 seconds
+      loadNotificationCount();
+      const interval = setInterval(loadNotificationCount, 10000);
       return () => clearInterval(interval);
     }
   }, [user]);
@@ -117,16 +116,18 @@ export default function Layout({ children, currentPageName }) {
     }
   };
 
-  const loadAlerts = async () => {
+  const loadNotificationCount = async () => {
     try {
-      const alertList = await base44.entities.Alert.filter({ status: "active" }, "-created_date", 5);
-      setAlerts(Array.isArray(alertList) ? alertList : []);
+      const notifications = await base44.entities.Notification.filter({ 
+        recipient_id: user.id,
+        read: false 
+      });
+      setNotificationCount(notifications.length);
     } catch (error) {
       const errMsg = error?.message || '';
       if (!errMsg.includes('WebSocket') && !errMsg.includes('socket')) {
-        console.error("Failed to load alerts:", error);
+        console.error("Failed to load notifications:", error);
       }
-      setAlerts([]);
     }
   };
 
@@ -234,7 +235,6 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const navigationItems = getNavigationItems();
-  const safeAlerts = Array.isArray(alerts) ? alerts : [];
 
   return (
     <ErrorBoundary>
@@ -267,9 +267,9 @@ export default function Layout({ children, currentPageName }) {
                 onClick={() => setShowNotifications(true)}
               >
                 <Bell className="w-5 h-5" />
-                {safeAlerts.length > 0 && (
+                {notificationCount > 0 && (
                   <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-rose-500 text-white text-xs">
-                    {safeAlerts.length}
+                    {notificationCount > 9 ? '9+' : notificationCount}
                   </Badge>
                 )}
               </Button>
@@ -351,11 +351,11 @@ export default function Layout({ children, currentPageName }) {
         </div>
 
         {showNotifications && (
-          <NotificationsPanel
+          <NotificationCenter
             user={user}
             onClose={() => {
               setShowNotifications(false);
-              loadAlerts();
+              loadNotificationCount();
             }}
           />
         )}
