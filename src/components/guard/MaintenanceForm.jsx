@@ -80,7 +80,7 @@ Voice Notes: ${formData.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
-      const maintenanceRequest = await base44.asServiceRole.entities.MaintenanceRequest.create({
+      await base44.entities.MaintenanceRequest.create({ // Changed from base44.asServiceRole.entities to base44.entities
         title: `Maintenance: ${formData.maintenance_type}`,
         description: reportContent,
         category: "other",
@@ -94,45 +94,9 @@ Officer Signature: Signed
         media: [...formData.media, ...formData.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send email notifications to admins, dispatchers, and supervisors
-      const recipients = await base44.asServiceRole.entities.User.filter({
-        role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
-      });
-      
-      const emailPromises = recipients
-        .filter(recipient => recipient.email)
-        .map(recipient => 
-          base44.integrations.Core.SendEmail({
-            to: recipient.email,
-            subject: `MAINTENANCE REQUEST: ${formData.maintenance_type} - ${formData.site_name}`,
-            body: `
-<h2>New Maintenance Request Submitted</h2>
+      // Removed email notification sending logic as per the outline.
 
-<p><strong>Maintenance Type:</strong> ${formData.maintenance_type}</p>
-${formData.maintenance_type_other ? `<p><strong>Specific Type:</strong> ${formData.maintenance_type_other}</p>` : ''}
-<p><strong>Site:</strong> ${formData.site_name}</p>
-<p><strong>Guard:</strong> ${formData.guard_name}</p>
-<p><strong>Date/Time:</strong> ${new Date().toLocaleString()}</p>
-
-<h3>Details:</h3>
-<p>${formData.details}</p>
-
-${formData.who_notified ? `<p><strong>Who Notified:</strong> ${formData.who_notified}</p>` : ''}
-<p><strong>Email Client:</strong> ${formData.email_client}</p>
-
-${formData.media.length > 0 ? `<p><strong>Media:</strong> ${formData.media.length} file(s) attached</p>` : ''}
-${formData.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${formData.voice_notes.length} recording(s)</p>` : ''}
-
-<p><strong>GPS Location:</strong> ${formData.location ? `${formData.location.lat.toFixed(6)}, ${formData.location.lng.toFixed(6)}` : 'Not available'}</p>
-
-<p>Log into the SecureGuard system to view full details and manage this request.</p>
-            `
-          }).catch(err => console.error(`Email failed for ${recipient.email}:`, err))
-        );
-
-      await Promise.allSettled(emailPromises);
-
-      alert("Maintenance request submitted and notifications sent!");
+      alert("Maintenance request submitted successfully!"); // Changed alert message
       onSuccess();
     } catch (error) {
       alert(`Error: ${error.message}`);

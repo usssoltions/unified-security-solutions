@@ -98,7 +98,7 @@ VOICE NOTES: ${data.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
-      const incident = await base44.asServiceRole.entities.Incident.create({
+      const incident = await base44.entities.Incident.create({
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
         category: "other",
@@ -113,73 +113,31 @@ Officer Signature: Signed
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send email notifications to ALL users with admin/dispatcher/supervisor roles
-      const recipients = await base44.asServiceRole.entities.User.filter({
-        role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
-      });
-
-      const emailPromises = recipients
-        .filter(recipient => recipient.email)
-        .map(recipient =>
-          base44.integrations.Core.SendEmail({
-            to: recipient.email,
-            subject: `INCIDENT REPORT: ${data.incident_type} - ${shift?.site_name || 'Unknown Site'}`,
-            body: `
-<h2>New Incident Report Submitted</h2>
-
-<p><strong>Report #:</strong> ${data.incident_report_number}</p>
-<p><strong>Incident Type:</strong> ${data.incident_type}</p>
-<p><strong>Site:</strong> ${shift?.site_name || 'N/A'}</p>
-<p><strong>Guard:</strong> ${user.full_name}</p>
-<p><strong>Date/Time:</strong> ${new Date(data.date_time_of_incident).toLocaleString()}</p>
-<p><strong>Location:</strong> ${data.incident_location}</p>
-
-<h3>Incident Summary:</h3>
-<p>${data.incident_summary}</p>
-
-<h3>Details:</h3>
-<p>${data.who_what_when_details}</p>
-
-${data.victim_names ? `<p><strong>Victim(s):</strong> ${data.victim_names}</p>` : ''}
-${data.suspect_names ? `<p><strong>Suspect(s):</strong> ${data.suspect_names}</p>` : ''}
-${data.witness_names ? `<p><strong>Witness(es):</strong> ${data.witness_names}</p>` : ''}
-
-<h3>Officer Actions:</h3>
-<p>${data.officer_actions}</p>
-
-${data.police_called === 'Yes' ? `<p><strong>Police Called:</strong> Yes</p>` : ''}
-${data.police_names_badges ? `<p><strong>Police Officers:</strong> ${data.police_names_badges}</p>` : ''}
-
-${data.media.length > 0 ? `<p><strong>Media:</strong> ${data.media.length} file(s) attached</p>` : ''}
-${data.voice_notes.length > 0 ? `<p><strong>Voice Notes:</strong> ${data.voice_notes.length} recording(s)</p>` : ''}
-
-<p><strong>GPS Location:</strong> ${location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : 'Not available'}</p>
-
-<p>Log into the SecureGuard system to view full details and manage this incident.</p>
-            `
-          }).catch(err => console.error(`Email failed for ${recipient.email}:`, err))
-        );
-
-      await Promise.allSettled(emailPromises);
-
-      // Send notifications to supervisors
-      const supervisors = recipients.filter(r => r.role_type === 'supervisor' || r.role_type === 'admin' || r.role_type === 'dispatcher');
-      
-      for (const supervisor of supervisors) {
-        try {
-          await base44.functions.invoke('sendNotification', {
-            recipient_id: supervisor.id,
-            type: data.incident_type === 'Fire' || data.incident_type === 'Medical Emergency' ? 'incident_critical' : 'status_change',
-            priority: data.incident_type === 'Fire' || data.incident_type === 'Medical Emergency' ? 'critical' : 'high',
-            title: `New Incident: ${data.incident_type}`,
-            message: `${user.full_name} reported ${data.incident_type} at ${shift?.site_name}`,
-            related_entity: 'incident',
-            related_id: incident.id,
-            action_url: createPageUrl('Reports')
-          });
-        } catch (error) {
-          console.error('Failed to send notification:', error);
-        }
+      // Invoke serverless function to handle emails and notifications
+      try {
+        await base44.functions.invoke('processIncidentReport', {
+          incidentId: incident.id,
+          incidentReportNumber: data.incident_report_number,
+          incidentType: data.incident_type,
+          siteName: shift?.site_name || 'N/A',
+          guardFullName: user.full_name,
+          incidentDateTime: data.date_time_of_incident,
+          incidentLocation: data.incident_location,
+          incidentSummary: data.incident_summary,
+          incidentDetails: data.who_what_when_details,
+          victimNames: data.victim_names,
+          suspectNames: data.suspect_names,
+          witnessNames: data.witness_names,
+          officerActions: data.officer_actions,
+          policeCalled: data.police_called,
+          policeNamesBadges: data.police_names_badges,
+          mediaCount: data.media.length,
+          voiceNotesCount: data.voice_notes.length,
+          gpsLocation: location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : 'Not available',
+          actionUrl: createPageUrl('Reports') // Assuming 'Reports' is the page name for incidents
+        });
+      } catch (error) {
+        console.error('Failed to invoke processIncidentReport function:', error);
       }
 
       return incident;
