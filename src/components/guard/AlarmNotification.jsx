@@ -1,297 +1,314 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AlertOctagon, Navigation, CheckCircle2, MapPin, Phone, Clock } from "lucide-react";
+import { AlertCircle, Navigation, Clock, MapPin, Zap, Phone } from "lucide-react";
 
 export default function AlarmNotification({ user }) {
   const queryClient = useQueryClient();
-  const [acknowledging, setAcknowledging] = useState(false);
-  const [trackingIntervals, setTrackingIntervals] = useState({});
   const audioRef = useRef(null);
+  const [trackingArrival, setTrackingArrival] = useState(null);
 
-  const playAlertSound = () => {
-    try {
-      if (!audioRef.current) { // Only play if not already playing or reference is null
-        // Base64 encoded WAV audio for a short alert sound
-        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmGMgjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE');
-        audio.loop = true;
-        audio.volume = 0.8; // Set desired volume
-        audio.play();
-        audioRef.current = audio;
+  const { data: activeAlarms = [], isLoading } = useQuery({
+    queryKey: ["activeAlarms", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      
+      const alarms = await base44.entities.AlarmResponse.filter({
+        assigned_to: user.id,
+        status: { $in: ["dispatched", "acknowledged", "en_route"] }
+      });
+      
+      return alarms || [];
+    },
+    enabled: !!user,
+    refetchInterval: 3000, // Real-time sync every 3 seconds
+    retry: 3,
+    retryDelay: 1000,
+    initialData: [],
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0 // Don't cache old alarms
+  });
+
+  useEffect(() => {
+    if (activeAlarms.length > 0) {
+      const hasUnacknowledged = activeAlarms.some(a => a.status === "dispatched");
+      
+      if (hasUnacknowledged && !audioRef.current) {
+        playAlarmSound();
+      } else if (!hasUnacknowledged && audioRef.current) {
+        stopAlarmSound();
       }
+    } else {
+      stopAlarmSound();
+    }
+
+    return () => stopAlarmSound();
+  }, [activeAlarms]);
+
+  useEffect(() => {
+    if (trackingArrival && trackingArrival.location) {
+      const interval = setInterval(() => {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(async (position) => {
+            const currentLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            };
+
+            const distance = calculateDistance(
+              currentLocation.lat,
+              currentLocation.lng,
+              trackingArrival.location.lat,
+              trackingArrival.location.lng
+            );
+
+            if (distance <= 100) {
+              await acknowledgeMutation.mutateAsync({
+                alarmId: trackingArrival.alarmId,
+                newStatus: "arrived",
+                location: currentLocation
+              });
+
+              await base44.entities.Alert.create({
+                type: "assignment",
+                priority: "high",
+                title: "Guard Arrived On Scene",
+                message: `${user.full_name} has arrived at ${trackingArrival.address}`,
+                guard_id: user.id,
+                guard_name: user.full_name,
+                status: "active"
+              });
+
+              setTrackingArrival(null);
+              clearInterval(interval);
+            }
+          });
+        }
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [trackingArrival]);
+
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3;
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  };
+
+  const playAlarmSound = () => {
+    try {
+      const audio = new Audio();
+      audio.src = "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwPUKXh8bllHAU2jdXvz3wsDiByw+zglEgLCEyo4+ysbBoELIHA8N2SOQcZaLvt559NEAxPqOPwtmMcBjiP1vHNei0GI3fH8N2RQAoVXrTp66hWFApFnt/yvmwhBSuAzvLZiTYIG2m88OOdTgwPUKXh8bllHAU2jdXvz3wsDiByw+zglEgLCEyo4+ysbBoELH/A8N2SOQcZaLru559NEAxPqOPwtmMcBjiP1vHNei0GI3fH8N2RQAoVXrTp66hWFApFnt/yvmwhBSuAzvLZiTYIG2m88OOdTgwPUKXh8bllHAU2jdXvz3wsDiByw+zglEgLCEyo4+ysbBoELH/A8N2SOQcZaLru559NEAxPqOPwtmMcBjiP1vHNei0GI3fH8N2RQAoVXrTp66hWFApFnt/yvmwhBSuAzvLZiTYIG2m88OOdTgwPUKXh8bllHAU2jdXvz3wsDiByw+zglEgLCEyo4+ysbBoELH/A8N2SOQcZaLru559NEAxPqOPwtmMcBjiP1vHNei0GI3fH8N2RQAoVXrTp66hWFApFnt/yvmwhBSuAzvLZiTYIG2m88OOdTgwPUKXh8bllHAU2jdXvz3wsDiByw+zglEgLCEyo4+ysbBoELH/A8N2SOQcZaLru559NEAxPqOPwtmMcBjiP1vHNei0GI3fH8N2RQAoVXrTp66hWFA==";
+      audio.loop = true;
+      audio.play();
+      audioRef.current = audio;
     } catch (error) {
-      console.error("Failed to play alert sound:", error);
+      console.error("Failed to play alarm sound:", error);
     }
   };
 
-  const stopAlertSound = () => {
+  const stopAlarmSound = () => {
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current.currentTime = 0; // Reset playback to the beginning
       audioRef.current = null;
     }
   };
 
-  const { data: activeAlarms } = useQuery({
-    queryKey: ["activeAlarms", user.id],
-    queryFn: async () => {
-      try {
-        const alarms = await base44.entities.AlarmResponse.filter({
-          assigned_to: user.id,
-          status: ["dispatched", "acknowledged", "en_route"]
-        }, "-dispatched_at");
+  const acknowledgeMutation = useMutation({
+    mutationFn: async ({ alarmId, newStatus, location }) => {
+      const updateData = {
+        status: newStatus
+      };
 
-        // Play sound if new alarms are fetched and sound is not already playing
-        if (alarms.length > 0 && (!audioRef.current || audioRef.current.paused)) {
-          playAlertSound();
-        } else if (alarms.length === 0 && audioRef.current) {
-          // Stop sound if no active alarms and sound is playing
-          stopAlertSound();
+      if (newStatus === "acknowledged") {
+        updateData.acknowledged_at = new Date().toISOString();
+        updateData.acknowledged_by = user.id;
+      } else if (newStatus === "en_route") {
+        updateData.en_route_at = new Date().toISOString();
+      } else if (newStatus === "arrived") {
+        updateData.arrived_at = new Date().toISOString();
+        
+        const alarm = activeAlarms.find(a => a.id === alarmId);
+        if (alarm && alarm.dispatched_at) {
+          const responseTime = (new Date() - new Date(alarm.dispatched_at)) / 1000 / 60;
+          updateData.response_time_minutes = responseTime;
         }
-
-        return alarms;
-      } catch (error) {
-        if (!error?.message?.includes('WebSocket')) {
-          console.error("Failed to load alarms:", error);
-        }
-        return [];
       }
+
+      if (location) {
+        updateData.responder_location = {
+          ...location,
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      await base44.entities.AlarmResponse.update(alarmId, updateData);
     },
-    refetchInterval: 5000,
-    initialData: [],
-    retry: 3,
-    retryDelay: 1000
+    onSuccess: () => {
+      queryClient.invalidateQueries(["activeAlarms"]);
+    }
   });
 
-  useEffect(() => {
-    // Cleanup tracking intervals and audio on unmount
-    return () => {
-      Object.values(trackingIntervals).forEach(interval => clearInterval(interval));
-      stopAlertSound(); // Ensure sound stops when component unmounts
-    };
-  }, [trackingIntervals]);
-
   const handleAcknowledge = async (alarm) => {
-    setAcknowledging(true);
-    try {
-      await base44.entities.AlarmResponse.update(alarm.id, {
-        status: "acknowledged",
-        acknowledged_at: new Date().toISOString()
-      });
-
-      // Update user location
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(async (position) => {
-          try {
-            await base44.auth.updateMe({
-              last_location: {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-                timestamp: new Date().toISOString()
-              }
-            });
-          } catch (error) {
-            console.error("Failed to update location:", error);
-          }
-        });
-      }
-
-      queryClient.invalidateQueries(["activeAlarms"]);
-    } catch (error) {
-      alert("Failed to acknowledge alarm");
-    } finally {
-      setAcknowledging(false);
-    }
+    await acknowledgeMutation.mutateAsync({
+      alarmId: alarm.id,
+      newStatus: "acknowledged"
+    });
   };
 
   const handleNavigate = async (alarm) => {
-    try {
-      // Update status to en_route
-      await base44.entities.AlarmResponse.update(alarm.id, {
-        status: "en_route",
-        en_route_at: new Date().toISOString()
-      });
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const currentLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
 
-      // Open navigation (Google Maps on mobile, browser otherwise)
-      const destination = `${alarm.location.lat},${alarm.location.lng}`;
-      const url = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-        ? `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
-        : `https://www.google.com/maps/search/?api=1&query=${destination}`;
-      
-      window.open(url, '_blank');
-
-      // Start tracking arrival
-      startArrivalTracking(alarm);
-    } catch (error) {
-      alert("Failed to start navigation");
-    }
-  };
-
-  const startArrivalTracking = (alarm) => {
-    // Clear existing interval if any
-    if (trackingIntervals[alarm.id]) {
-      clearInterval(trackingIntervals[alarm.id]);
-    }
-
-    const interval = setInterval(() => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(async (position) => {
-          try {
-            const distance = calculateDistance(
-              position.coords.latitude,
-              position.coords.longitude,
-              alarm.location.lat,
-              alarm.location.lng
-            );
-
-            // If within 100m, mark as arrived
-            if (distance < 0.1) { // 0.1 km = 100 meters
-              await base44.entities.AlarmResponse.update(alarm.id, {
-                status: "arrived",
-                arrived_at: new Date().toISOString(),
-                response_time_minutes: Math.round(
-                  (new Date() - new Date(alarm.dispatched_at)) / 60000
-                )
-              });
-
-              // Notify control room
-              await base44.entities.Alert.create({
-                type: "system",
-                priority: "medium",
-                title: "Responder Arrived",
-                message: `${user.full_name} has arrived at ${alarm.address || 'the incident location'}`,
-                status: "active"
-              });
-
-              clearInterval(interval);
-              setTrackingIntervals(prev => {
-                const newIntervals = { ...prev };
-                delete newIntervals[alarm.id];
-                return newIntervals;
-              });
-              queryClient.invalidateQueries(["activeAlarms"]);
-            }
-          } catch (error) {
-            console.error("Arrival tracking error:", error);
-          }
-        }, (error) => {
-          console.error("Geolocation error:", error);
-        }, {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0
+        await acknowledgeMutation.mutateAsync({
+          alarmId: alarm.id,
+          newStatus: "en_route",
+          location: currentLocation
         });
-      }
-    }, 10000); // Check every 10 seconds
 
-    setTrackingIntervals(prev => ({ ...prev, [alarm.id]: interval }));
+        const distance = calculateDistance(
+          currentLocation.lat,
+          currentLocation.lng,
+          alarm.location.lat,
+          alarm.location.lng
+        );
+
+        const distanceKm = distance / 1000;
+        await base44.entities.AlarmResponse.update(alarm.id, {
+          distance_to_scene_km: distanceKm
+        });
+
+        setTrackingArrival({
+          alarmId: alarm.id,
+          location: alarm.location,
+          address: alarm.address
+        });
+
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${alarm.location.lat},${alarm.location.lng}`;
+        window.open(mapsUrl, '_blank');
+      });
+    }
   };
 
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Radius of Earth in kilometers
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in kilometers
+  const priorityColors = {
+    critical: "border-rose-500 bg-rose-500/20",
+    high: "border-orange-500 bg-orange-500/20",
+    medium: "border-amber-500 bg-amber-500/20",
+    low: "border-sky-500 bg-sky-500/20"
   };
 
-  if (activeAlarms.length === 0) {
-    stopAlertSound(); // Ensure sound stops if all alarms are gone or initially none
+  if (isLoading || activeAlarms.length === 0) {
     return null;
   }
 
-  const priorityColors = {
-    critical: "from-rose-500 to-rose-600",
-    high: "from-orange-500 to-orange-600",
-    medium: "from-amber-500 to-amber-600",
-    low: "from-sky-500 to-sky-600"
-  };
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {activeAlarms.map((alarm) => (
         <Card
           key={alarm.id}
-          className={`bg-gradient-to-r ${priorityColors[alarm.priority || 'medium']}/20 border-${alarm.priority === 'critical' ? 'rose' : alarm.priority === 'high' ? 'orange' : 'amber'}-500/50`}
+          className={`border-2 ${priorityColors[alarm.priority]} animate-pulse`}
         >
           <CardHeader>
-            <div className="flex items-start justify-between">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 bg-gradient-to-br ${priorityColors[alarm.priority || 'medium']} rounded-full flex items-center justify-center animate-pulse`}>
-                  <AlertOctagon className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center animate-bounce">
+                  <AlertCircle className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <CardTitle className="text-white text-lg">
-                    {alarm.alarm_type ? alarm.alarm_type.replace(/_/g, ' ').toUpperCase() : 'ALARM'}
+                    🚨 {alarm.alarm_type.replace(/_/g, ' ').toUpperCase()}
                   </CardTitle>
-                  <p className="text-sm text-slate-300">{alarm.address || 'Location not specified'}</p>
+                  <p className="text-sm text-slate-400">{alarm.address}</p>
                 </div>
               </div>
-              <Badge className={`bg-${alarm.status === 'dispatched' ? 'rose' : alarm.status === 'acknowledged' ? 'amber' : 'emerald'}-500`}>
-                {alarm.status || 'pending'}
+              <Badge className={`${
+                alarm.priority === 'critical' ? 'bg-rose-600' :
+                alarm.priority === 'high' ? 'bg-orange-600' :
+                alarm.priority === 'medium' ? 'bg-amber-600' :
+                'bg-sky-600'
+              } text-white`}>
+                {alarm.priority?.toUpperCase()}
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {alarm.description && (
-              <p className="text-sm text-white">{alarm.description}</p>
+              <p className="text-slate-300">{alarm.description}</p>
             )}
 
             <div className="grid grid-cols-2 gap-3 text-sm">
               {alarm.client_name && (
-                <div className="flex items-center gap-2 text-slate-300">
-                  <MapPin className="w-4 h-4" />
-                  <span>{alarm.client_name}</span>
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-sky-400" />
+                  <span className="text-slate-300">{alarm.client_name}</span>
                 </div>
               )}
               {alarm.client_phone && (
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Phone className="w-4 h-4" />
-                  <a href={`tel:${alarm.client_phone}`} className="hover:text-white">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-emerald-400" />
+                  <a href={`tel:${alarm.client_phone}`} className="text-sky-400 hover:underline">
                     {alarm.client_phone}
                   </a>
                 </div>
               )}
-              {alarm.dispatched_at && (
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Clock className="w-4 h-4" />
-                  <span>{new Date(alarm.dispatched_at).toLocaleTimeString()}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-slate-300">
+                  {new Date(alarm.dispatched_at).toLocaleTimeString()}
+                </span>
+              </div>
               {alarm.distance_to_scene_km && (
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Navigation className="w-4 h-4" />
-                  <span>{alarm.distance_to_scene_km.toFixed(1)} km away</span>
+                <div className="flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-purple-400" />
+                  <span className="text-slate-300">
+                    {alarm.distance_to_scene_km.toFixed(1)} km away
+                  </span>
                 </div>
               )}
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-2">
               {alarm.status === "dispatched" && (
                 <Button
                   onClick={() => handleAcknowledge(alarm)}
-                  disabled={acknowledging}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  className="flex-1 bg-amber-600 hover:bg-amber-700"
                 >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  <Zap className="w-4 h-4 mr-2" />
                   Acknowledge
                 </Button>
               )}
-              {(alarm.status === "acknowledged" || alarm.status === "en_route") && alarm.location && (
+              {(alarm.status === "acknowledged" || alarm.status === "dispatched") && (
                 <Button
                   onClick={() => handleNavigate(alarm)}
                   className="flex-1 bg-sky-600 hover:bg-sky-700"
                 >
                   <Navigation className="w-4 h-4 mr-2" />
-                  {alarm.status === "acknowledged" ? "Start Navigation" : "Continue Navigation"}
+                  Navigate
                 </Button>
+              )}
+              {alarm.status === "en_route" && (
+                <div className="flex-1 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg">
+                  <p className="text-emerald-400 font-semibold text-center">
+                    📍 En Route - Tracking Your Arrival...
+                  </p>
+                </div>
               )}
             </div>
           </CardContent>
