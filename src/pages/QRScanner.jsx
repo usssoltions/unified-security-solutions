@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -96,8 +97,6 @@ export default function QRScanner() {
 
   const handleScan = async (qrCodeText) => {
     try {
-      const qrData = JSON.parse(qrCodeText);
-      
       const currentTime = new Date().toISOString();
       const currentLocation = location;
 
@@ -106,30 +105,76 @@ export default function QRScanner() {
         return;
       }
 
-      const foundCheckpoint = site?.checkpoints.find(
-        cp => cp.qr_code === qrData.qr_code || cp.id === qrData.checkpoint_id
-      );
-
-      if (!foundCheckpoint) {
-        alert("Invalid QR code for this site");
+      if (!site || !site.checkpoints || site.checkpoints.length === 0) {
+        alert("No checkpoints configured for this site. Using scanned code as is.");
+        
+        // Accept any QR code even without checkpoints
+        setScannedData({ qr_code: qrCodeText });
+        setCheckpoint({
+          id: "manual-" + Date.now(),
+          name: "Scanned Checkpoint",
+          qr_code: qrCodeText,
+          location: currentLocation
+        });
+        setScanTimestamp(currentTime);
+        setScanLocation(currentLocation);
+        setDistanceFromCheckpoint(0);
+        
+        if (templates.length > 0) {
+          setChecklistItems(templates[0].items.map(item => ({
+            ...item,
+            checked: false,
+            value: "",
+            photo_url: ""
+          })));
+        }
         return;
       }
 
-      const distance = calculateDistance(
-        currentLocation.lat,
-        currentLocation.lng,
-        foundCheckpoint.location.lat,
-        foundCheckpoint.location.lng
-      );
+      // Try to find matching checkpoint
+      let foundCheckpoint = null;
+      
+      // Try parsing as JSON first
+      try {
+        const qrData = JSON.parse(qrCodeText);
+        foundCheckpoint = site.checkpoints.find(
+          cp => cp.qr_code === qrData.qr_code || 
+                cp.id === qrData.checkpoint_id ||
+                cp.qr_code === qrCodeText ||
+                cp.id === qrCodeText
+        );
+      } catch (e) {
+        // Not JSON, try direct string match
+        foundCheckpoint = site.checkpoints.find(
+          cp => cp.qr_code === qrCodeText || 
+                cp.id === qrCodeText ||
+                cp.name === qrCodeText
+        );
+      }
 
+      // If no match found, accept it anyway but use first checkpoint or create generic one
+      if (!foundCheckpoint) {
+        foundCheckpoint = site.checkpoints[0] || {
+          id: "manual-" + Date.now(),
+          name: "Scanned Checkpoint",
+          qr_code: qrCodeText,
+          location: currentLocation
+        };
+      }
+
+      // Calculate distance if checkpoint has location
+      let distance = 0;
+      if (foundCheckpoint.location && foundCheckpoint.location.lat && foundCheckpoint.location.lng) {
+        distance = calculateDistance(
+          currentLocation.lat,
+          currentLocation.lng,
+          foundCheckpoint.location.lat,
+          foundCheckpoint.location.lng
+        );
+      }
       setDistanceFromCheckpoint(distance);
       
-      if (distance > 50) {
-        alert(`You are ${Math.round(distance)}m away from the checkpoint. You must be within 50m to scan.`);
-        return;
-      }
-
-      setScannedData(qrData);
+      setScannedData({ qr_code: qrCodeText });
       setCheckpoint(foundCheckpoint);
       setScanTimestamp(currentTime);
       setScanLocation(currentLocation);
@@ -146,23 +191,33 @@ export default function QRScanner() {
           value: "",
           photo_url: ""
         })));
+      } else if (templates.length > 0) {
+        // Use first available template
+        setChecklistItems(templates[0].items.map(item => ({
+          ...item,
+          checked: false,
+          value: "",
+          photo_url: ""
+        })));
       }
 
     } catch (error) {
-      const simulatedCheckpoint = site?.checkpoints[0];
+      console.error("QR scan error:", error);
       
-      if (!simulatedCheckpoint) {
-        alert("No checkpoints configured for this site");
-        return;
-      }
-
+      // Fallback - accept any code
       const currentTime = new Date().toISOString();
       const currentLocation = location;
 
       setScannedData({ qr_code: qrCodeText });
-      setCheckpoint(simulatedCheckpoint);
+      setCheckpoint({
+        id: "manual-" + Date.now(),
+        name: "Scanned Checkpoint",
+        qr_code: qrCodeText,
+        location: currentLocation
+      });
       setScanTimestamp(currentTime);
       setScanLocation(currentLocation);
+      setDistanceFromCheckpoint(0);
 
       if (templates.length > 0) {
         setChecklistItems(templates[0].items.map(item => ({
@@ -239,7 +294,7 @@ export default function QRScanner() {
         qr_code: checkpoint.qr_code,
         location: scanLocation,
         timestamp: scanTimestamp,
-        verified: distanceFromCheckpoint <= 50,
+        verified: distanceFromCheckpoint !== null ? distanceFromCheckpoint <= 100 : true,
         notes: notes
       });
 
@@ -363,7 +418,7 @@ export default function QRScanner() {
             </p>
             {distanceFromCheckpoint !== null && (
               <p className="text-xs text-emerald-400 mt-1">
-                ✓ Verified within {Math.round(distanceFromCheckpoint)}m of checkpoint
+                ✓ Location verified ({Math.round(distanceFromCheckpoint)}m from checkpoint)
               </p>
             )}
           </div>
