@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, QrCode, Type, X, AlertCircle, CheckCircle2, Scan } from "lucide-react";
+import { Camera, Type, X, CheckCircle2 } from "lucide-react";
 
 export default function QRCodeReader({ onScan }) {
   const [manualMode, setManualMode] = useState(false);
@@ -10,14 +10,25 @@ export default function QRCodeReader({ onScan }) {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const [scanSuccess, setScanSuccess] = useState(false);
+  const [jsQRLoaded, setJsQRLoaded] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const scanningRef = useRef(false);
 
   useEffect(() => {
+    // Load jsQR library from CDN
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+    script.async = true;
+    script.onload = () => setJsQRLoaded(true);
+    document.head.appendChild(script);
+
     return () => {
       stopScanning();
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
     };
   }, []);
 
@@ -38,6 +49,11 @@ export default function QRCodeReader({ onScan }) {
   };
 
   const startScanning = async () => {
+    if (!jsQRLoaded) {
+      setError("QR scanner library still loading, please wait...");
+      return;
+    }
+
     setScanning(true);
     setError(null);
     setScanSuccess(false);
@@ -58,104 +74,58 @@ export default function QRCodeReader({ onScan }) {
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', true);
         await videoRef.current.play();
         
-        // Try native Barcode Detection API
-        if ('BarcodeDetector' in window) {
-          try {
-            const formats = await window.BarcodeDetector.getSupportedFormats();
-            if (formats.includes('qr_code')) {
-              const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-              detectWithNativeAPI(detector);
-              return;
-            }
-          } catch (e) {
-            console.log("Barcode API failed, falling back to canvas");
-          }
-        }
-        
-        // Fallback to canvas-based detection
-        detectWithCanvas();
+        // Start scanning with jsQR
+        requestAnimationFrame(tick);
       }
     } catch (err) {
       console.error("Camera error:", err);
-      setError("Cannot access camera. Please use manual entry.");
+      setError("Cannot access camera. Please allow camera permissions or use manual entry.");
       setScanning(false);
       setManualMode(true);
     }
   };
 
-  const detectWithNativeAPI = async (detector) => {
-    const detect = async () => {
-      if (!scanningRef.current) return;
-      
-      if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-        try {
-          const barcodes = await detector.detect(videoRef.current);
-          if (barcodes.length > 0) {
-            handleScanSuccess(barcodes[0].rawValue);
-            return;
-          }
-        } catch (err) {
-          // Continue scanning
-        }
-      }
-      
+  const tick = () => {
+    if (!scanningRef.current || !videoRef.current || videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) {
       if (scanningRef.current) {
-        requestAnimationFrame(detect);
+        requestAnimationFrame(tick);
       }
-    };
-    detect();
-  };
-
-  const detectWithCanvas = () => {
-    if (!canvasRef.current) {
-      canvasRef.current = document.createElement('canvas');
+      return;
     }
-    
+
     const canvas = canvasRef.current;
     const video = videoRef.current;
     
-    const scan = () => {
-      if (!scanningRef.current || !video || video.readyState !== video.HAVE_ENOUGH_DATA) {
-        if (scanningRef.current) {
-          requestAnimationFrame(scan);
-        }
+    if (!canvas) {
+      canvasRef.current = document.createElement('canvas');
+      canvasRef.current.width = video.videoWidth;
+      canvasRef.current.height = video.videoHeight;
+    }
+
+    const ctx = canvasRef.current.getContext('2d');
+    canvasRef.current.width = video.videoWidth;
+    canvasRef.current.height = video.videoHeight;
+    
+    ctx.drawImage(video, 0, 0, canvasRef.current.width, canvasRef.current.height);
+    const imageData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+    
+    if (window.jsQR) {
+      const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert",
+      });
+      
+      if (code) {
+        handleScanSuccess(code.data);
         return;
       }
-      
-      const ctx = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      // Simple QR detection - look for patterns
-      // This is a basic implementation, not as robust as a full library
-      try {
-        const qrData = scanImageForQR(imageData);
-        if (qrData) {
-          handleScanSuccess(qrData);
-          return;
-        }
-      } catch (e) {
-        // Continue scanning
-      }
-      
-      if (scanningRef.current) {
-        requestAnimationFrame(scan);
-      }
-    };
+    }
     
-    scan();
-  };
-
-  const scanImageForQR = (imageData) => {
-    // This is a placeholder - in production you'd use a proper QR library
-    // For now, we'll rely on the native API or manual entry
-    return null;
+    if (scanningRef.current) {
+      requestAnimationFrame(tick);
+    }
   };
 
   const handleScanSuccess = (code) => {
@@ -249,7 +219,7 @@ export default function QRCodeReader({ onScan }) {
               ) : (
                 <div className="space-y-2">
                   <p className="text-white bg-slate-900/90 px-4 py-3 rounded-lg text-center font-semibold">
-                    📷 Hold steady, center QR code
+                    📷 Point camera at QR code
                   </p>
                   <Button
                     onClick={() => {
@@ -285,10 +255,6 @@ export default function QRCodeReader({ onScan }) {
     <Card className="bg-slate-800/50 border-slate-700">
       <CardContent className="pt-6">
         <div className="text-center space-y-6">
-          <div className="w-48 h-48 mx-auto bg-slate-900 rounded-2xl border-4 border-dashed border-slate-600 flex items-center justify-center">
-            <QrCode className="w-24 h-24 text-slate-500" />
-          </div>
-
           {error && (
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
               <p className="text-amber-400 text-sm">{error}</p>
@@ -299,9 +265,10 @@ export default function QRCodeReader({ onScan }) {
             <Button
               className="w-full h-14 text-lg bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
               onClick={startScanning}
+              disabled={!jsQRLoaded}
             >
               <Camera className="w-5 h-5 mr-2" />
-              Scan QR Code
+              {jsQRLoaded ? "Scan QR Code" : "Loading Scanner..."}
             </Button>
 
             <div className="relative">
@@ -325,7 +292,7 @@ export default function QRCodeReader({ onScan }) {
 
           {manualMode && (
             <div className="space-y-3 pt-4 border-t border-slate-700">
-              <p className="text-sm text-slate-400">Enter any checkpoint code:</p>
+              <p className="text-sm text-slate-400">Enter checkpoint code:</p>
               <Input
                 placeholder="Type or paste code here"
                 value={manualCode}
@@ -344,12 +311,6 @@ export default function QRCodeReader({ onScan }) {
               </Button>
             </div>
           )}
-
-          <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
-            <p className="text-xs text-slate-400">
-              💡 Best on Chrome Android. Hold phone 6-8 inches from QR code with good lighting.
-            </p>
-          </div>
         </div>
       </CardContent>
     </Card>
