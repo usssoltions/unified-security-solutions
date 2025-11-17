@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, Type, X, CheckCircle2, Zap } from "lucide-react";
+import { Camera, Type, X, CheckCircle2, Zap, Smartphone } from "lucide-react";
 
 export default function QRCodeReader({ onScan }) {
   const [manualMode, setManualMode] = useState(false);
@@ -12,6 +12,7 @@ export default function QRCodeReader({ onScan }) {
   const [scanSuccess, setScanSuccess] = useState(false);
   const [jsQRLoaded, setJsQRLoaded] = useState(false);
   const [scanAttempts, setScanAttempts] = useState(0);
+  const [barcodeDetectorSupported, setBarcodeDetectorSupported] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -19,7 +20,13 @@ export default function QRCodeReader({ onScan }) {
   const lastScanTimeRef = useRef(0);
 
   useEffect(() => {
-    // Load jsQR library from CDN
+    // Check if BarcodeDetector API is supported (native browser QR scanning)
+    if ('BarcodeDetector' in window) {
+      setBarcodeDetectorSupported(true);
+      console.log('Native BarcodeDetector API supported');
+    }
+
+    // Load jsQR library from CDN as fallback
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
     script.async = true;
@@ -29,8 +36,10 @@ export default function QRCodeReader({ onScan }) {
     };
     script.onerror = () => {
       console.error('Failed to load jsQR library');
-      setError("QR scanner library failed to load. Please use manual entry.");
-      setManualMode(true);
+      if (!barcodeDetectorSupported) {
+        setError("QR scanner library failed to load. Please use manual entry.");
+        setManualMode(true);
+      }
     };
     document.head.appendChild(script);
 
@@ -59,11 +68,66 @@ export default function QRCodeReader({ onScan }) {
     setScanAttempts(0);
   };
 
+  const handleNativeCameraCapture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // Try BarcodeDetector API first (newer, native)
+      if ('BarcodeDetector' in window) {
+        const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const barcodes = await barcodeDetector.detect(file);
+        
+        if (barcodes.length > 0) {
+          handleScanSuccess(barcodes[0].rawValue);
+          return;
+        }
+      }
+
+      // Fallback to jsQR
+      if (window.jsQR) {
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "attemptBoth",
+        });
+
+        if (code && code.data) {
+          handleScanSuccess(code.data);
+          URL.revokeObjectURL(img.src);
+          return;
+        }
+        
+        URL.revokeObjectURL(img.src);
+      }
+
+      alert("No QR code detected in photo. Please try again or enter code manually.");
+    } catch (error) {
+      console.error("Failed to scan QR from photo:", error);
+      alert("Failed to scan QR code. Please try again or use manual entry.");
+    }
+    
+    // Reset file input
+    e.target.value = '';
+  };
+
   const startScanning = async () => {
-    if (!jsQRLoaded) {
+    if (!jsQRLoaded && !barcodeDetectorSupported) {
       setError("QR scanner still loading, please wait a moment...");
       setTimeout(() => {
-        if (jsQRLoaded) {
+        if (jsQRLoaded || barcodeDetectorSupported) {
           startScanning();
         }
       }, 1000);
@@ -100,7 +164,6 @@ export default function QRCodeReader({ onScan }) {
         
         console.log('Camera started, beginning QR scan...');
         
-        // Wait for video to be ready
         await new Promise((resolve) => {
           const checkReady = () => {
             if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
@@ -132,7 +195,7 @@ export default function QRCodeReader({ onScan }) {
     }
   };
 
-  const tick = () => {
+  const tick = async () => {
     if (!scanningRef.current) return;
 
     const video = videoRef.current;
@@ -142,6 +205,29 @@ export default function QRCodeReader({ onScan }) {
     }
 
     try {
+      // Try BarcodeDetector API first (more efficient, native)
+      if (barcodeDetectorSupported && 'BarcodeDetector' in window) {
+        setScanAttempts(prev => prev + 1);
+        
+        try {
+          const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          const barcodes = await barcodeDetector.detect(video);
+          
+          if (barcodes.length > 0) {
+            const now = Date.now();
+            if (now - lastScanTimeRef.current > 500) {
+              lastScanTimeRef.current = now;
+              console.log('QR Code detected (native):', barcodes[0].rawValue);
+              handleScanSuccess(barcodes[0].rawValue);
+              return;
+            }
+          }
+        } catch (e) {
+          // BarcodeDetector failed, fall back to jsQR
+        }
+      }
+
+      // Fallback to jsQR
       if (!canvasRef.current) {
         canvasRef.current = document.createElement('canvas');
       }
@@ -161,18 +247,15 @@ export default function QRCodeReader({ onScan }) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
       if (window.jsQR) {
-        setScanAttempts(prev => prev + 1);
-        
         const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
           inversionAttempts: "attemptBoth",
         });
         
         if (code && code.data) {
           const now = Date.now();
-          // Debounce scans (min 500ms between scans)
           if (now - lastScanTimeRef.current > 500) {
             lastScanTimeRef.current = now;
-            console.log('QR Code detected:', code.data);
+            console.log('QR Code detected (jsQR):', code.data);
             handleScanSuccess(code.data);
             return;
           }
@@ -194,7 +277,6 @@ export default function QRCodeReader({ onScan }) {
     setScanSuccess(true);
     playSuccessSound();
     
-    // Vibrate if supported
     if ('vibrate' in navigator) {
       navigator.vibrate([200, 100, 200]);
     }
@@ -336,13 +418,43 @@ export default function QRCodeReader({ onScan }) {
           )}
 
           <div className="space-y-3">
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleNativeCameraCapture}
+              className="hidden"
+              id="native-camera"
+            />
+            <label htmlFor="native-camera">
+              <Button
+                type="button"
+                className="w-full h-16 text-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 font-bold"
+                asChild
+              >
+                <div>
+                  <Smartphone className="w-6 h-6 mr-2" />
+                  📱 Use Phone Camera App
+                </div>
+              </Button>
+            </label>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-slate-700" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-slate-800 px-2 text-slate-500">OR</span>
+              </div>
+            </div>
+
             <Button
-              className="w-full h-16 text-lg bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 font-bold"
+              className="w-full h-14 text-lg bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
               onClick={startScanning}
-              disabled={!jsQRLoaded}
+              disabled={!jsQRLoaded && !barcodeDetectorSupported}
             >
               <Camera className="w-6 h-6 mr-2" />
-              {jsQRLoaded ? "📸 Scan QR Code with Camera" : "⏳ Loading Scanner..."}
+              {jsQRLoaded || barcodeDetectorSupported ? "📸 Live Camera Scanner" : "⏳ Loading Scanner..."}
             </Button>
 
             <div className="relative">
@@ -386,7 +498,13 @@ export default function QRCodeReader({ onScan }) {
             </div>
           )}
 
-          {!jsQRLoaded && !error && (
+          {barcodeDetectorSupported && (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+              <p className="text-xs text-emerald-400">✓ Native QR scanner supported on this device</p>
+            </div>
+          )}
+
+          {!jsQRLoaded && !barcodeDetectorSupported && !error && (
             <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
               <p className="text-xs text-slate-400">Loading QR scanner library...</p>
             </div>
