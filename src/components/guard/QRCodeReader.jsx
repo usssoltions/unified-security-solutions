@@ -2,16 +2,18 @@ import React, { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, QrCode, Type, X } from "lucide-react";
+import { Camera, QrCode, Type, X, AlertCircle } from "lucide-react";
+import jsQR from "jsqr";
 
 export default function QRCodeReader({ onScan }) {
   const [manualMode, setManualMode] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
-  const scanIntervalRef = useRef(null);
+  const animationFrameRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -21,91 +23,64 @@ export default function QRCodeReader({ onScan }) {
 
   const startScanning = async () => {
     setScanning(true);
+    setError(null);
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
-      });
-      
+      const constraints = {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play();
-          startAutoScan();
-        };
+        videoRef.current.setAttribute("playsinline", true);
+        
+        await videoRef.current.play();
+        requestAnimationFrame(tick);
       }
-    } catch (error) {
-      console.error("Camera access error:", error);
-      alert("Unable to access camera. Please check permissions or enter code manually.");
+    } catch (err) {
+      console.error("Camera error:", err);
+      setError("Camera access denied. Please enable camera permissions and try again.");
       setScanning(false);
     }
   };
 
-  const startAutoScan = () => {
-    scanIntervalRef.current = setInterval(() => {
-      scanQRCode();
-    }, 500);
-  };
-
-  const scanQRCode = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext("2d");
-    
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const tick = () => {
+    if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      
+      canvas.height = videoRef.current.videoHeight;
+      canvas.width = videoRef.current.videoWidth;
+      
+      context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert",
+      });
       
-      // Simple QR detection - look for dark squares (simplified for demo)
-      // In production, integrate proper QR library
-      const hasQRPattern = detectQRPattern(imageData);
-      
-      if (hasQRPattern) {
+      if (code) {
         playSuccessSound();
-        const scannedCode = extractQRData();
         stopScanning();
-        onScan(scannedCode);
+        onScan(code.data);
+        return;
       }
     }
-  };
-
-  const detectQRPattern = (imageData) => {
-    // Simplified detection - checks for high contrast patterns
-    // In real implementation, use proper QR detection library
-    const data = imageData.data;
-    let darkPixels = 0;
-    const threshold = 100;
     
-    for (let i = 0; i < data.length; i += 4) {
-      const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      if (brightness < threshold) darkPixels++;
-    }
-    
-    const darkRatio = darkPixels / (data.length / 4);
-    return darkRatio > 0.1 && darkRatio < 0.5;
-  };
-
-  const extractQRData = () => {
-    // Extract QR code data - this is simplified
-    // Real implementation would decode actual QR content
-    const timestamp = Date.now();
-    return JSON.stringify({
-      checkpoint_id: `CHK-${timestamp}`,
-      qr_code: `QR-${timestamp}`,
-      name: "Checkpoint Scanned",
-      timestamp: new Date().toISOString()
-    });
+    animationFrameRef.current = requestAnimationFrame(tick);
   };
 
   const stopScanning = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
     
     if (streamRef.current) {
@@ -122,15 +97,18 @@ export default function QRCodeReader({ onScan }) {
 
   const playSuccessSound = () => {
     try {
-      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE');
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE=');
       audio.volume = 0.5;
       audio.play();
-    } catch (e) {}
+    } catch (e) {
+      // Silent fail
+    }
   };
 
   const handleManualSubmit = () => {
     if (manualCode.trim()) {
       onScan(manualCode.trim());
+      setManualCode("");
     }
   };
 
@@ -151,10 +129,10 @@ export default function QRCodeReader({ onScan }) {
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="w-64 h-64 border-4 border-sky-500 rounded-lg relative">
                 <div className="absolute w-full h-1 bg-emerald-400 top-0 animate-scan" />
-                <div className="absolute -top-1 -left-1 w-12 h-12 border-t-4 border-l-4 border-emerald-400" />
-                <div className="absolute -top-1 -right-1 w-12 h-12 border-t-4 border-r-4 border-emerald-400" />
-                <div className="absolute -bottom-1 -left-1 w-12 h-12 border-b-4 border-l-4 border-emerald-400" />
-                <div className="absolute -bottom-1 -right-1 w-12 h-12 border-b-4 border-r-4 border-emerald-400" />
+                <div className="absolute -top-1 -left-1 w-12 h-12 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+                <div className="absolute -top-1 -right-1 w-12 h-12 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+                <div className="absolute -bottom-1 -left-1 w-12 h-12 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+                <div className="absolute -bottom-1 -right-1 w-12 h-12 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
               </div>
             </div>
 
@@ -171,10 +149,20 @@ export default function QRCodeReader({ onScan }) {
 
             <div className="absolute bottom-4 left-0 right-0 px-4">
               <p className="text-white bg-slate-900/90 px-4 py-3 rounded-lg text-center font-semibold">
-                📷 Auto-scanning... Point at QR code
+                📷 Scanning... Point camera at QR code
               </p>
             </div>
           </div>
+          
+          <style>{`
+            @keyframes scan {
+              0% { transform: translateY(0); }
+              100% { transform: translateY(256px); }
+            }
+            .animate-scan {
+              animation: scan 2s linear infinite;
+            }
+          `}</style>
         </CardContent>
       </Card>
     );
@@ -188,13 +176,20 @@ export default function QRCodeReader({ onScan }) {
             <QrCode className="w-24 h-24 text-slate-500" />
           </div>
 
+          {error && (
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+              <p className="text-rose-400 text-sm text-left">{error}</p>
+            </div>
+          )}
+
           <div className="space-y-3">
             <Button
               className="w-full h-14 text-lg bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
               onClick={startScanning}
             >
               <Camera className="w-5 h-5 mr-2" />
-              Start Auto QR Scanner
+              Start QR Scanner
             </Button>
 
             <Button
@@ -203,14 +198,14 @@ export default function QRCodeReader({ onScan }) {
               onClick={() => setManualMode(!manualMode)}
             >
               <Type className="w-5 h-5 mr-2" />
-              Enter Code Manually
+              {manualMode ? "Hide Manual Entry" : "Enter Code Manually"}
             </Button>
           </div>
 
           {manualMode && (
             <div className="space-y-3 pt-4 border-t border-slate-700">
               <Input
-                placeholder="Enter checkpoint code"
+                placeholder="Enter checkpoint code (e.g., SITE_CHCK_123)"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}
                 className="bg-slate-900 border-slate-700 text-white"
@@ -226,9 +221,11 @@ export default function QRCodeReader({ onScan }) {
             </div>
           )}
 
-          <p className="text-xs text-slate-500">
-            Camera will automatically detect and scan QR codes
-          </p>
+          <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
+            <p className="text-xs text-slate-400">
+              💡 <strong>Tips:</strong> Hold phone steady, ensure good lighting, and center the QR code in the frame
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>
