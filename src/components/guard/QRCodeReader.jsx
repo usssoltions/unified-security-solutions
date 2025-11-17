@@ -2,14 +2,15 @@ import React, { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, QrCode, Type, X, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Camera, QrCode, Type, X, AlertCircle, CheckCircle2, Keyboard } from "lucide-react";
 
 export default function QRCodeReader({ onScan }) {
-  const [manualMode, setManualMode] = useState(false);
+  const [manualMode, setManualMode] = useState(true);
   const [manualCode, setManualCode] = useState("");
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const [scanSuccess, setScanSuccess] = useState(false);
+  const [apiAvailable, setApiAvailable] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const detectorRef = useRef(null);
@@ -20,9 +21,10 @@ export default function QRCodeReader({ onScan }) {
       window.BarcodeDetector.getSupportedFormats().then(formats => {
         if (formats.includes('qr_code')) {
           detectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
+          setApiAvailable(true);
         }
       }).catch(() => {
-        // Barcode API not available
+        setApiAvailable(false);
       });
     }
     
@@ -51,6 +53,11 @@ export default function QRCodeReader({ onScan }) {
   };
 
   const startScanning = async () => {
+    if (!apiAvailable) {
+      setError("QR scanning not supported in this browser. Please use manual entry below.");
+      return;
+    }
+
     setScanning(true);
     setError(null);
     setScanSuccess(false);
@@ -76,9 +83,8 @@ export default function QRCodeReader({ onScan }) {
       }
     } catch (err) {
       console.error("Camera error:", err);
-      setError("Cannot access camera. Please enable camera permissions in your browser settings.");
+      setError("Cannot access camera. Please use manual entry below.");
       setScanning(false);
-      setManualMode(true);
     }
   };
 
@@ -192,14 +198,6 @@ export default function QRCodeReader({ onScan }) {
             </div>
           </div>
           
-          {!detectorRef.current && (
-            <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-              <p className="text-xs text-amber-400 text-center">
-                ⚠️ Native QR detection not available in this browser. Please use manual entry below.
-              </p>
-            </div>
-          )}
-          
           <style>{`
             @keyframes scan {
               0% { transform: translateY(0); }
@@ -218,64 +216,57 @@ export default function QRCodeReader({ onScan }) {
     <Card className="bg-slate-800/50 border-slate-700">
       <CardContent className="pt-6">
         <div className="text-center space-y-6">
-          <div className="w-48 h-48 mx-auto bg-slate-900 rounded-2xl border-4 border-dashed border-slate-600 flex items-center justify-center">
-            <QrCode className="w-24 h-24 text-slate-500" />
+          <div className="w-48 h-48 mx-auto bg-gradient-to-br from-sky-500/20 to-emerald-500/20 rounded-2xl border-4 border-sky-500/30 flex items-center justify-center">
+            <Keyboard className="w-24 h-24 text-sky-400" />
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-white">Enter Checkpoint Code</h3>
+            <p className="text-sm text-slate-400">Type the code from the QR label</p>
           </div>
 
           {error && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
-              <div className="text-left">
-                <p className="text-rose-400 text-sm font-semibold mb-1">{error}</p>
-                <p className="text-xs text-slate-400">Use manual entry below or check camera permissions.</p>
-              </div>
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-amber-400 text-sm text-left">{error}</p>
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-4 pt-2">
+            <Input
+              placeholder="Enter checkpoint code"
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+              className="bg-slate-900 border-slate-700 text-white text-center font-mono text-xl h-16"
+              onKeyPress={(e) => e.key === "Enter" && handleManualSubmit()}
+              autoFocus
+            />
             <Button
-              className="w-full h-14 text-lg bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
-              onClick={startScanning}
+              onClick={handleManualSubmit}
+              disabled={!manualCode.trim()}
+              className="w-full h-14 text-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
             >
-              <Camera className="w-5 h-5 mr-2" />
-              Start QR Scanner
+              <CheckCircle2 className="w-5 h-5 mr-2" />
+              Submit Checkpoint Code
             </Button>
 
-            <Button
-              variant="outline"
-              className="w-full border-slate-600 text-slate-300 hover:bg-slate-700"
-              onClick={() => setManualMode(!manualMode)}
-            >
-              <Type className="w-5 h-5 mr-2" />
-              {manualMode ? "Hide Manual Entry" : "Enter Code Manually"}
-            </Button>
+            {apiAvailable && (
+              <div className="pt-4 border-t border-slate-700">
+                <Button
+                  variant="outline"
+                  className="w-full h-12 border-slate-600 text-slate-300 hover:bg-slate-700"
+                  onClick={startScanning}
+                >
+                  <Camera className="w-5 h-5 mr-2" />
+                  Try Camera Scanner Instead
+                </Button>
+              </div>
+            )}
           </div>
 
-          {manualMode && (
-            <div className="space-y-3 pt-4 border-t border-slate-700">
-              <p className="text-sm text-slate-400">Enter the checkpoint code from the QR label:</p>
-              <Input
-                placeholder="e.g., SITE_CHCK_123"
-                value={manualCode}
-                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                className="bg-slate-900 border-slate-700 text-white text-center font-mono text-lg"
-                onKeyPress={(e) => e.key === "Enter" && handleManualSubmit()}
-                autoFocus
-              />
-              <Button
-                onClick={handleManualSubmit}
-                disabled={!manualCode.trim()}
-                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700"
-              >
-                <CheckCircle2 className="w-5 h-5 mr-2" />
-                Submit Code
-              </Button>
-            </div>
-          )}
-
-          <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
+          <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg text-left">
             <p className="text-xs text-slate-400">
-              💡 <strong>Scanning Tips:</strong> Hold phone steady, ensure good lighting, center the QR code. Works best in Chrome/Safari.
+              💡 <strong>Where to find the code:</strong> Look for a text code printed below or next to the QR code at the checkpoint location.
             </p>
           </div>
         </div>
