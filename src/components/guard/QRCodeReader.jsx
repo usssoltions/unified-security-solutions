@@ -16,12 +16,13 @@ export default function QRCodeReader({ onScan }) {
   const scanIntervalRef = useRef(null);
 
   useEffect(() => {
-    // Check if Barcode Detection API is available
     if ('BarcodeDetector' in window) {
       window.BarcodeDetector.getSupportedFormats().then(formats => {
         if (formats.includes('qr_code')) {
           detectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
         }
+      }).catch(() => {
+        // Barcode API not available
       });
     }
     
@@ -29,6 +30,25 @@ export default function QRCodeReader({ onScan }) {
       stopScanning();
     };
   }, []);
+
+  const stopScanning = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
+    setScanning(false);
+    setScanSuccess(false);
+  };
 
   const startScanning = async () => {
     setScanning(true);
@@ -67,7 +87,6 @@ export default function QRCodeReader({ onScan }) {
       if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
         try {
           if (detectorRef.current) {
-            // Use native Barcode Detection API
             const barcodes = await detectorRef.current.detect(videoRef.current);
             if (barcodes.length > 0) {
               handleScanSuccess(barcodes[0].rawValue);
@@ -77,7 +96,7 @@ export default function QRCodeReader({ onScan }) {
           // Silent fail - keep scanning
         }
       }
-    }, 300); // Check every 300ms
+    }, 300);
   };
 
   const handleScanSuccess = (code) => {
@@ -88,25 +107,6 @@ export default function QRCodeReader({ onScan }) {
       stopScanning();
       onScan(code);
     }, 500);
-  };
-
-  const stopScanning = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    
-    setScanning(false);
-    setScanSuccess(false);
   };
 
   const playSuccessSound = () => {
@@ -195,7 +195,7 @@ export default function QRCodeReader({ onScan }) {
           {!detectorRef.current && (
             <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
               <p className="text-xs text-amber-400 text-center">
-                ⚠️ Native QR detection not available. Please try manual entry below or use a different browser.
+                ⚠️ Native QR detection not available in this browser. Please use manual entry below.
               </p>
             </div>
           )}
@@ -227,7 +227,7 @@ export default function QRCodeReader({ onScan }) {
               <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
               <div className="text-left">
                 <p className="text-rose-400 text-sm font-semibold mb-1">{error}</p>
-                <p className="text-xs text-slate-400">Use manual entry below or check camera permissions in your browser settings.</p>
+                <p className="text-xs text-slate-400">Use manual entry below or check camera permissions.</p>
               </div>
             </div>
           )}
@@ -275,7 +275,7 @@ export default function QRCodeReader({ onScan }) {
 
           <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
             <p className="text-xs text-slate-400">
-              💡 <strong>Tips:</strong> Hold phone steady, ensure good lighting, and center the QR code in the frame. Works best in Chrome or Safari.
+              💡 <strong>Scanning Tips:</strong> Hold phone steady, ensure good lighting, center the QR code. Works best in Chrome/Safari.
             </p>
           </div>
         </div>
