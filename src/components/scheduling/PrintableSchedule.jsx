@@ -1,285 +1,393 @@
 import React from "react";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, startOfWeek, endOfWeek } from "date-fns";
 
-export default function PrintableSchedule({ shifts = [], guards = [], month, year }) {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  
-  const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
+export default function PrintableSchedule({ shifts = [], guards = [], month, year, siteName }) {
+  const monthStart = startOfMonth(new Date(year, month));
+  const monthEnd = endOfMonth(monthStart);
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-  const statusColors = {
-    scheduled: "#0ea5e9",
-    open: "#f59e0b", 
-    accepted: "#a855f7",
-    active: "#10b981",
-    completed: "#64748b",
-    missed: "#ef4444",
-    cancelled: "#7c2d12"
-  };
-
-  const getShiftsForDay = (day) => {
-    const dayStart = new Date(year, month, day, 0, 0, 0);
-    const dayEnd = new Date(year, month, day, 23, 59, 59);
-    
-    return shifts.filter(s => {
-      if (!s || !s.start_time) return false;
-      const shiftStart = new Date(s.start_time);
-      return shiftStart >= dayStart && shiftStart <= dayEnd;
+  const getShiftsForDay = (date) => {
+    return (shifts || []).filter((shift) => {
+      const shiftDate = new Date(shift.start_time);
+      return (
+        shiftDate.getDate() === date.getDate() &&
+        shiftDate.getMonth() === date.getMonth() &&
+        shiftDate.getFullYear() === date.getFullYear()
+      );
     });
   };
 
-  // Create calendar grid
-  const calendarDays = [];
-  for (let i = 0; i < firstDay; i++) {
-    calendarDays.push(null); // Empty cells before month starts
-  }
-  for (let day = 1; day <= daysInMonth; day++) {
-    calendarDays.push(day);
-  }
+  const statusColors = {
+    scheduled: "#3b82f6",
+    active: "#10b981",
+    completed: "#6b7280",
+    missed: "#ef4444",
+    cancelled: "#f59e0b"
+  };
 
-  // Organize into weeks
   const weeks = [];
-  for (let i = 0; i < calendarDays.length; i += 7) {
-    weeks.push(calendarDays.slice(i, i + 7));
+  for (let i = 0; i < days.length; i += 7) {
+    weeks.push(days.slice(i, i + 7));
   }
 
-  const monthShifts = shifts.filter(s => {
-    if (!s || !s.start_time) return false;
-    const shiftMonth = new Date(s.start_time).getMonth();
-    const shiftYear = new Date(s.start_time).getFullYear();
-    return shiftMonth === month && shiftYear === year;
-  });
+  const stats = {
+    total: (shifts || []).length,
+    guards: new Set((shifts || []).map(s => s.guard_id)).size,
+    active: (shifts || []).filter(s => s.status === 'active').length
+  };
 
   return (
-    <div style={{ 
-      padding: '30px',
-      fontFamily: 'Arial, sans-serif',
-      backgroundColor: '#0f172a',
-      color: 'white',
-      minHeight: '100vh'
-    }}>
+    <div className="print-container">
       <style>{`
         @media print {
-          @page { 
-            size: landscape; 
-            margin: 0.5cm;
+          @page {
+            size: A4 landscape;
+            margin: 10mm;
           }
-          body { 
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-            background-color: #0f172a !important;
+          
+          body {
+            margin: 0;
+            padding: 0;
+            background: white !important;
           }
-          .no-print {
+
+          /* Hide everything except print container */
+          body > div:not(.print-wrapper) {
             display: none !important;
           }
+
+          header, nav, aside, footer, .no-print {
+            display: none !important;
+          }
+
+          .print-wrapper {
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+          }
+
+          .print-container {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            page-break-after: avoid;
+          }
+
+          .header {
+            text-align: center;
+            margin-bottom: 8mm;
+            padding-bottom: 4mm;
+            border-bottom: 2px solid #1e293b;
+          }
+
+          .header h1 {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #0f172a;
+            margin: 0 0 2mm 0;
+          }
+
+          .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 3mm;
+            font-size: 9pt;
+            color: #475569;
+          }
+
+          .stats {
+            display: flex;
+            gap: 8mm;
+          }
+
+          .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 2mm;
+          }
+
+          .calendar-grid {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+          }
+
+          .calendar-grid th {
+            background: #1e293b;
+            color: white;
+            font-weight: 600;
+            font-size: 9pt;
+            padding: 3mm;
+            text-align: center;
+            border: 1px solid #94a3b8;
+          }
+
+          .calendar-grid td {
+            border: 1px solid #cbd5e1;
+            vertical-align: top;
+            padding: 2mm;
+            height: 22mm;
+            width: 14.28%;
+            background: white;
+          }
+
+          .day-number {
+            font-weight: 600;
+            font-size: 9pt;
+            color: #0f172a;
+            margin-bottom: 1mm;
+          }
+
+          .other-month .day-number {
+            color: #94a3b8;
+          }
+
+          .shift-badge {
+            font-size: 6pt;
+            padding: 1mm 1.5mm;
+            margin: 0.5mm 0;
+            border-radius: 1mm;
+            color: white;
+            font-weight: 500;
+            display: block;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .legend {
+            display: flex;
+            justify-content: center;
+            gap: 6mm;
+            margin-top: 4mm;
+            padding-top: 3mm;
+            border-top: 1px solid #cbd5e1;
+            font-size: 7pt;
+          }
+
+          .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 1.5mm;
+          }
+
+          .legend-color {
+            width: 3mm;
+            height: 3mm;
+            border-radius: 0.5mm;
+          }
         }
-        
-        .calendar-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 30px;
-        }
-        
-        .calendar-icon {
-          width: 32px;
-          height: 32px;
-          background-color: #0ea5e9;
-          border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-        }
-        
-        .month-title {
-          font-size: 24px;
-          font-weight: bold;
-          color: white;
-        }
-        
-        .day-names {
-          display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          gap: 8px;
-          margin-bottom: 8px;
-        }
-        
-        .day-name {
-          text-align: center;
-          font-size: 13px;
-          color: #94a3b8;
-          padding: 12px 0;
-          font-weight: 500;
-        }
-        
-        .calendar-grid {
-          display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          gap: 8px;
-        }
-        
-        .calendar-cell {
-          background-color: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 12px;
-          min-height: 100px;
-          padding: 12px;
-          position: relative;
-        }
-        
-        .calendar-cell.empty {
-          background-color: transparent;
-          border: none;
-        }
-        
-        .day-number {
-          font-size: 14px;
-          color: #e2e8f0;
-          margin-bottom: 8px;
-          font-weight: 500;
-        }
-        
-        .shift-badge {
-          background-color: #0ea5e9;
-          color: white;
-          padding: 6px 10px;
-          border-radius: 8px;
-          font-size: 11px;
-          margin-bottom: 4px;
-          display: block;
-          font-weight: 600;
-          text-align: center;
-        }
-        
-        .legend {
-          margin-top: 30px;
-          display: flex;
-          gap: 20px;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-        
-        .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-        }
-        
-        .legend-dot {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-        }
-        
-        .stats {
-          margin-top: 20px;
-          padding: 20px;
-          background-color: #1e293b;
-          border-radius: 12px;
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 20px;
-        }
-        
-        .stat-item {
-          text-align: center;
-        }
-        
-        .stat-value {
-          font-size: 32px;
-          font-weight: bold;
-          color: white;
-          display: block;
-        }
-        
-        .stat-label {
-          font-size: 13px;
-          color: #94a3b8;
-          margin-top: 4px;
+
+        /* Screen styles */
+        @media screen {
+          .print-container {
+            background: white;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+          }
+
+          .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #1e293b;
+          }
+
+          .header h1 {
+            font-size: 28px;
+            font-weight: bold;
+            color: #0f172a;
+            margin: 0 0 10px 0;
+          }
+
+          .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #475569;
+          }
+
+          .stats {
+            display: flex;
+            gap: 30px;
+          }
+
+          .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .calendar-grid {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+          }
+
+          .calendar-grid th {
+            background: #1e293b;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #94a3b8;
+          }
+
+          .calendar-grid td {
+            border: 1px solid #cbd5e1;
+            vertical-align: top;
+            padding: 8px;
+            min-height: 100px;
+            height: 100px;
+            background: white;
+          }
+
+          .day-number {
+            font-weight: 600;
+            font-size: 14px;
+            color: #0f172a;
+            margin-bottom: 4px;
+          }
+
+          .other-month {
+            background: #f8fafc;
+          }
+
+          .other-month .day-number {
+            color: #94a3b8;
+          }
+
+          .shift-badge {
+            font-size: 10px;
+            padding: 3px 6px;
+            margin: 2px 0;
+            border-radius: 3px;
+            color: white;
+            font-weight: 500;
+            display: block;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 2px solid #cbd5e1;
+            font-size: 12px;
+          }
+
+          .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+          }
         }
       `}</style>
 
-      <div className="calendar-header">
-        <div className="calendar-icon">📅</div>
-        <span className="month-title">{monthNames[month]} {year}</span>
+      <div className="header">
+        <h1>Guard Schedule - {siteName || 'All Sites'}</h1>
+        <div className="header-info">
+          <div className="stats">
+            <div className="stat-item">
+              <strong>Total Shifts:</strong> {stats.total}
+            </div>
+            <div className="stat-item">
+              <strong>Guards:</strong> {stats.guards}
+            </div>
+            <div className="stat-item">
+              <strong>Active:</strong> {stats.active}
+            </div>
+          </div>
+          <div>
+            <strong>{format(monthStart, 'MMMM yyyy')}</strong>
+          </div>
+        </div>
       </div>
 
-      <div className="day-names">
-        {dayNames.map(day => (
-          <div key={day} className="day-name">{day}</div>
-        ))}
-      </div>
-
-      <div className="calendar-grid">
-        {weeks.map((week, weekIdx) => (
-          week.map((day, dayIdx) => {
-            if (!day) {
-              return <div key={`empty-${weekIdx}-${dayIdx}`} className="calendar-cell empty" />;
-            }
-
-            const dayShifts = getShiftsForDay(day);
-            
-            return (
-              <div key={`${weekIdx}-${dayIdx}`} className="calendar-cell">
-                <div className="day-number">{day}</div>
-                {dayShifts.map(shift => (
-                  <div
-                    key={shift.id}
-                    className="shift-badge"
-                    style={{ backgroundColor: statusColors[shift.status] || '#64748b' }}
-                  >
-                    {shift.guard_name || 'Unassigned'}
-                  </div>
-                ))}
-              </div>
-            );
-          })
-        ))}
-      </div>
+      <table className="calendar-grid">
+        <thead>
+          <tr>
+            <th>Sunday</th>
+            <th>Monday</th>
+            <th>Tuesday</th>
+            <th>Wednesday</th>
+            <th>Thursday</th>
+            <th>Friday</th>
+            <th>Saturday</th>
+          </tr>
+        </thead>
+        <tbody>
+          {weeks.map((week, weekIndex) => (
+            <tr key={weekIndex}>
+              {week.map((day, dayIndex) => {
+                const dayShifts = getShiftsForDay(day);
+                const isOtherMonth = day.getMonth() !== month;
+                
+                return (
+                  <td key={dayIndex} className={isOtherMonth ? 'other-month' : ''}>
+                    <div className="day-number">{day.getDate()}</div>
+                    {dayShifts.map((shift, shiftIndex) => (
+                      <div
+                        key={shiftIndex}
+                        className="shift-badge"
+                        style={{ backgroundColor: statusColors[shift.status] || '#64748b' }}
+                      >
+                        {shift.guard_name?.split(' ')[0] || 'Guard'}
+                      </div>
+                    ))}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <div className="legend">
         <div className="legend-item">
-          <div className="legend-dot" style={{ backgroundColor: statusColors.scheduled }} />
+          <div className="legend-color" style={{ backgroundColor: statusColors.scheduled }} />
           <span>Scheduled</span>
         </div>
         <div className="legend-item">
-          <div className="legend-dot" style={{ backgroundColor: statusColors.active }} />
+          <div className="legend-color" style={{ backgroundColor: statusColors.active }} />
           <span>Active</span>
         </div>
         <div className="legend-item">
-          <div className="legend-dot" style={{ backgroundColor: statusColors.open }} />
-          <span>Open</span>
-        </div>
-        <div className="legend-item">
-          <div className="legend-dot" style={{ backgroundColor: statusColors.completed }} />
+          <div className="legend-color" style={{ backgroundColor: statusColors.completed }} />
           <span>Completed</span>
         </div>
         <div className="legend-item">
-          <div className="legend-dot" style={{ backgroundColor: statusColors.missed }} />
+          <div className="legend-color" style={{ backgroundColor: statusColors.missed }} />
           <span>Missed</span>
         </div>
-      </div>
-
-      <div className="stats no-print">
-        <div className="stat-item">
-          <span className="stat-value">{monthShifts.length}</span>
-          <div className="stat-label">Total Shifts</div>
-        </div>
-        <div className="stat-item">
-          <span className="stat-value">{guards.length}</span>
-          <div className="stat-label">Guards</div>
-        </div>
-        <div className="stat-item">
-          <span className="stat-value">
-            {monthShifts.filter(s => s.status === 'active').length}
-          </span>
-          <div className="stat-label">Active Now</div>
+        <div className="legend-item">
+          <div className="legend-color" style={{ backgroundColor: statusColors.cancelled }} />
+          <span>Cancelled</span>
         </div>
       </div>
     </div>
