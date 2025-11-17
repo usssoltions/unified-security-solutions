@@ -57,12 +57,32 @@ export default function GuardShift() {
   useEffect(() => {
     loadUser();
     startLocationTracking();
+    
+    // Clear all cache on mount to ensure fresh data
+    queryClient.clear();
   }, []);
 
   const loadUser = async () => {
     setLoadingUser(true);
     try {
       const currentUser = await base44.auth.me();
+      
+      // Force clock-in check for guards
+      if (currentUser.role_type === 'guard') {
+        // Check if user has an active shift
+        const activeShifts = await base44.entities.Shift.filter({
+          guard_id: currentUser.id,
+          status: "active"
+        });
+        
+        // If no active shift but is_clocked_in is true, reset it
+        if (activeShifts.length === 0 && currentUser.is_clocked_in) {
+          await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
+          currentUser.is_clocked_in = false;
+          currentUser.current_shift_id = null;
+        }
+      }
+      
       setUser(currentUser);
     } catch (error) {
       console.error("Failed to load user:", error);
@@ -113,10 +133,12 @@ export default function GuardShift() {
       return shifts?.[0] || null;
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 5000, // Real-time sync every 5 seconds
     retry: 3,
     retryDelay: 1000,
-    initialData: null
+    initialData: null,
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0 // Don't cache
   });
 
   const { data: upcomingShifts = [] } = useQuery({
@@ -138,7 +160,9 @@ export default function GuardShift() {
     enabled: !!user,
     initialData: [],
     retry: 3,
-    refetchInterval: 60000
+    refetchInterval: 10000, // Real-time sync
+    staleTime: 0,
+    cacheTime: 0
   });
 
   const { data: pendingAssignments = [] } = useQuery({
@@ -156,7 +180,9 @@ export default function GuardShift() {
     enabled: !!user,
     initialData: [],
     retry: 3,
-    refetchInterval: 15000
+    refetchInterval: 5000, // Real-time sync
+    staleTime: 0,
+    cacheTime: 0
   });
 
   const { data: arrivedAlarms = [] } = useQuery({
@@ -173,7 +199,10 @@ export default function GuardShift() {
     },
     enabled: !!user,
     initialData: [],
-    retry: 3
+    retry: 3,
+    refetchInterval: 3000, // Real-time sync for alarms
+    staleTime: 0,
+    cacheTime: 0
   });
 
   const { data: unreadMessages = 0 } = useQuery({
@@ -189,7 +218,9 @@ export default function GuardShift() {
     },
     enabled: !!user,
     refetchInterval: 5000,
-    initialData: 0
+    initialData: 0,
+    staleTime: 0,
+    cacheTime: 0
   });
 
   const { data: pendingTrainings = 0 } = useQuery({
@@ -204,7 +235,9 @@ export default function GuardShift() {
     },
     enabled: !!user,
     refetchInterval: 30000,
-    initialData: 0
+    initialData: 0,
+    staleTime: 0,
+    cacheTime: 0
   });
 
   // Stay Awake Alert System
@@ -258,8 +291,8 @@ export default function GuardShift() {
             1
           );
 
-          if (recentShift && recentShift.length > 0) {
-            const clockOutTime = new Date(recentShift[0].clock_out?.timestamp);
+          if (recentShift && recentShift.length > 0 && recentShift[0].clock_out) {
+            const clockOutTime = new Date(recentShift[0].clock_out.timestamp);
             const now = new Date();
             const minutesSinceClockOut = (now.getTime() - clockOutTime.getTime()) / 1000 / 60;
 
@@ -305,6 +338,7 @@ export default function GuardShift() {
     return <ForceSignOutModal user={user} />;
   }
 
+  // ENFORCE CLOCK-IN WORKFLOW FOR GUARDS
   if (!user.is_clocked_in && user.role_type === "guard") {
     return <ClockInOut user={user} location={location} />;
   }
