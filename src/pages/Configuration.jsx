@@ -80,13 +80,16 @@ export default function Configuration() {
   ]);
 
   const handleAddCategory = (type) => {
-    let newItem, setter, value;
+    console.log("Add clicked for:", type);
+    let newItem, setter, value, currentState;
     
     switch(type) {
       case "incident":
-        value = newIncidentCategory.trim();
+        currentState = newIncidentCategory;
+        console.log("Current incident value:", currentState);
+        value = currentState?.trim() || "";
         if (!value) {
-          alert("Please enter a category name");
+          alert("Please type a category name in the input field first, then click Add");
           return;
         }
         newItem = {
@@ -99,9 +102,11 @@ export default function Configuration() {
         setNewIncidentCategory("");
         break;
       case "maintenance":
-        value = newMaintenanceCategory.trim();
+        currentState = newMaintenanceCategory;
+        console.log("Current maintenance value:", currentState);
+        value = currentState?.trim() || "";
         if (!value) {
-          alert("Please enter a category name");
+          alert("Please type a category name in the input field first, then click Add");
           return;
         }
         newItem = {
@@ -114,9 +119,11 @@ export default function Configuration() {
         setNewMaintenanceCategory("");
         break;
       case "alarm":
-        value = newAlarmType.trim();
+        currentState = newAlarmType;
+        console.log("Current alarm value:", currentState);
+        value = currentState?.trim() || "";
         if (!value) {
-          alert("Please enter an alarm type");
+          alert("Please type an alarm type in the input field first, then click Add");
           return;
         }
         newItem = {
@@ -129,9 +136,11 @@ export default function Configuration() {
         setNewAlarmType("");
         break;
       case "asset":
-        value = newAssetCategory.trim();
+        currentState = newAssetCategory;
+        console.log("Current asset value:", currentState);
+        value = currentState?.trim() || "";
         if (!value) {
-          alert("Please enter a category name");
+          alert("Please type a category name in the input field first, then click Add");
           return;
         }
         newItem = {
@@ -147,6 +156,7 @@ export default function Configuration() {
         return;
     }
 
+    console.log("Adding new item:", newItem);
     setter(prev => [...prev, newItem]);
     alert(`✅ ${newItem.label} added successfully!`);
   };
