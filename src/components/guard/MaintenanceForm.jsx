@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,7 +79,7 @@ Voice Notes: ${formData.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
-      await base44.entities.MaintenanceRequest.create({ // Changed from base44.asServiceRole.entities to base44.entities
+      const maintenanceRequest = await base44.entities.MaintenanceRequest.create({
         title: `Maintenance: ${formData.maintenance_type}`,
         description: reportContent,
         category: "other",
@@ -93,6 +92,35 @@ Officer Signature: Signed
         reported_at: formData.reported_at,
         media: [...formData.media, ...formData.voice_notes.map(url => ({ type: 'audio', url }))]
       });
+
+      // Send immediate notifications to all admins
+      try {
+        const allUsers = await base44.entities.User.filter({});
+        const adminIds = allUsers
+          .filter(u => u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor')
+          .map(u => u.id);
+
+        if (adminIds.length > 0) {
+          await base44.functions.invoke('sendComprehensiveNotification', {
+            recipientIds: adminIds,
+            type: 'maintenance_reported',
+            title: `🔧 Maintenance Request - ${formData.maintenance_type}`,
+            message: `${formData.guard_name} submitted: ${formData.maintenance_type} at ${formData.site_name}. Review required.`,
+            priority: 'high',
+            relatedEntity: 'maintenance',
+            relatedId: maintenanceRequest.id,
+            metadata: {
+              guard: formData.guard_name,
+              type: formData.maintenance_type,
+              site: formData.site_name,
+              details: formData.details.substring(0, 100)
+            },
+            sendEmail: true
+          });
+        }
+      } catch (error) {
+        console.error('Failed to send immediate maintenance notification:', error);
+      }
 
       // Removed email notification sending logic as per the outline.
 

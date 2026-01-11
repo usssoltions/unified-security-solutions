@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -112,6 +111,35 @@ Officer Signature: Signed
         reported_at: data.date_time_of_incident,
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
+
+      // Send immediate notifications to all admins
+      try {
+        const allUsers = await base44.entities.User.filter({});
+        const adminIds = allUsers
+          .filter(u => u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor')
+          .map(u => u.id);
+
+        if (adminIds.length > 0) {
+          await base44.functions.invoke('sendComprehensiveNotification', {
+            recipientIds: adminIds,
+            type: 'incident_reported',
+            title: `🚨 New Incident - ${data.incident_type}`,
+            message: `${user.full_name} reported: ${data.incident_type} at ${shift?.site_name}. Immediate attention required!`,
+            priority: 'critical',
+            relatedEntity: 'incident',
+            relatedId: incident.id,
+            metadata: {
+              guard: user.full_name,
+              type: data.incident_type,
+              site: shift?.site_name,
+              time: new Date(data.date_time_of_incident).toLocaleString()
+            },
+            sendEmail: true
+          });
+        }
+      } catch (error) {
+        console.error('Failed to send immediate incident notification:', error);
+      }
 
       // Invoke serverless function to handle emails and notifications
       try {
