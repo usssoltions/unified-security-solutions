@@ -5,23 +5,27 @@ import { Button } from "@/components/ui/button";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 
-export default function ComparativeAnalytics({ incidents, shifts, checklists }) {
+export default function ComparativeAnalytics({ incidents = [], shifts = [], checklists = [] }) {
   const [compareWith, setCompareWith] = useState("previous_month");
   const [metric, setMetric] = useState("incidents");
 
   const generateComparisonData = () => {
+    const incidentsArray = Array.isArray(incidents) ? incidents : [];
+    const shiftsArray = Array.isArray(shifts) ? shifts : [];
+    const checklistsArray = Array.isArray(checklists) ? checklists : [];
+    
     // Mock comparison data - in production, this would calculate from actual historical data
     const currentPeriod = {
-      incidents: incidents.length,
-      shifts: shifts.length,
-      checklists: checklists.length,
+      incidents: incidentsArray.length,
+      shifts: shiftsArray.length,
+      checklists: checklistsArray.length,
       avgResponseTime: 12 // minutes
     };
 
     const previousPeriod = {
-      incidents: Math.floor(incidents.length * 0.85),
-      shifts: Math.floor(shifts.length * 0.92),
-      checklists: Math.floor(checklists.length * 0.88),
+      incidents: Math.floor(incidentsArray.length * 0.85),
+      shifts: Math.floor(shiftsArray.length * 0.92),
+      checklists: Math.floor(checklistsArray.length * 0.88),
       avgResponseTime: 15
     };
 

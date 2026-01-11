@@ -26,15 +26,21 @@ export default function ReportScheduler({ onClose }) {
   const [selectedSites, setSelectedSites] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const { data: sites } = useQuery({
+  const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
-    queryFn: async () => await base44.entities.Site.list(),
+    queryFn: async () => {
+      const data = await base44.entities.Site.list();
+      return Array.isArray(data) ? data : [];
+    },
     initialData: []
   });
 
-  const { data: schedules } = useQuery({
+  const { data: schedules = [] } = useQuery({
     queryKey: ["reportSchedules"],
-    queryFn: async () => await base44.entities.ReportSchedule.list(),
+    queryFn: async () => {
+      const data = await base44.entities.ReportSchedule.list();
+      return Array.isArray(data) ? data : [];
+    },
     initialData: []
   });
 
@@ -143,7 +149,7 @@ export default function ReportScheduler({ onClose }) {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {schedules.length > 0 && (
+            {Array.isArray(schedules) && schedules.length > 0 && (
               <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
                 <h3 className="text-sm font-semibold text-white mb-3">Active Schedules</h3>
                 <div className="space-y-2">
@@ -282,7 +288,7 @@ export default function ReportScheduler({ onClose }) {
             <div>
               <label className="text-sm text-slate-300 font-medium block mb-2">Sites to Include</label>
               <div className="grid grid-cols-2 gap-3 p-4 bg-slate-900/50 rounded-lg max-h-48 overflow-y-auto">
-                {sites.map((site) => (
+                {(Array.isArray(sites) ? sites : []).map((site) => (
                   <label key={site.id} className="flex items-center gap-2 text-white cursor-pointer">
                     <Checkbox
                       checked={selectedSites.includes(site.id)}

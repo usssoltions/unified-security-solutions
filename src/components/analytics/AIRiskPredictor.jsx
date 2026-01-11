@@ -14,13 +14,18 @@ export default function AIRiskPredictor({ user }) {
     queryKey: ["incidentsForAnalysis"],
     queryFn: async () => {
       const allIncidents = await base44.entities.Incident.list("-reported_at", 500);
-      return allIncidents.filter(i => i.reported_at);
-    }
+      const incidentsArray = Array.isArray(allIncidents) ? allIncidents : [];
+      return incidentsArray.filter(i => i.reported_at);
+    },
+    initialData: []
   });
 
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
-    queryFn: async () => base44.entities.Site.list(),
+    queryFn: async () => {
+      const data = await base44.entities.Site.list();
+      return Array.isArray(data) ? data : [];
+    },
     initialData: []
   });
 
