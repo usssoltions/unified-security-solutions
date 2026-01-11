@@ -6,29 +6,36 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 
 const COLORS = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
 
-export default function GuardPerformanceMetrics({ guards, incidents, shifts, stayAwakeLogs, checklists, alarmResponses }) {
+export default function GuardPerformanceMetrics({ guards = [], incidents = [], shifts = [], stayAwakeLogs = [], checklists = [], alarmResponses = [] }) {
   const performanceData = useMemo(() => {
-    return guards.map(guard => {
+    const guardsArray = Array.isArray(guards) ? guards : [];
+    const incidentsArray = Array.isArray(incidents) ? incidents : [];
+    const shiftsArray = Array.isArray(shifts) ? shifts : [];
+    const logsArray = Array.isArray(stayAwakeLogs) ? stayAwakeLogs : [];
+    const checklistsArray = Array.isArray(checklists) ? checklists : [];
+    const alarmsArray = Array.isArray(alarmResponses) ? alarmResponses : [];
+    
+    return guardsArray.map(guard => {
       // Incidents handled
-      const guardIncidents = incidents.filter(i => i.guard_id === guard.id);
+      const guardIncidents = incidentsArray.filter(i => i.guard_id === guard.id);
       const resolvedIncidents = guardIncidents.filter(i => i.status === "resolved" || i.status === "closed");
       
       // Shifts
-      const guardShifts = shifts.filter(s => s.guard_id === guard.id);
+      const guardShifts = shiftsArray.filter(s => s.guard_id === guard.id);
       const completedShifts = guardShifts.filter(s => s.status === "completed");
       const missedShifts = guardShifts.filter(s => s.status === "missed");
       
       // Stay Awake Response
-      const guardStayAwake = stayAwakeLogs.filter(s => s.guard_id === guard.id);
+      const guardStayAwake = logsArray.filter(s => s.guard_id === guard.id);
       const acknowledgedAlerts = guardStayAwake.filter(s => s.status === "acknowledged");
       const missedAlerts = guardStayAwake.filter(s => s.status === "missed");
       
       // Checklists
-      const guardChecklists = checklists.filter(c => c.guard_id === guard.id);
+      const guardChecklists = checklistsArray.filter(c => c.guard_id === guard.id);
       const completedChecklists = guardChecklists.filter(c => c.status === "completed");
       
       // Alarm Responses
-      const guardAlarms = alarmResponses.filter(a => a.assigned_to === guard.id);
+      const guardAlarms = alarmsArray.filter(a => a.assigned_to === guard.id);
       const completedAlarms = guardAlarms.filter(a => a.status === "completed");
       
       // Calculate average response time for alarms
@@ -128,7 +135,7 @@ export default function GuardPerformanceMetrics({ guards, incidents, shifts, sta
               </div>
               <div>
                 <p className="text-xs text-slate-400">Total Guards</p>
-                <p className="text-2xl font-bold text-white">{guards.length}</p>
+                <p className="text-2xl font-bold text-white">{Array.isArray(guards) ? guards.length : 0}</p>
               </div>
             </div>
           </CardContent>

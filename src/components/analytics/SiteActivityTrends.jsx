@@ -4,12 +4,17 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, AlertTriangle, Shield, TrendingUp, Activity } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from "recharts";
 
-export default function SiteActivityTrends({ sites, incidents, shifts, maintenanceRequests }) {
+export default function SiteActivityTrends({ sites = [], incidents = [], shifts = [], maintenanceRequests = [] }) {
   const siteMetrics = useMemo(() => {
-    return sites.map(site => {
-      const siteIncidents = incidents.filter(i => i.site_id === site.id);
-      const siteShifts = shifts.filter(s => s.site_id === site.id);
-      const siteMaintenance = maintenanceRequests.filter(m => m.site_id === site.id);
+    const sitesArray = Array.isArray(sites) ? sites : [];
+    const incidentsArray = Array.isArray(incidents) ? incidents : [];
+    const shiftsArray = Array.isArray(shifts) ? shifts : [];
+    const maintenanceArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
+    
+    return sitesArray.map(site => {
+      const siteIncidents = incidentsArray.filter(i => i.site_id === site.id);
+      const siteShifts = shiftsArray.filter(s => s.site_id === site.id);
+      const siteMaintenance = maintenanceArray.filter(m => m.site_id === site.id);
       
       const criticalIncidents = siteIncidents.filter(i => i.priority === "critical").length;
       const highIncidents = siteIncidents.filter(i => i.priority === "high").length;
@@ -50,6 +55,7 @@ export default function SiteActivityTrends({ sites, incidents, shifts, maintenan
   }, [sites, incidents, shifts, maintenanceRequests]);
 
   const incidentTrends = useMemo(() => {
+    const incidentsArray = Array.isArray(incidents) ? incidents : [];
     // Group incidents by week for last 8 weeks
     const weeks = [];
     const now = new Date();
@@ -58,7 +64,7 @@ export default function SiteActivityTrends({ sites, incidents, shifts, maintenan
       const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
       const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
       
-      const weekIncidents = incidents.filter(inc => {
+      const weekIncidents = incidentsArray.filter(inc => {
         const incDate = new Date(inc.reported_at);
         return incDate >= weekStart && incDate < weekEnd;
       });
@@ -104,7 +110,7 @@ export default function SiteActivityTrends({ sites, incidents, shifts, maintenan
               </div>
               <div>
                 <p className="text-xs text-slate-400">Total Sites</p>
-                <p className="text-2xl font-bold text-white">{sites.length}</p>
+                <p className="text-2xl font-bold text-white">{Array.isArray(sites) ? sites.length : 0}</p>
               </div>
             </div>
           </CardContent>
@@ -118,7 +124,7 @@ export default function SiteActivityTrends({ sites, incidents, shifts, maintenan
               </div>
               <div>
                 <p className="text-xs text-slate-400">Total Incidents</p>
-                <p className="text-2xl font-bold text-white">{incidents.length}</p>
+                <p className="text-2xl font-bold text-white">{Array.isArray(incidents) ? incidents.length : 0}</p>
               </div>
             </div>
           </CardContent>
@@ -133,7 +139,7 @@ export default function SiteActivityTrends({ sites, incidents, shifts, maintenan
               <div>
                 <p className="text-xs text-slate-400">Active Shifts</p>
                 <p className="text-2xl font-bold text-white">
-                  {shifts.filter(s => s.status === "active").length}
+                  {(Array.isArray(shifts) ? shifts : []).filter(s => s.status === "active").length}
                 </p>
               </div>
             </div>

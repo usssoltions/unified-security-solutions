@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,7 +37,10 @@ export default function Scheduling() {
 
   const { data: shifts = [] } = useQuery({
     queryKey: ['shifts'],
-    queryFn: () => base44.entities.Shift.list('-start_time', 500),
+    queryFn: async () => {
+      const data = await base44.entities.Shift.list('-start_time', 500);
+      return Array.isArray(data) ? data : [];
+    },
     initialData: [],
     refetchInterval: 10000,
     staleTime: 0,
@@ -49,7 +51,7 @@ export default function Scheduling() {
     queryKey: ['guards'],
     queryFn: async () => {
       const users = await base44.entities.User.filter({ role_type: 'guard' });
-      return users || [];
+      return Array.isArray(users) ? users : [];
     },
     initialData: [],
     refetchInterval: 30000,
@@ -59,14 +61,18 @@ export default function Scheduling() {
 
   const { data: sites = [] } = useQuery({
     queryKey: ['sites'],
-    queryFn: () => base44.entities.Site.list(),
+    queryFn: async () => {
+      const data = await base44.entities.Site.list();
+      return Array.isArray(data) ? data : [];
+    },
     initialData: [],
     refetchInterval: 30000,
     staleTime: 0,
     cacheTime: 0
   });
 
-  const filteredShifts = shifts.filter(shift => {
+  const shiftsArray = Array.isArray(shifts) ? shifts : [];
+  const filteredShifts = shiftsArray.filter(shift => {
     const matchesSite = siteFilter === "all" || shift.site_id === siteFilter;
     const matchesGuard = guardFilter === "all" || shift.guard_id === guardFilter;
     

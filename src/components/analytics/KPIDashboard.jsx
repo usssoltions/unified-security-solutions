@@ -3,17 +3,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { AlertTriangle, Shield, CheckCircle2, Clock, TrendingUp, TrendingDown } from "lucide-react";
 
-export default function KPIDashboard({ incidents, shifts, checklists, stayAwakeLogs, dateRange }) {
+export default function KPIDashboard({ incidents = [], shifts = [], checklists = [], stayAwakeLogs = [], dateRange }) {
   const calculateMetrics = () => {
-    const completedShifts = shifts.filter(s => s.status === "completed").length;
-    const missedShifts = shifts.filter(s => s.status === "missed").length;
-    const totalIncidents = incidents.length;
-    const criticalIncidents = incidents.filter(i => i.priority === "critical").length;
-    const checklistCompletionRate = checklists.length > 0 
-      ? (checklists.filter(c => c.status === "completed").length / checklists.length * 100).toFixed(1)
+    const incidentsArray = Array.isArray(incidents) ? incidents : [];
+    const shiftsArray = Array.isArray(shifts) ? shifts : [];
+    const checklistsArray = Array.isArray(checklists) ? checklists : [];
+    const logsArray = Array.isArray(stayAwakeLogs) ? stayAwakeLogs : [];
+    
+    const completedShifts = shiftsArray.filter(s => s.status === "completed").length;
+    const missedShifts = shiftsArray.filter(s => s.status === "missed").length;
+    const totalIncidents = incidentsArray.length;
+    const criticalIncidents = incidentsArray.filter(i => i.priority === "critical").length;
+    const checklistCompletionRate = checklistsArray.length > 0 
+      ? (checklistsArray.filter(c => c.status === "completed").length / checklistsArray.length * 100).toFixed(1)
       : 0;
-    const stayAwakeCompliance = stayAwakeLogs.length > 0
-      ? (stayAwakeLogs.filter(l => l.status === "acknowledged").length / stayAwakeLogs.length * 100).toFixed(1)
+    const stayAwakeCompliance = logsArray.length > 0
+      ? (logsArray.filter(l => l.status === "acknowledged").length / logsArray.length * 100).toFixed(1)
       : 0;
 
     return {
@@ -22,13 +27,17 @@ export default function KPIDashboard({ incidents, shifts, checklists, stayAwakeL
       totalIncidents,
       criticalIncidents,
       checklistCompletionRate,
-      stayAwakeCompliance
+      stayAwakeCompliance,
+      shiftsArray,
+      checklistsArray,
+      logsArray
     };
   };
 
   const metrics = calculateMetrics();
+  const incidentsArray = Array.isArray(incidents) ? incidents : [];
 
-  const incidentsByCategory = incidents.reduce((acc, inc) => {
+  const incidentsByCategory = incidentsArray.reduce((acc, inc) => {
     acc[inc.category] = (acc[inc.category] || 0) + 1;
     return acc;
   }, {});
@@ -43,7 +52,7 @@ export default function KPIDashboard({ incidents, shifts, checklists, stayAwakeL
   const kpiCards = [
     {
       title: "Total Shifts",
-      value: shifts.length,
+      value: metrics.shiftsArray.length,
       subtitle: `${metrics.completedShifts} completed`,
       icon: Shield,
       color: "from-sky-400 to-sky-600",
@@ -60,7 +69,7 @@ export default function KPIDashboard({ incidents, shifts, checklists, stayAwakeL
     {
       title: "Checklist Completion",
       value: `${metrics.checklistCompletionRate}%`,
-      subtitle: `${checklists.length} checklists`,
+      subtitle: `${metrics.checklistsArray.length} checklists`,
       icon: CheckCircle2,
       color: "from-emerald-400 to-emerald-600",
       trend: "+8%"
@@ -68,7 +77,7 @@ export default function KPIDashboard({ incidents, shifts, checklists, stayAwakeL
     {
       title: "Stay Awake Compliance",
       value: `${metrics.stayAwakeCompliance}%`,
-      subtitle: `${stayAwakeLogs.length} checks`,
+      subtitle: `${metrics.logsArray.length} checks`,
       icon: Clock,
       color: "from-purple-400 to-purple-600",
       trend: "+3%"

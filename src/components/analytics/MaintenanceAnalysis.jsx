@@ -6,10 +6,11 @@ import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Cart
 
 const COLORS = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
 
-export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
+export default function MaintenanceAnalysis({ maintenanceRequests = [], sites = [] }) {
   const categoryBreakdown = useMemo(() => {
+    const requestsArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
     const categories = {};
-    maintenanceRequests.forEach(req => {
+    requestsArray.forEach(req => {
       categories[req.category] = (categories[req.category] || 0) + 1;
     });
     
@@ -20,6 +21,7 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
   }, [maintenanceRequests]);
 
   const statusBreakdown = useMemo(() => {
+    const requestsArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
     const statuses = {
       reported: 0,
       assigned: 0,
@@ -28,7 +30,7 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
       cancelled: 0
     };
     
-    maintenanceRequests.forEach(req => {
+    requestsArray.forEach(req => {
       statuses[req.status] = (statuses[req.status] || 0) + 1;
     });
     
@@ -39,6 +41,7 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
   }, [maintenanceRequests]);
 
   const urgencyBreakdown = useMemo(() => {
+    const requestsArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
     const urgencies = {
       critical: 0,
       high: 0,
@@ -46,7 +49,7 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
       low: 0
     };
     
-    maintenanceRequests.forEach(req => {
+    requestsArray.forEach(req => {
       urgencies[req.urgency] = (urgencies[req.urgency] || 0) + 1;
     });
     
@@ -58,6 +61,7 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
   }, [maintenanceRequests]);
 
   const monthlyTrend = useMemo(() => {
+    const requestsArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
     const months = [];
     const now = new Date();
     
@@ -65,7 +69,7 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
       const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthName = monthDate.toLocaleString('default', { month: 'short' });
       
-      const monthRequests = maintenanceRequests.filter(req => {
+      const monthRequests = requestsArray.filter(req => {
         const reqDate = new Date(req.reported_at);
         return reqDate.getMonth() === monthDate.getMonth() && reqDate.getFullYear() === monthDate.getFullYear();
       });
@@ -82,8 +86,10 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
   }, [maintenanceRequests]);
 
   const siteMaintenanceLoad = useMemo(() => {
-    return sites.map(site => {
-      const siteRequests = maintenanceRequests.filter(r => r.site_id === site.id);
+    const sitesArray = Array.isArray(sites) ? sites : [];
+    const requestsArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
+    return sitesArray.map(site => {
+      const siteRequests = requestsArray.filter(r => r.site_id === site.id);
       const pending = siteRequests.filter(r => r.status === 'reported' || r.status === 'assigned' || r.status === 'in_progress').length;
       const completed = siteRequests.filter(r => r.status === 'completed').length;
       const critical = siteRequests.filter(r => r.urgency === 'critical').length;
@@ -99,7 +105,8 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
   }, [sites, maintenanceRequests]);
 
   const avgCompletionTime = useMemo(() => {
-    const completed = maintenanceRequests.filter(r => r.status === 'completed' && r.completed_at);
+    const requestsArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
+    const completed = requestsArray.filter(r => r.status === 'completed' && r.completed_at);
     if (completed.length === 0) return 0;
     
     const totalHours = completed.reduce((sum, req) => {
@@ -112,9 +119,10 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
     return Math.round(totalHours / completed.length);
   }, [maintenanceRequests]);
 
-  const pendingCount = maintenanceRequests.filter(r => r.status !== 'completed' && r.status !== 'cancelled').length;
-  const completedCount = maintenanceRequests.filter(r => r.status === 'completed').length;
-  const completionRate = maintenanceRequests.length > 0 ? (completedCount / maintenanceRequests.length) * 100 : 0;
+  const requestsArray = Array.isArray(maintenanceRequests) ? maintenanceRequests : [];
+  const pendingCount = requestsArray.filter(r => r.status !== 'completed' && r.status !== 'cancelled').length;
+  const completedCount = requestsArray.filter(r => r.status === 'completed').length;
+  const completionRate = requestsArray.length > 0 ? (completedCount / requestsArray.length) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -128,7 +136,7 @@ export default function MaintenanceAnalysis({ maintenanceRequests, sites }) {
               </div>
               <div>
                 <p className="text-xs text-slate-400">Total Requests</p>
-                <p className="text-2xl font-bold text-white">{maintenanceRequests.length}</p>
+                <p className="text-2xl font-bold text-white">{requestsArray.length}</p>
               </div>
             </div>
           </CardContent>
