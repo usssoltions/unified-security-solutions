@@ -245,17 +245,22 @@ export default function GuardShift() {
   useEffect(() => {
     if (!user || !activeShift || !user.stay_awake_enabled) return;
 
+    // Initialize the last check time to now if not set (prevents immediate alert on clock-in)
+    if (!lastStayAwakeCheck.current) {
+      lastStayAwakeCheck.current = Date.now();
+    }
+
     const checkStayAwake = () => {
       const now = Date.now();
       const interval = (user.stay_awake_interval_minutes || 30) * 60 * 1000;
 
-      if (!lastStayAwakeCheck.current || (now - lastStayAwakeCheck.current) >= interval) {
+      if ((now - lastStayAwakeCheck.current) >= interval) {
         lastStayAwakeCheck.current = now;
         setShowStayAwake(true);
       }
     };
 
-    checkStayAwake();
+    // Check every minute, but only show alert when interval has passed
     const intervalId = setInterval(checkStayAwake, 60000);
 
     return () => clearInterval(intervalId);
@@ -265,17 +270,22 @@ export default function GuardShift() {
   useEffect(() => {
     if (!user || !activeShift || !user.patrol_reminder_enabled) return;
 
+    // Initialize the last check time to now if not set (prevents immediate alert on clock-in)
+    if (!lastPatrolCheck.current) {
+      lastPatrolCheck.current = Date.now();
+    }
+
     const checkPatrolReminder = () => {
       const now = Date.now();
       const interval = (user.patrol_reminder_interval_minutes || 60) * 60 * 1000;
 
-      if (!lastPatrolCheck.current || (now - lastPatrolCheck.current) >= interval) {
+      if ((now - lastPatrolCheck.current) >= interval) {
         lastPatrolCheck.current = now;
         setShowPatrolRoute(true);
       }
     };
 
-    checkPatrolReminder();
+    // Check every minute, but only show alert when interval has passed
     const intervalId = setInterval(checkPatrolReminder, 60000);
 
     return () => clearInterval(intervalId);
