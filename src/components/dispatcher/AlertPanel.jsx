@@ -30,25 +30,27 @@ export default function AlertPanel({ alerts }) {
     low: { color: "bg-sky-500", icon: Bell }
   };
 
+  const alertsArray = Array.isArray(alerts) ? alerts : [];
+
   return (
     <Card className="bg-slate-800/50 border-slate-700">
       <CardHeader>
         <CardTitle className="text-white flex items-center gap-2">
           <Bell className="w-5 h-5 text-amber-400" />
           Active Alerts
-          {alerts.length > 0 && (
-            <Badge className="bg-amber-500 ml-auto">{alerts.length}</Badge>
+          {alertsArray.length > 0 && (
+            <Badge className="bg-amber-500 ml-auto">{alertsArray.length}</Badge>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 max-h-96 overflow-y-auto">
-        {alerts.length === 0 ? (
+        {alertsArray.length === 0 ? (
           <div className="text-center py-8">
             <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-2" />
             <p className="text-slate-400 text-sm">All clear - no active alerts</p>
           </div>
         ) : (
-          alerts.map((alert) => {
+          alertsArray.map((alert) => {
             const config = priorityConfig[alert.priority];
             const Icon = config.icon;
             

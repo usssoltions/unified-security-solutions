@@ -30,7 +30,8 @@ export default function IncidentQueue({ incidents, guards }) {
       });
 
       // Create assignment
-      const guard = guards.find(g => g.guard_id === assignToGuard);
+      const guardsArray = Array.isArray(guards) ? guards : [];
+      const guard = guardsArray.find(g => g.guard_id === assignToGuard);
       await base44.entities.Assignment.create({
         type: "incident",
         title: `Respond to ${selectedIncident.category} incident`,
@@ -73,6 +74,9 @@ export default function IncidentQueue({ incidents, guards }) {
     low: "bg-sky-500"
   };
 
+  const incidentsArray = Array.isArray(incidents) ? incidents : [];
+  const guardsArray = Array.isArray(guards) ? guards : [];
+
   return (
     <>
       <Card className="bg-slate-800/50 border-slate-700">
@@ -80,14 +84,14 @@ export default function IncidentQueue({ incidents, guards }) {
           <CardTitle className="text-white flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-400" />
             Incident Queue
-            {incidents.length > 0 && (
-              <Badge className="bg-amber-500 ml-auto">{incidents.length} Pending</Badge>
+            {incidentsArray.length > 0 && (
+              <Badge className="bg-amber-500 ml-auto">{incidentsArray.length} Pending</Badge>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {incidents.map((incident) => (
+            {incidentsArray.map((incident) => (
               <div
                 key={incident.id}
                 className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-sky-500/50 transition-colors"
@@ -128,7 +132,7 @@ export default function IncidentQueue({ incidents, guards }) {
               </div>
             ))}
 
-            {incidents.length === 0 && (
+            {incidentsArray.length === 0 && (
               <div className="col-span-full text-center py-12">
                 <AlertTriangle className="w-16 h-16 text-slate-600 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-white mb-2">No Pending Incidents</h3>
@@ -170,7 +174,7 @@ export default function IncidentQueue({ incidents, guards }) {
                     <SelectValue placeholder="Select a guard..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {guards.map((guard) => (
+                    {guardsArray.map((guard) => (
                       <SelectItem key={guard.guard_id} value={guard.guard_id}>
                         {guard.guard_name} - {guard.site_name}
                       </SelectItem>

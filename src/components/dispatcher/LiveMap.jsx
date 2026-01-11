@@ -36,8 +36,9 @@ export default function LiveMap({ activeGuards }) {
   useEffect(() => {
     const fetchGuardData = async () => {
       const enrichedGuards = [];
+      const guardsArray = Array.isArray(activeGuards) ? activeGuards : [];
       
-      for (const shift of activeGuards) {
+      for (const shift of guardsArray) {
         try {
           const user = await base44.entities.User.get(shift.guard_id);
           if (user?.last_location?.lat && user?.last_location?.lng) {
@@ -57,7 +58,7 @@ export default function LiveMap({ activeGuards }) {
       setGuardsWithData(enrichedGuards);
     };
 
-    if (activeGuards?.length > 0) {
+    if (Array.isArray(activeGuards) && activeGuards.length > 0) {
       fetchGuardData();
     }
   }, [activeGuards]);

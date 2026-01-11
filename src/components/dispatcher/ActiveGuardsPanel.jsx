@@ -12,7 +12,7 @@ export default function ActiveGuardsPanel() {
       const shifts = await base44.entities.Shift.filter({
         status: "active"
       });
-      return shifts || [];
+      return Array.isArray(shifts) ? shifts : [];
     },
     refetchInterval: 5000, // Real-time sync
     initialData: [],
