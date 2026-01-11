@@ -33,7 +33,7 @@ export default function AlarmNotification({ user }) {
   });
 
   useEffect(() => {
-    if (activeAlarms.length > 0) {
+    if (Array.isArray(activeAlarms) && activeAlarms.length > 0) {
       const hasUnacknowledged = activeAlarms.some(a => a.status === "dispatched");
       
       if (hasUnacknowledged && !audioRef.current) {
@@ -214,7 +214,7 @@ export default function AlarmNotification({ user }) {
     low: "border-sky-500 bg-sky-500/20"
   };
 
-  if (isLoading || activeAlarms.length === 0) {
+  if (isLoading || !Array.isArray(activeAlarms) || activeAlarms.length === 0) {
     return null;
   }
 

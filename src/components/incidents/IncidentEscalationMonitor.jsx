@@ -15,6 +15,8 @@ export default function IncidentEscalationMonitor({ user }) {
           status: { $in: ['reported', 'assigned', 'in_progress'] }
         });
 
+        if (!Array.isArray(incidents)) return;
+
         const now = new Date();
         const ESCALATION_THRESHOLD_MINUTES = 30;
 
@@ -49,7 +51,7 @@ export default function IncidentEscalationMonitor({ user }) {
           role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
         });
 
-        const emailPromises = supervisors
+        const emailPromises = (Array.isArray(supervisors) ? supervisors : [])
           .filter(sup => sup.email && sup.id !== incident.guard_id)
           .map(supervisor =>
             base44.integrations.Core.SendEmail({
@@ -111,6 +113,8 @@ export default function IncidentEscalationMonitor({ user }) {
     const attemptReassignment = async (incident) => {
       try {
         const activeShifts = await base44.entities.Shift.filter({ status: 'active' });
+        if (!Array.isArray(activeShifts)) return;
+        
         const availableGuards = [];
 
         for (const shift of activeShifts) {
@@ -154,7 +158,7 @@ export default function IncidentEscalationMonitor({ user }) {
             role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
           });
 
-          const reassignmentEmails = supervisors
+          const reassignmentEmails = (Array.isArray(supervisors) ? supervisors : [])
             .filter(sup => sup.email)
             .map(supervisor =>
               base44.integrations.Core.SendEmail({
