@@ -210,9 +210,10 @@ export default function GuardShift() {
     queryFn: async () => {
       if (!user) return 0;
       const allMessages = await base44.entities.ChatMessage.list("-created_date", 50);
-      const myMessages = (allMessages || []).filter(m => 
+      const messageArray = Array.isArray(allMessages) ? allMessages : [];
+      const myMessages = messageArray.filter(m => 
         (m.recipient_id === user.id || m.is_broadcast) && 
-        !m.read_by?.includes(user.id)
+        !(Array.isArray(m.read_by) && m.read_by.includes(user.id))
       );
       return myMessages.length;
     },
@@ -231,7 +232,7 @@ export default function GuardShift() {
         assigned_to: user.id,
         status: { $in: ["pending", "in_progress"] }
       });
-      return (trainings || []).length;
+      return Array.isArray(trainings) ? trainings.length : 0;
     },
     enabled: !!user,
     refetchInterval: 30000,
@@ -474,7 +475,7 @@ export default function GuardShift() {
         />
       )}
 
-      {arrivedAlarms.length > 0 && (
+      {Array.isArray(arrivedAlarms) && arrivedAlarms.length > 0 && (
         <Card className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
@@ -512,7 +513,7 @@ export default function GuardShift() {
         <AIPatrolGuidance user={user} shift={activeShift} location={location} />
       )}
 
-      {pendingAssignments.length > 0 && (
+      {Array.isArray(pendingAssignments) && pendingAssignments.length > 0 && (
         <Card className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -580,7 +581,7 @@ export default function GuardShift() {
 
       <QuickActions location={location} shiftId={activeShift?.id} siteId={activeShift?.site_id} />
 
-      {upcomingShifts.length > 0 && (
+      {Array.isArray(upcomingShifts) && upcomingShifts.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">

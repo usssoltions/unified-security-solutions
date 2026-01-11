@@ -21,11 +21,14 @@ export default function PatrolRouteGuidance({ user, shift, location, onDismiss }
 
     try {
       const sites = await base44.entities.Site.filter({ id: shift.site_id });
-      if (sites && sites.length > 0 && sites[0].checkpoints) {
-        setCheckpoints(sites[0].checkpoints || []);
+      if (sites && Array.isArray(sites) && sites.length > 0 && sites[0].checkpoints && Array.isArray(sites[0].checkpoints)) {
+        setCheckpoints(sites[0].checkpoints);
+      } else {
+        setCheckpoints([]);
       }
     } catch (error) {
       console.error("Failed to load checkpoints:", error);
+      setCheckpoints([]);
     } finally {
       setLoading(false);
     }
@@ -56,7 +59,7 @@ export default function PatrolRouteGuidance({ user, shift, location, onDismiss }
             </p>
           </div>
 
-          {checkpoints.length > 0 ? (
+          {Array.isArray(checkpoints) && checkpoints.length > 0 ? (
             <div className="space-y-2">
               <p className="text-sm text-slate-400 font-medium">Checkpoints to Visit:</p>
               {checkpoints.map((checkpoint, idx) => (

@@ -1,47 +1,51 @@
-import GuardShift from './pages/GuardShift';
-import QRScanner from './pages/QRScanner';
-import GuardIncidents from './pages/GuardIncidents';
-import GuardMaintenance from './pages/GuardMaintenance';
-import ControlRoom from './pages/ControlRoom';
-import Scheduling from './pages/Scheduling';
+import AIReports from './pages/AIReports';
 import Analytics from './pages/Analytics';
 import AssetManagement from './pages/AssetManagement';
-import UserManagement from './pages/UserManagement';
-import SiteManagement from './pages/SiteManagement';
-import Configuration from './pages/Configuration';
-import GuardActivity from './pages/GuardActivity';
-import AIReports from './pages/AIReports';
-import DailyReport from './pages/DailyReport';
-import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
-import Reports from './pages/Reports';
-import PatrolChecklists from './pages/PatrolChecklists';
-import GuardPatrolChecklist from './pages/GuardPatrolChecklist';
 import CompletedPatrols from './pages/CompletedPatrols';
+import Configuration from './pages/Configuration';
+import ControlRoom from './pages/ControlRoom';
+import DailyReport from './pages/DailyReport';
+import GuardActivity from './pages/GuardActivity';
+import GuardIncidents from './pages/GuardIncidents';
+import GuardMaintenance from './pages/GuardMaintenance';
+import GuardPatrolChecklist from './pages/GuardPatrolChecklist';
+import GuardShift from './pages/GuardShift';
+import Home from './pages/Home';
 import NotificationPreferences from './pages/NotificationPreferences';
+import PatrolChecklists from './pages/PatrolChecklists';
+import QRScanner from './pages/QRScanner';
+import Reports from './pages/Reports';
+import Scheduling from './pages/Scheduling';
+import SiteManagement from './pages/SiteManagement';
+import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
+import SystemSetup from './pages/SystemSetup';
+import UserManagement from './pages/UserManagement';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
-    "GuardShift": GuardShift,
-    "QRScanner": QRScanner,
-    "GuardIncidents": GuardIncidents,
-    "GuardMaintenance": GuardMaintenance,
-    "ControlRoom": ControlRoom,
-    "Scheduling": Scheduling,
+    "AIReports": AIReports,
     "Analytics": Analytics,
     "AssetManagement": AssetManagement,
-    "UserManagement": UserManagement,
-    "SiteManagement": SiteManagement,
-    "Configuration": Configuration,
-    "GuardActivity": GuardActivity,
-    "AIReports": AIReports,
-    "DailyReport": DailyReport,
-    "StayAwakeConfiguration": StayAwakeConfiguration,
-    "Reports": Reports,
-    "PatrolChecklists": PatrolChecklists,
-    "GuardPatrolChecklist": GuardPatrolChecklist,
     "CompletedPatrols": CompletedPatrols,
+    "Configuration": Configuration,
+    "ControlRoom": ControlRoom,
+    "DailyReport": DailyReport,
+    "GuardActivity": GuardActivity,
+    "GuardIncidents": GuardIncidents,
+    "GuardMaintenance": GuardMaintenance,
+    "GuardPatrolChecklist": GuardPatrolChecklist,
+    "GuardShift": GuardShift,
+    "Home": Home,
     "NotificationPreferences": NotificationPreferences,
+    "PatrolChecklists": PatrolChecklists,
+    "QRScanner": QRScanner,
+    "Reports": Reports,
+    "Scheduling": Scheduling,
+    "SiteManagement": SiteManagement,
+    "StayAwakeConfiguration": StayAwakeConfiguration,
+    "SystemSetup": SystemSetup,
+    "UserManagement": UserManagement,
 }
 
 export const pagesConfig = {
