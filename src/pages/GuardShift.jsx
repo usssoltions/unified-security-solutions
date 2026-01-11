@@ -37,6 +37,7 @@ import MobileOptimizedGuardNav from "../components/MobileOptimizedGuardNav";
 import MobileInstallPrompt from "../components/MobileInstallPrompt";
 import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
+import PanicButton from "../components/guard/PanicButton";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -517,6 +518,10 @@ export default function GuardShift() {
 
       {activeShift && (
         <ActiveShiftCard shift={activeShift} user={user} location={location} />
+      )}
+
+      {activeShift && (
+        <PanicButton shiftId={activeShift.id} siteId={activeShift.site_id} />
       )}
 
       {activeShift && (
