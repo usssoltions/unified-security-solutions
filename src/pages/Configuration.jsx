@@ -246,7 +246,7 @@ export default function Configuration() {
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {incidentCategories.map((category) => (
+                {(Array.isArray(incidentCategories) ? incidentCategories : []).map((category) => (
                   <div
                     key={category.id}
                     className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700"
@@ -294,7 +294,7 @@ export default function Configuration() {
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {maintenanceCategories.map((category) => (
+                {(Array.isArray(maintenanceCategories) ? maintenanceCategories : []).map((category) => (
                   <div
                     key={category.id}
                     className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700"
@@ -341,7 +341,7 @@ export default function Configuration() {
               </div>
 
               <div className="grid md:grid-cols-2 gap-3">
-                {alarmTypes.map((alarm) => (
+                {(Array.isArray(alarmTypes) ? alarmTypes : []).map((alarm) => (
                   <div
                     key={alarm.id}
                     className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700"
@@ -398,7 +398,7 @@ export default function Configuration() {
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {assetCategories.map((category) => (
+                {(Array.isArray(assetCategories) ? assetCategories : []).map((category) => (
                   <div
                     key={category.id}
                     className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700"
@@ -431,7 +431,7 @@ export default function Configuration() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {priorityLevels.map((priority) => (
+                {(Array.isArray(priorityLevels) ? priorityLevels : []).map((priority) => (
                   <div
                     key={priority.value}
                     className="flex items-center justify-between p-4 bg-slate-900/50 rounded-lg border border-slate-700"
