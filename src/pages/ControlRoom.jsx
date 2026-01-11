@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -40,7 +39,7 @@ export default function ControlRoom() {
     queryKey: ["activeGuardsControl"],
     queryFn: async () => {
       const shifts = await base44.entities.Shift.filter({ status: "active" });
-      return shifts;
+      return Array.isArray(shifts) ? shifts : [];
     },
     refetchInterval: 10000
   });
@@ -48,7 +47,8 @@ export default function ControlRoom() {
   const { data: activeAlerts = [] } = useQuery({
     queryKey: ["activeAlertsControl"],
     queryFn: async () => {
-      return await base44.entities.Alert.filter({ status: "active" }, "-created_date", 10);
+      const alerts = await base44.entities.Alert.filter({ status: "active" }, "-created_date", 10);
+      return Array.isArray(alerts) ? alerts : [];
     },
     refetchInterval: 5000,
     initialData: []
@@ -57,9 +57,10 @@ export default function ControlRoom() {
   const { data: pendingIncidents = [] } = useQuery({
     queryKey: ["pendingIncidentsControl"],
     queryFn: async () => {
-      return await base44.entities.Incident.filter({ 
+      const incidents = await base44.entities.Incident.filter({ 
         status: { $in: ["reported", "assigned"] }
       }, "-reported_at", 20);
+      return Array.isArray(incidents) ? incidents : [];
     },
     refetchInterval: 10000,
     initialData: []
@@ -68,9 +69,10 @@ export default function ControlRoom() {
   const { data: alarmResponses = [] } = useQuery({
     queryKey: ["alarmResponsesControl"],
     queryFn: async () => {
-      return await base44.entities.AlarmResponse.filter({
+      const alarms = await base44.entities.AlarmResponse.filter({
         status: { $in: ["dispatched", "acknowledged", "en_route", "arrived"] }
       }, "-dispatched_at", 10);
+      return Array.isArray(alarms) ? alarms : [];
     },
     refetchInterval: 5000,
     initialData: []
@@ -81,8 +83,9 @@ export default function ControlRoom() {
     queryFn: async () => {
       if (!user) return 0;
       const allMessages = await base44.entities.ChatMessage.list("-created_date", 50);
-      const myMessages = allMessages.filter(m => 
-        m.recipient_id === user.id && !m.read_by?.includes(user.id)
+      const messageArray = Array.isArray(allMessages) ? allMessages : [];
+      const myMessages = messageArray.filter(m => 
+        m.recipient_id === user.id && !(Array.isArray(m.read_by) && m.read_by.includes(user.id))
       );
       return myMessages.length;
     },

@@ -20,7 +20,7 @@ export default function AIPatrolGuidance({ user, shift, location }) {
         shift_id: shift?.id,
         status: { $in: ["pending", "active"] }
       });
-      return plans[0] || null;
+      return (Array.isArray(plans) && plans.length > 0) ? plans[0] : null;
     },
     enabled: !!user && !!shift,
     refetchInterval: 10000
@@ -174,7 +174,7 @@ Provide:
     }
   });
 
-  const allCheckpointsCompleted = assignedPlan?.route_checkpoints?.every(cp => cp.completed);
+  const allCheckpointsCompleted = Array.isArray(assignedPlan?.route_checkpoints) && assignedPlan.route_checkpoints.every(cp => cp.completed);
 
   const riskColors = {
     low: "text-emerald-400",
@@ -190,7 +190,7 @@ Provide:
     critical: "bg-rose-600"
   };
 
-  if (assignedPlan) {
+  if (assignedPlan && Array.isArray(assignedPlan.route_checkpoints)) {
     const completedCount = assignedPlan.route_checkpoints.filter(cp => cp.completed).length;
     const totalCount = assignedPlan.route_checkpoints.length;
     const progress = (completedCount / totalCount) * 100;

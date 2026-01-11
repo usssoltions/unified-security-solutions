@@ -13,12 +13,12 @@ export default function AutoReportGenerator({ user, shift }) {
           status: "active"
         });
 
-        if (templates.length === 0) return;
+        if (!Array.isArray(templates) || templates.length === 0) return;
 
         const template = templates[0];
 
         // Gather all data
-        const [patrols, incidents, maintenance, trainings, alerts, checkpoints, stayAwakeLogs] = await Promise.all([
+        const [patrolsRaw, incidentsRaw, maintenanceRaw, trainingsRaw, alertsRaw, checkpointsRaw, stayAwakeLogsRaw] = await Promise.all([
           base44.entities.PatrolLog.filter({ shift_id: shift.id }),
           base44.entities.Incident.filter({ shift_id: shift.id }),
           base44.entities.MaintenanceRequest.filter({ guard_id: user.id }),
@@ -30,6 +30,14 @@ export default function AutoReportGenerator({ user, shift }) {
           base44.entities.ChecklistCompletion.filter({ shift_id: shift.id }),
           base44.entities.StayAwakeLog.filter({ shift_id: shift.id })
         ]);
+
+        const patrols = Array.isArray(patrolsRaw) ? patrolsRaw : [];
+        const incidents = Array.isArray(incidentsRaw) ? incidentsRaw : [];
+        const maintenance = Array.isArray(maintenanceRaw) ? maintenanceRaw : [];
+        const trainings = Array.isArray(trainingsRaw) ? trainingsRaw : [];
+        const alerts = Array.isArray(alertsRaw) ? alertsRaw : [];
+        const checkpoints = Array.isArray(checkpointsRaw) ? checkpointsRaw : [];
+        const stayAwakeLogs = Array.isArray(stayAwakeLogsRaw) ? stayAwakeLogsRaw : [];
 
         // Build comprehensive data summary
         const dataSummary = {
