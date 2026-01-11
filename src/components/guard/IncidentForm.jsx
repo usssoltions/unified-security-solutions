@@ -112,33 +112,17 @@ Officer Signature: Signed
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send immediate notifications to all admins
+      // Send immediate notifications via backend
       try {
-        const allUsers = await base44.entities.User.filter({});
-        const adminIds = allUsers
-          .filter(u => u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor')
-          .map(u => u.id);
-
-        if (adminIds.length > 0) {
-          await base44.functions.invoke('sendComprehensiveNotification', {
-            recipientIds: adminIds,
-            type: 'incident_reported',
-            title: `🚨 New Incident - ${data.incident_type}`,
-            message: `${user.full_name} reported: ${data.incident_type} at ${shift?.site_name}. Immediate attention required!`,
-            priority: 'critical',
-            relatedEntity: 'incident',
-            relatedId: incident.id,
-            metadata: {
-              guard: user.full_name,
-              type: data.incident_type,
-              site: shift?.site_name,
-              time: new Date(data.date_time_of_incident).toLocaleString()
-            },
-            sendEmail: true
-          });
-        }
+        await base44.functions.invoke('notifyAdminsIncident', {
+          incidentId: incident.id,
+          guardName: user.full_name,
+          incidentType: data.incident_type,
+          siteName: shift?.site_name || 'Unknown Site',
+          incidentTime: data.date_time_of_incident
+        });
       } catch (error) {
-        console.error('Failed to send immediate incident notification:', error);
+        console.error('Failed to send incident notification:', error);
       }
 
       // Invoke serverless function to handle emails and notifications

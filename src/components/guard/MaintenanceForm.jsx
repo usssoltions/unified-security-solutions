@@ -93,33 +93,17 @@ Officer Signature: Signed
         media: [...formData.media, ...formData.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send immediate notifications to all admins
+      // Send immediate notifications via backend
       try {
-        const allUsers = await base44.entities.User.filter({});
-        const adminIds = allUsers
-          .filter(u => u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor')
-          .map(u => u.id);
-
-        if (adminIds.length > 0) {
-          await base44.functions.invoke('sendComprehensiveNotification', {
-            recipientIds: adminIds,
-            type: 'maintenance_reported',
-            title: `🔧 Maintenance Request - ${formData.maintenance_type}`,
-            message: `${formData.guard_name} submitted: ${formData.maintenance_type} at ${formData.site_name}. Review required.`,
-            priority: 'high',
-            relatedEntity: 'maintenance',
-            relatedId: maintenanceRequest.id,
-            metadata: {
-              guard: formData.guard_name,
-              type: formData.maintenance_type,
-              site: formData.site_name,
-              details: formData.details.substring(0, 100)
-            },
-            sendEmail: true
-          });
-        }
+        await base44.functions.invoke('notifyAdminsMaintenance', {
+          maintenanceId: maintenanceRequest.id,
+          guardName: formData.guard_name,
+          maintenanceType: formData.maintenance_type,
+          siteName: formData.site_name,
+          details: formData.details.substring(0, 200)
+        });
       } catch (error) {
-        console.error('Failed to send immediate maintenance notification:', error);
+        console.error('Failed to send maintenance notification:', error);
       }
 
       // Removed email notification sending logic as per the outline.
