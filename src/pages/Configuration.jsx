@@ -80,85 +80,73 @@ export default function Configuration() {
   ]);
 
   const handleAddCategory = (type) => {
-    console.log("Add clicked for:", type);
-    let newItem, setter, value, currentState;
+    let promptText, newItem, setter;
     
     switch(type) {
       case "incident":
-        currentState = newIncidentCategory;
-        console.log("Current incident value:", currentState);
-        value = currentState?.trim() || "";
-        if (!value) {
-          alert("Please type a category name in the input field first, then click Add");
-          return;
-        }
-        newItem = {
-          id: Date.now(),
-          value: value.toLowerCase().replace(/\s+/g, '_'),
-          label: value,
-          color: "sky"
-        };
-        setter = setIncidentCategories;
-        setNewIncidentCategory("");
+        promptText = "Enter new incident category name:";
         break;
       case "maintenance":
-        currentState = newMaintenanceCategory;
-        console.log("Current maintenance value:", currentState);
-        value = currentState?.trim() || "";
-        if (!value) {
-          alert("Please type a category name in the input field first, then click Add");
-          return;
-        }
-        newItem = {
-          id: Date.now(),
-          value: value.toLowerCase().replace(/\s+/g, '_'),
-          label: value,
-          icon: "🔧"
-        };
-        setter = setMaintenanceCategories;
-        setNewMaintenanceCategory("");
+        promptText = "Enter new maintenance category name:";
         break;
       case "alarm":
-        currentState = newAlarmType;
-        console.log("Current alarm value:", currentState);
-        value = currentState?.trim() || "";
-        if (!value) {
-          alert("Please type an alarm type in the input field first, then click Add");
-          return;
-        }
-        newItem = {
-          id: Date.now(),
-          value: value.toLowerCase().replace(/\s+/g, '_'),
-          label: value,
-          priority: "medium"
-        };
-        setter = setAlarmTypes;
-        setNewAlarmType("");
+        promptText = "Enter new alarm type name:";
         break;
       case "asset":
-        currentState = newAssetCategory;
-        console.log("Current asset value:", currentState);
-        value = currentState?.trim() || "";
-        if (!value) {
-          alert("Please type a category name in the input field first, then click Add");
-          return;
-        }
-        newItem = {
-          id: Date.now(),
-          value: value.toLowerCase().replace(/\s+/g, '_'),
-          label: value,
-          icon: "📦"
-        };
-        setter = setAssetCategories;
-        setNewAssetCategory("");
+        promptText = "Enter new asset category name:";
         break;
       default:
         return;
     }
 
-    console.log("Adding new item:", newItem);
-    setter(prev => [...prev, newItem]);
-    alert(`✅ ${newItem.label} added successfully!`);
+    const value = prompt(promptText);
+    
+    if (!value || !value.trim()) {
+      return;
+    }
+
+    const trimmedValue = value.trim();
+    
+    switch(type) {
+      case "incident":
+        newItem = {
+          id: Date.now(),
+          value: trimmedValue.toLowerCase().replace(/\s+/g, '_'),
+          label: trimmedValue,
+          color: "sky"
+        };
+        setIncidentCategories(prev => [...prev, newItem]);
+        break;
+      case "maintenance":
+        newItem = {
+          id: Date.now(),
+          value: trimmedValue.toLowerCase().replace(/\s+/g, '_'),
+          label: trimmedValue,
+          icon: "🔧"
+        };
+        setMaintenanceCategories(prev => [...prev, newItem]);
+        break;
+      case "alarm":
+        newItem = {
+          id: Date.now(),
+          value: trimmedValue.toLowerCase().replace(/\s+/g, '_'),
+          label: trimmedValue,
+          priority: "medium"
+        };
+        setAlarmTypes(prev => [...prev, newItem]);
+        break;
+      case "asset":
+        newItem = {
+          id: Date.now(),
+          value: trimmedValue.toLowerCase().replace(/\s+/g, '_'),
+          label: trimmedValue,
+          icon: "📦"
+        };
+        setAssetCategories(prev => [...prev, newItem]);
+        break;
+    }
+
+    alert(`✅ ${trimmedValue} added successfully!`);
   };
 
   const handleRemoveCategory = (type, id) => {
@@ -254,21 +242,14 @@ export default function Configuration() {
               <p className="text-sm text-slate-400">Manage categories for incident reporting</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Type category name here, then click Add..."
-                  value={newIncidentCategory}
-                  onChange={(e) => setNewIncidentCategory(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('incident')}
-                  className="bg-slate-900/50 border-slate-700 text-white"
-                />
+              <div className="flex justify-end">
                 <Button 
                   type="button"
                   onClick={() => handleAddCategory('incident')} 
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add
+                  Add New Category
                 </Button>
               </div>
 
@@ -306,21 +287,14 @@ export default function Configuration() {
               <p className="text-sm text-slate-400">Manage categories for maintenance requests</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Type category name here, then click Add..."
-                  value={newMaintenanceCategory}
-                  onChange={(e) => setNewMaintenanceCategory(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('maintenance')}
-                  className="bg-slate-900/50 border-slate-700 text-white"
-                />
+              <div className="flex justify-end">
                 <Button 
                   type="button"
                   onClick={() => handleAddCategory('maintenance')} 
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add
+                  Add New Category
                 </Button>
               </div>
 
@@ -357,21 +331,14 @@ export default function Configuration() {
               <p className="text-sm text-slate-400">Manage alarm categories for armed response</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Type alarm type here, then click Add..."
-                  value={newAlarmType}
-                  onChange={(e) => setNewAlarmType(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('alarm')}
-                  className="bg-slate-900/50 border-slate-700 text-white"
-                />
+              <div className="flex justify-end">
                 <Button 
                   type="button"
                   onClick={() => handleAddCategory('alarm')} 
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add
+                  Add New Alarm Type
                 </Button>
               </div>
 
@@ -418,21 +385,14 @@ export default function Configuration() {
               <p className="text-sm text-slate-400">Manage categories for asset management</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Type category name here, then click Add..."
-                  value={newAssetCategory}
-                  onChange={(e) => setNewAssetCategory(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('asset')}
-                  className="bg-slate-900/50 border-slate-700 text-white"
-                />
+              <div className="flex justify-end">
                 <Button 
                   type="button"
                   onClick={() => handleAddCategory('asset')} 
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add
+                  Add New Category
                 </Button>
               </div>
 
