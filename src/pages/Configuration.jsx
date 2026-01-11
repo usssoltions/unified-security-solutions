@@ -85,7 +85,10 @@ export default function Configuration() {
     switch(type) {
       case "incident":
         value = newIncidentCategory.trim();
-        if (!value) return;
+        if (!value) {
+          alert("Please enter a category name");
+          return;
+        }
         newItem = {
           id: Date.now(),
           value: value.toLowerCase().replace(/\s+/g, '_'),
@@ -97,7 +100,10 @@ export default function Configuration() {
         break;
       case "maintenance":
         value = newMaintenanceCategory.trim();
-        if (!value) return;
+        if (!value) {
+          alert("Please enter a category name");
+          return;
+        }
         newItem = {
           id: Date.now(),
           value: value.toLowerCase().replace(/\s+/g, '_'),
@@ -109,7 +115,10 @@ export default function Configuration() {
         break;
       case "alarm":
         value = newAlarmType.trim();
-        if (!value) return;
+        if (!value) {
+          alert("Please enter an alarm type");
+          return;
+        }
         newItem = {
           id: Date.now(),
           value: value.toLowerCase().replace(/\s+/g, '_'),
@@ -121,7 +130,10 @@ export default function Configuration() {
         break;
       case "asset":
         value = newAssetCategory.trim();
-        if (!value) return;
+        if (!value) {
+          alert("Please enter a category name");
+          return;
+        }
         newItem = {
           id: Date.now(),
           value: value.toLowerCase().replace(/\s+/g, '_'),
@@ -136,6 +148,7 @@ export default function Configuration() {
     }
 
     setter(prev => [...prev, newItem]);
+    alert(`✅ ${newItem.label} added successfully!`);
   };
 
   const handleRemoveCategory = (type, id) => {
@@ -239,7 +252,11 @@ export default function Configuration() {
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('incident')}
                   className="bg-slate-900/50 border-slate-700 text-white"
                 />
-                <Button onClick={() => handleAddCategory('incident')} className="bg-sky-600 hover:bg-sky-700">
+                <Button 
+                  type="button"
+                  onClick={() => handleAddCategory('incident')} 
+                  className="bg-sky-600 hover:bg-sky-700"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add
                 </Button>
@@ -287,7 +304,11 @@ export default function Configuration() {
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('maintenance')}
                   className="bg-slate-900/50 border-slate-700 text-white"
                 />
-                <Button onClick={() => handleAddCategory('maintenance')} className="bg-sky-600 hover:bg-sky-700">
+                <Button 
+                  type="button"
+                  onClick={() => handleAddCategory('maintenance')} 
+                  className="bg-sky-600 hover:bg-sky-700"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add
                 </Button>
@@ -334,7 +355,11 @@ export default function Configuration() {
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('alarm')}
                   className="bg-slate-900/50 border-slate-700 text-white"
                 />
-                <Button onClick={() => handleAddCategory('alarm')} className="bg-sky-600 hover:bg-sky-700">
+                <Button 
+                  type="button"
+                  onClick={() => handleAddCategory('alarm')} 
+                  className="bg-sky-600 hover:bg-sky-700"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add
                 </Button>
@@ -391,7 +416,11 @@ export default function Configuration() {
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('asset')}
                   className="bg-slate-900/50 border-slate-700 text-white"
                 />
-                <Button onClick={() => handleAddCategory('asset')} className="bg-sky-600 hover:bg-sky-700">
+                <Button 
+                  type="button"
+                  onClick={() => handleAddCategory('asset')} 
+                  className="bg-sky-600 hover:bg-sky-700"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add
                 </Button>
