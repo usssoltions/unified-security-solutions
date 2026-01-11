@@ -13,6 +13,8 @@ export default function AutoReportScheduler({ user }) {
           status: "active"
         });
 
+        if (!Array.isArray(schedules)) return;
+        
         for (const schedule of schedules) {
           const shouldSend = checkIfShouldSend(schedule);
           
@@ -124,28 +126,28 @@ export default function AutoReportScheduler({ user }) {
 
       try {
         const incidents = await base44.entities.Incident.list();
-        data.incidents = incidents.filter(inc => {
+        data.incidents = Array.isArray(incidents) ? incidents.filter(inc => {
           const incDate = new Date(inc.reported_at);
           return incDate >= today && incDate < tomorrow;
-        });
+        }) : [];
 
         const shifts = await base44.entities.Shift.list();
-        data.shifts = shifts.filter(shift => {
+        data.shifts = Array.isArray(shifts) ? shifts.filter(shift => {
           const shiftDate = new Date(shift.start_time);
           return shiftDate >= today && shiftDate < tomorrow;
-        });
+        }) : [];
 
         const maintenance = await base44.entities.MaintenanceRequest.list();
-        data.maintenance = maintenance.filter(req => {
+        data.maintenance = Array.isArray(maintenance) ? maintenance.filter(req => {
           const reqDate = new Date(req.reported_at);
           return reqDate >= today && reqDate < tomorrow;
-        });
+        }) : [];
 
         const patrols = await base44.entities.PatrolLog.list();
-        data.patrols = patrols.filter(patrol => {
+        data.patrols = Array.isArray(patrols) ? patrols.filter(patrol => {
           const patrolDate = new Date(patrol.timestamp);
           return patrolDate >= today && patrolDate < tomorrow;
-        });
+        }) : [];
       } catch (error) {
         console.error('Error fetching report data:', error);
       }

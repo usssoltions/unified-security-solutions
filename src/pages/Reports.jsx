@@ -102,6 +102,7 @@ export default function Reports() {
   });
 
   const filterByDate = (items) => {
+    if (!Array.isArray(items)) return [];
     if (dateFilter === "all") return items;
 
     const now = new Date();
@@ -125,6 +126,7 @@ export default function Reports() {
   };
 
   const filterBySearch = (items) => {
+    if (!Array.isArray(items)) return [];
     if (!searchTerm) return items;
 
     const term = searchTerm.toLowerCase();
@@ -137,8 +139,8 @@ export default function Reports() {
   };
 
   const allReports = [
-    ...incidents.map(i => ({ ...i, type: 'incident' })),
-    ...maintenance.map(m => ({ ...m, type: 'maintenance' }))
+    ...(Array.isArray(incidents) ? incidents.map(i => ({ ...i, type: 'incident' })) : []),
+    ...(Array.isArray(maintenance) ? maintenance.map(m => ({ ...m, type: 'maintenance' })) : [])
   ].sort((a, b) => new Date(b.reported_at || b.created_date) - new Date(a.reported_at || a.created_date));
 
   const filteredIncidents = filterBySearch(filterByDate(incidents));
