@@ -523,7 +523,10 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                     Saving...
                   </>
                 ) : (
-                  site ? "Update Site" : "Create Site"
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    {site ? "Save Changes" : "Create Site"}
+                  </>
                 )}
               </Button>
             </div>
