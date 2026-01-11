@@ -246,7 +246,7 @@ export default function Configuration() {
             <CardContent className="space-y-4">
               <div className="flex gap-2">
                 <Input
-                  placeholder="Add new incident category..."
+                  placeholder="Type category name here, then click Add..."
                   value={newIncidentCategory}
                   onChange={(e) => setNewIncidentCategory(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('incident')}
@@ -298,7 +298,7 @@ export default function Configuration() {
             <CardContent className="space-y-4">
               <div className="flex gap-2">
                 <Input
-                  placeholder="Add new maintenance category..."
+                  placeholder="Type category name here, then click Add..."
                   value={newMaintenanceCategory}
                   onChange={(e) => setNewMaintenanceCategory(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('maintenance')}
@@ -349,7 +349,7 @@ export default function Configuration() {
             <CardContent className="space-y-4">
               <div className="flex gap-2">
                 <Input
-                  placeholder="Add new alarm type..."
+                  placeholder="Type alarm type here, then click Add..."
                   value={newAlarmType}
                   onChange={(e) => setNewAlarmType(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('alarm')}
@@ -410,7 +410,7 @@ export default function Configuration() {
             <CardContent className="space-y-4">
               <div className="flex gap-2">
                 <Input
-                  placeholder="Add new asset category..."
+                  placeholder="Type category name here, then click Add..."
                   value={newAssetCategory}
                   onChange={(e) => setNewAssetCategory(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleAddCategory('asset')}
