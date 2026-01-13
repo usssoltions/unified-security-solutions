@@ -453,7 +453,7 @@ PHOTOS: ${report.photos.length} attached
           {report.photos.length > 0 && (
             <div className="grid grid-cols-2 gap-2">
               {report.photos.map((url, i) => (
-                <img key={i} src={url} alt="" className="w-full h-32 object-cover rounded" />
+                <img key={i} src={url} alt={`Photo ${i+1}`} className="w-full h-48 object-contain bg-slate-900 rounded border border-slate-700" />
               ))}
             </div>
           )}
