@@ -33,7 +33,7 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
       };
     } else {
       return {
-        guard_id: null, // Default to null for new shifts, representing "open shift"
+        guard_ids: [], // Array for multiple guards
         site_id: "",
         start_time: "",
         end_time: "",
@@ -41,6 +41,8 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
       };
     }
   });
+  
+  const [selectedGuards, setSelectedGuards] = useState([]);
 
   const createShiftMutation = useMutation({
     mutationFn: async (shiftData) => {
