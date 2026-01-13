@@ -45,23 +45,23 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
   const [selectedGuards, setSelectedGuards] = useState([]);
 
   const createShiftMutation = useMutation({
-    mutationFn: async (shiftData) => {
+    mutationFn: async (shiftsData) => {
       if (shift) {
-        // Update existing shift
-        const updated = await base44.entities.Shift.update(shift.id, shiftData);
+        // Update existing shift (single guard)
+        const updated = await base44.entities.Shift.update(shift.id, shiftsData);
         
         // Send email and in-app notification if guard was assigned/changed
-        if (shiftData.guard_id && shiftData.guard_id !== shift.guard_id) {
+        if (shiftsData.guard_id && shiftsData.guard_id !== shift.guard_id) {
           try {
-            const guard = guards.find(g => g.id === shiftData.guard_id);
+            const guard = guards.find(g => g.id === shiftsData.guard_id);
             await base44.functions.invoke('sendShiftNotification', {
               shiftId: updated.id,
-              guardId: shiftData.guard_id,
+              guardId: shiftsData.guard_id,
               guardEmail: guard?.email,
-              guardName: shiftData.guard_name,
-              siteName: shiftData.site_name,
-              startTime: shiftData.start_time,
-              endTime: shiftData.end_time,
+              guardName: shiftsData.guard_name,
+              siteName: shiftsData.site_name,
+              startTime: shiftsData.start_time,
+              endTime: shiftsData.end_time,
               notificationType: 'updated'
             });
           } catch (error) {
@@ -71,21 +71,35 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
         
         return updated;
       } else {
-        // Create new shift
-        const created = await base44.entities.Shift.create(shiftData);
+        // Create shifts for multiple guards
+        const site = sites.find(s => s.id === shiftsData.site_id);
+        const createdShifts = [];
         
-        // Send email and in-app notification to guard
-        if (shiftData.guard_id) {
+        for (const guardId of shiftsData.guard_ids) {
+          const guard = guards.find(g => g.id === guardId);
+          const shiftData = {
+            guard_id: guardId,
+            guard_name: guard?.full_name || null,
+            site_id: shiftsData.site_id,
+            site_name: site?.name || "",
+            start_time: shiftsData.start_time,
+            end_time: shiftsData.end_time,
+            status: shiftsData.status
+          };
+          
+          const created = await base44.entities.Shift.create(shiftData);
+          createdShifts.push(created);
+          
+          // Send notification to each guard
           try {
-            const guard = guards.find(g => g.id === shiftData.guard_id);
             await base44.functions.invoke('sendShiftNotification', {
               shiftId: created.id,
-              guardId: shiftData.guard_id,
+              guardId: guardId,
               guardEmail: guard?.email,
-              guardName: shiftData.guard_name,
-              siteName: shiftData.site_name,
-              startTime: shiftData.start_time,
-              endTime: shiftData.end_time,
+              guardName: guard?.full_name,
+              siteName: site?.name,
+              startTime: shiftsData.start_time,
+              endTime: shiftsData.end_time,
               notificationType: 'assigned'
             });
           } catch (error) {
@@ -93,7 +107,7 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
           }
         }
         
-        return created;
+        return createdShifts;
       }
     },
     onSuccess: () => {
