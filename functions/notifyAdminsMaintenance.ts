@@ -32,7 +32,9 @@ Deno.serve(async (req) => {
           type: maintenanceType,
           site: siteName,
           details: details,
-          location: location
+          ...(location && { location: location }),
+          ...(location && location.lat && { lat: location.lat }),
+          ...(location && location.lng && { lng: location.lng })
         },
         sendEmail: true
       })
