@@ -93,13 +93,21 @@ Deno.serve(async (req) => {
       `;
     }
 
-    // Send email
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      from_name: 'SecureGuard Scheduling',
-      to: guardEmail,
-      subject: emailSubject,
-      body: emailBody
-    });
+    // Send email (only if guard has an email and exists in the system)
+    let emailSent = false;
+    if (guardEmail) {
+      try {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: 'SecureGuard Scheduling',
+          to: guardEmail,
+          subject: emailSubject,
+          body: emailBody
+        });
+        emailSent = true;
+      } catch (error) {
+        console.error('Email sending failed:', error.message);
+      }
+    }
 
     // Create in-app notification
     await base44.asServiceRole.entities.Notification.create({
@@ -111,10 +119,10 @@ Deno.serve(async (req) => {
       message: `Shift at ${siteName} on ${new Date(startTime).toLocaleDateString()}`,
       related_entity: 'shift',
       related_id: shiftId,
-      sent_via: ['email', 'in_app']
+      sent_via: emailSent ? ['email', 'in_app'] : ['in_app']
     });
 
-    return Response.json({ success: true });
+    return Response.json({ success: true, emailSent });
   } catch (error) {
     console.error('Error sending shift notification:', error);
     return Response.json({ 
