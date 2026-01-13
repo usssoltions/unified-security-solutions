@@ -173,9 +173,12 @@ export default function IncidentQueue({ incidents, guards }) {
                   <SelectTrigger className="bg-slate-900 border-slate-700">
                     <SelectValue placeholder="Select a guard..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-slate-900 border-slate-700">
+                    {guardsArray.length === 0 && (
+                      <div className="p-2 text-sm text-slate-400">No active guards available</div>
+                    )}
                     {guardsArray.map((guard) => (
-                      <SelectItem key={guard.guard_id} value={guard.guard_id}>
+                      <SelectItem key={guard.guard_id} value={guard.guard_id} className="text-white">
                         {guard.guard_name} - {guard.site_name}
                       </SelectItem>
                     ))}

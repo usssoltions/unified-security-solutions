@@ -20,6 +20,7 @@ import SiteManagement from './pages/SiteManagement';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
+import ClockInOutReports from './pages/ClockInOutReports';
 import __Layout from './Layout.jsx';
 
 
@@ -46,6 +47,7 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
+    "ClockInOutReports": ClockInOutReports,
 }
 
 export const pagesConfig = {

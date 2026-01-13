@@ -357,8 +357,8 @@ Please provide:
 
   if (showSignature) {
     return (
-      <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
-        <div className="min-h-screen p-4">
+      <div className="fixed inset-0 bg-slate-900/95 z-[60] flex items-center justify-center p-4">
+        <div className="w-full max-w-2xl">
           <SignaturePad
             onSave={(sig) => {
               setFormData({ ...formData, signature: sig });
