@@ -191,11 +191,14 @@ export default function PWAInstaller() {
     return outputArray;
   };
 
+  // Check if user dismissed the setup
+  const isDismissed = localStorage.getItem('pwa-setup-dismissed') === 'true';
+  
   const needsPermissions = permissions.notifications !== 'granted' 
     || permissions.camera !== 'granted' 
     || permissions.geolocation !== 'granted';
 
-  if (!showInstall && !needsPermissions) return null;
+  if (isDismissed || (!showInstall && !needsPermissions)) return null;
 
   return (
     <Card className="fixed bottom-20 left-4 right-4 z-50 bg-slate-800 border-slate-700 shadow-2xl md:bottom-4 md:left-auto md:right-4 md:w-96">
