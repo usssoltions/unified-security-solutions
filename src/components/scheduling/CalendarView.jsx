@@ -30,9 +30,6 @@ export default function CalendarView({ shifts, onDateSelect, onShiftClick, curre
     });
   };
 
-  // Derive month and year from currentDate
-  const currentMonth = currentDate.getMonth();
-  const currentYear = currentDate.getFullYear();
   const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentDate);
 
   // Define month and day names
