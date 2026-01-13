@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -142,26 +141,59 @@ PHOTOS: ${report.photos.length} photo(s) attached
         media: report.photos.map(url => ({ type: "photo", url }))
       };
 
-      await base44.entities.Incident.create(reportData);
+      const createdIncident = await base44.entities.Incident.create(reportData);
 
       // Mark daily report as completed
       await base44.auth.updateMe({
         needs_daily_report: false
       });
 
-      // Send email notifications
+      // Get current location
+      let currentLocation = null;
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+          });
+          currentLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+        } catch (error) {
+          console.error('Failed to get location:', error);
+        }
+      }
+
+      // Send comprehensive notifications to all admins
       try {
         const allUsers = await base44.entities.User.list();
-        const managementEmails = allUsers
-          .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type))
-          .map(u => u.email)
-          .filter(Boolean);
+        const admins = allUsers
+          .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type));
 
-        for (const email of managementEmails) {
-          await base44.integrations.Core.SendEmail({
-            to: email,
-            subject: `📊 Daily Activity Report: ${user.full_name} - ${activeShift.site_name}`,
-            body: reportData.description
+        for (const admin of admins) {
+          await base44.functions.invoke('sendComprehensiveNotification', {
+            recipientIds: [admin.id],
+            type: 'shift_reminder',
+            title: `📊 Daily Activity Report Submitted`,
+            message: `${user.full_name} has submitted their daily activity report for ${activeShift.site_name}. View full details in email.`,
+            priority: 'medium',
+            relatedEntity: 'incident',
+            relatedId: createdIncident.id,
+            metadata: {
+              guard_name: user.full_name,
+              guard_photo: user.profile_photo || null,
+              site: activeShift.site_name,
+              client: site?.client_name || 'N/A',
+              shift_post: report.shift_post,
+              submitted_at: new Date().toLocaleString(),
+              observations_count: report.observations.filter(o => o.type || o.comments).length,
+              photos_count: report.photos.length,
+              signature: report.signature,
+              latitude: currentLocation?.lat,
+              longitude: currentLocation?.lng,
+              full_report: reportData.description
+            },
+            sendEmail: true
           });
         }
       } catch (error) {
