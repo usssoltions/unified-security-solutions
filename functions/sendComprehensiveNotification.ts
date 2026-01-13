@@ -73,8 +73,18 @@ Deno.serve(async (req) => {
                       <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">${title}</h2>
                       <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 15px 0;">${message}</p>
                       ${metadata ? `<div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
-                        <p style="color: #64748b; font-size: 14px; margin: 0;"><strong>Additional Details:</strong></p>
-                        <p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;">${JSON.stringify(metadata, null, 2).replace(/[{}",]/g, '').replace(/\n/g, '<br>')}</p>
+                       <p style="color: #64748b; font-size: 14px; margin: 0;"><strong>Additional Details:</strong></p>
+                       ${Object.entries(metadata).map(([key, value]) => {
+                         if (key === 'location' && value && typeof value === 'object' && value.lat && value.lng) {
+                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>${key}:</strong><br><a href="https://www.google.com/maps?q=${value.lat},${value.lng}" target="_blank" style="color: #0284c7; text-decoration: none;">📍 View on Map (${value.lat.toFixed(6)}, ${value.lng.toFixed(6)})</a></p>`;
+                         } else if ((key === 'lat' || key === 'latitude') && metadata.lng) {
+                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>location:</strong><br><a href="https://www.google.com/maps?q=${value},${metadata.lng || metadata.longitude}" target="_blank" style="color: #0284c7; text-decoration: none;">📍 View on Map (${value.toFixed(6)}, ${(metadata.lng || metadata.longitude).toFixed(6)})</a></p>`;
+                         } else if (key === 'lng' || key === 'longitude') {
+                           return '';
+                         } else {
+                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>${key}:</strong> ${typeof value === 'object' ? JSON.stringify(value) : value}</p>`;
+                         }
+                       }).join('')}
                       </div>` : ''}
                       <p style="color: #64748b; font-size: 14px; margin-top: 20px;">Priority: <span style="color: ${priority === 'critical' ? '#dc2626' : priority === 'high' ? '#ea580c' : priority === 'medium' ? '#ca8a04' : '#0284c7'}; font-weight: bold;">${priority.toUpperCase()}</span></p>
                     </div>

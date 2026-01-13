@@ -19,13 +19,34 @@ export default function SignaturePad({ onSave, onCancel }) {
     ctx.lineJoin = "round";
   }, []);
 
-  const startDrawing = (e) => {
+  const getCoordinates = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const ctx = canvas.getContext("2d");
     
-    const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
-    const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+    let clientX, clientY;
+    
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+    
+    return { x, y };
+  };
+
+  const startDrawing = (e) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const { x, y } = getCoordinates(e);
     
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -35,13 +56,11 @@ export default function SignaturePad({ onSave, onCancel }) {
 
   const draw = (e) => {
     if (!isDrawing) return;
+    e.preventDefault();
     
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext("2d");
-    
-    const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
-    const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+    const { x, y } = getCoordinates(e);
     
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -81,7 +100,8 @@ export default function SignaturePad({ onSave, onCancel }) {
             ref={canvasRef}
             width={800}
             height={200}
-            className="w-full touch-none cursor-crosshair"
+            className="w-full cursor-crosshair"
+            style={{ touchAction: 'none' }}
             onMouseDown={startDrawing}
             onMouseMove={draw}
             onMouseUp={stopDrawing}
@@ -89,6 +109,7 @@ export default function SignaturePad({ onSave, onCancel }) {
             onTouchStart={startDrawing}
             onTouchMove={draw}
             onTouchEnd={stopDrawing}
+            onTouchCancel={stopDrawing}
           />
         </div>
 
