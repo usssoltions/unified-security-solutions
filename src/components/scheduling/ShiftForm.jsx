@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -48,23 +47,22 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
         // Update existing shift
         const updated = await base44.entities.Shift.update(shift.id, shiftData);
         
-        // Notify guard of shift change if assigned and guard_id changed
-        // This includes new assignments to existing shifts or changing guards on a shift
+        // Send email and in-app notification if guard was assigned/changed
         if (shiftData.guard_id && shiftData.guard_id !== shift.guard_id) {
           try {
-            await base44.functions.invoke('sendPushNotification', {
-              user_ids: [shiftData.guard_id],
-              title: '📅 Shift Updated',
-              body: `Your shift at ${shiftData.site_name} has been updated`,
-              priority: 'medium',
-              data: {
-                type: 'shift',
-                id: updated.id,
-                action: 'updated'
-              }
+            const guard = guards.find(g => g.id === shiftData.guard_id);
+            await base44.functions.invoke('sendShiftNotification', {
+              shiftId: updated.id,
+              guardId: shiftData.guard_id,
+              guardEmail: guard?.email,
+              guardName: shiftData.guard_name,
+              siteName: shiftData.site_name,
+              startTime: shiftData.start_time,
+              endTime: shiftData.end_time,
+              notificationType: 'updated'
             });
           } catch (error) {
-            console.error('Failed to send notification for updated shift:', error);
+            console.error('Failed to send shift notification:', error);
           }
         }
         
@@ -73,22 +71,22 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
         // Create new shift
         const created = await base44.entities.Shift.create(shiftData);
         
-        // Notify guard of new shift assignment
+        // Send email and in-app notification to guard
         if (shiftData.guard_id) {
           try {
-            await base44.functions.invoke('sendPushNotification', {
-              user_ids: [shiftData.guard_id],
-              title: '📅 New Shift Assigned',
-              body: `You have been assigned a shift at ${shiftData.site_name}`,
-              priority: 'medium',
-              data: {
-                type: 'shift',
-                id: created.id,
-                action: 'created'
-              }
+            const guard = guards.find(g => g.id === shiftData.guard_id);
+            await base44.functions.invoke('sendShiftNotification', {
+              shiftId: created.id,
+              guardId: shiftData.guard_id,
+              guardEmail: guard?.email,
+              guardName: shiftData.guard_name,
+              siteName: shiftData.site_name,
+              startTime: shiftData.start_time,
+              endTime: shiftData.end_time,
+              notificationType: 'assigned'
             });
           } catch (error) {
-            console.error('Failed to send notification for new shift:', error);
+            console.error('Failed to send shift notification:', error);
           }
         }
         
