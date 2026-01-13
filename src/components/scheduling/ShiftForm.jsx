@@ -126,17 +126,41 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
       return;
     }
 
-    const guard = guards.find(g => g.id === formData.guard_id);
-    const site = sites.find(s => s.id === formData.site_id);
-
-    // Prepare data for mutation, ensuring guard_id is null if not selected, and names are included for notifications
-    const dataToSend = {
-      ...formData,
-      guard_name: guard?.full_name || null, // Set to null if no guard is assigned
-      site_name: site?.name || ""
-    };
-
-    createShiftMutation.mutate(dataToSend);
+    if (shift) {
+      // Editing existing shift (single guard)
+      const guard = guards.find(g => g.id === formData.guard_id);
+      const site = sites.find(s => s.id === formData.site_id);
+      const dataToSend = {
+        ...formData,
+        guard_name: guard?.full_name || null,
+        site_name: site?.name || ""
+      };
+      createShiftMutation.mutate(dataToSend);
+    } else {
+      // Creating new shifts (potentially multiple guards)
+      if (selectedGuards.length === 0) {
+        alert("Please select at least one guard");
+        return;
+      }
+      
+      const dataToSend = {
+        guard_ids: selectedGuards,
+        site_id: formData.site_id,
+        start_time: formData.start_time,
+        end_time: formData.end_time,
+        status: formData.status
+      };
+      
+      createShiftMutation.mutate(dataToSend);
+    }
+  };
+  
+  const toggleGuard = (guardId) => {
+    setSelectedGuards(prev => 
+      prev.includes(guardId) 
+        ? prev.filter(id => id !== guardId)
+        : [...prev, guardId]
+    );
   };
 
   return (
