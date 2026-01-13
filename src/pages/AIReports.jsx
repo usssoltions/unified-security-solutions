@@ -251,6 +251,25 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
 
       // Save report to storage (optional)
       // Could create a Reports entity to store these
+
+      // Notify admins about the submitted report
+      try {
+        const currentUser = await base44.auth.me();
+        if (currentUser?.role_type === 'guard') {
+          await base44.functions.invoke('notifyAdminsDailyReport', {
+            guardId: currentUser.id,
+            guardName: currentUser.full_name,
+            reportData: {
+              id: report.id,
+              summary: report.ai_analysis?.executive_summary || 'Daily activity report generated'
+            },
+            reportType: reportType,
+            period: reportPeriod
+          });
+        }
+      } catch (notifyError) {
+        console.error('Failed to send admin notifications:', notifyError);
+      }
       
     } catch (error) {
       alert("Failed to generate report: " + error.message);
