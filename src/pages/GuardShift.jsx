@@ -52,6 +52,7 @@ export default function GuardShift() {
   const [showChat, setShowChat] = useState(false);
   const [showTraining, setShowTraining] = useState(false);
   const [showReports, setShowReports] = useState(false);
+  const [showDailyReportModal, setShowDailyReportModal] = useState(false);
   const lastStayAwakeCheck = useRef(null);
   const lastPatrolCheck = useRef(null);
 
@@ -293,6 +294,13 @@ export default function GuardShift() {
   }, [user, activeShift]);
 
   // Check for force sign out after clock out
+  // Check if daily report is needed after clock-in
+  useEffect(() => {
+    if (user?.needs_daily_report && activeShift && user.is_clocked_in) {
+      setShowDailyReportModal(true);
+    }
+  }, [user, activeShift]);
+
   useEffect(() => {
     if (user && !user.is_clocked_in && user.role_type === 'guard') {
       const checkForceSignOut = async () => {
@@ -353,6 +361,25 @@ export default function GuardShift() {
   // ENFORCE CLOCK-IN WORKFLOW FOR GUARDS
   if (!user.is_clocked_in && user.role_type === "guard") {
     return <ClockInOut user={user} location={location} />;
+  }
+
+  // MANDATORY DAILY REPORT AFTER CLOCK-IN
+  if (showDailyReportModal && user?.needs_daily_report) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/98 z-50 overflow-hidden">
+        <div className="h-full flex flex-col">
+          <div className="bg-rose-500/20 border-b border-rose-500/50 p-4 flex-shrink-0">
+            <h2 className="text-xl font-bold text-white text-center">⚠️ Daily Report Required</h2>
+            <p className="text-slate-300 text-center mt-1">Complete your daily activity report to continue</p>
+          </div>
+          <iframe 
+            src={createPageUrl("DailyReport")} 
+            className="flex-1 w-full border-0"
+            title="Daily Report"
+          />
+        </div>
+      </div>
+    );
   }
 
   if (showTraining) {
