@@ -201,24 +201,54 @@ export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) 
               </Select>
             </div>
 
-            <div>
-              <label className="text-sm text-slate-300 font-medium block mb-2">
-                Assign Guard (Optional - leave blank for open shift)
-              </label>
-              <Select value={formData.guard_id} onValueChange={(value) => setFormData({ ...formData, guard_id: value })}>
-                <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                  <SelectValue placeholder="Select guard or leave open..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={null}>Open Shift</SelectItem>
+            {shift ? (
+              <div>
+                <label className="text-sm text-slate-300 font-medium block mb-2">
+                  Assign Guard (Optional - leave blank for open shift)
+                </label>
+                <Select value={formData.guard_id} onValueChange={(value) => setFormData({ ...formData, guard_id: value })}>
+                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                    <SelectValue placeholder="Select guard or leave open..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Open Shift</SelectItem>
+                    {guards.map((guard) => (
+                      <SelectItem key={guard.id} value={guard.id}>
+                        {guard.full_name} ({guard.badge_number})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div>
+                <label className="text-sm text-slate-300 font-medium block mb-2 flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  Select Guards <span className="text-rose-400">*</span>
+                  <span className="text-xs text-slate-500 font-normal ml-auto">
+                    {selectedGuards.length} selected
+                  </span>
+                </label>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
                   {guards.map((guard) => (
-                    <SelectItem key={guard.id} value={guard.id}>
-                      {guard.full_name} ({guard.badge_number})
-                    </SelectItem>
+                    <div 
+                      key={guard.id}
+                      className="flex items-center gap-3 p-2 rounded hover:bg-slate-800 cursor-pointer"
+                      onClick={() => toggleGuard(guard.id)}
+                    >
+                      <Checkbox 
+                        checked={selectedGuards.includes(guard.id)}
+                        onCheckedChange={() => toggleGuard(guard.id)}
+                      />
+                      <div className="flex-1">
+                        <p className="text-white text-sm font-medium">{guard.full_name}</p>
+                        <p className="text-slate-400 text-xs">{guard.badge_number}</p>
+                      </div>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
