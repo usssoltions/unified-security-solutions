@@ -112,14 +112,15 @@ Officer Signature: Signed
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send immediate notifications via backend
+      // Send immediate notifications via backend with location
       try {
         await base44.functions.invoke('notifyAdminsIncident', {
           incidentId: incident.id,
           guardName: user.full_name,
           incidentType: data.incident_type,
           siteName: shift?.site_name || 'Unknown Site',
-          incidentTime: data.date_time_of_incident
+          incidentTime: data.date_time_of_incident,
+          location: location
         });
       } catch (error) {
         console.error('Failed to send incident notification:', error);

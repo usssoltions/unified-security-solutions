@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { maintenanceId, guardName, maintenanceType, siteName, details } = await req.json();
+    const { maintenanceId, guardName, maintenanceType, siteName, details, location } = await req.json();
 
     // Get all admin users
     const allUsers = await base44.asServiceRole.entities.User.filter({});
@@ -31,7 +31,8 @@ Deno.serve(async (req) => {
           guard: guardName,
           type: maintenanceType,
           site: siteName,
-          details: details
+          details: details,
+          location: location
         },
         sendEmail: true
       })

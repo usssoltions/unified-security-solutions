@@ -93,14 +93,15 @@ Officer Signature: Signed
         media: [...formData.media, ...formData.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send immediate notifications via backend
+      // Send immediate notifications via backend with location
       try {
         await base44.functions.invoke('notifyAdminsMaintenance', {
           maintenanceId: maintenanceRequest.id,
           guardName: formData.guard_name,
           maintenanceType: formData.maintenance_type,
           siteName: formData.site_name,
-          details: formData.details.substring(0, 200)
+          details: formData.details.substring(0, 200),
+          location: formData.location
         });
       } catch (error) {
         console.error('Failed to send maintenance notification:', error);
