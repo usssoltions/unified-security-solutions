@@ -32,7 +32,9 @@ Deno.serve(async (req) => {
           type: incidentType,
           site: siteName,
           time: new Date(incidentTime).toLocaleString(),
-          location: location
+          ...(location && { location: location }),
+          ...(location && location.lat && { lat: location.lat }),
+          ...(location && location.lng && { lng: location.lng })
         },
         sendEmail: true
       })
