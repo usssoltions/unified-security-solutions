@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -247,6 +246,31 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   const dispatchMutation = useMutation({
     mutationFn: async (alarmPayload) => {
       const currentUser = await base44.auth.me();
+
+      // Send loud notification to assigned responder
+      if (alarmPayload.assigned_to) {
+        try {
+          await base44.functions.invoke('sendComprehensiveNotification', {
+            recipientIds: [alarmPayload.assigned_to],
+            type: 'alarm_dispatch',
+            title: `🚨 URGENT: Alarm Response Assigned`,
+            message: `You have been assigned to respond to a ${alarmPayload.alarm_type.replace(/_/g, ' ')} alarm at ${alarmPayload.address}. Acknowledge immediately!`,
+            priority: 'critical',
+            relatedEntity: 'alarm',
+            relatedId: 'pending',
+            metadata: {
+              alarm_type: alarmPayload.alarm_type,
+              address: alarmPayload.address,
+              client: alarmPayload.client_name || 'N/A',
+              lat: alarmPayload.location.lat,
+              lng: alarmPayload.location.lng
+            },
+            sendEmail: true
+          });
+        } catch (notifyError) {
+          console.error('Failed to send alarm notification:', notifyError);
+        }
+      }
 
       const alarm = await base44.entities.AlarmResponse.create({
         ...alarmPayload,
