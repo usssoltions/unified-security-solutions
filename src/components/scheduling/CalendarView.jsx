@@ -1,12 +1,16 @@
-
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // Badge is no longer used, so it's removed from imports
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function CalendarView({ shifts, onDateSelect, onShiftClick }) {
-  const [currentDate, setCurrentDate] = React.useState(new Date());
+export default function CalendarView({ shifts, onDateSelect, onShiftClick, currentMonth, currentYear, onMonthChange }) {
+  const [currentDate, setCurrentDate] = React.useState(new Date(currentYear, currentMonth, 1));
+
+  // Sync with parent month/year
+  React.useEffect(() => {
+    setCurrentDate(new Date(currentYear, currentMonth, 1));
+  }, [currentMonth, currentYear]);
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -39,15 +43,21 @@ export default function CalendarView({ shifts, onDateSelect, onShiftClick }) {
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const previousMonth = () => {
-    setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+    const newDate = new Date(currentYear, currentMonth - 1, 1);
+    setCurrentDate(newDate);
+    onMonthChange && onMonthChange(newDate.getMonth(), newDate.getFullYear());
   };
 
   const nextMonth = () => {
-    setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
+    const newDate = new Date(currentYear, currentMonth + 1, 1);
+    setCurrentDate(newDate);
+    onMonthChange && onMonthChange(newDate.getMonth(), newDate.getFullYear());
   };
 
   const goToToday = () => {
-    setCurrentDate(new Date());
+    const today = new Date();
+    setCurrentDate(today);
+    onMonthChange && onMonthChange(today.getMonth(), today.getFullYear());
   };
 
   return (
