@@ -164,18 +164,41 @@ PHOTOS: ${report.photos.length} photo(s) attached
         }
       }
 
-      // Send comprehensive notifications to all admins
+      // Send comprehensive notifications to all admins with ACTUAL report details
       try {
         const allUsers = await base44.entities.User.list();
         const admins = allUsers
           .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type));
 
+        const detailedReport = `
+GUARD: ${user.full_name}
+SITE: ${activeShift.site_name}
+CLIENT: ${site?.client_name || 'N/A'}
+SUBMITTED: ${new Date().toLocaleString()}
+
+SHIFT/POST: ${report.shift_post}
+SPECIAL INSTRUCTIONS: ${report.special_instructions}
+POST ITEMS RECEIVED: ${report.post_items_received}
+
+OBSERVATIONS:
+${report.observations.map((obs, i) => `#${i+1} Type: ${obs.type}, Time: ${obs.time}, Comments: ${obs.comments}`).join('\n')}
+
+RELIEVING OFFICER:
+First Name: ${report.relieving_officer_first}
+Last Name: ${report.relieving_officer_last}
+
+ADDITIONAL NOTES:
+${report.additional_notes}
+
+PHOTOS: ${report.photos.length} attached
+        `.trim();
+
         for (const admin of admins) {
           await base44.functions.invoke('sendComprehensiveNotification', {
             recipientIds: [admin.id],
             type: 'shift_reminder',
-            title: `📊 Daily Activity Report Submitted`,
-            message: `${user.full_name} has submitted their daily activity report for ${activeShift.site_name}. View full details in email.`,
+            title: `📊 Daily Activity Report: ${user.full_name} - ${activeShift.site_name}`,
+            message: `Guard ${user.full_name} has submitted their daily activity report for ${activeShift.site_name}.`,
             priority: 'medium',
             relatedEntity: 'incident',
             relatedId: createdIncident.id,
@@ -184,14 +207,18 @@ PHOTOS: ${report.photos.length} photo(s) attached
               guard_photo: user.profile_photo || null,
               site: activeShift.site_name,
               client: site?.client_name || 'N/A',
+              date_entered: new Date().toLocaleString(),
               shift_post: report.shift_post,
-              submitted_at: new Date().toLocaleString(),
+              special_instructions: report.special_instructions,
+              post_items_received: report.post_items_received,
               observations_count: report.observations.filter(o => o.type || o.comments).length,
+              relieving_officer: `${report.relieving_officer_first} ${report.relieving_officer_last}`,
+              additional_notes: report.additional_notes,
               photos_count: report.photos.length,
               signature: report.signature,
               latitude: currentLocation?.lat,
               longitude: currentLocation?.lng,
-              full_report: reportData.description
+              full_report: detailedReport
             },
             sendEmail: true
           });
