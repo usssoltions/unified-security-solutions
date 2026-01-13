@@ -69,23 +69,26 @@ Deno.serve(async (req) => {
                     <h1 style="color: white; margin: 0; font-size: 24px;">SecureGuard Notification</h1>
                   </div>
                   <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px;">
+                    ${metadata?.guard_photo ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${metadata.guard_photo}" alt="Guard Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid #667eea;" /></div>` : ''}
                     <div style="background: white; padding: 25px; border-radius: 8px; border-left: 4px solid #667eea;">
                       <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">${title}</h2>
                       <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 15px 0;">${message}</p>
                       ${metadata ? `<div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
                        <p style="color: #64748b; font-size: 14px; margin: 0;"><strong>Additional Details:</strong></p>
-                       ${Object.entries(metadata).map(([key, value]) => {
+                       ${Object.entries(metadata).filter(([key]) => key !== 'guard_photo' && key !== 'signature' && key !== 'full_report').map(([key, value]) => {
                          if (key === 'location' && value && typeof value === 'object' && value.lat && value.lng) {
-                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>${key}:</strong><br><a href="https://www.google.com/maps?q=${value.lat},${value.lng}" target="_blank" style="color: #0284c7; text-decoration: none;">📍 View on Map (${value.lat.toFixed(6)}, ${value.lng.toFixed(6)})</a></p>`;
-                         } else if ((key === 'lat' || key === 'latitude') && metadata.lng) {
-                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>location:</strong><br><a href="https://www.google.com/maps?q=${value},${metadata.lng || metadata.longitude}" target="_blank" style="color: #0284c7; text-decoration: none;">📍 View on Map (${value.toFixed(6)}, ${(metadata.lng || metadata.longitude).toFixed(6)})</a></p>`;
+                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>Location:</strong><br><a href="https://www.google.com/maps?q=${value.lat},${value.lng}" target="_blank" style="color: #0284c7; font-weight: bold; text-decoration: none;">📍 Click to view on map</a><br><span style="font-size: 12px; color: #94a3b8;">${value.lat.toFixed(6)}, ${value.lng.toFixed(6)}</span></p>`;
+                         } else if ((key === 'lat' || key === 'latitude') && (metadata.lng || metadata.longitude)) {
+                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>Location:</strong><br><a href="https://www.google.com/maps?q=${value},${metadata.lng || metadata.longitude}" target="_blank" style="color: #0284c7; font-weight: bold; text-decoration: none;">📍 Click to view on map</a><br><span style="font-size: 12px; color: #94a3b8;">${value.toFixed(6)}, ${(metadata.lng || metadata.longitude).toFixed(6)}</span></p>`;
                          } else if (key === 'lng' || key === 'longitude') {
                            return '';
                          } else {
-                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>${key}:</strong> ${typeof value === 'object' ? JSON.stringify(value) : value}</p>`;
+                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>${key.replace(/_/g, ' ')}:</strong> ${typeof value === 'object' ? JSON.stringify(value) : value}</p>`;
                          }
                        }).join('')}
                       </div>` : ''}
+                      ${metadata?.full_report ? `<div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0;"><p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;"><strong>Full Report:</strong></p><pre style="white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.6; color: #1e293b; margin: 0;">${metadata.full_report}</pre></div>` : ''}
+                      ${metadata?.signature ? `<div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;"><p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;"><strong>Digital Signature:</strong></p><img src="${metadata.signature}" alt="Signature" style="max-width: 300px; height: auto; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>` : ''}
                       <p style="color: #64748b; font-size: 14px; margin-top: 20px;">Priority: <span style="color: ${priority === 'critical' ? '#dc2626' : priority === 'high' ? '#ea580c' : priority === 'medium' ? '#ca8a04' : '#0284c7'}; font-weight: bold;">${priority.toUpperCase()}</span></p>
                     </div>
                     <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
