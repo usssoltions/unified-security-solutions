@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Loader2, Calendar } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { X, Loader2, Calendar, Users } from "lucide-react";
 import { useMutation } from '@tanstack/react-query'; // Import useMutation
 
 // Helper function to format ISO date strings for datetime-local input
