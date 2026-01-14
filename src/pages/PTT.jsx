@@ -1,0 +1,491 @@
+import React, { useState, useRef, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+export default function PTT() {
+  const [user, setUser] = useState(null);
+  const [selectedChannel, setSelectedChannel] = useState(null);
+  const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [showNewChannel, setShowNewChannel] = useState(false);
+  const [newChannelName, setNewChannelName] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState([]);
+  const [channelType, setChannelType] = useState("direct");
+  
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await base44.auth.me();
+      setUser(currentUser);
+    } catch (error) {
+      console.error("Failed to load user:", error);
+    }
+  };
+
+  const { data: channels = [] } = useQuery({
+    queryKey: ["pttChannels", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const allChannels = await base44.entities.PTTChannel.list();
+      return allChannels.filter(ch => 
+        ch.members.some(m => m.user_id === user.id)
+      ).sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
+    },
+    enabled: !!user,
+    refetchInterval: 3000
+  });
+
+  const { data: messages = [] } = useQuery({
+    queryKey: ["pttMessages", selectedChannel?.id],
+    queryFn: async () => {
+      if (!selectedChannel) return [];
+      return await base44.entities.PTTMessage.filter(
+        { channel_id: selectedChannel.id },
+        "-created_date",
+        50
+      );
+    },
+    enabled: !!selectedChannel,
+    refetchInterval: 2000
+  });
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ["allUsers"],
+    queryFn: () => base44.entities.User.list(),
+    enabled: showNewChannel
+  });
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        stream.getTracks().forEach(track => track.stop());
+        await uploadAudio(blob);
+      };
+
+      mediaRecorder.start();
+      setRecording(true);
+      setRecordingTime(0);
+
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (error) {
+      alert("Failed to access microphone: " + error.message);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+  };
+
+  const uploadAudio = async (blob) => {
+    setUploading(true);
+    try {
+      const file = new File([blob], `ptt-${Date.now()}.webm`, { type: blob.type });
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+
+      await base44.entities.PTTMessage.create({
+        channel_id: selectedChannel.id,
+        sender_id: user.id,
+        sender_name: user.full_name,
+        sender_role: user.role_type,
+        audio_url: file_url,
+        duration_seconds: recordingTime
+      });
+
+      await base44.entities.PTTChannel.update(selectedChannel.id, {
+        last_message_at: new Date().toISOString()
+      });
+
+      queryClient.invalidateQueries(["pttMessages"]);
+      queryClient.invalidateQueries(["pttChannels"]);
+    } catch (error) {
+      alert("Failed to send voice message: " + error.message);
+    } finally {
+      setUploading(false);
+      setRecordingTime(0);
+    }
+  };
+
+  const createChannelMutation = useMutation({
+    mutationFn: async () => {
+      const members = selectedMembers.map(userId => {
+        const u = allUsers.find(usr => usr.id === userId);
+        return {
+          user_id: u.id,
+          user_name: u.full_name,
+          role: u.role_type
+        };
+      });
+
+      members.push({
+        user_id: user.id,
+        user_name: user.full_name,
+        role: user.role_type
+      });
+
+      return await base44.entities.PTTChannel.create({
+        name: newChannelName || (channelType === "direct" ? `${user.full_name} - ${members[0].user_name}` : "Group Channel"),
+        type: channelType,
+        members,
+        created_by: user.id,
+        created_by_name: user.full_name,
+        last_message_at: new Date().toISOString()
+      });
+    },
+    onSuccess: (channel) => {
+      queryClient.invalidateQueries(["pttChannels"]);
+      setShowNewChannel(false);
+      setSelectedChannel(channel);
+      setNewChannelName("");
+      setSelectedMembers([]);
+    }
+  });
+
+  const markAsListened = async (messageId) => {
+    try {
+      const message = messages.find(m => m.id === messageId);
+      if (message && !message.listened_by.includes(user.id)) {
+        await base44.entities.PTTMessage.update(messageId, {
+          listened_by: [...message.listened_by, user.id]
+        });
+        queryClient.invalidateQueries(["pttMessages"]);
+      }
+    } catch (error) {
+      console.error("Failed to mark as listened:", error);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center">
+              <Radio className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Push-to-Talk</h1>
+              <p className="text-slate-400 text-sm">Voice Communication System</p>
+            </div>
+          </div>
+          <Dialog open={showNewChannel} onOpenChange={setShowNewChannel}>
+            <DialogTrigger asChild>
+              <Button className="bg-sky-500 hover:bg-sky-600">
+                <Plus className="w-4 h-4 mr-2" />
+                New Channel
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-slate-800 border-slate-700">
+              <DialogHeader>
+                <DialogTitle className="text-white">Create PTT Channel</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm text-slate-300 block mb-2">Channel Type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={channelType === "direct" ? "default" : "outline"}
+                      onClick={() => setChannelType("direct")}
+                      className={channelType === "direct" ? "bg-sky-500" : "border-slate-600"}
+                    >
+                      <User className="w-4 h-4 mr-2" />
+                      Direct
+                    </Button>
+                    <Button
+                      variant={channelType === "group" ? "default" : "outline"}
+                      onClick={() => setChannelType("group")}
+                      className={channelType === "group" ? "bg-sky-500" : "border-slate-600"}
+                    >
+                      <Users className="w-4 h-4 mr-2" />
+                      Group
+                    </Button>
+                  </div>
+                </div>
+
+                {channelType === "group" && (
+                  <div>
+                    <label className="text-sm text-slate-300 block mb-2">Channel Name</label>
+                    <Input
+                      placeholder="Enter channel name"
+                      value={newChannelName}
+                      onChange={(e) => setNewChannelName(e.target.value)}
+                      className="bg-slate-900 border-slate-700 text-white"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm text-slate-300 block mb-2">
+                    Select {channelType === "direct" ? "User" : "Members"}
+                  </label>
+                  <div className="max-h-64 overflow-y-auto space-y-2 bg-slate-900 rounded-lg p-3 border border-slate-700">
+                    {allUsers.filter(u => u.id !== user.id).map(u => (
+                      <label key={u.id} className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded cursor-pointer">
+                        <input
+                          type={channelType === "direct" ? "radio" : "checkbox"}
+                          checked={selectedMembers.includes(u.id)}
+                          onChange={(e) => {
+                            if (channelType === "direct") {
+                              setSelectedMembers(e.target.checked ? [u.id] : []);
+                            } else {
+                              setSelectedMembers(prev =>
+                                e.target.checked
+                                  ? [...prev, u.id]
+                                  : prev.filter(id => id !== u.id)
+                              );
+                            }
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <div className="flex-1">
+                          <p className="text-white text-sm">{u.full_name}</p>
+                          <p className="text-slate-400 text-xs">{u.role_type}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => createChannelMutation.mutate()}
+                  disabled={selectedMembers.length === 0 || createChannelMutation.isPending}
+                  className="w-full bg-sky-500 hover:bg-sky-600"
+                >
+                  Create Channel
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Channels List */}
+          <div className="lg:col-span-1">
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Channels ({channels.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
+                {channels.map(channel => {
+                  const unreadCount = messages.filter(m => 
+                    m.channel_id === channel.id && 
+                    m.sender_id !== user.id && 
+                    !m.listened_by.includes(user.id)
+                  ).length;
+
+                  return (
+                    <button
+                      key={channel.id}
+                      onClick={() => setSelectedChannel(channel)}
+                      className={`w-full text-left p-3 rounded-lg transition-all ${
+                        selectedChannel?.id === channel.id
+                          ? "bg-sky-500 text-white"
+                          : "bg-slate-900 text-slate-300 hover:bg-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          {channel.type === "direct" ? (
+                            <User className="w-4 h-4" />
+                          ) : (
+                            <Users className="w-4 h-4" />
+                          )}
+                          <span className="font-semibold">{channel.name}</span>
+                        </div>
+                        {unreadCount > 0 && (
+                          <Badge className="bg-rose-500 text-white">
+                            {unreadCount}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs opacity-70">
+                        {channel.members.length} member{channel.members.length !== 1 ? 's' : ''}
+                      </p>
+                    </button>
+                  );
+                })}
+                {channels.length === 0 && (
+                  <div className="text-center py-8 text-slate-400">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No channels yet</p>
+                    <p className="text-sm">Create a channel to start</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Messages Area */}
+          <div className="lg:col-span-2">
+            {selectedChannel ? (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader className="border-b border-slate-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        {selectedChannel.type === "direct" ? (
+                          <User className="w-5 h-5" />
+                        ) : (
+                          <Users className="w-5 h-5" />
+                        )}
+                        {selectedChannel.name}
+                      </CardTitle>
+                      <p className="text-slate-400 text-sm mt-1">
+                        {selectedChannel.members.map(m => m.user_name).join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto mb-4">
+                    {messages.slice().reverse().map(msg => {
+                      const isOwn = msg.sender_id === user.id;
+                      const hasListened = msg.listened_by.includes(user.id);
+
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`max-w-xs ${
+                              isOwn
+                                ? "bg-sky-500"
+                                : hasListened
+                                ? "bg-slate-700"
+                                : "bg-emerald-600"
+                            } rounded-lg p-3`}
+                          >
+                            {!isOwn && (
+                              <p className="text-xs text-white/80 mb-2">
+                                {msg.sender_name}
+                              </p>
+                            )}
+                            <audio
+                              controls
+                              className="w-full"
+                              onPlay={() => !isOwn && markAsListened(msg.id)}
+                              src={msg.audio_url}
+                            />
+                            <div className="flex items-center justify-between mt-2 text-xs text-white/70">
+                              <span>{msg.duration_seconds}s</span>
+                              <span>
+                                {new Date(msg.created_date).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit"
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {messages.length === 0 && (
+                      <div className="text-center py-12 text-slate-400">
+                        <Volume2 className="w-16 h-16 mx-auto mb-3 opacity-50" />
+                        <p>No messages yet</p>
+                        <p className="text-sm">Press and hold to record</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PTT Button */}
+                  <div className="flex items-center justify-center">
+                    {uploading ? (
+                      <div className="text-center py-4">
+                        <Loader2 className="w-8 h-8 text-sky-400 animate-spin mx-auto mb-2" />
+                        <p className="text-slate-400 text-sm">Sending...</p>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <button
+                          onMouseDown={startRecording}
+                          onMouseUp={stopRecording}
+                          onTouchStart={startRecording}
+                          onTouchEnd={stopRecording}
+                          className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${
+                            recording
+                              ? "bg-rose-500 scale-110 animate-pulse"
+                              : "bg-sky-500 hover:bg-sky-600"
+                          }`}
+                        >
+                          <Mic className="w-10 h-10 text-white" />
+                        </button>
+                        {recording && (
+                          <p className="text-rose-400 font-bold mt-3">
+                            Recording... {recordingTime}s
+                          </p>
+                        )}
+                        {!recording && (
+                          <p className="text-slate-400 text-sm mt-3">
+                            Press & Hold to Talk
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardContent className="flex items-center justify-center h-[600px]">
+                  <div className="text-center text-slate-400">
+                    <Radio className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg mb-2">Select a channel to start</p>
+                    <p className="text-sm">or create a new one</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

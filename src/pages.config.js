@@ -25,6 +25,7 @@ import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
+import PTT from './pages/PTT';
 import __Layout from './Layout.jsx';
 
 
@@ -56,6 +57,7 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
+    "PTT": PTT,
 }
 
 export const pagesConfig = {
