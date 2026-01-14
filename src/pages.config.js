@@ -24,6 +24,7 @@ import UserManagement from './pages/UserManagement';
 import StartOfShift from './pages/StartOfShift';
 import AdminIncidents from './pages/AdminIncidents';
 import AdminMaintenance from './pages/AdminMaintenance';
+import GuardPerformanceAnalytics from './pages/GuardPerformanceAnalytics';
 import __Layout from './Layout.jsx';
 
 
@@ -54,6 +55,7 @@ export const PAGES = {
     "StartOfShift": StartOfShift,
     "AdminIncidents": AdminIncidents,
     "AdminMaintenance": AdminMaintenance,
+    "GuardPerformanceAnalytics": GuardPerformanceAnalytics,
 }
 
 export const pagesConfig = {
