@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X } from "lucide-react";
+import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X, Settings, Archive, ArchiveRestore } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import ChannelSettingsModal from "@/components/ptt/ChannelSettingsModal";
 
 export default function PTT() {
   const [user, setUser] = useState(null);
@@ -18,6 +19,8 @@ export default function PTT() {
   const [newChannelName, setNewChannelName] = useState("");
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [channelType, setChannelType] = useState("direct");
+  const [showChannelSettings, setShowChannelSettings] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -37,18 +40,20 @@ export default function PTT() {
     }
   };
 
-  const { data: channels = [] } = useQuery({
+  const { data: allChannels = [] } = useQuery({
     queryKey: ["pttChannels", user?.id],
     queryFn: async () => {
       if (!user) return [];
       const allChannels = await base44.entities.PTTChannel.list();
-      return allChannels.filter(ch => 
-        ch.members.some(m => m.user_id === user.id)
-      ).sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
+      return allChannels
+        .filter(ch => ch.members.some(m => m.user_id === user.id))
+        .sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
     },
     enabled: !!user,
     refetchInterval: 3000
   });
+
+  const channels = allChannels.filter(ch => showArchived ? ch.is_archived : !ch.is_archived);
 
   const { data: messages = [] } = useQuery({
     queryKey: ["pttMessages", selectedChannel?.id],
@@ -332,10 +337,30 @@ export default function PTT() {
           <div className="lg:col-span-1">
             <Card className="bg-slate-800/50 border-slate-700">
               <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Channels ({channels.length})
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    {showArchived ? "Archived" : "Channels"} ({channels.length})
+                  </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowArchived(!showArchived)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    {showArchived ? (
+                      <>
+                        <ArchiveRestore className="w-4 h-4 mr-1" />
+                        Active
+                      </>
+                    ) : (
+                      <>
+                        <Archive className="w-4 h-4 mr-1" />
+                        Archived
+                      </>
+                    )}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
                 {channels.map(channel => {
@@ -393,7 +418,7 @@ export default function PTT() {
               <Card className="bg-slate-800/50 border-slate-700">
                 <CardHeader className="border-b border-slate-700">
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex-1">
                       <CardTitle className="text-white flex items-center gap-2">
                         {selectedChannel.type === "direct" ? (
                           <User className="w-5 h-5" />
@@ -401,11 +426,24 @@ export default function PTT() {
                           <Users className="w-5 h-5" />
                         )}
                         {selectedChannel.name}
+                        {selectedChannel.is_archived && (
+                          <Badge variant="outline" className="text-xs border-slate-600 text-slate-400">
+                            Archived
+                          </Badge>
+                        )}
                       </CardTitle>
                       <p className="text-slate-400 text-sm mt-1">
                         {selectedChannel.members.map(m => m.user_name).join(", ")}
                       </p>
                     </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowChannelSettings(true)}
+                      className="text-slate-400 hover:text-white"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="p-4">
@@ -532,6 +570,16 @@ export default function PTT() {
           </div>
         </div>
       </div>
+
+      {/* Channel Settings Modal */}
+      {selectedChannel && (
+        <ChannelSettingsModal
+          channel={selectedChannel}
+          user={user}
+          open={showChannelSettings}
+          onClose={() => setShowChannelSettings(false)}
+        />
+      )}
     </div>
   );
 }
