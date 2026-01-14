@@ -51,9 +51,19 @@ export default function PTT() {
         .filter(ch => ch.members.some(m => m.user_id === user.id))
         .sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
     },
-    enabled: !!user,
-    refetchInterval: 3000
+    enabled: !!user
   });
+
+  // Real-time subscription for PTT channels
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = base44.entities.PTTChannel.subscribe((event) => {
+      queryClient.invalidateQueries(["pttChannels"]);
+    });
+
+    return () => unsubscribe();
+  }, [user?.id, queryClient]);
 
   const channels = allChannels.filter(ch => showArchived ? ch.is_archived : !ch.is_archived);
 
@@ -67,9 +77,21 @@ export default function PTT() {
         50
       );
     },
-    enabled: !!selectedChannel,
-    refetchInterval: 2000
+    enabled: !!selectedChannel
   });
+
+  // Real-time subscription for PTT messages
+  useEffect(() => {
+    if (!selectedChannel) return;
+
+    const unsubscribe = base44.entities.PTTMessage.subscribe((event) => {
+      if (event.data.channel_id === selectedChannel.id) {
+        queryClient.invalidateQueries(["pttMessages", selectedChannel.id]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [selectedChannel?.id, queryClient]);
 
   const { data: allUsers = [], isLoading: usersLoading } = useQuery({
     queryKey: ["allUsers"],
