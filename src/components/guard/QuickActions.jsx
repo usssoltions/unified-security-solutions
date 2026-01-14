@@ -28,10 +28,10 @@ export default function QuickActions({ location, shiftId, siteId }) {
       action: () => navigate(createPageUrl("GuardMaintenance"))
     },
     {
-      title: "Daily Report",
+      title: "Start of Shift",
       icon: FileText,
       color: "from-purple-500 to-purple-600",
-      action: () => navigate(createPageUrl("DailyReport"))
+      action: () => navigate(createPageUrl("StartOfShift"))
     }
   ];
 

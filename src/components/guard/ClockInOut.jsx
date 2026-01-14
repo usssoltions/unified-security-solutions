@@ -106,7 +106,7 @@ export default function ClockInOut({ user, location }) {
         }
       });
 
-      // Update user authentication state - mark as needing daily report
+      // Update user authentication state - mark as needing start of shift report
       await base44.auth.updateMe({
         is_clocked_in: true,
         current_shift_id: assignedShift.id,
@@ -115,7 +115,7 @@ export default function ClockInOut({ user, location }) {
           ...location,
           timestamp: new Date().toISOString()
         },
-        needs_daily_report: true
+        needs_start_of_shift_report: true
       });
     },
     onSuccess: () => {

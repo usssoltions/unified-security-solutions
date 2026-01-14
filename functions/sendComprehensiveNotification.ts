@@ -70,6 +70,7 @@ Deno.serve(async (req) => {
                   </div>
                   <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px;">
                     ${metadata?.guard_photo ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${metadata.guard_photo}" alt="Guard Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid #667eea;" /></div>` : ''}
+                      ${metadata?.photos && metadata.photos.length > 0 ? `<div style="margin: 20px 0;"><p style="color: #64748b; font-size: 14px; margin-bottom: 10px;"><strong>Photos (${metadata.photos.length}):</strong></p><div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">${metadata.photos.map((photo, idx) => `<img src="${photo}" alt="Photo ${idx + 1}" style="width: 100%; height: auto; border-radius: 6px; border: 1px solid #e2e8f0;" />`).join('')}</div></div>` : ''}
                     <div style="background: white; padding: 25px; border-radius: 8px; border-left: 4px solid #667eea;">
                       <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">${title}</h2>
                       <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 15px 0;">${message}</p>
