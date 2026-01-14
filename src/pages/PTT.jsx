@@ -64,10 +64,10 @@ export default function PTT() {
     refetchInterval: 2000
   });
 
-  const { data: allUsers = [] } = useQuery({
+  const { data: allUsers = [], isLoading: usersLoading } = useQuery({
     queryKey: ["allUsers"],
     queryFn: () => base44.entities.User.list(),
-    enabled: showNewChannel
+    enabled: !!user
   });
 
   const startRecording = async () => {
@@ -262,30 +262,40 @@ export default function PTT() {
                     Select {channelType === "direct" ? "User" : "Members"}
                   </label>
                   <div className="max-h-64 overflow-y-auto space-y-2 bg-slate-900 rounded-lg p-3 border border-slate-700">
-                    {allUsers.filter(u => u.id !== user.id).map(u => (
-                      <label key={u.id} className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded cursor-pointer">
-                        <input
-                          type={channelType === "direct" ? "radio" : "checkbox"}
-                          checked={selectedMembers.includes(u.id)}
-                          onChange={(e) => {
-                            if (channelType === "direct") {
-                              setSelectedMembers(e.target.checked ? [u.id] : []);
-                            } else {
-                              setSelectedMembers(prev =>
-                                e.target.checked
-                                  ? [...prev, u.id]
-                                  : prev.filter(id => id !== u.id)
-                              );
-                            }
-                          }}
-                          className="w-4 h-4"
-                        />
-                        <div className="flex-1">
-                          <p className="text-white text-sm">{u.full_name}</p>
-                          <p className="text-slate-400 text-xs">{u.role_type}</p>
-                        </div>
-                      </label>
-                    ))}
+                    {usersLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 text-sky-400 animate-spin" />
+                      </div>
+                    ) : allUsers.filter(u => u.id !== user.id).length === 0 ? (
+                      <div className="text-center py-8 text-slate-400">
+                        <p className="text-sm">No other users available</p>
+                      </div>
+                    ) : (
+                      allUsers.filter(u => u.id !== user.id).map(u => (
+                        <label key={u.id} className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded cursor-pointer">
+                          <input
+                            type={channelType === "direct" ? "radio" : "checkbox"}
+                            checked={selectedMembers.includes(u.id)}
+                            onChange={(e) => {
+                              if (channelType === "direct") {
+                                setSelectedMembers(e.target.checked ? [u.id] : []);
+                              } else {
+                                setSelectedMembers(prev =>
+                                  e.target.checked
+                                    ? [...prev, u.id]
+                                    : prev.filter(id => id !== u.id)
+                                );
+                              }
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <div className="flex-1">
+                            <p className="text-white text-sm">{u.full_name}</p>
+                            <p className="text-slate-400 text-xs">{u.role_type}</p>
+                          </div>
+                        </label>
+                      ))
+                    )}
                   </div>
                 </div>
 
