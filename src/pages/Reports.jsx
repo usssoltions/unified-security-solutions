@@ -162,7 +162,7 @@ export default function Reports() {
       item.site_name || 'N/A',
       item.status || 'N/A',
       item.priority || item.urgency || 'N/A',
-      item.description?.replace(/"/g, '""') || 'N/A'
+      (item.description || 'N/A').replace(/"/g, '""').substring(0, 500)
     ]);
 
     const csvContent = [
@@ -175,7 +175,9 @@ export default function Reports() {
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   };
 

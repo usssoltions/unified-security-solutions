@@ -1,4 +1,6 @@
 import AIReports from './pages/AIReports';
+import AdminIncidents from './pages/AdminIncidents';
+import AdminMaintenance from './pages/AdminMaintenance';
 import Analytics from './pages/Analytics';
 import AssetManagement from './pages/AssetManagement';
 import ClockInOutReports from './pages/ClockInOutReports';
@@ -10,6 +12,7 @@ import GuardActivity from './pages/GuardActivity';
 import GuardIncidents from './pages/GuardIncidents';
 import GuardMaintenance from './pages/GuardMaintenance';
 import GuardPatrolChecklist from './pages/GuardPatrolChecklist';
+import GuardPerformanceAnalytics from './pages/GuardPerformanceAnalytics';
 import GuardShift from './pages/GuardShift';
 import Home from './pages/Home';
 import NotificationPreferences from './pages/NotificationPreferences';
@@ -18,18 +21,17 @@ import QRScanner from './pages/QRScanner';
 import Reports from './pages/Reports';
 import Scheduling from './pages/Scheduling';
 import SiteManagement from './pages/SiteManagement';
+import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import StartOfShift from './pages/StartOfShift';
-import AdminIncidents from './pages/AdminIncidents';
-import AdminMaintenance from './pages/AdminMaintenance';
-import GuardPerformanceAnalytics from './pages/GuardPerformanceAnalytics';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "AIReports": AIReports,
+    "AdminIncidents": AdminIncidents,
+    "AdminMaintenance": AdminMaintenance,
     "Analytics": Analytics,
     "AssetManagement": AssetManagement,
     "ClockInOutReports": ClockInOutReports,
@@ -41,6 +43,7 @@ export const PAGES = {
     "GuardIncidents": GuardIncidents,
     "GuardMaintenance": GuardMaintenance,
     "GuardPatrolChecklist": GuardPatrolChecklist,
+    "GuardPerformanceAnalytics": GuardPerformanceAnalytics,
     "GuardShift": GuardShift,
     "Home": Home,
     "NotificationPreferences": NotificationPreferences,
@@ -49,13 +52,10 @@ export const PAGES = {
     "Reports": Reports,
     "Scheduling": Scheduling,
     "SiteManagement": SiteManagement,
+    "StartOfShift": StartOfShift,
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "StartOfShift": StartOfShift,
-    "AdminIncidents": AdminIncidents,
-    "AdminMaintenance": AdminMaintenance,
-    "GuardPerformanceAnalytics": GuardPerformanceAnalytics,
 }
 
 export const pagesConfig = {
