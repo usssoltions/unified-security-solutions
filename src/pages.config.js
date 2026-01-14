@@ -1,6 +1,7 @@
 import AIReports from './pages/AIReports';
 import Analytics from './pages/Analytics';
 import AssetManagement from './pages/AssetManagement';
+import ClockInOutReports from './pages/ClockInOutReports';
 import CompletedPatrols from './pages/CompletedPatrols';
 import Configuration from './pages/Configuration';
 import ControlRoom from './pages/ControlRoom';
@@ -20,7 +21,7 @@ import SiteManagement from './pages/SiteManagement';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import ClockInOutReports from './pages/ClockInOutReports';
+import StartOfShift from './pages/StartOfShift';
 import __Layout from './Layout.jsx';
 
 
@@ -28,6 +29,7 @@ export const PAGES = {
     "AIReports": AIReports,
     "Analytics": Analytics,
     "AssetManagement": AssetManagement,
+    "ClockInOutReports": ClockInOutReports,
     "CompletedPatrols": CompletedPatrols,
     "Configuration": Configuration,
     "ControlRoom": ControlRoom,
@@ -47,7 +49,7 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "ClockInOutReports": ClockInOutReports,
+    "StartOfShift": StartOfShift,
 }
 
 export const pagesConfig = {
