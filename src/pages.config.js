@@ -16,6 +16,7 @@ import GuardPerformanceAnalytics from './pages/GuardPerformanceAnalytics';
 import GuardShift from './pages/GuardShift';
 import Home from './pages/Home';
 import NotificationPreferences from './pages/NotificationPreferences';
+import PTT from './pages/PTT';
 import PatrolChecklists from './pages/PatrolChecklists';
 import QRScanner from './pages/QRScanner';
 import Reports from './pages/Reports';
@@ -25,7 +26,6 @@ import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import PTT from './pages/PTT';
 import __Layout from './Layout.jsx';
 
 
@@ -48,6 +48,7 @@ export const PAGES = {
     "GuardShift": GuardShift,
     "Home": Home,
     "NotificationPreferences": NotificationPreferences,
+    "PTT": PTT,
     "PatrolChecklists": PatrolChecklists,
     "QRScanner": QRScanner,
     "Reports": Reports,
@@ -57,7 +58,6 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "PTT": PTT,
 }
 
 export const pagesConfig = {

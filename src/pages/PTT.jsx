@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X, Settings, Archive, ArchiveRestore } from "lucide-react";
+import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X, Settings, Archive, ArchiveRestore, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import ChannelSettingsModal from "@/components/ptt/ChannelSettingsModal";
+import PTTAlertHandler, { SystemAlertBadge } from "@/components/ptt/PTTAlertHandler";
 
 export default function PTT() {
   const [user, setUser] = useState(null);
@@ -451,6 +452,7 @@ export default function PTT() {
                     {messages.slice().reverse().map(msg => {
                       const isOwn = msg.sender_id === user.id;
                       const hasListened = msg.listened_by.includes(user.id);
+                      const isSystemAlert = msg.is_system_alert;
 
                       return (
                         <div
@@ -459,26 +461,51 @@ export default function PTT() {
                         >
                           <div
                             className={`max-w-xs ${
-                              isOwn
+                              isSystemAlert && msg.priority === "emergency"
+                                ? "bg-rose-600 border-2 border-rose-400"
+                                : isSystemAlert && msg.priority === "urgent"
+                                ? "bg-orange-600 border-2 border-orange-400"
+                                : isSystemAlert
+                                ? "bg-sky-600"
+                                : isOwn
                                 ? "bg-sky-500"
                                 : hasListened
                                 ? "bg-slate-700"
                                 : "bg-emerald-600"
                             } rounded-lg p-3`}
                           >
-                            {!isOwn && (
+                            {isSystemAlert && (
+                              <div className="mb-2">
+                                <SystemAlertBadge priority={msg.priority} />
+                              </div>
+                            )}
+                            
+                            {!isOwn && !isSystemAlert && (
                               <p className="text-xs text-white/80 mb-2">
                                 {msg.sender_name}
                               </p>
                             )}
-                            <audio
-                              controls
-                              className="w-full"
-                              onPlay={() => !isOwn && markAsListened(msg.id)}
-                              src={msg.audio_url}
-                            />
+
+                            {isSystemAlert && msg.alert_text && (
+                              <div className="mb-2 text-white">
+                                <p className="text-xs font-semibold mb-1">
+                                  {msg.alert_type?.toUpperCase()}
+                                </p>
+                                <p className="text-sm">{msg.alert_text}</p>
+                              </div>
+                            )}
+
+                            {msg.audio_url && (
+                              <audio
+                                controls
+                                className="w-full"
+                                onPlay={() => !isOwn && markAsListened(msg.id)}
+                                src={msg.audio_url}
+                              />
+                            )}
+                            
                             <div className="flex items-center justify-between mt-2 text-xs text-white/70">
-                              <span>{msg.duration_seconds}s</span>
+                              {msg.duration_seconds && <span>{msg.duration_seconds}s</span>}
                               <span>
                                 {new Date(msg.created_date).toLocaleTimeString([], {
                                   hour: "2-digit",
@@ -578,6 +605,15 @@ export default function PTT() {
           user={user}
           open={showChannelSettings}
           onClose={() => setShowChannelSettings(false)}
+        />
+      )}
+
+      {/* Alert Handler */}
+      {selectedChannel && (
+        <PTTAlertHandler
+          messages={messages}
+          user={user}
+          selectedChannel={selectedChannel}
         />
       )}
     </div>

@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Archive, Trash2, UserPlus, Bell, BellOff, Edit2, Loader2 } from "lucide-react";
+import { Settings, Archive, Trash2, UserPlus, Bell, BellOff, Edit2, Loader2, Radio, AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function ChannelSettingsModal({ channel, user, open, onClose }) {
   const [editMode, setEditMode] = useState(false);
@@ -50,6 +51,15 @@ export default function ChannelSettingsModal({ channel, user, open, onClose }) {
       return await base44.entities.PTTChannel.update(channel.id, {
         members: updatedMembers
       });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["pttChannels"]);
+    }
+  });
+
+  const updateAlertSettingsMutation = useMutation({
+    mutationFn: async (updates) => {
+      return await base44.entities.PTTChannel.update(channel.id, updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["pttChannels"]);
@@ -195,6 +205,59 @@ export default function ChannelSettingsModal({ channel, user, open, onClose }) {
               )}
             </Button>
           </div>
+
+          {/* System Alerts (Group channels only, creator only) */}
+          {isCreator && channel.type === "group" && (
+            <div className="pt-4 border-t border-slate-700">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-sky-400" />
+                  <label className="text-sm text-slate-300 font-medium">System Alerts</label>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => updateAlertSettingsMutation.mutate({
+                    receive_system_alerts: !channel.receive_system_alerts
+                  })}
+                  disabled={updateAlertSettingsMutation.isPending}
+                  className={channel.receive_system_alerts ? "text-sky-400" : "text-slate-500"}
+                >
+                  {channel.receive_system_alerts ? "Enabled" : "Disabled"}
+                </Button>
+              </div>
+              
+              {channel.receive_system_alerts && (
+                <div className="space-y-2 bg-slate-900 rounded-lg p-3 border border-slate-700">
+                  <p className="text-xs text-slate-400 mb-2">Receive alerts for:</p>
+                  {["emergency", "urgent", "normal"].map(priority => (
+                    <label key={priority} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={channel.alert_priority_filter?.includes(priority)}
+                        onCheckedChange={(checked) => {
+                          const current = channel.alert_priority_filter || [];
+                          const updated = checked
+                            ? [...current, priority]
+                            : current.filter(p => p !== priority);
+                          updateAlertSettingsMutation.mutate({
+                            alert_priority_filter: updated
+                          });
+                        }}
+                      />
+                      <span className={`text-sm ${
+                        priority === "emergency" ? "text-rose-400 font-bold" :
+                        priority === "urgent" ? "text-orange-400 font-semibold" :
+                        "text-slate-300"
+                      }`}>
+                        {priority === "emergency" && <AlertTriangle className="w-3 h-3 inline mr-1" />}
+                        {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Archive/Delete Actions */}
           {isCreator && (
