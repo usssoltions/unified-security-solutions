@@ -617,16 +617,6 @@ export default function PTT() {
         />
       )}
 
-      {/* Channel Settings Modal */}
-      {selectedChannel && (
-        <ChannelSettingsModal
-          channel={selectedChannel}
-          user={user}
-          open={showChannelSettings}
-          onClose={() => setShowChannelSettings(false)}
-        />
-      )}
-
       {/* Alert Handler */}
       {selectedChannel && (
         <PTTAlertHandler
@@ -635,7 +625,6 @@ export default function PTT() {
           selectedChannel={selectedChannel}
         />
       )}
-      </div>
     </div>
   );
 }
