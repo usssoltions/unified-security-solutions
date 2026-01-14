@@ -201,7 +201,7 @@ export default function AlarmNotification({ user }) {
           address: alarm.address
         });
 
-        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${alarm.location.lat},${alarm.location.lng}`;
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(alarm.address)}`;
         window.open(mapsUrl, '_blank');
       });
     }
