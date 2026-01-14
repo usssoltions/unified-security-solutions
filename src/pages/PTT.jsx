@@ -559,21 +559,28 @@ export default function PTT() {
                           }}
                           onTouchStart={(e) => {
                             e.preventDefault();
+                            e.stopPropagation();
                             startRecording();
                           }}
                           onTouchEnd={(e) => {
                             e.preventDefault();
+                            e.stopPropagation();
                             stopRecording();
                           }}
                           onTouchCancel={(e) => {
                             e.preventDefault();
                             stopRecording();
                           }}
-                          className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            return false;
+                          }}
+                          className={`w-24 h-24 rounded-full flex items-center justify-center transition-all select-none touch-none ${
                             recording
                               ? "bg-rose-500 scale-110 animate-pulse"
                               : "bg-sky-500 hover:bg-sky-600"
                           }`}
+                          style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
                         >
                           <Mic className="w-10 h-10 text-white" />
                         </button>
