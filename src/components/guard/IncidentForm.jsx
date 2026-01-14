@@ -46,6 +46,8 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
   const [aiAssisting, setAiAssisting] = useState(false);
   const [videoPreview, setVideoPreview] = useState(null);
   const [recordedAudio, setRecordedAudio] = useState(null);
+  const [aiSuggestions, setAiSuggestions] = useState(null);
+  const [similarIncidents, setSimilarIncidents] = useState([]);
   const videoPreviewRef = useRef(null);
   const queryClient = useQueryClient();
 
@@ -97,11 +99,24 @@ VOICE NOTES: ${data.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
+      // Use AI-recommended category and priority if available
+      const categoryMap = {
+        'Fire': 'fire',
+        'Theft': 'theft',
+        'Vandalism': 'vandalism',
+        'Medical Emergency': 'medical',
+        'Trespassing': 'trespassing',
+        'Suspicious Activity': 'suspicious_activity',
+        'Equipment Failure': 'equipment_failure',
+        'Safety Hazard': 'safety_hazard',
+        'Other': 'other'
+      };
+
       const incident = await base44.entities.Incident.create({
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
-        category: "other",
-        priority: "high",
+        category: aiSuggestions?.recommended_category || categoryMap[data.incident_type] || "other",
+        priority: aiSuggestions?.recommended_priority || "high",
         guard_id: user.id,
         guard_name: user.full_name,
         site_id: shift?.site_id || "",
@@ -310,37 +325,102 @@ Officer Signature: Signed
   };
 
   const getAIAssistance = async () => {
+    if (!formData.incident_type || !formData.incident_summary) {
+      alert("Please fill in Incident Type and Summary first");
+      return;
+    }
+
     setAiAssisting(true);
     try {
-      const prompt = `Based on this incident information, provide a professional incident summary and suggested officer actions:
+      // Fetch all recent incidents to check for similarities
+      const allIncidents = await base44.entities.Incident.list('-created_date', 50);
 
-Incident Type: ${formData.incident_type}
-Location: ${formData.incident_location}
-Current Summary: ${formData.incident_summary}
-Details: ${formData.who_what_when_details}
+      const prompt = `You are a security incident analysis expert. Analyze this incident and provide comprehensive insights:
 
-Please provide:
-1. An enhanced incident summary
-2. Suggested officer actions`;
+CURRENT INCIDENT:
+- Type: ${formData.incident_type}
+- Location: ${formData.incident_location}
+- Summary: ${formData.incident_summary}
+- Details: ${formData.who_what_when_details}
+- Victim Info: ${formData.victim_names}
+- Suspect Info: ${formData.suspect_names}
+- Witness Info: ${formData.witness_names}
+
+RECENT INCIDENTS FOR COMPARISON:
+${allIncidents.slice(0, 20).map((inc, idx) => `
+${idx + 1}. ${inc.title}
+   Category: ${inc.category}
+   Priority: ${inc.priority}
+   Date: ${inc.reported_at || inc.created_date}
+   Site: ${inc.site_name}
+   Description: ${inc.description?.substring(0, 200)}
+`).join('\n')}
+
+Provide detailed analysis in JSON format:
+1. recommended_category: One of [fire, theft, vandalism, medical, trespassing, suspicious_activity, equipment_failure, safety_hazard, other]
+2. recommended_priority: One of [critical, high, medium, low]
+3. priority_reason: Brief explanation for the priority level
+4. enhanced_summary: Professional rewrite of the incident summary
+5. suggested_actions: Immediate actions the officer should take
+6. response_actions: List of recommended response steps (array of strings)
+7. safety_notes: Important safety considerations
+8. similar_incident_ids: Array of incident IDs from the recent incidents list that are similar (consider location, type, timing)
+9. pattern_detected: Boolean - if this appears to be part of a pattern
+10. pattern_description: If pattern detected, describe it`;
 
       const response = await base44.integrations.Core.InvokeLLM({
         prompt: prompt,
         response_json_schema: {
           type: "object",
           properties: {
+            recommended_category: { 
+              type: "string",
+              enum: ["fire", "theft", "vandalism", "medical", "trespassing", "suspicious_activity", "equipment_failure", "safety_hazard", "other"]
+            },
+            recommended_priority: { 
+              type: "string",
+              enum: ["critical", "high", "medium", "low"]
+            },
+            priority_reason: { type: "string" },
             enhanced_summary: { type: "string" },
-            suggested_actions: { type: "string" }
+            suggested_actions: { type: "string" },
+            response_actions: { 
+              type: "array",
+              items: { type: "string" }
+            },
+            safety_notes: { type: "string" },
+            similar_incident_ids: {
+              type: "array",
+              items: { type: "string" }
+            },
+            pattern_detected: { type: "boolean" },
+            pattern_description: { type: "string" }
           }
         }
       });
 
+      setAiSuggestions(response);
+
+      // Find similar incidents
+      const similar = allIncidents.filter(inc => 
+        response.similar_incident_ids?.includes(inc.id)
+      );
+      setSimilarIncidents(similar);
+
+      // Update form with AI suggestions (don't overwrite existing content)
       setFormData(prev => ({
         ...prev,
-        incident_summary: prev.incident_summary + "\n\nAI Enhancement: " + response.enhanced_summary,
-        officer_actions: prev.officer_actions + "\n\nAI Suggestions: " + response.suggested_actions
+        incident_summary: prev.incident_summary.trim() ? 
+          prev.incident_summary + "\n\n[AI Enhancement]\n" + response.enhanced_summary :
+          response.enhanced_summary,
+        officer_actions: prev.officer_actions.trim() ?
+          prev.officer_actions + "\n\n[AI Suggestions]\n" + response.suggested_actions :
+          response.suggested_actions
       }));
+
     } catch (error) {
-      alert("AI assistance failed");
+      console.error("AI assistance error:", error);
+      alert("AI analysis failed. Please try again.");
     } finally {
       setAiAssisting(false);
     }
@@ -719,6 +799,89 @@ Please provide:
                     </Button>
                   </div>
                   <img src={formData.signature} alt="Signature" className="h-24 bg-white rounded" />
+                </div>
+              )}
+
+              {aiSuggestions && (
+                <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg space-y-3">
+                  <div className="flex items-center gap-2 text-purple-300 font-semibold">
+                    <Sparkles className="w-5 h-5" />
+                    AI Analysis Results
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-1">Recommended Category</p>
+                      <p className="text-white font-medium capitalize">{aiSuggestions.recommended_category?.replace(/_/g, ' ')}</p>
+                    </div>
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-1">Recommended Priority</p>
+                      <p className={`font-medium uppercase ${
+                        aiSuggestions.recommended_priority === 'critical' ? 'text-rose-400' :
+                        aiSuggestions.recommended_priority === 'high' ? 'text-orange-400' :
+                        aiSuggestions.recommended_priority === 'medium' ? 'text-amber-400' :
+                        'text-sky-400'
+                      }`}>
+                        {aiSuggestions.recommended_priority}
+                      </p>
+                    </div>
+                  </div>
+
+                  {aiSuggestions.priority_reason && (
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-1">Priority Reasoning</p>
+                      <p className="text-sm text-slate-300">{aiSuggestions.priority_reason}</p>
+                    </div>
+                  )}
+
+                  {aiSuggestions.response_actions && aiSuggestions.response_actions.length > 0 && (
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-2">Recommended Response Actions</p>
+                      <ul className="space-y-1">
+                        {aiSuggestions.response_actions.map((action, idx) => (
+                          <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                            <span className="text-emerald-400 mt-1">•</span>
+                            <span>{action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aiSuggestions.safety_notes && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded">
+                      <p className="text-xs text-amber-400 mb-1">⚠️ Safety Notes</p>
+                      <p className="text-sm text-amber-300">{aiSuggestions.safety_notes}</p>
+                    </div>
+                  )}
+
+                  {aiSuggestions.pattern_detected && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded">
+                      <p className="text-xs text-rose-400 mb-1">🔴 Pattern Detected</p>
+                      <p className="text-sm text-rose-300">{aiSuggestions.pattern_description}</p>
+                    </div>
+                  )}
+
+                  {similarIncidents.length > 0 && (
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-2">Similar Recent Incidents ({similarIncidents.length})</p>
+                      <div className="space-y-2">
+                        {similarIncidents.map(inc => (
+                          <div key={inc.id} className="p-2 bg-slate-800/50 rounded border border-slate-700">
+                            <p className="text-sm text-white font-medium">{inc.title}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                              <span>{inc.site_name}</span>
+                              <span>•</span>
+                              <span>{new Date(inc.reported_at || inc.created_date).toLocaleDateString()}</span>
+                              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 capitalize">
+                                {inc.priority}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
