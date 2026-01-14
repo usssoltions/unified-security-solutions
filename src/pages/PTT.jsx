@@ -218,26 +218,34 @@ export default function PTT() {
                 New Channel
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-slate-800 border-slate-700">
+            <DialogContent className="bg-slate-800 border-slate-700 max-w-md">
               <DialogHeader>
                 <DialogTitle className="text-white">Create PTT Channel</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[70vh] overflow-y-auto">
                 <div>
                   <label className="text-sm text-slate-300 block mb-2">Channel Type</label>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
+                      type="button"
                       variant={channelType === "direct" ? "default" : "outline"}
-                      onClick={() => setChannelType("direct")}
-                      className={channelType === "direct" ? "bg-sky-500" : "border-slate-600"}
+                      onClick={() => {
+                        setChannelType("direct");
+                        setSelectedMembers([]);
+                      }}
+                      className={channelType === "direct" ? "bg-sky-500" : "border-slate-600 text-slate-300"}
                     >
                       <User className="w-4 h-4 mr-2" />
                       Direct
                     </Button>
                     <Button
+                      type="button"
                       variant={channelType === "group" ? "default" : "outline"}
-                      onClick={() => setChannelType("group")}
-                      className={channelType === "group" ? "bg-sky-500" : "border-slate-600"}
+                      onClick={() => {
+                        setChannelType("group");
+                        setSelectedMembers([]);
+                      }}
+                      className={channelType === "group" ? "bg-sky-500" : "border-slate-600 text-slate-300"}
                     >
                       <Users className="w-4 h-4 mr-2" />
                       Group
@@ -300,11 +308,19 @@ export default function PTT() {
                 </div>
 
                 <Button
+                  type="button"
                   onClick={() => createChannelMutation.mutate()}
                   disabled={selectedMembers.length === 0 || createChannelMutation.isPending}
                   className="w-full bg-sky-500 hover:bg-sky-600"
                 >
-                  Create Channel
+                  {createChannelMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>Create Channel</>
+                  )}
                 </Button>
               </div>
             </DialogContent>
