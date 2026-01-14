@@ -22,6 +22,8 @@ import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
 import StartOfShift from './pages/StartOfShift';
+import AdminIncidents from './pages/AdminIncidents';
+import AdminMaintenance from './pages/AdminMaintenance';
 import __Layout from './Layout.jsx';
 
 
@@ -50,6 +52,8 @@ export const PAGES = {
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
     "StartOfShift": StartOfShift,
+    "AdminIncidents": AdminIncidents,
+    "AdminMaintenance": AdminMaintenance,
 }
 
 export const pagesConfig = {
