@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles, FileText, Loader2, Download, TrendingUp, AlertTriangle, CheckCircle2, Calendar } from "lucide-react";
 import ReportDisplay from "../components/reports/ReportDisplay";
 import ReportHistory from "../components/reports/ReportHistory";
+import AutomatedReportScheduler from "../components/reports/AutomatedReportScheduler";
 
 export default function AIReports() {
   const [reportType, setReportType] = useState("guard"); // guard, site, overall
@@ -408,6 +409,9 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
       {generatedReport && (
         <ReportDisplay report={generatedReport} />
       )}
+
+      {/* Automated Report Scheduler */}
+      <AutomatedReportScheduler />
 
       {/* Report History */}
       <ReportHistory />
