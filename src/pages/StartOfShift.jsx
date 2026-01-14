@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { FileText, Send, Loader2, Camera, CheckCircle2 } from "lucide-react";
+import { FileText, Send, Loader2, CheckCircle2 } from "lucide-react";
 import SignaturePad from "../components/guard/SignaturePad";
+import MediaCapture from "../components/guard/MediaCapture";
 
 export default function StartOfShift() {
   const [user, setUser] = useState(null);
@@ -18,13 +19,12 @@ export default function StartOfShift() {
     relieving_officer_first: "",
     relieving_officer_last: "",
     additional_notes: "",
-    photos: [],
+    media: [],
     signature: null
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -57,22 +57,7 @@ export default function StartOfShift() {
     enabled: !!activeShift
   });
 
-  const handlePhotoUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    setUploadingPhoto(true);
-    for (const file of files) {
-      try {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setReport(prev => ({
-          ...prev,
-          photos: [...prev.photos, file_url]
-        }));
-      } catch (error) {
-        alert("Failed to upload photo");
-      }
-    }
-    setUploadingPhoto(false);
-  };
+
 
   const addObservation = () => {
     setReport(prev => ({
@@ -127,7 +112,7 @@ Last Name: ${report.relieving_officer_last}
 ADDITIONAL NOTES:
 ${report.additional_notes}
 
-PHOTOS: ${report.photos.length} photo(s) attached
+MEDIA: ${report.media.length} attachment(s)
         `.trim(),
         category: "other",
         priority: "low",
@@ -138,17 +123,11 @@ PHOTOS: ${report.photos.length} photo(s) attached
         site_name: activeShift.site_name,
         shift_id: activeShift.id,
         reported_at: new Date().toISOString(),
-        media: report.photos.map(url => ({ type: "photo", url }))
+        location: null,
+        media: report.media
       };
 
-      const createdIncident = await base44.entities.Incident.create(reportData);
-
-      // Mark start of shift report as completed
-      await base44.auth.updateMe({
-        needs_start_of_shift_report: false
-      });
-
-      // Get current location
+      // Get current location first
       let currentLocation = null;
       if (navigator.geolocation) {
         try {
@@ -159,71 +138,38 @@ PHOTOS: ${report.photos.length} photo(s) attached
             lat: position.coords.latitude,
             lng: position.coords.longitude
           };
+          // Update incident with location
+          reportData.location = currentLocation;
         } catch (error) {
           console.error('Failed to get location:', error);
         }
       }
 
-      // Send comprehensive notifications to all admins with ACTUAL report details
+      const createdIncident = await base44.entities.Incident.create(reportData);
+
+      // Mark start of shift report as completed
+      await base44.auth.updateMe({
+        needs_start_of_shift_report: false
+      });
+
+      // Send comprehensive notifications using the new backend function
       try {
-        const allUsers = await base44.entities.User.list();
-        const admins = allUsers
-          .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type));
-
-        const detailedReport = `
-GUARD: ${user.full_name}
-SITE: ${activeShift.site_name}
-CLIENT: ${site?.client_name || 'N/A'}
-SUBMITTED: ${new Date().toLocaleString()}
-
-SHIFT/POST: ${report.shift_post}
-SPECIAL INSTRUCTIONS: ${report.special_instructions}
-POST ITEMS RECEIVED: ${report.post_items_received}
-
-OBSERVATIONS:
-${report.observations.map((obs, i) => `#${i+1} Type: ${obs.type}, Time: ${obs.time}, Comments: ${obs.comments}`).join('\n')}
-
-RELIEVING OFFICER:
-First Name: ${report.relieving_officer_first}
-Last Name: ${report.relieving_officer_last}
-
-ADDITIONAL NOTES:
-${report.additional_notes}
-
-PHOTOS: ${report.photos.length} attached
-        `.trim();
-
-        for (const admin of admins) {
-          await base44.functions.invoke('sendComprehensiveNotification', {
-            recipientIds: [admin.id],
-            type: 'shift_reminder',
-            title: `📊 Start of Shift Report: ${user.full_name} - ${activeShift.site_name}`,
-            message: `Guard ${user.full_name} has submitted their start of shift report for ${activeShift.site_name}.`,
-            priority: 'high',
-            relatedEntity: 'incident',
-            relatedId: createdIncident.id,
-            metadata: {
-              guard_name: user.full_name,
-              guard_photo: user.profile_photo || null,
-              site: activeShift.site_name,
-              client: site?.client_name || 'N/A',
-              date_entered: new Date().toLocaleString(),
-              shift_post: report.shift_post,
-              special_instructions: report.special_instructions,
-              post_items_received: report.post_items_received,
-              observations_count: report.observations.filter(o => o.type || o.comments).length,
-              relieving_officer: `${report.relieving_officer_first} ${report.relieving_officer_last}`,
-              additional_notes: report.additional_notes,
-              photos_count: report.photos.length,
-              photos: report.photos,
-              signature: report.signature,
-              latitude: currentLocation?.lat,
-              longitude: currentLocation?.lng,
-              full_report: detailedReport
-            },
-            sendEmail: true
-          });
-        }
+        await base44.functions.invoke('sendStartOfShiftNotification', {
+          reportData: {
+            incidentId: createdIncident.id,
+            site_name: activeShift.site_name,
+            client_name: site?.client_name || 'N/A',
+            shift_post: report.shift_post,
+            special_instructions: report.special_instructions,
+            post_items_received: report.post_items_received,
+            observations: report.observations.filter(o => o.type || o.comments),
+            relieving_officer: `${report.relieving_officer_first} ${report.relieving_officer_last}`.trim(),
+            additional_notes: report.additional_notes,
+            signature: report.signature
+          },
+          location: currentLocation,
+          media: report.media
+        });
       } catch (error) {
         console.error('Failed to send notification emails:', error);
       }
@@ -431,35 +377,11 @@ PHOTOS: ${report.photos.length} attached
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-800/50 border-slate-700">
-        <CardHeader>
-          <CardTitle className="text-white">PHOTOS</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            multiple
-            onChange={handlePhotoUpload}
-            className="hidden"
-            id="photos"
-          />
-          <label htmlFor="photos">
-            <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-sky-500">
-              <Camera className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-              <p className="text-slate-400">{uploadingPhoto ? "Uploading..." : "Take/Upload Photos"}</p>
-            </div>
-          </label>
-          {report.photos.length > 0 && (
-            <div className="grid grid-cols-1 gap-3">
-              {report.photos.map((url, i) => (
-                <img key={i} src={url} alt={`Photo ${i+1}`} className="w-full h-auto max-h-96 object-contain bg-slate-900 rounded border border-slate-700" />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <MediaCapture
+        media={report.media}
+        onMediaUpdate={(newMedia) => setReport({ ...report, media: newMedia })}
+        title="ATTACHMENTS (Photos, Videos, Voice Notes)"
+      />
 
       {report.signature && (
         <Card className="bg-slate-800/50 border-slate-700">
