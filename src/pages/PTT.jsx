@@ -471,10 +471,30 @@ export default function PTT() {
                     ) : (
                       <div className="text-center">
                         <button
-                          onMouseDown={startRecording}
-                          onMouseUp={stopRecording}
-                          onTouchStart={startRecording}
-                          onTouchEnd={stopRecording}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            startRecording();
+                          }}
+                          onMouseUp={(e) => {
+                            e.preventDefault();
+                            stopRecording();
+                          }}
+                          onMouseLeave={(e) => {
+                            e.preventDefault();
+                            if (recording) stopRecording();
+                          }}
+                          onTouchStart={(e) => {
+                            e.preventDefault();
+                            startRecording();
+                          }}
+                          onTouchEnd={(e) => {
+                            e.preventDefault();
+                            stopRecording();
+                          }}
+                          onTouchCancel={(e) => {
+                            e.preventDefault();
+                            stopRecording();
+                          }}
                           className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${
                             recording
                               ? "bg-rose-500 scale-110 animate-pulse"
