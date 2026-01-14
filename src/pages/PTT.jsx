@@ -9,6 +9,7 @@ import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X, Settings, Archive, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import ChannelSettingsModal from "@/components/ptt/ChannelSettingsModal";
 import PTTAlertHandler, { SystemAlertBadge } from "@/components/ptt/PTTAlertHandler";
+import AvailabilitySelector, { AvailabilityBadge } from "@/components/ptt/AvailabilitySelector";
 
 export default function PTT() {
   const [user, setUser] = useState(null);
@@ -217,13 +218,17 @@ export default function PTT() {
               <p className="text-slate-400 text-sm">Voice Communication System</p>
             </div>
           </div>
-          <Dialog open={showNewChannel} onOpenChange={setShowNewChannel}>
-            <DialogTrigger asChild>
-              <Button className="bg-sky-500 hover:bg-sky-600">
-                <Plus className="w-4 h-4 mr-2" />
-                New Channel
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-3">
+            <AvailabilitySelector user={user} />
+            <div className="h-6 w-px bg-slate-700" />
+            <Dialog open={showNewChannel} onOpenChange={setShowNewChannel}>
+              <DialogTrigger asChild>
+                <Button className="bg-sky-500 hover:bg-sky-600">
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Channel
+                </Button>
+              </DialogTrigger>
+
             <DialogContent className="bg-slate-800 border-slate-700 max-w-md">
               <DialogHeader>
                 <DialogTitle className="text-white">Create PTT Channel</DialogTitle>
@@ -305,7 +310,10 @@ export default function PTT() {
                           />
                           <div className="flex-1">
                             <p className="text-white text-sm">{u.full_name}</p>
-                            <p className="text-slate-400 text-xs">{u.role_type}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-slate-400 text-xs">{u.role_type}</p>
+                              <AvailabilityBadge status={u.ptt_availability} />
+                            </div>
                           </div>
                         </label>
                       ))
