@@ -63,20 +63,29 @@ export default function ServiceWorkerRegistration() {
 
   const subscribeToPushNotifications = async (registration) => {
     try {
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(
-          // This is a placeholder - you'll need to generate a VAPID key
-          'BEl62iUYgUivxIkv69yViEuiBIa-Ib37J8xQmrQhP6RYWQUkUBKpTwSJP8wkD8wz6MqJ7eFCmrXf4tE0nT7nXyk'
-        )
-      });
+      // Check if already subscribed
+      let subscription = await registration.pushManager.getSubscription();
+      
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(
+            'BEl62iUYgUivxIkv69yViEuiBIa-Ib37J8xQmrQhP6RYWQUkUBKpTwSJP8wkD8wz6MqJ7eFCmrXf4tE0nT7nXyk'
+          )
+        });
+      }
 
       console.log('Push subscription:', subscription);
       
-      // Send subscription to backend (implement this endpoint)
-      // await base44.functions.invoke('savePushSubscription', {
-      //   subscription: subscription.toJSON()
-      // });
+      // Save subscription to user profile
+      try {
+        const user = await base44.auth.me();
+        await base44.auth.updateMe({
+          push_subscription: subscription.toJSON()
+        });
+      } catch (error) {
+        console.warn('Failed to save push subscription:', error);
+      }
     } catch (error) {
       console.warn('Push notification subscription failed:', error);
     }
@@ -85,11 +94,45 @@ export default function ServiceWorkerRegistration() {
   const handleNotificationClick = (data) => {
     // Handle notification clicks
     if (data.action === 'answer' && data.data?.callId) {
-      // Navigate to call screen or trigger call answer
       window.postMessage({
         type: 'ANSWER_CALL',
         callId: data.data.callId
       }, '*');
+    }
+  };
+
+  // Listen for messages from main app
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data.type === 'SHOW_CALL_NOTIFICATION') {
+        showCallNotification(event.data);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const showCallNotification = async (data) => {
+    if ('serviceWorker' in navigator && 'Notification' in window) {
+      const registration = await navigator.serviceWorker.ready;
+      
+      await registration.showNotification('Incoming Call', {
+        body: `${data.callerName} is calling you`,
+        icon: '/icon-192.png',
+        badge: '/badge-72.png',
+        tag: 'incoming-call-' + data.callId,
+        requireInteraction: true,
+        vibrate: [300, 200, 300, 200, 300, 200, 300],
+        actions: [
+          { action: 'answer', title: 'Answer' },
+          { action: 'decline', title: 'Decline' }
+        ],
+        data: {
+          callId: data.callId,
+          callerId: data.callerId
+        }
+      });
     }
   };
 

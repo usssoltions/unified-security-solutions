@@ -16,7 +16,10 @@ export default function Contacts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCall, setActiveCall] = useState(null);
   const [incomingCall, setIncomingCall] = useState(null);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [isGroupCallMode, setIsGroupCallMode] = useState(false);
   const navigate = useNavigate();
+  const ringtoneRef = React.useRef(null);
 
   useEffect(() => {
     loadUser();
@@ -37,6 +40,47 @@ export default function Contacts() {
     enabled: !!currentUser
   });
 
+  // Initialize ringtone
+  useEffect(() => {
+    ringtoneRef.current = new Audio();
+    ringtoneRef.current.loop = true;
+    return () => {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current = null;
+      }
+    };
+  }, []);
+
+  // Play ringtone for incoming calls
+  const playRingtone = () => {
+    if (ringtoneRef.current) {
+      // Create a simple ringtone using Web Audio API
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.3;
+      
+      oscillator.start();
+      
+      setTimeout(() => {
+        oscillator.stop();
+        audioContext.close();
+      }, 1000);
+      
+      // Vibrate if supported
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200]);
+      }
+    }
+  };
+
   // Poll for incoming calls
   useEffect(() => {
     if (!currentUser) return;
@@ -52,6 +96,20 @@ export default function Contacts() {
         if (notifications.length > 0) {
           const callNotification = notifications[0];
           const callerName = callNotification.message.replace(' is calling you', '');
+          
+          // Play ringtone
+          playRingtone();
+          
+          // Show browser notification if in background
+          if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('Incoming Call', {
+              body: `${callerName} is calling you`,
+              icon: '/icon-192.png',
+              tag: 'incoming-call',
+              requireInteraction: true,
+              vibrate: [200, 100, 200, 100, 200]
+            });
+          }
           
           setIncomingCall({
             callId: callNotification.related_id,
@@ -95,6 +153,26 @@ export default function Contacts() {
     setActiveCall(user);
   };
 
+  const toggleUserSelection = (userId) => {
+    setSelectedUsers(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const startGroupCall = () => {
+    if (selectedUsers.length === 0) return;
+    
+    const participants = allUsers.filter(u => selectedUsers.includes(u.id));
+    setActiveCall({
+      isGroupCall: true,
+      participants
+    });
+    setIsGroupCallMode(false);
+    setSelectedUsers([]);
+  };
+
   const getRoleBadgeColor = (role) => {
     const colors = {
       admin: "bg-rose-500",
@@ -118,13 +196,37 @@ export default function Contacts() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center">
-              <Users className="w-6 h-6 text-white" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center">
+                <Users className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">Contacts</h1>
+                <p className="text-slate-400 text-sm">Call or message team members</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Contacts</h1>
-              <p className="text-slate-400 text-sm">Call or message team members</p>
+            <div className="flex items-center gap-2">
+              {isGroupCallMode && selectedUsers.length > 0 && (
+                <Button
+                  onClick={startGroupCall}
+                  className="bg-emerald-500 hover:bg-emerald-600"
+                >
+                  <Phone className="w-4 h-4 mr-2" />
+                  Call {selectedUsers.length} Selected
+                </Button>
+              )}
+              <Button
+                onClick={() => {
+                  setIsGroupCallMode(!isGroupCallMode);
+                  setSelectedUsers([]);
+                }}
+                variant={isGroupCallMode ? "default" : "outline"}
+                className={isGroupCallMode ? "bg-sky-500" : "border-slate-600 text-slate-300"}
+              >
+                <Users className="w-4 h-4 mr-2" />
+                {isGroupCallMode ? "Cancel" : "Group Call"}
+              </Button>
             </div>
           </div>
 
@@ -155,10 +257,26 @@ export default function Contacts() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredUsers.map((user) => (
-              <Card key={user.id} className="bg-slate-800/50 border-slate-700 hover:border-sky-500/50 transition-all">
+              <Card 
+                key={user.id} 
+                className={`bg-slate-800/50 border-slate-700 hover:border-sky-500/50 transition-all ${
+                  selectedUsers.includes(user.id) ? 'ring-2 ring-sky-500' : ''
+                }`}
+                onClick={() => isGroupCallMode && toggleUserSelection(user.id)}
+                style={{ cursor: isGroupCallMode ? 'pointer' : 'default' }}
+              >
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
+                      {isGroupCallMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedUsers.includes(user.id)}
+                          onChange={() => toggleUserSelection(user.id)}
+                          className="w-5 h-5 rounded border-slate-600"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      )}
                       <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center">
                         <span className="text-white font-bold text-lg">
                           {user.full_name?.[0]?.toUpperCase() || "U"}
@@ -191,24 +309,26 @@ export default function Contacts() {
                     </p>
                   </div>
                   
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => initiateCall(user)}
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600"
-                      size="sm"
-                    >
-                      <Phone className="w-4 h-4 mr-2" />
-                      Call
-                    </Button>
-                    <Button
-                      onClick={() => navigate(createPageUrl("PTT"))}
-                      variant="outline"
-                      className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                      size="sm"
-                    >
-                      <Radio className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  {!isGroupCallMode && (
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => initiateCall(user)}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-600"
+                        size="sm"
+                      >
+                        <Phone className="w-4 h-4 mr-2" />
+                        Call
+                      </Button>
+                      <Button
+                        onClick={() => navigate(createPageUrl("PTT"))}
+                        variant="outline"
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                        size="sm"
+                      >
+                        <Radio className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -216,9 +336,17 @@ export default function Contacts() {
         )}
       </div>
 
-      {activeCall && (
+      {activeCall && !activeCall.isGroupCall && (
         <RealtimeVoiceCall
           targetUser={activeCall}
+          onClose={() => setActiveCall(null)}
+        />
+      )}
+
+      {activeCall && activeCall.isGroupCall && (
+        <RealtimeVoiceCall
+          participants={activeCall.participants}
+          isGroupCall={true}
           onClose={() => setActiveCall(null)}
         />
       )}
