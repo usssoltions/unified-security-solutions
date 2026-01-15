@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
+import RealTimeAlertMonitor from "@/components/alerts/RealTimeAlertMonitor";
 import PWAInstaller from "@/components/PWAInstaller";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
@@ -248,6 +249,7 @@ export default function Layout({ children, currentPageName }) {
       <ServiceWorkerRegistration />
       <PWAInstaller />
       <IncidentEscalationMonitor user={user} />
+      <RealTimeAlertMonitor user={user} />
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
