@@ -23,6 +23,8 @@ export default function RealtimeVoiceCall({
   const callId = useRef(incomingCallId || `call_${Date.now()}_${Math.random()}`);
   const pollingInterval = useRef(null);
   const durationInterval = useRef(null);
+  const ringtoneInterval = useRef(null);
+  const audioContext = useRef(null);
 
   const rtcConfig = {
     iceServers: [
@@ -35,6 +37,10 @@ export default function RealtimeVoiceCall({
   const callParticipants = isGroupCall ? participants : [targetUser];
 
   useEffect(() => {
+    if (incomingCallId) {
+      // For incoming calls, start ringing immediately
+      startRingtone();
+    }
     initializeCall();
     return () => cleanup();
   }, []);
@@ -52,23 +58,80 @@ export default function RealtimeVoiceCall({
     };
   }, [callStatus]);
 
+  const startRingtone = () => {
+    stopRingtone(); // Clear any existing ringtone
+    
+    try {
+      audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+      
+      const playRing = () => {
+        const oscillator = audioContext.current.createOscillator();
+        const gainNode = audioContext.current.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.current.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        gainNode.gain.value = 0.3;
+        
+        oscillator.start();
+        
+        setTimeout(() => {
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.current.currentTime + 0.5);
+          oscillator.stop(audioContext.current.currentTime + 0.5);
+        }, 1000);
+      };
+      
+      // Play immediately
+      playRing();
+      
+      // Continue ringing every 2 seconds
+      ringtoneInterval.current = setInterval(playRing, 2000);
+      
+      // Vibrate if supported
+      if ('vibrate' in navigator) {
+        navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
+        const vibrateInterval = setInterval(() => {
+          navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
+        }, 3000);
+        
+        setTimeout(() => clearInterval(vibrateInterval), 30000); // Stop after 30s
+      }
+    } catch (error) {
+      console.error('Error starting ringtone:', error);
+    }
+  };
+
+  const stopRingtone = () => {
+    if (ringtoneInterval.current) {
+      clearInterval(ringtoneInterval.current);
+      ringtoneInterval.current = null;
+    }
+    if (audioContext.current) {
+      audioContext.current.close();
+      audioContext.current = null;
+    }
+  };
+
   const initializeCall = async () => {
     try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 48000,
-          channelCount: 1
-        },
-        video: false
-      });
-
-      if (incomingCallId) {
-        startPolling();
-      } else {
+      // Don't request media access for incoming calls until answered
+      if (!incomingCallId) {
+        localStream.current = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+            channelCount: 1
+          },
+          video: false
+        });
         await initiateOutgoingCall();
+      } else {
+        // For incoming calls, just wait for answer
+        startPolling();
       }
     } catch (error) {
       console.error('Error initializing call:', error);
@@ -105,9 +168,28 @@ export default function RealtimeVoiceCall({
 
   const answerCall = async () => {
     try {
+      stopRingtone();
       setCallStatus('connecting');
-      startPolling();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Request media access now
+      localStream.current = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1
+        },
+        video: false
+      });
+      
+      // Send answer signal
+      await base44.functions.invoke('rtcSignaling', {
+        action: 'call_answered',
+        callId: callId.current
+      });
+      
+      setCallStatus('connected');
     } catch (error) {
       console.error('Error answering call:', error);
       setCallStatus('error');
@@ -293,6 +375,7 @@ export default function RealtimeVoiceCall({
   };
 
   const cleanup = () => {
+    stopRingtone();
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
     }
@@ -316,8 +399,8 @@ export default function RealtimeVoiceCall({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <Card className="bg-slate-800 border-slate-700 w-full max-w-md">
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <Card className="bg-slate-800 border-slate-700 w-full max-w-md shadow-2xl">
         <CardHeader>
           <CardTitle className="text-white text-center">
             {isGroupCall && <Users className="w-6 h-6 inline mr-2" />}
@@ -371,22 +454,27 @@ export default function RealtimeVoiceCall({
           )}
 
           {callStatus === 'incoming' && (
-            <div className="flex gap-3 justify-center">
-              <Button
-                onClick={endCall}
-                variant="destructive"
-                size="lg"
-                className="rounded-full w-16 h-16"
-              >
-                <PhoneOff className="w-6 h-6" />
-              </Button>
-              <Button
-                onClick={answerCall}
-                className="bg-emerald-500 hover:bg-emerald-600 rounded-full w-16 h-16"
-                size="lg"
-              >
-                <Phone className="w-6 h-6" />
-              </Button>
+            <div className="space-y-4">
+              <div className="flex gap-4 justify-center items-center">
+                <Button
+                  onClick={endCall}
+                  variant="destructive"
+                  size="lg"
+                  className="rounded-full w-20 h-20 animate-pulse shadow-lg shadow-red-500/50"
+                >
+                  <PhoneOff className="w-8 h-8" />
+                </Button>
+                <Button
+                  onClick={answerCall}
+                  className="bg-emerald-500 hover:bg-emerald-600 rounded-full w-20 h-20 animate-pulse shadow-lg shadow-emerald-500/50"
+                  size="lg"
+                >
+                  <Phone className="w-8 h-8" />
+                </Button>
+              </div>
+              <div className="text-center">
+                <p className="text-slate-300 text-sm">Swipe up to answer • Swipe down to decline</p>
+              </div>
             </div>
           )}
 

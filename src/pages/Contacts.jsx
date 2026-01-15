@@ -52,34 +52,7 @@ export default function Contacts() {
     };
   }, []);
 
-  // Play ringtone for incoming calls
-  const playRingtone = () => {
-    if (ringtoneRef.current) {
-      // Create a simple ringtone using Web Audio API
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      gainNode.gain.value = 0.3;
-      
-      oscillator.start();
-      
-      setTimeout(() => {
-        oscillator.stop();
-        audioContext.close();
-      }, 1000);
-      
-      // Vibrate if supported
-      if ('vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200]);
-      }
-    }
-  };
+
 
   // Poll for incoming calls
   useEffect(() => {
@@ -97,9 +70,6 @@ export default function Contacts() {
           const callNotification = notifications[0];
           const callerName = callNotification.message.replace(' is calling you', '');
           
-          // Play ringtone
-          playRingtone();
-          
           // Show browser notification if in background
           if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
             new Notification('Incoming Call', {
@@ -107,7 +77,7 @@ export default function Contacts() {
               icon: '/icon-192.png',
               tag: 'incoming-call',
               requireInteraction: true,
-              vibrate: [200, 100, 200, 100, 200]
+              vibrate: [300, 200, 300, 200, 300, 200, 300]
             });
           }
           
