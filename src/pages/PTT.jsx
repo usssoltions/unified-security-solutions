@@ -173,10 +173,8 @@ export default function PTT() {
       await base44.entities.PTTChannel.update(selectedChannel.id, {
         last_message_at: new Date().toISOString()
       });
-      
-      queryClient.invalidateQueries(['ptt-messages', selectedChannel.id]);
 
-      queryClient.invalidateQueries(["pttMessages"]);
+      queryClient.invalidateQueries(["pttMessages", selectedChannel.id]);
       queryClient.invalidateQueries(["pttChannels"]);
     } catch (error) {
       alert("Failed to send voice message: " + error.message);
