@@ -37,8 +37,14 @@ export default function Contacts() {
   const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
-      // Always use asServiceRole to ensure guards can see other users
-      return await base44.asServiceRole.entities.User.list();
+      try {
+        // Use backend function to get all users (works for guards)
+        const { data } = await base44.functions.invoke('getAllUsers');
+        return data.users || [];
+      } catch (error) {
+        console.error("Failed to fetch users:", error);
+        return [];
+      }
     },
     enabled: !!currentUser
   });
