@@ -1,5 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
+const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
+const BRAND_COLOR = '#C41E3A';
+const BRAND_SECONDARY = '#1a1a1a';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -87,32 +91,81 @@ Provide a concise executive summary with key insights and recommendations.`;
         to: recipient.email,
         subject: `Daily Activity Report - ${yesterday.toLocaleDateString()}`,
         body: `
-<h2>Daily Activity Report - ${yesterday.toLocaleDateString()}</h2>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #f8fafc;">
+  <div style="max-width: 650px; margin: 0 auto; background: white;">
+    <div style="background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_SECONDARY} 100%); padding: 40px 30px; text-align: center;">
+      <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width: 200px; height: auto; margin-bottom: 20px; border-radius: 10px;" />
+      <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">📊 DAILY ACTIVITY REPORT</h1>
+      <p style="color: rgba(255,255,255,0.95); margin: 10px 0 0 0; font-size: 16px;">${yesterday.toLocaleDateString()}</p>
+    </div>
 
-<h3>Summary Statistics</h3>
-<ul>
-  <li><strong>Incidents:</strong> ${yesterdayIncidents.length}</li>
-  <li><strong>Maintenance Requests:</strong> ${yesterdayMaintenance.length}</li>
-  <li><strong>Patrol Stops:</strong> ${yesterdayPatrols.length}</li>
-  <li><strong>Shifts Completed:</strong> ${yesterdayShifts.length}</li>
-  <li><strong>Alerts:</strong> ${yesterdayAlerts.length}</li>
-</ul>
+    <div style="padding: 30px;">
+      <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
+        <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid ${BRAND_COLOR}; padding-bottom: 10px;">📈 Summary Statistics</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid ${BRAND_COLOR};">
+            <p style="color: #64748b; margin: 0 0 5px 0; font-size: 13px;">Incidents</p>
+            <p style="color: ${BRAND_SECONDARY}; margin: 0; font-size: 28px; font-weight: bold;">${yesterdayIncidents.length}</p>
+          </div>
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #0ea5e9;">
+            <p style="color: #64748b; margin: 0 0 5px 0; font-size: 13px;">Maintenance</p>
+            <p style="color: ${BRAND_SECONDARY}; margin: 0; font-size: 28px; font-weight: bold;">${yesterdayMaintenance.length}</p>
+          </div>
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #10b981;">
+            <p style="color: #64748b; margin: 0 0 5px 0; font-size: 13px;">Patrol Stops</p>
+            <p style="color: ${BRAND_SECONDARY}; margin: 0; font-size: 28px; font-weight: bold;">${yesterdayPatrols.length}</p>
+          </div>
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+            <p style="color: #64748b; margin: 0 0 5px 0; font-size: 13px;">Shifts</p>
+            <p style="color: ${BRAND_SECONDARY}; margin: 0; font-size: 28px; font-weight: bold;">${yesterdayShifts.length}</p>
+          </div>
+        </div>
+      </div>
 
-<h3>AI Summary & Insights</h3>
-<p>${aiSummary.replace(/\n/g, '<br>')}</p>
+      <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
+        <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 15px 0; font-size: 18px; border-bottom: 2px solid ${BRAND_COLOR}; padding-bottom: 10px;">🤖 AI Summary & Insights</h3>
+        <p style="color: #475569; line-height: 1.6;">${aiSummary.replace(/\n/g, '<br>')}</p>
+      </div>
 
-<h3>Critical Incidents</h3>
-${yesterdayIncidents.filter(i => i.priority === 'critical' || i.priority === 'high')
-  .map(i => `<p><strong>${i.title}</strong><br>Site: ${i.site_name}<br>Priority: ${i.priority}<br>Status: ${i.status}</p>`)
-  .join('') || '<p>No critical incidents</p>'}
+      ${yesterdayIncidents.filter(i => i.priority === 'critical' || i.priority === 'high').length > 0 ? `
+      <div style="background: #fff5f5; border: 2px solid ${BRAND_COLOR}; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
+        <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 15px 0; font-size: 18px;">⚠️ Critical Incidents</h3>
+        ${yesterdayIncidents.filter(i => i.priority === 'critical' || i.priority === 'high')
+          .map(i => `
+            <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${BRAND_COLOR};">
+              <p style="margin: 0 0 5px 0; font-weight: bold; color: ${BRAND_SECONDARY};">${i.title}</p>
+              <p style="margin: 5px 0; color: #64748b; font-size: 14px;">Site: ${i.site_name}</p>
+              <div style="display: inline-block; background: ${BRAND_COLOR}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; margin-right: 10px;">${i.priority}</div>
+              <div style="display: inline-block; background: #e2e8f0; color: #475569; padding: 4px 12px; border-radius: 4px; font-size: 12px;">${i.status}</div>
+            </div>
+          `).join('')}
+      </div>
+      ` : ''}
 
-<h3>Pending Items</h3>
-<ul>
-  <li>Open Incidents: ${yesterdayIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length}</li>
-  <li>Pending Maintenance: ${yesterdayMaintenance.filter(m => m.status !== 'completed').length}</li>
-</ul>
+      <div style="background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 12px; padding: 25px;">
+        <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 15px 0; font-size: 18px;">📋 Pending Items</h3>
+        <ul style="margin: 0; padding-left: 20px; color: #475569;">
+          <li style="margin-bottom: 8px;">Open Incidents: <strong>${yesterdayIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length}</strong></li>
+          <li>Pending Maintenance: <strong>${yesterdayMaintenance.filter(m => m.status !== 'completed').length}</strong></li>
+        </ul>
+      </div>
+    </div>
 
-<p><em>This is an automated report from SecureGuard System</em></p>
+    <div style="background: ${BRAND_SECONDARY}; padding: 25px; text-align: center;">
+      <img src="${COMPANY_LOGO}" alt="Logo" style="max-width: 120px; height: auto; margin-bottom: 15px; opacity: 0.8;" />
+      <p style="color: #94a3b8; margin: 0 0 10px 0; font-size: 13px;">Automated Daily Report from Unified Security Solutions</p>
+      <p style="color: #64748b; margin: 0; font-size: 12px;">© ${new Date().getFullYear()} Unified Security Solutions. All rights reserved.</p>
+      <p style="color: ${BRAND_COLOR}; margin: 10px 0 0 0; font-size: 11px; font-weight: bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
+    </div>
+  </div>
+</body>
+</html>
         `
       })
     );

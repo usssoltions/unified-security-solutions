@@ -38,6 +38,7 @@ import MobileInstallPrompt from "../components/MobileInstallPrompt";
 import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
 import PanicButton from "../components/guard/PanicButton";
+import PatrolAssignmentAlert from "../components/guard/PatrolAssignmentAlert";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -416,6 +417,7 @@ export default function GuardShift() {
 
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6 pb-24 md:pb-6">
+      <PatrolAssignmentAlert user={user} />
       <MobileInstallPrompt />
       <AutoReportGenerator user={user} shift={activeShift} />
       <LocationTracker 

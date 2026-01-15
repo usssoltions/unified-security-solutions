@@ -341,13 +341,103 @@ export default function GuardPatrolChecklist() {
     );
   }
 
+  // Query for active patrol plans with checkpoints
+  const { data: activePatrolPlans = [] } = useQuery({
+    queryKey: ["activePatrolPlans", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      return await base44.entities.PatrolPlan.filter({
+        assigned_to: user.id,
+        status: { $in: ["active", "pending"] }
+      });
+    },
+    enabled: !!user
+  });
+
   return (
     <div className="min-h-screen p-4 pb-24 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-white">Patrol Checklists</h1>
-          <p className="text-slate-400">Start a patrol checklist for your site</p>
+          <p className="text-slate-400">Complete your assigned patrol routes</p>
         </div>
+
+        {/* Active Patrol Plans with Clickable Checkpoints */}
+        {activePatrolPlans.length > 0 && (
+          <Card className="bg-gradient-to-r from-sky-500/10 to-sky-600/10 border-sky-500/30">
+            <CardHeader>
+              <CardTitle className="text-white">📍 Active Patrol Routes</CardTitle>
+              <p className="text-sm text-slate-400 mt-2">
+                Click on each checkpoint to scan QR code and complete
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {activePatrolPlans.map((plan) => (
+                <div key={plan.id} className="bg-slate-800/50 rounded-lg border border-slate-700 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white font-semibold text-lg">{plan.name}</h3>
+                    <Badge className={
+                      plan.priority === "critical" ? "bg-rose-500" :
+                      plan.priority === "high" ? "bg-orange-500" :
+                      "bg-sky-500"
+                    }>
+                      {plan.priority}
+                    </Badge>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {plan.route_checkpoints?.map((checkpoint, index) => (
+                      <button
+                        key={checkpoint.checkpoint_id}
+                        onClick={() => window.location.href = createPageUrl("QRScanner") + `?checkpoint=${checkpoint.checkpoint_id}&patrol=${plan.id}`}
+                        className={`w-full text-left p-3 rounded-lg border transition-all ${
+                          checkpoint.completed
+                            ? "bg-emerald-500/20 border-emerald-500/50"
+                            : "bg-slate-900/50 border-slate-700 hover:border-sky-500"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{checkpoint.completed ? "✅" : `${index + 1}`}</span>
+                            <div>
+                              <p className="text-white font-medium">{checkpoint.checkpoint_name}</p>
+                              {checkpoint.notes && (
+                                <p className="text-sm text-slate-400">{checkpoint.notes}</p>
+                              )}
+                              {checkpoint.risk_level && (
+                                <Badge variant="outline" className={`text-xs mt-1 ${
+                                  checkpoint.risk_level === "critical" ? "border-rose-500 text-rose-400" :
+                                  checkpoint.risk_level === "high" ? "border-orange-500 text-orange-400" :
+                                  "border-slate-500 text-slate-400"
+                                }`}>
+                                  {checkpoint.risk_level} risk
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            {checkpoint.completed ? (
+                              <span className="text-sm text-emerald-400">Completed</span>
+                            ) : (
+                              <span className="text-sm text-sky-400">Tap to scan →</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {plan.estimated_duration_minutes && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
+                      <Clock className="w-4 h-4" />
+                      Est. {plan.estimated_duration_minutes} minutes
+                    </div>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {templates.map((template) => (

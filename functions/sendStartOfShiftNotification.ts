@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
-const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/cfabcb819_copilot_image_1754288315391.jpeg';
+const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
+const BRAND_COLOR = '#C41E3A'; // Red from logo
+const BRAND_SECONDARY = '#1a1a1a'; // Black from logo
 
 Deno.serve(async (req) => {
   try {
@@ -87,14 +89,14 @@ Deno.serve(async (req) => {
               <body style="margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #f8fafc;">
                 <div style="max-width: 650px; margin: 0 auto; background: white;">
                   <!-- Header with Logo -->
-                  <div style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 40px 30px; text-align: center;">
-                    <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width: 180px; height: auto; margin-bottom: 20px;" />
-                    <h1 style="color: white; margin: 0; font-size: 26px; font-weight: bold;">📊 Start of Shift Report</h1>
-                    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 15px;">Real-time Field Report Submission</p>
+                  <div style="background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_SECONDARY} 100%); padding: 40px 30px; text-align: center;">
+                    <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width: 200px; height: auto; margin-bottom: 20px; border-radius: 10px;" />
+                    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">📊 START OF SHIFT REPORT</h1>
+                    <p style="color: rgba(255,255,255,0.95); margin: 10px 0 0 0; font-size: 16px;">Professional Security Services</p>
                   </div>
 
                   <!-- Guard Info Section -->
-                  <div style="padding: 30px; background: #f0f9ff; border-bottom: 3px solid #0ea5e9;">
+                  <div style="padding: 30px; background: #f8f9fa; border-bottom: 3px solid ${BRAND_COLOR};">
                     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
                       <div>
                         <h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: ${user.full_name}</h2>
@@ -109,7 +111,7 @@ Deno.serve(async (req) => {
                   <!-- Report Details -->
                   <div style="padding: 30px;">
                     <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-                      <h3 style="color: #0c4a6e; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px;">📋 Shift Information</h3>
+                      <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid ${BRAND_COLOR}; padding-bottom: 10px;">📋 Shift Information</h3>
                       
                       <div style="margin-bottom: 15px;">
                         <p style="color: #64748b; margin: 0 0 5px 0; font-size: 13px; font-weight: bold;">SHIFT/POST:</p>
@@ -156,13 +158,13 @@ Deno.serve(async (req) => {
                     ` : ''}
 
                     ${location ? `
-                    <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #0ea5e9; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-                      <h3 style="color: #0c4a6e; margin: 0 0 15px 0; font-size: 18px;">📍 Live Location</h3>
+                    <div style="background: linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%); border: 2px solid ${BRAND_COLOR}; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
+                      <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 15px 0; font-size: 18px;">📍 Live Location</h3>
                       <p style="color: #475569; margin: 0 0 15px 0;">Guard location at time of submission:</p>
                       <p style="margin: 5px 0; color: #1e293b;"><strong>Latitude:</strong> ${location.lat}</p>
                       <p style="margin: 5px 0 15px 0; color: #1e293b;"><strong>Longitude:</strong> ${location.lng}</p>
                       <div style="text-align: center;">
-                        <a href="${googleMapsUrl}" style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">📍 View on Google Maps</a>
+                        <a href="${googleMapsUrl}" style="display: inline-block; background: ${BRAND_COLOR}; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 6px rgba(196, 30, 58, 0.3);">📍 View on Google Maps</a>
                       </div>
                     </div>
                     ` : ''}
@@ -187,9 +189,11 @@ Deno.serve(async (req) => {
                   </div>
 
                   <!-- Footer -->
-                  <div style="background: #1e293b; padding: 25px; text-align: center;">
+                  <div style="background: ${BRAND_SECONDARY}; padding: 25px; text-align: center;">
+                    <img src="${COMPANY_LOGO}" alt="Logo" style="max-width: 120px; height: auto; margin-bottom: 15px; opacity: 0.8;" />
                     <p style="color: #94a3b8; margin: 0 0 10px 0; font-size: 13px;">This is an automated notification from Unified Security Solutions</p>
                     <p style="color: #64748b; margin: 0; font-size: 12px;">© ${new Date().getFullYear()} Unified Security Solutions. All rights reserved.</p>
+                    <p style="color: ${BRAND_COLOR}; margin: 10px 0 0 0; font-size: 11px; font-weight: bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
                   </div>
                 </div>
               </body>
