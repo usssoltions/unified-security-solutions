@@ -26,6 +26,7 @@ import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
+import Contacts from './pages/Contacts';
 import __Layout from './Layout.jsx';
 
 
@@ -58,6 +59,7 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
+    "Contacts": Contacts,
 }
 
 export const pagesConfig = {
