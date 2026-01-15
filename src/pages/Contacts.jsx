@@ -37,13 +37,8 @@ export default function Contacts() {
   const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
-      try {
-        // Try admin list first
-        return await base44.entities.User.list();
-      } catch (error) {
-        // Fallback: Use asServiceRole for guards to see other users
-        return await base44.asServiceRole.entities.User.list();
-      }
+      // Always use asServiceRole to ensure guards can see other users
+      return await base44.asServiceRole.entities.User.list();
     },
     enabled: !!currentUser
   });
