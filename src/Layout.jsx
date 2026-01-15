@@ -217,6 +217,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
+        { title: "Clock In/Out", url: createPageUrl("ClockInOutReports"), icon: Clock },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
         { title: "Reports", url: createPageUrl("Reports"), icon: FileText },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
