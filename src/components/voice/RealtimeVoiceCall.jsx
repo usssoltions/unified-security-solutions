@@ -17,6 +17,8 @@ export default function RealtimeVoiceCall({
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [connectedParticipants, setConnectedParticipants] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const callStartTime = useRef(null);
 
   const peerConnections = useRef({});
   const localStream = useRef(null);
@@ -39,6 +41,7 @@ export default function RealtimeVoiceCall({
   const callParticipants = isGroupCall ? participants : [targetUser];
 
   useEffect(() => {
+    loadCurrentUser();
     if (incomingCallId) {
       // For incoming calls, start ringing immediately
       // Add a small delay to ensure component is mounted
@@ -48,8 +51,18 @@ export default function RealtimeVoiceCall({
     return () => cleanup();
   }, []);
 
+  const loadCurrentUser = async () => {
+    try {
+      const user = await base44.auth.me();
+      setCurrentUser(user);
+    } catch (error) {
+      console.error('Failed to load user:', error);
+    }
+  };
+
   useEffect(() => {
-    if (callStatus === 'connected') {
+    if (callStatus === 'connected' && !callStartTime.current) {
+      callStartTime.current = new Date().toISOString();
       durationInterval.current = setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
@@ -515,6 +528,9 @@ export default function RealtimeVoiceCall({
 
   const endCall = async () => {
     try {
+      // Log call to history
+      await logCallHistory('completed');
+      
       // Notify all participants
       for (const participant of callParticipants) {
         await base44.functions.invoke('rtcSignaling', {
@@ -528,6 +544,37 @@ export default function RealtimeVoiceCall({
     } finally {
       cleanup();
       onClose();
+    }
+  };
+
+  const logCallHistory = async (status) => {
+    if (!currentUser || !callStartTime.current) return;
+    
+    try {
+      const callData = {
+        call_id: callId.current,
+        caller_id: currentUser.id,
+        caller_name: currentUser.full_name,
+        call_type: isGroupCall ? 'group' : 'direct',
+        duration_seconds: callDuration,
+        status: status,
+        started_at: callStartTime.current,
+        ended_at: new Date().toISOString()
+      };
+
+      if (isGroupCall) {
+        callData.participants = callParticipants.map(p => ({
+          user_id: p.id,
+          user_name: p.full_name
+        }));
+      } else if (targetUser) {
+        callData.receiver_id = targetUser.id;
+        callData.receiver_name = targetUser.full_name;
+      }
+
+      await base44.entities.CallHistory.create(callData);
+    } catch (error) {
+      console.error('Failed to log call history:', error);
     }
   };
 

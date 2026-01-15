@@ -207,6 +207,7 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
+        { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin }
@@ -218,6 +219,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
+        { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
         { title: "Clock In/Out", url: createPageUrl("ClockInOutReports"), icon: Clock },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
