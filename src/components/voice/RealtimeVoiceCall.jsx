@@ -254,8 +254,16 @@ export default function RealtimeVoiceCall({
     try {
       setCallStatus('calling');
 
-      // Notify all participants
+      // Send push notifications to all participants
       for (const participant of callParticipants) {
+        await base44.functions.invoke('sendCallNotification', {
+          targetUserId: participant.id,
+          callerName: currentUser?.full_name || 'Unknown',
+          callId: callId.current,
+          callType: isGroupCall ? 'group' : 'direct'
+        });
+        
+        // Also send RTC signaling
         await base44.functions.invoke('rtcSignaling', {
           action: 'initiate_call',
           targetUserId: participant.id,
