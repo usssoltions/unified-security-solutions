@@ -597,11 +597,14 @@ export default function RealtimeVoiceCall({
 
   const endCall = async () => {
     try {
+      // Stop ringtone immediately
+      stopRingtone();
+      
       // Stop and upload recording
       const recordingUrl = await stopRecording();
       
       // Log call to history with recording
-      await logCallHistory('completed', recordingUrl);
+      await logCallHistory(incomingCallId && callStatus === 'incoming' ? 'declined' : 'completed', recordingUrl);
       
       // Notify all participants
       for (const participant of callParticipants) {
