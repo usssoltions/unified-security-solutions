@@ -5,32 +5,37 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X, Settings, Archive, ArchiveRestore, AlertTriangle, Phone } from "lucide-react";
+import { Mic, Users, User, Plus, Radio, Loader2, Settings, Archive, ArchiveRestore, Phone } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import ChannelSettingsModal from "@/components/ptt/ChannelSettingsModal";
-import PTTAlertHandler, { SystemAlertBadge } from "@/components/ptt/PTTAlertHandler";
-import AvailabilitySelector, { AvailabilityBadge } from "@/components/ptt/AvailabilitySelector";
+import PTTAlertHandler from "@/components/ptt/PTTAlertHandler";
+import AvailabilitySelector from "@/components/ptt/AvailabilitySelector";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 
 export default function PTT() {
   const [user, setUser] = useState(null);
   const [selectedChannel, setSelectedChannel] = useState(null);
-  const [recording, setRecording] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [transmitting, setTransmitting] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [channelType, setChannelType] = useState("direct");
   const [showChannelSettings, setShowChannelSettings] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [activeCall, setActiveCall] = useState(null);
-  const [incomingCall, setIncomingCall] = useState(null);
+  const [activeGroupCall, setActiveGroupCall] = useState(null);
   
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const timerRef = useRef(null);
+  const peerConnections = useRef({});
+  const localStream = useRef(null);
+  const remoteAudios = useRef({});
+  const pollingInterval = useRef(null);
   const queryClient = useQueryClient();
+
+  const rtcConfig = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
 
   useEffect(() => {
     loadUser();
@@ -60,41 +65,13 @@ export default function PTT() {
   // Real-time subscription for PTT channels
   useEffect(() => {
     if (!user) return;
-
     const unsubscribe = base44.entities.PTTChannel.subscribe((event) => {
       queryClient.invalidateQueries(["pttChannels"]);
     });
-
     return () => unsubscribe();
   }, [user?.id, queryClient]);
 
   const channels = allChannels.filter(ch => showArchived ? ch.is_archived : !ch.is_archived);
-
-  const { data: messages = [] } = useQuery({
-    queryKey: ["pttMessages", selectedChannel?.id],
-    queryFn: async () => {
-      if (!selectedChannel) return [];
-      return await base44.entities.PTTMessage.filter(
-        { channel_id: selectedChannel.id },
-        "-created_date",
-        50
-      );
-    },
-    enabled: !!selectedChannel
-  });
-
-  // Real-time subscription for PTT messages
-  useEffect(() => {
-    if (!selectedChannel) return;
-
-    const unsubscribe = base44.entities.PTTMessage.subscribe((event) => {
-      if (event.data.channel_id === selectedChannel.id) {
-        queryClient.invalidateQueries(["pttMessages", selectedChannel.id]);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [selectedChannel?.id, queryClient]);
 
   const { data: allUsers = [], isLoading: usersLoading } = useQuery({
     queryKey: ["allUsers"],
@@ -102,9 +79,20 @@ export default function PTT() {
     enabled: !!user
   });
 
-  const startRecording = async () => {
+  // Initialize WebRTC when channel is selected
+  useEffect(() => {
+    if (selectedChannel) {
+      initializeWebRTC();
+    }
+    return () => {
+      cleanupWebRTC();
+    };
+  }, [selectedChannel?.id]);
+
+  const initializeWebRTC = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      // Get user media
+      localStream.current = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -113,74 +101,191 @@ export default function PTT() {
           channelCount: 1
         }
       });
-      const mediaRecorder = new MediaRecorder(stream, { 
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 128000
-      });
-      
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
+      // Mute by default (unmute when transmitting)
+      localStream.current.getAudioTracks().forEach(track => track.enabled = false);
 
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        stream.getTracks().forEach(track => track.stop());
-        await uploadAudio(blob);
-      };
-
-      mediaRecorder.start();
-      setRecording(true);
-      setRecordingTime(0);
-
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+      // Start polling for signaling
+      startPolling();
     } catch (error) {
-      alert("Failed to access microphone: " + error.message);
+      console.error("Failed to get media:", error);
+      alert("Microphone access required for PTT");
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-      setRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
+  const cleanupWebRTC = () => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+    }
+    if (localStream.current) {
+      localStream.current.getTracks().forEach(track => track.stop());
+    }
+    Object.values(peerConnections.current).forEach(pc => pc.close());
+    peerConnections.current = {};
+    remoteAudios.current = {};
+  };
+
+  const startTransmitting = async () => {
+    if (!selectedChannel || !localStream.current) return;
+    
+    setTransmitting(true);
+    
+    // Enable audio
+    localStream.current.getAudioTracks().forEach(track => track.enabled = true);
+
+    // Notify channel members
+    const otherMembers = selectedChannel.members.filter(m => m.user_id !== user.id);
+    
+    for (const member of otherMembers) {
+      await createPeerConnection(member.user_id);
+    }
+  };
+
+  const stopTransmitting = async () => {
+    if (!localStream.current) return;
+    
+    setTransmitting(false);
+    
+    // Mute audio
+    localStream.current.getAudioTracks().forEach(track => track.enabled = false);
+
+    // Notify end of transmission
+    await base44.functions.invoke('rtcSignaling', {
+      action: 'end_transmission',
+      channelId: selectedChannel.id
+    });
+
+    // Close all peer connections
+    Object.values(peerConnections.current).forEach(pc => pc.close());
+    peerConnections.current = {};
+  };
+
+  const createPeerConnection = async (targetUserId) => {
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections.current[targetUserId] = pc;
+
+    // Add local stream
+    localStream.current.getTracks().forEach(track => {
+      pc.addTrack(track, localStream.current);
+    });
+
+    // Handle ICE candidates
+    pc.onicecandidate = async (event) => {
+      if (event.candidate) {
+        await base44.functions.invoke('rtcSignaling', {
+          action: 'send_candidate',
+          targetUserId: targetUserId,
+          candidate: event.candidate,
+          channelId: selectedChannel.id
+        });
       }
-    }
+    };
+
+    // Create and send offer
+    const offer = await pc.createOffer({ offerToReceiveAudio: false });
+    await pc.setLocalDescription(offer);
+
+    await base44.functions.invoke('rtcSignaling', {
+      action: 'send_offer',
+      targetUserId: targetUserId,
+      offer: offer,
+      channelId: selectedChannel.id,
+      transmitterId: user.id,
+      transmitterName: user.full_name
+    });
   };
 
-  const uploadAudio = async (blob) => {
-    setUploading(true);
+  const startPolling = () => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+    }
+    
+    pollingInterval.current = setInterval(async () => {
+      try {
+        const { data } = await base44.functions.invoke('rtcSignaling', {
+          action: 'poll_messages'
+        });
+
+        if (data?.messages && data.messages.length > 0) {
+          for (const message of data.messages) {
+            if (message.channelId === selectedChannel?.id) {
+              await handleSignalingMessage(message);
+            }
+          }
+        }
+      } catch (error) {
+        // Silent
+      }
+    }, 500);
+  };
+
+  const handleSignalingMessage = async (message) => {
     try {
-      const file = new File([blob], `ptt-${Date.now()}.webm`, { type: blob.type });
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      if (message.type === 'offer' && message.from !== user.id) {
+        // Someone is transmitting to us
+        const pc = new RTCPeerConnection(rtcConfig);
+        peerConnections.current[message.from] = pc;
 
-      await base44.entities.PTTMessage.create({
-        channel_id: selectedChannel.id,
-        sender_id: user.id,
-        sender_name: user.full_name,
-        sender_role: user.role_type,
-        audio_url: file_url,
-        duration_seconds: recordingTime
-      });
+        // Handle incoming audio
+        pc.ontrack = (event) => {
+          const audio = new Audio();
+          audio.srcObject = event.streams[0];
+          audio.autoplay = true;
+          remoteAudios.current[message.from] = audio;
+        };
 
-      await base44.entities.PTTChannel.update(selectedChannel.id, {
-        last_message_at: new Date().toISOString()
-      });
+        // Handle ICE candidates
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            await base44.functions.invoke('rtcSignaling', {
+              action: 'send_candidate',
+              targetUserId: message.from,
+              candidate: event.candidate,
+              channelId: selectedChannel.id
+            });
+          }
+        };
 
-      queryClient.invalidateQueries(["pttMessages", selectedChannel.id]);
-      queryClient.invalidateQueries(["pttChannels"]);
+        await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        await base44.functions.invoke('rtcSignaling', {
+          action: 'send_answer',
+          targetUserId: message.from,
+          answer: answer,
+          channelId: selectedChannel.id
+        });
+      } else if (message.type === 'answer') {
+        const pc = peerConnections.current[message.from];
+        if (pc && pc.signalingState !== 'stable') {
+          await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
+        }
+      } else if (message.type === 'candidate') {
+        const pc = peerConnections.current[message.from];
+        if (pc && message.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+          } catch (e) {
+            console.warn('ICE candidate error:', e);
+          }
+        }
+      } else if (message.type === 'end_transmission') {
+        // Clean up connection
+        const pc = peerConnections.current[message.from];
+        if (pc) {
+          pc.close();
+          delete peerConnections.current[message.from];
+        }
+        const audio = remoteAudios.current[message.from];
+        if (audio) {
+          audio.pause();
+          audio.srcObject = null;
+          delete remoteAudios.current[message.from];
+        }
+      }
     } catch (error) {
-      alert("Failed to send voice message: " + error.message);
-    } finally {
-      setUploading(false);
-      setRecordingTime(0);
+      console.error('Signaling error:', error);
     }
   };
 
@@ -219,58 +324,18 @@ export default function PTT() {
     }
   });
 
-  const markAsListened = async (messageId) => {
-    try {
-      const message = messages.find(m => m.id === messageId);
-      if (message && !message.listened_by.includes(user.id)) {
-        await base44.entities.PTTMessage.update(messageId, {
-          listened_by: [...message.listened_by, user.id]
-        });
-        queryClient.invalidateQueries(["pttMessages"]);
-      }
-    } catch (error) {
-      console.error("Failed to mark as listened:", error);
-    }
+  const initiateGroupCall = () => {
+    if (!selectedChannel) return;
+    
+    const participants = selectedChannel.members
+      .filter(m => m.user_id !== user.id)
+      .map(m => ({ id: m.user_id, full_name: m.user_name }));
+    
+    setActiveGroupCall({
+      channel: selectedChannel,
+      participants
+    });
   };
-
-  const initiateVoiceCall = (targetUser) => {
-    setActiveCall(targetUser);
-  };
-
-  // Poll for incoming calls
-  useEffect(() => {
-    if (!user) return;
-
-    const checkIncomingCalls = setInterval(async () => {
-      try {
-        const notifications = await base44.entities.Notification.filter({
-          recipient_id: user.id,
-          related_entity: 'voice_call',
-          read: false
-        });
-
-        if (notifications.length > 0) {
-          const callNotification = notifications[0];
-          const callerName = callNotification.message.replace(' is calling you', '');
-          
-          setIncomingCall({
-            callId: callNotification.related_id,
-            caller: { 
-              id: callNotification.related_id.split('_')[2],
-              full_name: callerName,
-              badge_number: callerName
-            }
-          });
-          
-          await base44.entities.Notification.update(callNotification.id, { read: true });
-        }
-      } catch (error) {
-        // Silent fail
-      }
-    }, 2000);
-
-    return () => clearInterval(checkIncomingCalls);
-  }, [user]);
 
   if (!user) {
     return (
@@ -289,8 +354,8 @@ export default function PTT() {
               <Radio className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Push-to-Talk</h1>
-              <p className="text-slate-400 text-sm">Voice Communication System</p>
+              <h1 className="text-2xl font-bold text-white">Push-to-Talk Radio</h1>
+              <p className="text-slate-400 text-sm">Live Voice Communication</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -385,10 +450,7 @@ export default function PTT() {
                           />
                           <div className="flex-1">
                             <p className="text-white text-sm">{u.full_name}</p>
-                            <div className="flex items-center gap-2">
-                              <p className="text-slate-400 text-xs">{u.role_type}</p>
-                              <AvailabilityBadge status={u.ptt_availability} />
-                            </div>
+                            <p className="text-slate-400 text-xs">{u.role_type}</p>
                           </div>
                         </label>
                       ))
@@ -448,44 +510,31 @@ export default function PTT() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
-                {channels.map(channel => {
-                  const unreadCount = messages.filter(m => 
-                    m.channel_id === channel.id && 
-                    m.sender_id !== user.id && 
-                    !m.listened_by.includes(user.id)
-                  ).length;
-
-                  return (
-                    <button
-                      key={channel.id}
-                      onClick={() => setSelectedChannel(channel)}
-                      className={`w-full text-left p-3 rounded-lg transition-all ${
-                        selectedChannel?.id === channel.id
-                          ? "bg-sky-500 text-white"
-                          : "bg-slate-900 text-slate-300 hover:bg-slate-700"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          {channel.type === "direct" ? (
-                            <User className="w-4 h-4" />
-                          ) : (
-                            <Users className="w-4 h-4" />
-                          )}
-                          <span className="font-semibold">{channel.name}</span>
-                        </div>
-                        {unreadCount > 0 && (
-                          <Badge className="bg-rose-500 text-white">
-                            {unreadCount}
-                          </Badge>
+                {channels.map(channel => (
+                  <button
+                    key={channel.id}
+                    onClick={() => setSelectedChannel(channel)}
+                    className={`w-full text-left p-3 rounded-lg transition-all ${
+                      selectedChannel?.id === channel.id
+                        ? "bg-sky-500 text-white"
+                        : "bg-slate-900 text-slate-300 hover:bg-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        {channel.type === "direct" ? (
+                          <User className="w-4 h-4" />
+                        ) : (
+                          <Users className="w-4 h-4" />
                         )}
+                        <span className="font-semibold">{channel.name}</span>
                       </div>
-                      <p className="text-xs opacity-70">
-                        {channel.members.length} member{channel.members.length !== 1 ? 's' : ''}
-                      </p>
-                    </button>
-                  );
-                })}
+                    </div>
+                    <p className="text-xs opacity-70">
+                      {channel.members.length} member{channel.members.length !== 1 ? 's' : ''}
+                    </p>
+                  </button>
+                ))}
                 {channels.length === 0 && (
                   <div className="text-center py-8 text-slate-400">
                     <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -497,7 +546,7 @@ export default function PTT() {
             </Card>
           </div>
 
-          {/* Messages Area */}
+          {/* PTT Control Area */}
           <div className="lg:col-span-2">
             {selectedChannel ? (
               <Card className="bg-slate-800/50 border-slate-700">
@@ -521,24 +570,15 @@ export default function PTT() {
                         <p className="text-slate-400 text-sm">
                           {selectedChannel.members.map(m => m.user_name).join(", ")}
                         </p>
-                        {selectedChannel.type === "direct" && selectedChannel.members.find(m => m.user_id !== user.id) && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const otherMember = selectedChannel.members.find(m => m.user_id !== user.id);
-                              initiateVoiceCall({
-                                id: otherMember.user_id,
-                                full_name: otherMember.user_name,
-                                badge_number: otherMember.user_name
-                              });
-                            }}
-                            className="border-emerald-600 text-emerald-400 hover:bg-emerald-600/10 ml-2"
-                          >
-                            <Phone className="w-3 h-3 mr-1" />
-                            Call
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={initiateGroupCall}
+                          className="border-emerald-600 text-emerald-400 hover:bg-emerald-600/10 ml-2"
+                        >
+                          <Phone className="w-3 h-3 mr-1" />
+                          Group Call
+                        </Button>
                       </div>
                     </div>
                     <Button
@@ -551,146 +591,75 @@ export default function PTT() {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="p-4">
-                  <div className="space-y-3 max-h-[400px] overflow-y-auto mb-4">
-                    {messages.slice().reverse().map(msg => {
-                      const isOwn = msg.sender_id === user.id;
-                      const hasListened = msg.listened_by.includes(user.id);
-                      const isSystemAlert = msg.is_system_alert;
+                <CardContent className="p-8">
+                  <div className="flex flex-col items-center justify-center min-h-[400px]">
+                    <div className="text-center mb-8">
+                      <Radio className="w-20 h-20 text-sky-400 mx-auto mb-4" />
+                      <h3 className="text-xl font-bold text-white mb-2">
+                        {transmitting ? "TRANSMITTING" : "Ready to Transmit"}
+                      </h3>
+                      <p className="text-slate-400">
+                        {transmitting 
+                          ? "Broadcasting to all channel members" 
+                          : "Press and hold the button to talk"}
+                      </p>
+                    </div>
 
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
-                        >
-                          <div
-                            className={`max-w-xs ${
-                              isSystemAlert && msg.priority === "emergency"
-                                ? "bg-rose-600 border-2 border-rose-400"
-                                : isSystemAlert && msg.priority === "urgent"
-                                ? "bg-orange-600 border-2 border-orange-400"
-                                : isSystemAlert
-                                ? "bg-sky-600"
-                                : isOwn
-                                ? "bg-sky-500"
-                                : hasListened
-                                ? "bg-slate-700"
-                                : "bg-emerald-600"
-                            } rounded-lg p-3`}
-                          >
-                            {isSystemAlert && (
-                              <div className="mb-2">
-                                <SystemAlertBadge priority={msg.priority} />
-                              </div>
-                            )}
-                            
-                            {!isOwn && !isSystemAlert && (
-                              <p className="text-xs text-white/80 mb-2">
-                                {msg.sender_name}
-                              </p>
-                            )}
-
-                            {isSystemAlert && msg.alert_text && (
-                              <div className="mb-2 text-white">
-                                <p className="text-xs font-semibold mb-1">
-                                  {msg.alert_type?.toUpperCase()}
-                                </p>
-                                <p className="text-sm">{msg.alert_text}</p>
-                              </div>
-                            )}
-
-                            {msg.audio_url && (
-                              <audio
-                                controls
-                                className="w-full"
-                                onPlay={() => !isOwn && markAsListened(msg.id)}
-                                src={msg.audio_url}
-                              />
-                            )}
-                            
-                            <div className="flex items-center justify-between mt-2 text-xs text-white/70">
-                              {msg.duration_seconds && <span>{msg.duration_seconds}s</span>}
-                              <span>
-                                {new Date(msg.created_date).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit"
-                                })}
-                              </span>
-                            </div>
+                    {/* PTT Button */}
+                    <div className="text-center">
+                      <button
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          startTransmitting();
+                        }}
+                        onMouseUp={(e) => {
+                          e.preventDefault();
+                          stopTransmitting();
+                        }}
+                        onMouseLeave={(e) => {
+                          if (transmitting) stopTransmitting();
+                        }}
+                        onTouchStart={(e) => {
+                          e.preventDefault();
+                          startTransmitting();
+                        }}
+                        onTouchEnd={(e) => {
+                          e.preventDefault();
+                          stopTransmitting();
+                        }}
+                        onTouchCancel={(e) => {
+                          e.preventDefault();
+                          stopTransmitting();
+                        }}
+                        className={`w-32 h-32 rounded-full flex items-center justify-center transition-all select-none touch-none ${
+                          transmitting
+                            ? "bg-rose-500 scale-110 shadow-2xl shadow-rose-500/50"
+                            : "bg-sky-500 hover:bg-sky-600 shadow-lg"
+                        }`}
+                        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+                      >
+                        <Mic className="w-16 h-16 text-white" />
+                      </button>
+                      {transmitting && (
+                        <div className="mt-4">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-3 h-3 bg-rose-500 rounded-full animate-pulse" />
+                            <p className="text-rose-400 font-bold text-lg">ON AIR</p>
                           </div>
                         </div>
-                      );
-                    })}
-                    {messages.length === 0 && (
-                      <div className="text-center py-12 text-slate-400">
-                        <Volume2 className="w-16 h-16 mx-auto mb-3 opacity-50" />
-                        <p>No messages yet</p>
-                        <p className="text-sm">Press and hold to record</p>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                      {!transmitting && (
+                        <p className="text-slate-400 text-sm mt-4">
+                          Press & Hold to Talk
+                        </p>
+                      )}
+                    </div>
 
-                  {/* PTT Button */}
-                  <div className="flex items-center justify-center">
-                    {uploading ? (
-                      <div className="text-center py-4">
-                        <Loader2 className="w-8 h-8 text-sky-400 animate-spin mx-auto mb-2" />
-                        <p className="text-slate-400 text-sm">Sending...</p>
-                      </div>
-                    ) : (
-                      <div className="text-center">
-                        <button
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            startRecording();
-                          }}
-                          onMouseUp={(e) => {
-                            e.preventDefault();
-                            stopRecording();
-                          }}
-                          onMouseLeave={(e) => {
-                            e.preventDefault();
-                            if (recording) stopRecording();
-                          }}
-                          onTouchStart={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            startRecording();
-                          }}
-                          onTouchEnd={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            stopRecording();
-                          }}
-                          onTouchCancel={(e) => {
-                            e.preventDefault();
-                            stopRecording();
-                          }}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            return false;
-                          }}
-                          className={`w-24 h-24 rounded-full flex items-center justify-center transition-all select-none touch-none ${
-                            recording
-                              ? "bg-rose-500 scale-110 animate-pulse"
-                              : "bg-sky-500 hover:bg-sky-600"
-                          }`}
-                          style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
-                        >
-                          <Mic className="w-10 h-10 text-white" />
-                        </button>
-                        {recording && (
-                          <p className="text-rose-400 font-bold mt-3">
-                            Recording... {recordingTime}s
-                          </p>
-                        )}
-                        {!recording && (
-                          <p className="text-slate-400 text-sm mt-3">
-                            Press & Hold to Talk
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    <div className="mt-8 text-center">
+                      <Badge variant="outline" className="border-slate-600 text-slate-400">
+                        {selectedChannel.members.length} Active Members
+                      </Badge>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -722,25 +691,18 @@ export default function PTT() {
       {/* Alert Handler */}
       {selectedChannel && (
         <PTTAlertHandler
-          messages={messages}
+          messages={[]}
           user={user}
           selectedChannel={selectedChannel}
         />
       )}
 
-      {/* Voice Calls */}
-      {activeCall && (
+      {/* Group Voice Call */}
+      {activeGroupCall && (
         <RealtimeVoiceCall
-          targetUser={activeCall}
-          onClose={() => setActiveCall(null)}
-        />
-      )}
-
-      {incomingCall && (
-        <RealtimeVoiceCall
-          targetUser={incomingCall.caller}
-          incomingCallId={incomingCall.callId}
-          onClose={() => setIncomingCall(null)}
+          participants={activeGroupCall.participants}
+          isGroupCall={true}
+          onClose={() => setActiveGroupCall(null)}
         />
       )}
     </div>
