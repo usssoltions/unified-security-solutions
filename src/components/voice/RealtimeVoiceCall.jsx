@@ -249,13 +249,8 @@ export default function RealtimeVoiceCall({
         });
       }
 
-      // Start creating peer connections
-      for (const participant of callParticipants) {
-        await createPeerConnection(participant.id);
-      }
-
+      // Don't create peer connections yet - wait for recipient to answer
       startPolling();
-      setCallStatus('connected');
     } catch (error) {
       console.error('Error initiating call:', error);
       setCallStatus('error');
@@ -279,11 +274,14 @@ export default function RealtimeVoiceCall({
         video: isVideoOn
       });
       
-      // Send answer signal
-      await base44.functions.invoke('rtcSignaling', {
-        action: 'call_answered',
-        callId: callId.current
-      });
+      // Send answer signal to all participants
+      for (const participant of callParticipants) {
+        await base44.functions.invoke('rtcSignaling', {
+          action: 'call_answered',
+          callId: callId.current,
+          targetUserId: participant.id
+        });
+      }
       
       setCallStatus('connected');
     } catch (error) {
@@ -332,7 +330,20 @@ export default function RealtimeVoiceCall({
         setConnectedParticipants(prev => 
           prev.includes(participantId) ? prev : [...prev, participantId]
         );
-      } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+      } else if (state === 'disconnected' || state === 'failed') {
+        setConnectedParticipants(prev => prev.filter(id => id !== participantId));
+        // If all participants disconnected, end call
+        setTimeout(() => {
+          const allPeers = Object.values(peerConnections.current);
+          const allDisconnected = allPeers.every(p => 
+            ['disconnected', 'failed', 'closed'].includes(p.connectionState)
+          );
+          if (allDisconnected && allPeers.length > 0) {
+            cleanup();
+            onClose();
+          }
+        }, 2000);
+      } else if (state === 'closed') {
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
       }
     };
@@ -377,7 +388,16 @@ export default function RealtimeVoiceCall({
     try {
       const participantId = message.from;
 
-      if (message.type === 'offer' && incomingCallId) {
+      if (message.type === 'call_answered') {
+        // Recipient has answered - now create peer connections
+        if (callStatus === 'calling') {
+          setCallStatus('connecting');
+          for (const participant of callParticipants) {
+            await createPeerConnection(participant.id);
+          }
+          setCallStatus('connected');
+        }
+      } else if (message.type === 'offer' && incomingCallId) {
         if (!peerConnections.current[participantId]) {
           const pc = new RTCPeerConnection(rtcConfig);
           peerConnections.current[participantId] = pc;
@@ -434,7 +454,8 @@ export default function RealtimeVoiceCall({
           }
         }
       } else if (message.type === 'call_ended') {
-        endCall();
+      cleanup();
+      onClose();
       }
     } catch (error) {
       console.error('Error handling signaling:', error);
@@ -494,10 +515,14 @@ export default function RealtimeVoiceCall({
 
   const endCall = async () => {
     try {
-      await base44.functions.invoke('rtcSignaling', {
-        action: 'end_call',
-        callId: callId.current
-      });
+      // Notify all participants
+      for (const participant of callParticipants) {
+        await base44.functions.invoke('rtcSignaling', {
+          action: 'end_call',
+          callId: callId.current,
+          targetUserId: participant.id
+        });
+      }
     } catch (error) {
       console.error('Error ending call:', error);
     } finally {
