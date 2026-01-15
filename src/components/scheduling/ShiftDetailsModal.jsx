@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
@@ -77,7 +76,8 @@ export default function ShiftDetailsModal({ shift, onClose }) {
       return updateData;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["allShifts"]);
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["shiftHistory"]);
       setIsEditing(false);
     }
   });
@@ -100,7 +100,8 @@ export default function ShiftDetailsModal({ shift, onClose }) {
       await base44.entities.Shift.delete(shift.id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["allShifts"]);
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["shiftHistory"]);
       onClose();
     }
   });
@@ -258,7 +259,7 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
                   )}
                 </div>
               )}
-              {!isEditing && (
+              {!isEditing && (shift.status === "scheduled" || shift.status === "open") && (
                 <>
                   <Button
                     variant="outline"
