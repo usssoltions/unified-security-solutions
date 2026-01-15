@@ -59,45 +59,95 @@ export default function RealtimeVoiceCall({
   }, [callStatus]);
 
   const startRingtone = () => {
-    stopRingtone(); // Clear any existing ringtone
+    stopRingtone();
     
     try {
-      audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+      // Create audio context
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioContext.current = new AudioContext();
       
-      const playRing = () => {
-        const oscillator = audioContext.current.createOscillator();
+      // Resume audio context if suspended (required by some browsers)
+      if (audioContext.current.state === 'suspended') {
+        audioContext.current.resume();
+      }
+      
+      const playRingPattern = () => {
+        if (!audioContext.current) return;
+        
+        const now = audioContext.current.currentTime;
+        const oscillator1 = audioContext.current.createOscillator();
+        const oscillator2 = audioContext.current.createOscillator();
         const gainNode = audioContext.current.createGain();
         
-        oscillator.connect(gainNode);
+        oscillator1.connect(gainNode);
+        oscillator2.connect(gainNode);
         gainNode.connect(audioContext.current.destination);
         
-        oscillator.frequency.value = 800;
-        oscillator.type = 'sine';
-        gainNode.gain.value = 0.3;
+        // Create a pleasant two-tone ringtone
+        oscillator1.frequency.value = 800;
+        oscillator2.frequency.value = 1000;
+        oscillator1.type = 'sine';
+        oscillator2.type = 'sine';
         
-        oscillator.start();
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.5, now + 0.05);
+        gainNode.gain.linearRampToValueAtTime(0.5, now + 0.4);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
         
+        oscillator1.start(now);
+        oscillator2.start(now);
+        oscillator1.stop(now + 0.5);
+        oscillator2.stop(now + 0.5);
+        
+        // Second ring after brief pause
         setTimeout(() => {
-          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.current.currentTime + 0.5);
-          oscillator.stop(audioContext.current.currentTime + 0.5);
-        }, 1000);
+          if (!audioContext.current) return;
+          
+          const now2 = audioContext.current.currentTime;
+          const osc1 = audioContext.current.createOscillator();
+          const osc2 = audioContext.current.createOscillator();
+          const gain = audioContext.current.createGain();
+          
+          osc1.connect(gain);
+          osc2.connect(gain);
+          gain.connect(audioContext.current.destination);
+          
+          osc1.frequency.value = 800;
+          osc2.frequency.value = 1000;
+          osc1.type = 'sine';
+          osc2.type = 'sine';
+          
+          gain.gain.setValueAtTime(0, now2);
+          gain.gain.linearRampToValueAtTime(0.5, now2 + 0.05);
+          gain.gain.linearRampToValueAtTime(0.5, now2 + 0.4);
+          gain.gain.linearRampToValueAtTime(0, now2 + 0.5);
+          
+          osc1.start(now2);
+          osc2.start(now2);
+          osc1.stop(now2 + 0.5);
+          osc2.stop(now2 + 0.5);
+        }, 600);
       };
       
       // Play immediately
-      playRing();
+      playRingPattern();
       
       // Continue ringing every 2 seconds
-      ringtoneInterval.current = setInterval(playRing, 2000);
+      ringtoneInterval.current = setInterval(() => {
+        playRingPattern();
+      }, 2000);
       
-      // Vibrate if supported
+      // Continuous vibration pattern
       if ('vibrate' in navigator) {
-        navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
-        const vibrateInterval = setInterval(() => {
-          navigator.vibrate([300, 200, 300, 200, 300, 200, 300]);
-        }, 3000);
-        
-        setTimeout(() => clearInterval(vibrateInterval), 30000); // Stop after 30s
+        const vibratePattern = () => {
+          navigator.vibrate([400, 200, 400, 200, 400]);
+        };
+        vibratePattern();
+        const vibrateInt = setInterval(vibratePattern, 2000);
+        setTimeout(() => clearInterval(vibrateInt), 60000);
       }
+      
+      console.log('Ringtone started');
     } catch (error) {
       console.error('Error starting ringtone:', error);
     }
