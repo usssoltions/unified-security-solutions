@@ -11,6 +11,7 @@ Deno.serve(async (req) => {
 
     const now = new Date();
     const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     // Get shifts that should have started but haven't been clocked in
     const shifts = await base44.asServiceRole.entities.Shift.filter({
@@ -19,7 +20,8 @@ Deno.serve(async (req) => {
 
     const missedShifts = shifts.filter(shift => {
       const startTime = new Date(shift.start_time);
-      return startTime <= fifteenMinutesAgo && startTime <= now && !shift.clock_in;
+      // Only check shifts from the last 24 hours to avoid old data
+      return startTime >= oneDayAgo && startTime <= fifteenMinutesAgo && !shift.clock_in;
     });
 
     const alertsCreated = [];
