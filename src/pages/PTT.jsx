@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X, Settings, Archive, ArchiveRestore, AlertTriangle } from "lucide-react";
+import { Mic, Users, User, Plus, Radio, Volume2, Loader2, X, Settings, Archive, ArchiveRestore, AlertTriangle, Phone } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import ChannelSettingsModal from "@/components/ptt/ChannelSettingsModal";
 import PTTAlertHandler, { SystemAlertBadge } from "@/components/ptt/PTTAlertHandler";
 import AvailabilitySelector, { AvailabilityBadge } from "@/components/ptt/AvailabilitySelector";
+import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 
 export default function PTT() {
   const [user, setUser] = useState(null);
@@ -23,6 +24,8 @@ export default function PTT() {
   const [channelType, setChannelType] = useState("direct");
   const [showChannelSettings, setShowChannelSettings] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [activeCall, setActiveCall] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(null);
   
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -110,7 +113,10 @@ export default function PTT() {
           channelCount: 1
         }
       });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const mediaRecorder = new MediaRecorder(stream, { 
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 128000
+      });
       
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -228,6 +234,45 @@ export default function PTT() {
       console.error("Failed to mark as listened:", error);
     }
   };
+
+  const initiateVoiceCall = (targetUser) => {
+    setActiveCall(targetUser);
+  };
+
+  // Poll for incoming calls
+  useEffect(() => {
+    if (!user) return;
+
+    const checkIncomingCalls = setInterval(async () => {
+      try {
+        const notifications = await base44.entities.Notification.filter({
+          recipient_id: user.id,
+          related_entity: 'voice_call',
+          read: false
+        });
+
+        if (notifications.length > 0) {
+          const callNotification = notifications[0];
+          const callerName = callNotification.message.replace(' is calling you', '');
+          
+          setIncomingCall({
+            callId: callNotification.related_id,
+            caller: { 
+              id: callNotification.related_id.split('_')[2],
+              full_name: callerName,
+              badge_number: callerName
+            }
+          });
+          
+          await base44.entities.Notification.update(callNotification.id, { read: true });
+        }
+      } catch (error) {
+        // Silent fail
+      }
+    }, 2000);
+
+    return () => clearInterval(checkIncomingCalls);
+  }, [user]);
 
   if (!user) {
     return (
@@ -474,9 +519,29 @@ export default function PTT() {
                           </Badge>
                         )}
                       </CardTitle>
-                      <p className="text-slate-400 text-sm mt-1">
-                        {selectedChannel.members.map(m => m.user_name).join(", ")}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-slate-400 text-sm">
+                          {selectedChannel.members.map(m => m.user_name).join(", ")}
+                        </p>
+                        {selectedChannel.type === "direct" && selectedChannel.members.find(m => m.user_id !== user.id) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const otherMember = selectedChannel.members.find(m => m.user_id !== user.id);
+                              initiateVoiceCall({
+                                id: otherMember.user_id,
+                                full_name: otherMember.user_name,
+                                badge_number: otherMember.user_name
+                              });
+                            }}
+                            className="border-emerald-600 text-emerald-400 hover:bg-emerald-600/10 ml-2"
+                          >
+                            <Phone className="w-3 h-3 mr-1" />
+                            Call
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <Button
                       size="sm"
@@ -662,6 +727,22 @@ export default function PTT() {
           messages={messages}
           user={user}
           selectedChannel={selectedChannel}
+        />
+      )}
+
+      {/* Voice Calls */}
+      {activeCall && (
+        <RealtimeVoiceCall
+          targetUser={activeCall}
+          onClose={() => setActiveCall(null)}
+        />
+      )}
+
+      {incomingCall && (
+        <RealtimeVoiceCall
+          targetUser={incomingCall.caller}
+          incomingCallId={incomingCall.callId}
+          onClose={() => setIncomingCall(null)}
         />
       )}
     </div>
