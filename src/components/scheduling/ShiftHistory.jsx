@@ -6,9 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, MapPin, User, Calendar, Search, Filter, Download, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Clock, MapPin, User, Calendar, Search, Filter, Download, CheckCircle2, XCircle, AlertCircle, Edit2, Trash2 } from "lucide-react";
 
-export default function ShiftHistory() {
+export default function ShiftHistory({ shifts: shiftsProp, onShiftClick }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterGuard, setFilterGuard] = useState("all");
@@ -17,6 +17,8 @@ export default function ShiftHistory() {
   const { data: shifts, isLoading } = useQuery({
     queryKey: ["shiftHistory", dateRange],
     queryFn: async () => {
+      if (shiftsProp) return shiftsProp;
+      
       const days = parseInt(dateRange);
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
@@ -27,7 +29,8 @@ export default function ShiftHistory() {
         return shiftDate >= startDate;
       });
     },
-    initialData: []
+    initialData: shiftsProp || [],
+    enabled: !shiftsProp
   });
 
   const { data: guards } = useQuery({
@@ -248,7 +251,8 @@ export default function ShiftHistory() {
               filteredShifts.map((shift) => (
                 <div
                   key={shift.id}
-                  className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-slate-600 transition-all"
+                  className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-slate-600 transition-all cursor-pointer"
+                  onClick={() => onShiftClick && onShiftClick(shift)}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -260,10 +264,27 @@ export default function ShiftHistory() {
                         <p className="text-sm text-slate-400">{shift.site_name}</p>
                       </div>
                     </div>
-                    <Badge className={statusColors[shift.status]}>
-                      {statusIcons[shift.status]}
-                      <span className="ml-1">{shift.status}</span>
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={statusColors[shift.status]}>
+                        {statusIcons[shift.status]}
+                        <span className="ml-1">{shift.status}</span>
+                      </Badge>
+                      {(shift.status === "scheduled" || shift.status === "open") && (
+                        <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-sky-400"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onShiftClick && onShiftClick(shift);
+                            }}
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
