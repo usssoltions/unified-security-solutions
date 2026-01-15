@@ -15,6 +15,7 @@ import {
   Bell
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ReportSchedulingSettings from "../components/reports/ReportSchedulingSettings";
 
 export default function Configuration() {
   // Incident Categories
@@ -210,8 +211,12 @@ export default function Configuration() {
       </Card>
 
       {/* Configuration Tabs */}
-      <Tabs defaultValue="incidents" className="space-y-6">
+      <Tabs defaultValue="reports" className="space-y-6">
         <TabsList className="bg-slate-800 border border-slate-700">
+          <TabsTrigger value="reports" className="data-[state=active]:bg-slate-700">
+            <Settings className="w-4 h-4 mr-2" />
+            Reports
+          </TabsTrigger>
           <TabsTrigger value="incidents" className="data-[state=active]:bg-slate-700">
             <AlertTriangle className="w-4 h-4 mr-2" />
             Incidents
@@ -233,6 +238,11 @@ export default function Configuration() {
             Priorities
           </TabsTrigger>
         </TabsList>
+
+        {/* Reports Settings */}
+        <TabsContent value="reports">
+          <ReportSchedulingSettings />
+        </TabsContent>
 
         {/* Incident Categories */}
         <TabsContent value="incidents">
