@@ -40,7 +40,8 @@ export default function RealtimeVoiceCall({
   useEffect(() => {
     if (incomingCallId) {
       // For incoming calls, start ringing immediately
-      startRingtone();
+      // Add a small delay to ensure component is mounted
+      setTimeout(() => startRingtone(), 100);
     }
     initializeCall();
     return () => cleanup();
