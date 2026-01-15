@@ -81,7 +81,7 @@ export default function ServiceWorkerRegistration() {
       try {
         const user = await base44.auth.me();
         await base44.auth.updateMe({
-          push_subscription: subscription.toJSON()
+          push_subscription: JSON.stringify(subscription.toJSON())
         });
       } catch (error) {
         console.warn('Failed to save push subscription:', error);
