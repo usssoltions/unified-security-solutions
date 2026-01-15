@@ -25,6 +25,7 @@ export default function RealtimeVoiceCall({
   const durationInterval = useRef(null);
   const ringtoneInterval = useRef(null);
   const audioContext = useRef(null);
+  const ringtoneAudio = useRef(null);
 
   const rtcConfig = {
     iceServers: [
@@ -62,82 +63,117 @@ export default function RealtimeVoiceCall({
     stopRingtone();
     
     try {
-      // Create audio context
+      // Method 1: Try Web Audio API
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      audioContext.current = new AudioContext();
-      
-      // Resume audio context if suspended (required by some browsers)
-      if (audioContext.current.state === 'suspended') {
-        audioContext.current.resume();
+      if (AudioContext) {
+        audioContext.current = new AudioContext();
+        
+        // Force resume if suspended
+        audioContext.current.resume().then(() => {
+          console.log('AudioContext resumed, state:', audioContext.current.state);
+        });
       }
       
-      const playRingPattern = () => {
-        if (!audioContext.current) return;
-        
-        const now = audioContext.current.currentTime;
-        const oscillator1 = audioContext.current.createOscillator();
-        const oscillator2 = audioContext.current.createOscillator();
-        const gainNode = audioContext.current.createGain();
-        
-        oscillator1.connect(gainNode);
-        oscillator2.connect(gainNode);
-        gainNode.connect(audioContext.current.destination);
-        
-        // Create a pleasant two-tone ringtone
-        oscillator1.frequency.value = 800;
-        oscillator2.frequency.value = 1000;
-        oscillator1.type = 'sine';
-        oscillator2.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(0.5, now + 0.05);
-        gainNode.gain.linearRampToValueAtTime(0.5, now + 0.4);
-        gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
-        
-        oscillator1.start(now);
-        oscillator2.start(now);
-        oscillator1.stop(now + 0.5);
-        oscillator2.stop(now + 0.5);
-        
-        // Second ring after brief pause
-        setTimeout(() => {
-          if (!audioContext.current) return;
-          
-          const now2 = audioContext.current.currentTime;
-          const osc1 = audioContext.current.createOscillator();
-          const osc2 = audioContext.current.createOscillator();
-          const gain = audioContext.current.createGain();
-          
-          osc1.connect(gain);
-          osc2.connect(gain);
-          gain.connect(audioContext.current.destination);
-          
-          osc1.frequency.value = 800;
-          osc2.frequency.value = 1000;
-          osc1.type = 'sine';
-          osc2.type = 'sine';
-          
-          gain.gain.setValueAtTime(0, now2);
-          gain.gain.linearRampToValueAtTime(0.5, now2 + 0.05);
-          gain.gain.linearRampToValueAtTime(0.5, now2 + 0.4);
-          gain.gain.linearRampToValueAtTime(0, now2 + 0.5);
-          
-          osc1.start(now2);
-          osc2.start(now2);
-          osc1.stop(now2 + 0.5);
-          osc2.stop(now2 + 0.5);
-        }, 600);
+      // Method 2: Fallback to HTML5 Audio with data URL ringtone
+      const createRingtoneDataURL = () => {
+        // Create a simple beep sound using data URL
+        return 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZSA0PVqzn77BdGAg+ltryxnMpBSl+zPLaizsIGGS57OihUBELTKXh8bllHAU2jdXzzn0vBSF1xe/glEILElyx6+6nVBML';
       };
       
-      // Play immediately
-      playRingPattern();
+      ringtoneAudio.current = new Audio(createRingtoneDataURL());
+      ringtoneAudio.current.loop = true;
+      ringtoneAudio.current.volume = 1.0;
       
-      // Continue ringing every 2 seconds
-      ringtoneInterval.current = setInterval(() => {
+      // Try to play immediately
+      const playPromise = ringtoneAudio.current.play();
+      
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log('Ringtone playing via Audio element');
+          })
+          .catch(error => {
+            console.log('Audio autoplay blocked, using Web Audio API fallback', error);
+            playWebAudioRingtone();
+          });
+      }
+      
+      // Method 3: Web Audio API fallback
+      const playWebAudioRingtone = () => {
+        if (!audioContext.current) return;
+        
+        const playRingPattern = () => {
+          try {
+            if (!audioContext.current || audioContext.current.state === 'closed') return;
+            
+            const now = audioContext.current.currentTime;
+            const oscillator1 = audioContext.current.createOscillator();
+            const oscillator2 = audioContext.current.createOscillator();
+            const gainNode = audioContext.current.createGain();
+            
+            oscillator1.connect(gainNode);
+            oscillator2.connect(gainNode);
+            gainNode.connect(audioContext.current.destination);
+            
+            oscillator1.frequency.value = 800;
+            oscillator2.frequency.value = 1000;
+            oscillator1.type = 'sine';
+            oscillator2.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.8, now + 0.05);
+            gainNode.gain.linearRampToValueAtTime(0.8, now + 0.4);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
+            
+            oscillator1.start(now);
+            oscillator2.start(now);
+            oscillator1.stop(now + 0.5);
+            oscillator2.stop(now + 0.5);
+            
+            setTimeout(() => {
+              if (!audioContext.current || audioContext.current.state === 'closed') return;
+              
+              const now2 = audioContext.current.currentTime;
+              const osc1 = audioContext.current.createOscillator();
+              const osc2 = audioContext.current.createOscillator();
+              const gain = audioContext.current.createGain();
+              
+              osc1.connect(gain);
+              osc2.connect(gain);
+              gain.connect(audioContext.current.destination);
+              
+              osc1.frequency.value = 800;
+              osc2.frequency.value = 1000;
+              osc1.type = 'sine';
+              osc2.type = 'sine';
+              
+              gain.gain.setValueAtTime(0, now2);
+              gain.gain.linearRampToValueAtTime(0.8, now2 + 0.05);
+              gain.gain.linearRampToValueAtTime(0.8, now2 + 0.4);
+              gain.gain.linearRampToValueAtTime(0, now2 + 0.5);
+              
+              osc1.start(now2);
+              osc2.start(now2);
+              osc1.stop(now2 + 0.5);
+              osc2.stop(now2 + 0.5);
+            }, 600);
+          } catch (error) {
+            console.error('Error in ring pattern:', error);
+          }
+        };
+        
         playRingPattern();
-      }, 2000);
+        ringtoneInterval.current = setInterval(playRingPattern, 2000);
+      };
       
-      // Continuous vibration pattern
+      // If Audio element didn't play, use Web Audio API
+      setTimeout(() => {
+        if (ringtoneAudio.current && ringtoneAudio.current.paused) {
+          playWebAudioRingtone();
+        }
+      }, 100);
+      
+      // Vibration
       if ('vibrate' in navigator) {
         const vibratePattern = () => {
           navigator.vibrate([400, 200, 400, 200, 400]);
@@ -147,7 +183,7 @@ export default function RealtimeVoiceCall({
         setTimeout(() => clearInterval(vibrateInt), 60000);
       }
       
-      console.log('Ringtone started');
+      console.log('Ringtone initialization complete');
     } catch (error) {
       console.error('Error starting ringtone:', error);
     }
@@ -158,9 +194,17 @@ export default function RealtimeVoiceCall({
       clearInterval(ringtoneInterval.current);
       ringtoneInterval.current = null;
     }
-    if (audioContext.current) {
+    if (ringtoneAudio.current) {
+      ringtoneAudio.current.pause();
+      ringtoneAudio.current.currentTime = 0;
+      ringtoneAudio.current = null;
+    }
+    if (audioContext.current && audioContext.current.state !== 'closed') {
       audioContext.current.close();
       audioContext.current = null;
+    }
+    if ('vibrate' in navigator) {
+      navigator.vibrate(0);
     }
   };
 
@@ -511,6 +555,12 @@ export default function RealtimeVoiceCall({
                   variant="destructive"
                   size="lg"
                   className="rounded-full w-20 h-20 animate-pulse shadow-lg shadow-red-500/50"
+                  onTouchStart={() => {
+                    // Ensure ringtone plays on touch
+                    if (ringtoneAudio.current && ringtoneAudio.current.paused) {
+                      ringtoneAudio.current.play().catch(console.error);
+                    }
+                  }}
                 >
                   <PhoneOff className="w-8 h-8" />
                 </Button>
@@ -518,12 +568,18 @@ export default function RealtimeVoiceCall({
                   onClick={answerCall}
                   className="bg-emerald-500 hover:bg-emerald-600 rounded-full w-20 h-20 animate-pulse shadow-lg shadow-emerald-500/50"
                   size="lg"
+                  onTouchStart={() => {
+                    // Ensure audio context is resumed on user interaction
+                    if (audioContext.current && audioContext.current.state === 'suspended') {
+                      audioContext.current.resume();
+                    }
+                  }}
                 >
                   <Phone className="w-8 h-8" />
                 </Button>
               </div>
               <div className="text-center">
-                <p className="text-slate-300 text-sm">Swipe up to answer • Swipe down to decline</p>
+                <p className="text-slate-300 text-sm animate-pulse">📞 Incoming Call - Tap to interact</p>
               </div>
             </div>
           )}
