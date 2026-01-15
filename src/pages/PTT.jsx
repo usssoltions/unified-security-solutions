@@ -101,7 +101,15 @@ export default function PTT() {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1
+        }
+      });
       const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       
       mediaRecorderRef.current = mediaRecorder;
@@ -159,6 +167,8 @@ export default function PTT() {
       await base44.entities.PTTChannel.update(selectedChannel.id, {
         last_message_at: new Date().toISOString()
       });
+      
+      queryClient.invalidateQueries(['ptt-messages', selectedChannel.id]);
 
       queryClient.invalidateQueries(["pttMessages"]);
       queryClient.invalidateQueries(["pttChannels"]);
