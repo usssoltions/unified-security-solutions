@@ -4,12 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Phone, PhoneIncoming, PhoneOutgoing, Users, Clock, Calendar, Search, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Phone, PhoneIncoming, PhoneOutgoing, Users, Clock, Calendar, Search, Loader2, Play, Pause, Download, Filter } from "lucide-react";
 import { format } from "date-fns";
 
 export default function CallHistory() {
   const [currentUser, setCurrentUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [recordingFilter, setRecordingFilter] = useState("all");
+  const [playingAudio, setPlayingAudio] = useState(null);
+  const audioRef = React.useRef(null);
 
   React.useEffect(() => {
     loadUser();
@@ -50,14 +56,58 @@ export default function CallHistory() {
   });
 
   const filteredCalls = callHistory.filter(call => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      call.caller_name?.toLowerCase().includes(query) ||
-      call.receiver_name?.toLowerCase().includes(query) ||
-      call.participants?.some(p => p.user_name?.toLowerCase().includes(query))
-    );
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = (
+        call.caller_name?.toLowerCase().includes(query) ||
+        call.receiver_name?.toLowerCase().includes(query) ||
+        call.participants?.some(p => p.user_name?.toLowerCase().includes(query))
+      );
+      if (!matchesSearch) return false;
+    }
+    
+    // Status filter
+    if (statusFilter !== "all" && call.status !== statusFilter) {
+      return false;
+    }
+    
+    // Recording filter
+    if (recordingFilter === "with_recording" && !call.has_recording) {
+      return false;
+    }
+    if (recordingFilter === "without_recording" && call.has_recording) {
+      return false;
+    }
+    
+    return true;
   });
+
+  const handlePlayRecording = (call) => {
+    if (playingAudio === call.id) {
+      audioRef.current?.pause();
+      setPlayingAudio(null);
+    } else {
+      if (audioRef.current) {
+        audioRef.current.src = call.recording_url;
+        audioRef.current.play();
+        setPlayingAudio(call.id);
+      }
+    }
+  };
+
+  const handleDownloadRecording = (call) => {
+    const a = document.createElement('a');
+    a.href = call.recording_url;
+    a.download = `call_recording_${format(new Date(call.created_date), 'yyyy-MM-dd_HH-mm')}.webm`;
+    a.click();
+  };
+
+  React.useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.onended = () => setPlayingAudio(null);
+    }
+  }, []);
 
   const formatDuration = (seconds) => {
     if (!seconds) return '0s';
@@ -102,16 +152,46 @@ export default function CallHistory() {
             </div>
           </div>
 
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <Input
-              placeholder="Search by name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-slate-800 border-slate-700 text-white"
-            />
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Input
+                placeholder="Search by name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 bg-slate-800 border-slate-700 text-white"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="missed">Missed</SelectItem>
+                  <SelectItem value="declined">Declined</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={recordingFilter} onValueChange={setRecordingFilter}>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                  <SelectValue placeholder="Filter by recording" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Calls</SelectItem>
+                  <SelectItem value="with_recording">With Recording</SelectItem>
+                  <SelectItem value="without_recording">Without Recording</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
+
+        <audio ref={audioRef} className="hidden" />
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -171,7 +251,7 @@ export default function CallHistory() {
                           </div>
                         )}
 
-                        <div className="flex items-center gap-4 text-slate-400 text-sm">
+                        <div className="flex items-center gap-4 text-slate-400 text-sm flex-wrap">
                           <div className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             <span>{formatDuration(call.duration_seconds)}</span>
@@ -186,6 +266,31 @@ export default function CallHistory() {
                             </span>
                           </div>
                         </div>
+
+                        {call.has_recording && call.recording_url && (
+                          <div className="flex items-center gap-2 mt-3">
+                            <Button
+                              onClick={() => handlePlayRecording(call)}
+                              size="sm"
+                              variant="outline"
+                              className="border-sky-500 text-sky-400 hover:bg-sky-500/10"
+                            >
+                              {playingAudio === call.id ? (
+                                <><Pause className="w-3 h-3 mr-1" /> Pause</>
+                              ) : (
+                                <><Play className="w-3 h-3 mr-1" /> Play Recording</>
+                              )}
+                            </Button>
+                            <Button
+                              onClick={() => handleDownloadRecording(call)}
+                              size="sm"
+                              variant="ghost"
+                              className="text-slate-400 hover:text-white"
+                            >
+                              <Download className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

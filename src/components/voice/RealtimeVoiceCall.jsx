@@ -29,6 +29,8 @@ export default function RealtimeVoiceCall({
   const ringtoneInterval = useRef(null);
   const audioContext = useRef(null);
   const ringtoneAudio = useRef(null);
+  const mediaRecorder = useRef(null);
+  const recordedChunks = useRef([]);
 
   const rtcConfig = {
     iceServers: [
@@ -297,10 +299,74 @@ export default function RealtimeVoiceCall({
       }
       
       setCallStatus('connected');
+      
+      // Start recording
+      startRecording();
     } catch (error) {
       console.error('Error answering call:', error);
       setCallStatus('error');
     }
+  };
+
+  const startRecording = () => {
+    try {
+      if (!localStream.current) return;
+      
+      // Create a mixed stream with local audio
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const destination = audioContext.createMediaStreamDestination();
+      
+      // Add local stream
+      const localSource = audioContext.createMediaStreamSource(localStream.current);
+      localSource.connect(destination);
+      
+      // Add remote streams
+      Object.values(remoteAudios.current).forEach(audio => {
+        if (audio.srcObject) {
+          const remoteSource = audioContext.createMediaStreamSource(audio.srcObject);
+          remoteSource.connect(destination);
+        }
+      });
+      
+      mediaRecorder.current = new MediaRecorder(destination.stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      mediaRecorder.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunks.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.current.start(1000); // Collect data every second
+    } catch (error) {
+      console.error('Error starting recording:', error);
+    }
+  };
+
+  const stopRecording = async () => {
+    return new Promise((resolve) => {
+      if (!mediaRecorder.current || mediaRecorder.current.state === 'inactive') {
+        resolve(null);
+        return;
+      }
+      
+      mediaRecorder.current.onstop = async () => {
+        try {
+          const blob = new Blob(recordedChunks.current, { type: 'audio/webm' });
+          const file = new File([blob], `call_${callId.current}.webm`, { type: 'audio/webm' });
+          
+          // Upload recording
+          const { data } = await base44.integrations.Core.UploadFile({ file });
+          resolve(data.file_url);
+        } catch (error) {
+          console.error('Error uploading recording:', error);
+          resolve(null);
+        }
+      };
+      
+      mediaRecorder.current.stop();
+    });
   };
 
   const createPeerConnection = async (participantId) => {
@@ -409,6 +475,9 @@ export default function RealtimeVoiceCall({
             await createPeerConnection(participant.id);
           }
           setCallStatus('connected');
+          
+          // Start recording for caller
+          startRecording();
         }
       } else if (message.type === 'offer' && incomingCallId) {
         if (!peerConnections.current[participantId]) {
@@ -528,8 +597,11 @@ export default function RealtimeVoiceCall({
 
   const endCall = async () => {
     try {
-      // Log call to history
-      await logCallHistory('completed');
+      // Stop and upload recording
+      const recordingUrl = await stopRecording();
+      
+      // Log call to history with recording
+      await logCallHistory('completed', recordingUrl);
       
       // Notify all participants
       for (const participant of callParticipants) {
@@ -547,7 +619,7 @@ export default function RealtimeVoiceCall({
     }
   };
 
-  const logCallHistory = async (status) => {
+  const logCallHistory = async (status, recordingUrl = null) => {
     if (!currentUser || !callStartTime.current) return;
     
     try {
@@ -559,7 +631,9 @@ export default function RealtimeVoiceCall({
         duration_seconds: callDuration,
         status: status,
         started_at: callStartTime.current,
-        ended_at: new Date().toISOString()
+        ended_at: new Date().toISOString(),
+        recording_url: recordingUrl,
+        has_recording: !!recordingUrl
       };
 
       if (isGroupCall) {
