@@ -6,6 +6,7 @@ import AssetManagement from './pages/AssetManagement';
 import ClockInOutReports from './pages/ClockInOutReports';
 import CompletedPatrols from './pages/CompletedPatrols';
 import Configuration from './pages/Configuration';
+import Contacts from './pages/Contacts';
 import ControlRoom from './pages/ControlRoom';
 import DailyReport from './pages/DailyReport';
 import GuardActivity from './pages/GuardActivity';
@@ -26,7 +27,6 @@ import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import Contacts from './pages/Contacts';
 import __Layout from './Layout.jsx';
 
 
@@ -39,6 +39,7 @@ export const PAGES = {
     "ClockInOutReports": ClockInOutReports,
     "CompletedPatrols": CompletedPatrols,
     "Configuration": Configuration,
+    "Contacts": Contacts,
     "ControlRoom": ControlRoom,
     "DailyReport": DailyReport,
     "GuardActivity": GuardActivity,
@@ -59,7 +60,6 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "Contacts": Contacts,
 }
 
 export const pagesConfig = {
