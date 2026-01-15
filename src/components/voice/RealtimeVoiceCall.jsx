@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Users } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Users, Video, VideoOff } from "lucide-react";
 
 export default function RealtimeVoiceCall({ 
   targetUser = null, 
@@ -14,6 +14,7 @@ export default function RealtimeVoiceCall({
   const [callStatus, setCallStatus] = useState(incomingCallId ? 'incoming' : 'initiating');
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [connectedParticipants, setConnectedParticipants] = useState([]);
 
@@ -215,13 +216,13 @@ export default function RealtimeVoiceCall({
       if (!incomingCallId) {
         localStream.current = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 48000,
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
+            sampleRate: { ideal: 48000 },
             channelCount: 1
           },
-          video: false
+          video: isVideoOn
         });
         await initiateOutgoingCall();
       } else {
@@ -269,13 +270,13 @@ export default function RealtimeVoiceCall({
       // Request media access now
       localStream.current = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 48000,
+          echoCancellation: { ideal: true },
+          noiseSuppression: { ideal: true },
+          autoGainControl: { ideal: true },
+          sampleRate: { ideal: 48000 },
           channelCount: 1
         },
-        video: false
+        video: isVideoOn
       });
       
       // Send answer signal
@@ -455,6 +456,42 @@ export default function RealtimeVoiceCall({
     setIsSpeakerOn(!isSpeakerOn);
   };
 
+  const toggleVideo = async () => {
+    if (!localStream.current) return;
+    
+    const videoTrack = localStream.current.getVideoTracks()[0];
+    
+    if (isVideoOn && videoTrack) {
+      // Turn off video
+      videoTrack.stop();
+      localStream.current.removeTrack(videoTrack);
+      setIsVideoOn(false);
+      
+      // Update peer connections
+      Object.values(peerConnections.current).forEach(pc => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) {
+          pc.removeTrack(sender);
+        }
+      });
+    } else {
+      // Turn on video
+      try {
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const newVideoTrack = videoStream.getVideoTracks()[0];
+        localStream.current.addTrack(newVideoTrack);
+        setIsVideoOn(true);
+        
+        // Update peer connections
+        Object.values(peerConnections.current).forEach(pc => {
+          pc.addTrack(newVideoTrack, localStream.current);
+        });
+      } catch (error) {
+        console.error('Error enabling video:', error);
+      }
+    }
+  };
+
   const endCall = async () => {
     try {
       await base44.functions.invoke('rtcSignaling', {
@@ -586,7 +623,7 @@ export default function RealtimeVoiceCall({
           )}
 
           {(callStatus === 'connected' || callStatus === 'calling' || callStatus === 'connecting') && (
-            <div className="flex gap-4 justify-center">
+            <div className="flex gap-3 justify-center">
               <Button
                 onClick={toggleMute}
                 variant={isMuted ? "destructive" : "outline"}
@@ -594,6 +631,15 @@ export default function RealtimeVoiceCall({
                 className="rounded-full w-14 h-14"
               >
                 {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </Button>
+
+              <Button
+                onClick={toggleVideo}
+                variant={isVideoOn ? "default" : "outline"}
+                size="lg"
+                className="rounded-full w-14 h-14"
+              >
+                {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
               </Button>
 
               <Button
