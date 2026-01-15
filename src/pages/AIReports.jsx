@@ -70,13 +70,14 @@ export default function AIReports() {
 
     try {
       // Fetch all relevant data in parallel
-      const [shifts, incidents, maintenance, patrolLogs, locationHistory, stayAwakeLogs] = await Promise.all([
+      const [shifts, incidents, maintenance, patrolLogs, locationHistory, stayAwakeLogs, checklistCompletions] = await Promise.all([
         base44.entities.Shift.list("-start_time", 500),
         base44.entities.Incident.list("-reported_at", 500),
         base44.entities.MaintenanceRequest.list("-reported_at", 500),
         base44.entities.PatrolLog.list("-timestamp", 500),
         base44.entities.LocationTracking.list("-timestamp", 500),
-        base44.entities.StayAwakeLog.list("-alert_time", 500)
+        base44.entities.StayAwakeLog.list("-alert_time", 500),
+        base44.entities.ChecklistCompletion.list("-completed_at", 500)
       ]);
 
       // Filter by date range
@@ -92,6 +93,7 @@ export default function AIReports() {
       const filteredPatrolLogs = filterByDate(patrolLogs, "timestamp");
       const filteredLocationHistory = filterByDate(locationHistory, "timestamp");
       const filteredStayAwakeLogs = filterByDate(stayAwakeLogs, "alert_time");
+      const filteredChecklistCompletions = filterByDate(checklistCompletions, "completed_at");
 
       // Apply entity filter
       if (reportType === "guard" && selectedEntity) {
@@ -101,7 +103,8 @@ export default function AIReports() {
           maintenance: filteredMaintenance.filter(m => m.guard_id === selectedEntity),
           patrolLogs: filteredPatrolLogs.filter(p => p.guard_id === selectedEntity),
           locationHistory: filteredLocationHistory.filter(l => l.guard_id === selectedEntity),
-          stayAwakeLogs: filteredStayAwakeLogs.filter(s => s.guard_id === selectedEntity)
+          stayAwakeLogs: filteredStayAwakeLogs.filter(s => s.guard_id === selectedEntity),
+          checklistCompletions: filteredChecklistCompletions.filter(c => c.guard_id === selectedEntity)
         };
       }
 
@@ -112,7 +115,8 @@ export default function AIReports() {
           maintenance: filteredMaintenance.filter(m => m.site_id === selectedEntity),
           patrolLogs: filteredPatrolLogs.filter(p => p.site_id === selectedEntity),
           locationHistory: filteredLocationHistory,
-          stayAwakeLogs: filteredStayAwakeLogs
+          stayAwakeLogs: filteredStayAwakeLogs,
+          checklistCompletions: filteredChecklistCompletions.filter(c => c.site_id === selectedEntity)
         };
       }
 
@@ -123,7 +127,8 @@ export default function AIReports() {
         maintenance: filteredMaintenance,
         patrolLogs: filteredPatrolLogs,
         locationHistory: filteredLocationHistory,
-        stayAwakeLogs: filteredStayAwakeLogs
+        stayAwakeLogs: filteredStayAwakeLogs,
+        checklistCompletions: filteredChecklistCompletions
       };
     } catch (error) {
       console.error("Failed to fetch report data:", error);
@@ -141,10 +146,37 @@ export default function AIReports() {
     try {
       const data = await fetchReportData();
 
+      // Calculate clock in/out metrics
+      const clockedInShifts = data.shifts.filter(s => s.clock_in?.timestamp);
+      const clockedOutShifts = data.shifts.filter(s => s.clock_out?.timestamp);
+      const onTimeClockIns = clockedInShifts.filter(s => {
+        const clockIn = new Date(s.clock_in.timestamp);
+        const scheduled = new Date(s.start_time);
+        return clockIn <= new Date(scheduled.getTime() + 15 * 60000); // 15 min grace
+      }).length;
+      
+      const avgShiftDuration = clockedOutShifts.reduce((acc, s) => {
+        const duration = (new Date(s.clock_out.timestamp) - new Date(s.clock_in.timestamp)) / 3600000;
+        return acc + duration;
+      }, 0) / (clockedOutShifts.length || 1);
+
+      // Calculate checkpoint metrics
+      const totalCheckpoints = data.checklistCompletions.reduce((acc, c) => 
+        acc + (c.completed_items?.length || 0), 0
+      );
+      const completedCheckpoints = data.checklistCompletions.filter(c => 
+        c.status === "completed"
+      ).length;
+
       // Calculate metrics
       const metrics = {
         totalShifts: data.shifts.length,
         completedShifts: data.shifts.filter(s => s.status === "completed").length,
+        clockedInShifts: clockedInShifts.length,
+        clockedOutShifts: clockedOutShifts.length,
+        onTimeClockIns: onTimeClockIns,
+        onTimeRate: ((onTimeClockIns / clockedInShifts.length) * 100).toFixed(1),
+        avgShiftDuration: avgShiftDuration.toFixed(2),
         totalIncidents: data.incidents.length,
         criticalIncidents: data.incidents.filter(i => i.priority === "critical").length,
         resolvedIncidents: data.incidents.filter(i => i.status === "resolved" || i.status === "closed").length,
@@ -152,6 +184,8 @@ export default function AIReports() {
         completedMaintenance: data.maintenance.filter(m => m.status === "completed").length,
         patrolCheckpoints: data.patrolLogs.length,
         verifiedCheckpoints: data.patrolLogs.filter(p => p.verified).length,
+        checklistsCompleted: completedCheckpoints,
+        totalCheckpointItems: totalCheckpoints,
         stayAwakeAlerts: data.stayAwakeLogs.length,
         missedStayAwake: data.stayAwakeLogs.filter(s => s.status === "missed").length,
         locationDataPoints: data.locationHistory.length
@@ -182,12 +216,29 @@ Period: ${reportPeriod} (${getDateRange().startDate.split('T')[0]} to ${getDateR
 
 METRICS SUMMARY:
 - Total Shifts: ${metrics.totalShifts} (${metrics.completedShifts} completed)
+- Clock In/Out: ${metrics.clockedInShifts} clocked in, ${metrics.clockedOutShifts} clocked out
+- On-Time Clock-Ins: ${metrics.onTimeClockIns} (${metrics.onTimeRate}%)
+- Avg Shift Duration: ${metrics.avgShiftDuration} hours
 - Incidents: ${metrics.totalIncidents} total (${metrics.criticalIncidents} critical, ${metrics.resolvedIncidents} resolved)
 - Maintenance: ${metrics.maintenanceRequests} requests (${metrics.completedMaintenance} completed)
 - Patrol Checkpoints: ${metrics.patrolCheckpoints} scanned (${metrics.verifiedCheckpoints} verified)
+- Tour Stop Checklists: ${metrics.checklistsCompleted} completed (${metrics.totalCheckpointItems} checkpoint items)
 - Stay Awake: ${metrics.stayAwakeAlerts} alerts (${metrics.missedStayAwake} missed responses)
 - Distance Traveled: ${totalDistance.toFixed(2)} km
 - Location Tracking: ${metrics.locationDataPoints} data points
+
+CLOCK IN/OUT DETAILS:
+${data.shifts.filter(s => s.clock_in).map(s => {
+  const clockIn = new Date(s.clock_in.timestamp);
+  const scheduled = new Date(s.start_time);
+  const onTime = clockIn <= new Date(scheduled.getTime() + 15 * 60000);
+  return `- ${s.guard_name}: Clocked in ${clockIn.toLocaleTimeString()} ${onTime ? '(On Time)' : '(Late)'} at ${s.site_name}`;
+}).slice(0, 10).join('\n')}
+
+TOUR STOP CHECKPOINT DETAILS:
+${data.checklistCompletions.map(c => 
+  `- ${c.guard_name} at ${c.checkpoint_id || 'checkpoint'}: ${c.completed_items?.length || 0} items completed, Status: ${c.status}`
+).slice(0, 10).join('\n')}
 
 INCIDENT BREAKDOWN:
 ${data.incidents.map(i => `- ${i.category}: ${i.title} (${i.priority})`).slice(0, 10).join('\n')}
@@ -200,12 +251,14 @@ Generate a professional report including:
 2. Performance Highlights (5-7 key achievements)
 3. Areas of Concern (3-5 issues if any)
 4. Key Performance Indicators (with % comparisons where relevant)
-5. Incident Analysis (trends, patterns, severity breakdown)
-6. Patrol Coverage Assessment
-7. Response Time Analysis
-8. Recommendations for Improvement (5-7 specific actions)
-9. Resource Allocation Insights
-10. Compliance and Safety Notes
+5. Attendance & Punctuality Analysis (clock in/out patterns, on-time rate)
+6. Tour Stop & Checkpoint Coverage (completion rates, patterns)
+7. Incident Analysis (trends, patterns, severity breakdown)
+8. Patrol Coverage Assessment
+9. Response Time Analysis
+10. Recommendations for Improvement (5-7 specific actions)
+11. Resource Allocation Insights
+12. Compliance and Safety Notes
 
 Be specific, data-driven, and professional. Include percentages, trends, and actionable insights.`,
         response_json_schema: {
@@ -224,12 +277,16 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
               type: "object",
               properties: {
                 shift_completion_rate: { type: "string" },
+                on_time_clock_in_rate: { type: "string" },
                 incident_resolution_rate: { type: "string" },
                 maintenance_completion_rate: { type: "string" },
                 checkpoint_verification_rate: { type: "string" },
+                checklist_completion_rate: { type: "string" },
                 stay_awake_response_rate: { type: "string" }
               }
             },
+            attendance_analysis: { type: "string" },
+            checkpoint_analysis: { type: "string" },
             incident_analysis: { type: "string" },
             patrol_assessment: { type: "string" },
             response_time_analysis: { type: "string" },
