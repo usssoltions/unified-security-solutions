@@ -111,17 +111,41 @@ export default function RealtimeVoiceCall({ targetUser, onClose, incomingCallId 
 
     const initiateOutgoingCall = async () => {
         try {
+            setCallStatus('calling');
+            
             // Notify target user
             const { data } = await base44.functions.invoke('rtcSignaling', {
                 action: 'initiate_call',
                 targetUserId: targetUser.id
             });
 
+            if (!data?.callId) {
+                throw new Error('Failed to initiate call');
+            }
+
             callId.current = data.callId;
-            setCallStatus('calling');
+
+            // Wait for ICE gathering
+            await new Promise((resolve) => {
+                if (peerConnection.current.iceGatheringState === 'complete') {
+                    resolve();
+                } else {
+                    const checkState = () => {
+                        if (peerConnection.current.iceGatheringState === 'complete') {
+                            peerConnection.current.removeEventListener('icegatheringstatechange', checkState);
+                            resolve();
+                        }
+                    };
+                    peerConnection.current.addEventListener('icegatheringstatechange', checkState);
+                }
+                // Timeout after 3 seconds
+                setTimeout(resolve, 3000);
+            });
 
             // Create and send offer
-            const offer = await peerConnection.current.createOffer();
+            const offer = await peerConnection.current.createOffer({
+                offerToReceiveAudio: true
+            });
             await peerConnection.current.setLocalDescription(offer);
 
             await base44.functions.invoke('rtcSignaling', {
@@ -142,7 +166,12 @@ export default function RealtimeVoiceCall({ targetUser, onClose, incomingCallId 
     const answerCall = async () => {
         try {
             setCallStatus('connecting');
+            
+            // Start polling immediately to receive offer
             startPolling();
+            
+            // Give some time for offer to arrive
+            await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
             console.error('Error answering call:', error);
             setCallStatus('error');
@@ -150,13 +179,18 @@ export default function RealtimeVoiceCall({ targetUser, onClose, incomingCallId 
     };
 
     const startPolling = () => {
+        // Clear any existing interval
+        if (pollingInterval.current) {
+            clearInterval(pollingInterval.current);
+        }
+        
         pollingInterval.current = setInterval(async () => {
             try {
                 const { data } = await base44.functions.invoke('rtcSignaling', {
                     action: 'poll_messages'
                 });
 
-                if (data.messages && data.messages.length > 0) {
+                if (data?.messages && data.messages.length > 0) {
                     for (const message of data.messages) {
                         await handleSignalingMessage(message);
                     }
@@ -164,14 +198,16 @@ export default function RealtimeVoiceCall({ targetUser, onClose, incomingCallId 
             } catch (error) {
                 console.error('Polling error:', error);
             }
-        }, 500); // Poll every 500ms for low latency
+        }, 300); // Poll every 300ms for faster connection
     };
 
     const handleSignalingMessage = async (message) => {
         try {
             if (message.type === 'offer' && incomingCallId) {
                 // Received offer - create answer
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(message.offer));
+                const offerDesc = new RTCSessionDescription(message.offer);
+                await peerConnection.current.setRemoteDescription(offerDesc);
+                
                 const answer = await peerConnection.current.createAnswer();
                 await peerConnection.current.setLocalDescription(answer);
 
@@ -183,15 +219,28 @@ export default function RealtimeVoiceCall({ targetUser, onClose, incomingCallId 
                 });
             } else if (message.type === 'answer' && !incomingCallId) {
                 // Received answer
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(message.answer));
+                if (peerConnection.current.signalingState !== 'stable') {
+                    const answerDesc = new RTCSessionDescription(message.answer);
+                    await peerConnection.current.setRemoteDescription(answerDesc);
+                }
             } else if (message.type === 'candidate') {
                 // Received ICE candidate
-                await peerConnection.current.addIceCandidate(new RTCIceCandidate(message.candidate));
+                if (message.candidate && peerConnection.current.remoteDescription) {
+                    try {
+                        await peerConnection.current.addIceCandidate(new RTCIceCandidate(message.candidate));
+                    } catch (e) {
+                        console.warn('Error adding ICE candidate:', e);
+                    }
+                }
             } else if (message.type === 'call_ended') {
                 endCall();
             }
         } catch (error) {
             console.error('Error handling signaling message:', error);
+            if (error.message.includes('InvalidStateError')) {
+                console.log('Retrying after state error...');
+                setTimeout(() => handleSignalingMessage(message), 500);
+            }
         }
     };
 

@@ -1,8 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
-// In-memory storage for signaling messages (in production, use a proper database)
+// In-memory storage with longer retention
 const signalingMessages = new Map();
 const activeConnections = new Map();
+
+// Cleanup old messages every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [userId, messages] of signalingMessages.entries()) {
+        signalingMessages.set(
+            userId,
+            messages.filter(msg => now - msg.timestamp < 300000) // 5 minutes
+        );
+    }
+}, 300000);
 
 Deno.serve(async (req) => {
     try {

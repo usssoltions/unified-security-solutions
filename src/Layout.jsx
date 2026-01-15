@@ -28,6 +28,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
 import PWAInstaller from "@/components/PWAInstaller";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
@@ -243,6 +244,7 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <ErrorBoundary>
+      <ServiceWorkerRegistration />
       <PWAInstaller />
       <IncidentEscalationMonitor user={user} />
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
