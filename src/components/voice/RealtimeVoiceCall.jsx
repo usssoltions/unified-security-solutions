@@ -32,6 +32,7 @@ export default function RealtimeVoiceCall({
   const ringtoneInterval = useRef(null);
   const audioContext = useRef(null);
   const ringtoneAudio = useRef(null);
+  const ringbackAudioRef = useRef(null);
   const mediaRecorder = useRef(null);
   const recordedChunks = useRef([]);
 
@@ -509,9 +510,10 @@ export default function RealtimeVoiceCall({
     // Monitor connection state with auto-reconnect
     pc.onconnectionstatechange = () => {
       console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
-      
+
       if (pc.connectionState === 'connected') {
         console.log('✓✓✓ Call CONNECTED successfully with', participantId);
+        stopRingbackTone();
         setConnectedParticipants(prev => 
           prev.includes(participantId) ? prev : [...prev, participantId]
         );
@@ -522,19 +524,32 @@ export default function RealtimeVoiceCall({
         if (callStatus === 'connected') {
           attemptReconnect(participantId);
         } else {
+          stopRingbackTone();
           setCallStatus('failed');
         }
       } else if (pc.connectionState === 'disconnected') {
         console.warn('Connection disconnected with', participantId);
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
-        
-        // Try to reconnect if call was active
-        if (callStatus === 'connected') {
+
+        // If all participants disconnected, end the call
+        if (connectedParticipants.length === 1 && connectedParticipants[0] === participantId) {
+          console.log('Last participant disconnected, ending call');
+          endCall();
+        } else if (callStatus === 'connected') {
+          // Try to reconnect if call was active and other participants still connected
           setTimeout(() => {
             if (pc.connectionState === 'disconnected') {
               attemptReconnect(participantId);
             }
           }, 3000);
+        }
+      } else if (pc.connectionState === 'closed') {
+        console.log('Connection closed with', participantId);
+        setConnectedParticipants(prev => prev.filter(id => id !== participantId));
+
+        // If this was the only connection, end the call
+        if (connectedParticipants.length <= 1) {
+          endCall();
         }
       }
     };
