@@ -284,19 +284,18 @@ export default function Layout({ children, currentPageName }) {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="relative text-slate-300"
+              <button 
+                className="relative text-slate-300 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-800"
                 onClick={() => setShowNotifications(true)}
+                aria-label="Notifications"
               >
                 <Bell className="w-5 h-5" />
                 {notificationCount > 0 && (
-                  <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-rose-500 text-white text-xs">
+                  <span className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center bg-rose-500 text-white text-xs font-bold rounded-full">
                     {notificationCount > 9 ? '9+' : notificationCount}
-                  </Badge>
+                  </span>
                 )}
-              </Button>
+              </button>
               
               <div className="hidden md:flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-lg">
                 <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center">

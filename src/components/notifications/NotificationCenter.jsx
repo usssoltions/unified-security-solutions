@@ -110,37 +110,37 @@ export default function NotificationCenter({ user, onClose }) {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-slate-800 border-slate-700">
-        <CardHeader className="border-b border-slate-700 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CardTitle className="text-white">Notifications</CardTitle>
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-2 sm:p-4">
+      <Card className="w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col bg-slate-800 border-slate-700">
+        <CardHeader className="border-b border-slate-700 flex-shrink-0 p-3 sm:p-4 lg:p-6">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              <CardTitle className="text-white text-base sm:text-lg lg:text-xl">Notifications</CardTitle>
               {unreadCount > 0 && (
-                <Badge className="bg-rose-500">{unreadCount} new</Badge>
+                <Badge className="bg-rose-500 text-xs sm:text-sm flex-shrink-0">{unreadCount} new</Badge>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate(createPageUrl("NotificationPreferences"))}
-                className="text-slate-400"
+                className="text-slate-400 h-8 w-8 sm:h-9 sm:w-9 p-0"
               >
-                <Settings className="w-4 h-4" />
+                <Settings className="w-3 h-3 sm:w-4 sm:h-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X className="w-5 h-5 text-slate-400" />
+              <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 sm:h-9 sm:w-9">
+                <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
               </Button>
             </div>
           </div>
 
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-1 sm:gap-2 mt-3 sm:mt-4 flex-wrap">
             <Button
               variant={filter === "all" ? "default" : "outline"}
               size="sm"
               onClick={() => setFilter("all")}
-              className={filter === "all" ? "bg-sky-600" : "border-slate-600"}
+              className={`text-xs sm:text-sm ${filter === "all" ? "bg-sky-600" : "border-slate-600"}`}
             >
               All
             </Button>
@@ -148,7 +148,7 @@ export default function NotificationCenter({ user, onClose }) {
               variant={filter === "unread" ? "default" : "outline"}
               size="sm"
               onClick={() => setFilter("unread")}
-              className={filter === "unread" ? "bg-sky-600" : "border-slate-600"}
+              className={`text-xs sm:text-sm ${filter === "unread" ? "bg-sky-600" : "border-slate-600"}`}
             >
               Unread ({unreadCount})
             </Button>
@@ -156,7 +156,7 @@ export default function NotificationCenter({ user, onClose }) {
               variant={filter === "read" ? "default" : "outline"}
               size="sm"
               onClick={() => setFilter("read")}
-              className={filter === "read" ? "bg-sky-600" : "border-slate-600"}
+              className={`text-xs sm:text-sm ${filter === "read" ? "bg-sky-600" : "border-slate-600"}`}
             >
               Read
             </Button>
@@ -166,16 +166,17 @@ export default function NotificationCenter({ user, onClose }) {
                 size="sm"
                 onClick={() => markAllReadMutation.mutate()}
                 disabled={markAllReadMutation.isPending}
-                className="ml-auto border-slate-600"
+                className="ml-auto border-slate-600 text-xs sm:text-sm"
               >
-                <Check className="w-4 h-4 mr-2" />
-                Mark All Read
+                <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Mark All Read</span>
+                <span className="sm:hidden">All Read</span>
               </Button>
             )}
           </div>
         </CardHeader>
 
-        <CardContent className="flex-1 overflow-y-auto p-4 space-y-2">
+        <CardContent className="flex-1 overflow-y-auto p-2 sm:p-3 lg:p-4 space-y-2">
           {filteredNotifications.length === 0 ? (
             <div className="text-center py-12">
               <Shield className="w-16 h-16 text-slate-600 mx-auto mb-4" />
@@ -187,35 +188,35 @@ export default function NotificationCenter({ user, onClose }) {
               return (
                 <div
                   key={notification.id}
-                  className={`p-4 rounded-lg border transition-all cursor-pointer group ${
+                  className={`p-3 sm:p-4 rounded-lg border transition-all cursor-pointer group ${
                     notification.read
                       ? "bg-slate-900/30 border-slate-700/50"
                       : "bg-sky-500/5 border-sky-500/30 hover:bg-sky-500/10"
                   }`}
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getPriorityColor(notification.priority)}`}>
-                      <Icon className="w-5 h-5" />
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getPriorityColor(notification.priority)}`}>
+                      <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-1">
-                        <h4 className="font-semibold text-white text-sm">
+                        <h4 className="font-semibold text-white text-xs sm:text-sm line-clamp-2">
                           {notification.title}
                         </h4>
                         {!notification.read && (
                           <div className="w-2 h-2 rounded-full bg-sky-500 flex-shrink-0 mt-1" />
                         )}
                       </div>
-                      <p className="text-sm text-slate-400 mb-2">
+                      <p className="text-xs sm:text-sm text-slate-400 mb-2 line-clamp-2">
                         {notification.message}
                       </p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-500 truncate">
                           {new Date(notification.created_date).toLocaleString()}
                         </span>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 sm:group-hover:opacity-100 active:opacity-100 transition-opacity flex-shrink-0">
                           {!notification.read && (
                             <Button
                               variant="ghost"
@@ -224,7 +225,7 @@ export default function NotificationCenter({ user, onClose }) {
                                 e.stopPropagation();
                                 markReadMutation.mutate(notification.id);
                               }}
-                              className="h-7 px-2 text-xs"
+                              className="h-6 w-6 sm:h-7 sm:w-7 p-0"
                             >
                               <Check className="w-3 h-3" />
                             </Button>
@@ -236,7 +237,7 @@ export default function NotificationCenter({ user, onClose }) {
                               e.stopPropagation();
                               deleteMutation.mutate(notification.id);
                             }}
-                            className="h-7 px-2 text-xs text-rose-400"
+                            className="h-6 w-6 sm:h-7 sm:w-7 p-0 text-rose-400"
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>
