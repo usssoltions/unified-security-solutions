@@ -337,8 +337,8 @@ export default function Layout({ children, currentPageName }) {
           )}
         </header>
 
-        <div className="flex">
-          <aside className="hidden lg:flex flex-col w-64 bg-slate-900/60 backdrop-blur-lg border-r border-slate-700/50 min-h-screen">
+        <div className="flex flex-col lg:flex-row">
+          <aside className="hidden lg:flex flex-col w-full lg:w-64 bg-slate-900/60 backdrop-blur-lg lg:border-r border-slate-700/50 min-h-screen flex-shrink-0">
             <nav className="flex-1 p-4 space-y-2">
               {navigationItems.map((item) => (
                 <Link
@@ -368,7 +368,7 @@ export default function Layout({ children, currentPageName }) {
             )}
           </aside>
 
-          <main className="flex-1 min-h-screen">
+          <main className="flex-1 min-h-screen w-full overflow-x-hidden">
             {children}
           </main>
         </div>
