@@ -522,13 +522,17 @@ export default function RealtimeVoiceCall({
       if (message.type === 'call_answered') {
         console.log('Call answered by', participantId);
         stopRingtone();
-        if (callStatus === 'calling') {
-          console.log('Creating peer connections after answer');
-          setCallStatus('connecting');
-          for (const participant of callParticipants) {
-            await createPeerConnection(participant.id);
+        setCallStatus('connecting');
+        
+        // Create peer connection and send offer to the participant who answered
+        if (!peerConnections.current[participantId]) {
+          console.log('Creating peer connection and sending offer to', participantId);
+          await createPeerConnection(participantId);
+          
+          // Start recording on first answer
+          if (Object.keys(peerConnections.current).length === 1) {
+            startRecording();
           }
-          startRecording();
         }
       } else if (message.type === 'offer') {
         console.log('Received offer from', participantId, 'localStream ready:', !!localStream.current);
