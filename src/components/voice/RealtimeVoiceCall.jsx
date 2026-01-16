@@ -328,11 +328,20 @@ export default function RealtimeVoiceCall({
       
       mediaRecorder.current.onstop = async () => {
         try {
-          const blob = new Blob(recordedChunks.current, { type: 'audio/webm' });
-          const file = new File([blob], `call_${callId.current}.webm`, { type: 'audio/webm' });
+          if (recordedChunks.current.length === 0) {
+            console.log('No recording data available');
+            resolve(null);
+            return;
+          }
           
-          // Upload recording
+          const blob = new Blob(recordedChunks.current, { type: 'audio/webm' });
+          const file = new File([blob], `call_${callId.current}_${Date.now()}.webm`, { type: 'audio/webm' });
+          
+          console.log('Uploading recording, size:', blob.size, 'bytes');
+          
+          // Upload recording to cloud storage via Base44
           const { data } = await base44.integrations.Core.UploadFile({ file });
+          console.log('Recording uploaded successfully:', data.file_url);
           resolve(data.file_url);
         } catch (error) {
           console.error('Error uploading recording:', error);

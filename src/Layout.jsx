@@ -208,6 +208,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
+        { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin }
@@ -220,6 +221,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
+        { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
         { title: "Clock In/Out", url: createPageUrl("ClockInOutReports"), icon: Clock },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
