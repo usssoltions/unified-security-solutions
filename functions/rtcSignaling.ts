@@ -84,6 +84,20 @@ Deno.serve(async (req) => {
 
                 return Response.json({ success: true });
 
+            case 'call_answered':
+                // Notify caller that recipient answered
+                if (!signalingMessages.has(targetUserId)) {
+                    signalingMessages.set(targetUserId, []);
+                }
+                signalingMessages.get(targetUserId).push({
+                    type: 'call_answered',
+                    from: user.id,
+                    callId,
+                    timestamp: Date.now()
+                });
+
+                return Response.json({ success: true });
+
             case 'send_candidate':
                 // Store ICE candidate
                 if (!signalingMessages.has(targetUserId)) {
