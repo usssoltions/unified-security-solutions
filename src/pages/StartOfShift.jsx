@@ -84,6 +84,10 @@ export default function StartOfShift() {
     }
 
     setSubmitting(true);
+    
+    // Add delay to prevent rate limiting
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     try {
       const reportData = {
         title: `Start of Shift Report - ${new Date().toLocaleDateString()}`,
