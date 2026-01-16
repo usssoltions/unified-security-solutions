@@ -121,7 +121,7 @@ export default function ClockInOut({ user, location }) {
     onSuccess: () => {
       queryClient.invalidateQueries();
       // Redirect to start of shift report immediately after clock in
-      window.location.href = '/start-of-shift';
+      window.location.href = '/StartOfShift';
     },
     onError: (error) => {
       setPinError(error.message);
