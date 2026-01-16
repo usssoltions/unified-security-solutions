@@ -59,7 +59,6 @@ export default function Contacts() {
     queryKey: ["allUsers"],
     queryFn: async () => {
       try {
-        // Use backend function to get all users (works for guards)
         const { data } = await base44.functions.invoke('getAllUsers');
         return data.users || [];
       } catch (error) {
@@ -67,7 +66,11 @@ export default function Contacts() {
         return [];
       }
     },
-    enabled: !!currentUser
+    enabled: !!currentUser,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 30000,
+    cacheTime: 60000
   });
 
   // Initialize ringtone
@@ -112,12 +115,12 @@ export default function Contacts() {
             }
           });
           
-          await base44.entities.Notification.update(callNotification.id, { read: true });
+          await base44.entities.Notification.update(callNotification.id, { read: true }).catch(() => {});
         }
       } catch (error) {
-        // Silent fail
+        // Silent fail - non-critical background polling
       }
-    }, 1000); // Check every second
+    }, 2000); // Check every 2 seconds (reduced frequency)
 
     return () => clearInterval(checkIncomingCalls);
   }, [currentUser]);
@@ -150,6 +153,8 @@ export default function Contacts() {
           // Clear URL parameter
           window.history.replaceState({}, document.title, window.location.pathname);
         }
+      }).catch(() => {
+        // Silent fail - couldn't fetch call details
       });
     }
   }, [currentUser]);
