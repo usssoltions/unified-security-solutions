@@ -570,16 +570,20 @@ export default function RealtimeVoiceCall({
           // Start recording for caller (status will be set to 'connected' by peer connection handler)
           startRecording();
         }
-      } else if (message.type === 'offer' && incomingCallId) {
+      } else if (message.type === 'offer') {
+        console.log('Received offer from', participantId);
         if (!peerConnections.current[participantId]) {
           const pc = new RTCPeerConnection(rtcConfig);
           peerConnections.current[participantId] = pc;
 
-          localStream.current.getTracks().forEach(track => {
-            pc.addTrack(track, localStream.current);
-          });
+          if (localStream.current) {
+            localStream.current.getTracks().forEach(track => {
+              pc.addTrack(track, localStream.current);
+            });
+          }
 
           pc.ontrack = (event) => {
+            console.log('Received remote track from', participantId);
             const audio = new Audio();
             audio.srcObject = event.streams[0];
             audio.autoplay = true;
@@ -592,12 +596,32 @@ export default function RealtimeVoiceCall({
 
           pc.onicecandidate = async (event) => {
             if (event.candidate) {
-              await base44.functions.invoke('rtcSignaling', {
-                action: 'send_candidate',
-                targetUserId: participantId,
-                candidate: event.candidate,
-                callId: callId.current
-              });
+              try {
+                await base44.functions.invoke('rtcSignaling', {
+                  action: 'send_candidate',
+                  targetUserId: participantId,
+                  candidate: event.candidate,
+                  callId: callId.current
+                });
+              } catch (error) {
+                console.error('Failed to send ICE candidate:', error);
+              }
+            }
+          };
+
+          pc.onconnectionstatechange = () => {
+            console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
+            if (pc.connectionState === 'connected') {
+              setConnectedParticipants(prev => 
+                prev.includes(participantId) ? prev : [...prev, participantId]
+              );
+              setCallStatus('connected');
+            } else if (pc.connectionState === 'failed') {
+              console.error('Connection failed');
+              if (pc.restartIce) {
+                console.log('Attempting ICE restart...');
+                pc.restartIce();
+              }
             }
           };
 
@@ -605,6 +629,7 @@ export default function RealtimeVoiceCall({
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
 
+          console.log('Sending answer to', participantId);
           await base44.functions.invoke('rtcSignaling', {
             action: 'send_answer',
             targetUserId: participantId,
@@ -613,17 +638,20 @@ export default function RealtimeVoiceCall({
           });
         }
       } else if (message.type === 'answer') {
+        console.log('Received answer from', participantId);
         const pc = peerConnections.current[participantId];
         if (pc && pc.signalingState !== 'stable') {
           await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
+          console.log('Answer applied, connection should establish');
         }
       } else if (message.type === 'candidate') {
         const pc = peerConnections.current[participantId];
         if (pc && message.candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+            console.log('ICE candidate added for', participantId);
           } catch (e) {
-            console.warn('ICE candidate error:', e);
+            console.error('ICE candidate error:', e);
           }
         }
       } else if (message.type === 'call_ended') {
