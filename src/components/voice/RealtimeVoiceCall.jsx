@@ -183,15 +183,14 @@ export default function RealtimeVoiceCall({
         };
         
         playRingPattern();
-        ringtoneInterval.current = setInterval(playRingPattern, 2000);
-      };
-      
-      // If Audio element didn't play, use Web Audio API
-      setTimeout(() => {
+        };
+
+        // If Audio element didn't play, use Web Audio API
+        setTimeout(() => {
         if (ringtoneAudio.current && ringtoneAudio.current.paused) {
           playWebAudioRingtone();
         }
-      }, 100);
+        }, 100);
       
       // Vibration
       if ('vibrate' in navigator) {
@@ -199,8 +198,10 @@ export default function RealtimeVoiceCall({
           navigator.vibrate([400, 200, 400, 200, 400]);
         };
         vibratePattern();
-        const vibrateInt = setInterval(vibratePattern, 2000);
-        setTimeout(() => clearInterval(vibrateInt), 60000);
+        ringtoneInterval.current = setInterval(() => {
+          vibratePattern();
+          playRingPattern();
+        }, 2000);
       }
       
       console.log('Ringtone initialization complete');
@@ -542,6 +543,7 @@ export default function RealtimeVoiceCall({
       const participantId = message.from;
 
       if (message.type === 'call_answered') {
+        stopRingtone();
         // Recipient has answered - now create peer connections
         if (callStatus === 'calling') {
           setCallStatus('connecting');
@@ -610,8 +612,9 @@ export default function RealtimeVoiceCall({
           }
         }
       } else if (message.type === 'call_ended') {
-      cleanup();
-      onClose();
+        stopRingtone();
+        cleanup();
+        onClose();
       }
     } catch (error) {
       console.error('Error handling signaling:', error);
