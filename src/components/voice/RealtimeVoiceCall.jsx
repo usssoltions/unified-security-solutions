@@ -413,26 +413,30 @@ export default function RealtimeVoiceCall({
   };
 
   const createPeerConnection = async (participantId) => {
-    console.log('Creating peer connection for', participantId);
+    console.log('Creating peer connection for', participantId, 'localStream ready:', !!localStream.current);
+    
+    if (!localStream.current) {
+      console.error('Cannot create peer connection without local stream!');
+      setCallStatus('error');
+      return;
+    }
+
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnections.current[participantId] = pc;
 
-    // Add local stream
-    if (localStream.current) {
-      localStream.current.getTracks().forEach(track => {
-        console.log('Adding local track:', track.kind);
-        pc.addTrack(track, localStream.current);
-      });
-    } else {
-      console.error('No local stream available!');
-    }
+    // Add local stream tracks
+    localStream.current.getTracks().forEach(track => {
+      console.log('Adding local track to peer connection:', track.kind, track.enabled);
+      pc.addTrack(track, localStream.current);
+    });
 
-    // Handle incoming tracks
+    // Handle incoming remote tracks
     pc.ontrack = (event) => {
-      console.log('Received remote track from', participantId);
+      console.log('✓ Received remote track from', participantId);
       const audio = new Audio();
       audio.srcObject = event.streams[0];
       audio.autoplay = true;
+      audio.volume = 1.0;
       remoteAudios.current[participantId] = audio;
       
       setConnectedParticipants(prev => 
@@ -440,7 +444,7 @@ export default function RealtimeVoiceCall({
       );
     };
 
-    // Handle ICE candidates
+    // Send ICE candidates as they're discovered
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
         console.log('Sending ICE candidate to', participantId);
@@ -457,55 +461,47 @@ export default function RealtimeVoiceCall({
       }
     };
 
+    // Monitor connection state
     pc.onconnectionstatechange = () => {
       console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
+      
       if (pc.connectionState === 'connected') {
+        console.log('✓✓✓ Call connected successfully with', participantId);
         setConnectedParticipants(prev => 
           prev.includes(participantId) ? prev : [...prev, participantId]
         );
         setCallStatus('connected');
       } else if (pc.connectionState === 'failed') {
-        console.error('Connection failed, attempting ICE restart...');
-        if (pc.restartIce) {
-          pc.restartIce();
-        } else {
-          setCallStatus('error');
-        }
+        console.error('✗✗✗ Connection failed with', participantId);
+        setCallStatus('error');
       } else if (pc.connectionState === 'disconnected') {
-        console.log('Connection disconnected for', participantId);
-        setConnectedParticipants(prev => prev.filter(id => id !== participantId));
-      } else if (pc.connectionState === 'closed') {
+        console.warn('Connection disconnected with', participantId);
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
       }
     };
 
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE state for ${participantId}: ${pc.iceConnectionState}`);
-      if (pc.iceConnectionState === 'failed') {
-        console.error('ICE connection failed');
-        if (pc.restartIce) {
-          pc.restartIce();
-        }
-      }
     };
 
     // Create and send offer
     try {
       const offer = await pc.createOffer({ 
         offerToReceiveAudio: true,
-        offerToReceiveVideo: false
+        offerToReceiveVideo: isVideoOn
       });
       await pc.setLocalDescription(offer);
 
-      console.log('Sending offer to', participantId);
+      console.log('Sending offer to', participantId, 'callId:', callId.current);
       await base44.functions.invoke('rtcSignaling', {
         action: 'send_offer',
         targetUserId: participantId,
         offer: offer,
         callId: callId.current
       });
+      console.log('✓ Offer sent successfully');
     } catch (error) {
-      console.error('Error creating/sending offer:', error);
+      console.error('✗ Error creating/sending offer:', error);
       setCallStatus('error');
     }
   };
@@ -537,39 +533,43 @@ export default function RealtimeVoiceCall({
   const handleSignalingMessage = async (message) => {
     try {
       const participantId = message.from;
-      console.log('Handling signaling message:', message.type, 'from', participantId);
+      console.log('Handling signaling message:', message.type, 'from', participantId, 'callStatus:', callStatus);
 
       if (message.type === 'call_answered') {
         console.log('Call answered by', participantId);
         stopRingtone();
-        // Recipient has answered - now create peer connections
         if (callStatus === 'calling') {
           console.log('Creating peer connections after answer');
           setCallStatus('connecting');
           for (const participant of callParticipants) {
             await createPeerConnection(participant.id);
           }
-
-          // Start recording for caller (status will be set to 'connected' by peer connection handler)
           startRecording();
         }
       } else if (message.type === 'offer') {
-        console.log('Received offer from', participantId);
+        console.log('Received offer from', participantId, 'localStream ready:', !!localStream.current);
+        
+        // Only process offer if we have answered and have media
+        if (!localStream.current) {
+          console.warn('Received offer but no local stream yet, ignoring');
+          return;
+        }
+
         if (!peerConnections.current[participantId]) {
           const pc = new RTCPeerConnection(rtcConfig);
           peerConnections.current[participantId] = pc;
 
-          if (localStream.current) {
-            localStream.current.getTracks().forEach(track => {
-              pc.addTrack(track, localStream.current);
-            });
-          }
+          localStream.current.getTracks().forEach(track => {
+            console.log('Adding track to peer connection:', track.kind);
+            pc.addTrack(track, localStream.current);
+          });
 
           pc.ontrack = (event) => {
             console.log('Received remote track from', participantId);
             const audio = new Audio();
             audio.srcObject = event.streams[0];
             audio.autoplay = true;
+            audio.volume = 1.0;
             remoteAudios.current[participantId] = audio;
             
             setConnectedParticipants(prev => 
@@ -579,6 +579,7 @@ export default function RealtimeVoiceCall({
 
           pc.onicecandidate = async (event) => {
             if (event.candidate) {
+              console.log('Sending ICE candidate to', participantId);
               try {
                 await base44.functions.invoke('rtcSignaling', {
                   action: 'send_candidate',
@@ -595,55 +596,74 @@ export default function RealtimeVoiceCall({
           pc.onconnectionstatechange = () => {
             console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
             if (pc.connectionState === 'connected') {
+              console.log('✓ Call connected successfully');
               setConnectedParticipants(prev => 
                 prev.includes(participantId) ? prev : [...prev, participantId]
               );
               setCallStatus('connected');
             } else if (pc.connectionState === 'failed') {
-              console.error('Connection failed');
-              if (pc.restartIce) {
-                console.log('Attempting ICE restart...');
-                pc.restartIce();
-              }
+              console.error('✗ Connection failed');
+              setCallStatus('error');
+            } else if (pc.connectionState === 'disconnected') {
+              console.warn('Connection disconnected');
             }
           };
 
-          await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
+          pc.oniceconnectionstatechange = () => {
+            console.log(`ICE state for ${participantId}: ${pc.iceConnectionState}`);
+          };
 
-          console.log('Sending answer to', participantId);
-          await base44.functions.invoke('rtcSignaling', {
-            action: 'send_answer',
-            targetUserId: participantId,
-            answer: answer,
-            callId: callId.current
-          });
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            console.log('Sending answer to', participantId);
+            await base44.functions.invoke('rtcSignaling', {
+              action: 'send_answer',
+              targetUserId: participantId,
+              answer: answer,
+              callId: callId.current
+            });
+          } catch (error) {
+            console.error('Error processing offer:', error);
+            setCallStatus('error');
+          }
         }
       } else if (message.type === 'answer') {
         console.log('Received answer from', participantId);
         const pc = peerConnections.current[participantId];
-        if (pc && pc.signalingState !== 'stable') {
-          await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
-          console.log('Answer applied, connection should establish');
+        if (pc) {
+          if (pc.signalingState !== 'stable') {
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
+              console.log('✓ Answer applied successfully');
+            } catch (error) {
+              console.error('Error applying answer:', error);
+            }
+          } else {
+            console.warn('Ignoring answer, connection already stable');
+          }
         }
       } else if (message.type === 'candidate') {
         const pc = peerConnections.current[participantId];
         if (pc && message.candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-            console.log('ICE candidate added for', participantId);
+            console.log('✓ ICE candidate added for', participantId);
           } catch (e) {
-            console.error('ICE candidate error:', e);
+            console.error('✗ ICE candidate error:', e);
           }
         }
       } else if (message.type === 'call_ended') {
+        console.log('Call ended by remote party');
         stopRingtone();
         cleanup();
         onClose();
       }
     } catch (error) {
       console.error('Error handling signaling:', error);
+      setCallStatus('error');
     }
   };
 
