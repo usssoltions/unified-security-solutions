@@ -79,17 +79,6 @@ export default function Contacts() {
           const callNotification = notifications[0];
           const callerName = callNotification.message.replace(' is calling you', '');
           
-          // Show browser notification if in background
-          if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification('Incoming Call', {
-              body: `${callerName} is calling you`,
-              icon: '/icon-192.png',
-              tag: 'incoming-call',
-              requireInteraction: true,
-              vibrate: [300, 200, 300, 200, 300, 200, 300]
-            });
-          }
-          
           setIncomingCall({
             callId: callNotification.related_id,
             caller: { 
@@ -107,6 +96,38 @@ export default function Contacts() {
     }, 2000);
 
     return () => clearInterval(checkIncomingCalls);
+  }, [currentUser]);
+
+  // Handle incoming call from push notification (when app was closed)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const incomingCallId = urlParams.get('incoming_call');
+    
+    if (incomingCallId && currentUser) {
+      // Fetch call details from notifications
+      base44.entities.Notification.filter({
+        recipient_id: currentUser.id,
+        related_id: incomingCallId,
+        related_entity: 'voice_call'
+      }).then(notifications => {
+        if (notifications.length > 0) {
+          const callNotification = notifications[0];
+          const callerName = callNotification.message.replace(' is calling you', '');
+          
+          setIncomingCall({
+            callId: incomingCallId,
+            caller: {
+              id: incomingCallId.split('_')[2],
+              full_name: callerName,
+              badge_number: callerName
+            }
+          });
+          
+          // Clear URL parameter
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      });
+    }
   }, [currentUser]);
 
   const filteredUsers = allUsers

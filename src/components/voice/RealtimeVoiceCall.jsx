@@ -224,6 +224,16 @@ export default function RealtimeVoiceCall({
       }
 
       startPolling();
+      
+      // Set timeout for no answer (60 seconds)
+      setTimeout(() => {
+        if (callStatus === 'calling' && Object.keys(peerConnections.current).length === 0) {
+          console.log('Call timeout - no answer');
+          setCallStatus('error');
+          cleanup();
+          onClose();
+        }
+      }, 60000);
     } catch (error) {
       console.error('Error initiating call:', error);
       setCallStatus('error');
@@ -428,6 +438,16 @@ export default function RealtimeVoiceCall({
           prev.includes(participantId) ? prev : [...prev, participantId]
         );
         setCallStatus('connected');
+      } else if (pc.connectionState === 'failed') {
+        console.error('Connection failed with', participantId);
+        // Only set error if this is the only/last participant
+        if (callParticipants.length === 1 || Object.keys(peerConnections.current).length === 1) {
+          setTimeout(() => {
+            if (callStatus !== 'connected') {
+              setCallStatus('error');
+            }
+          }, 5000); // Wait 5 seconds before failing
+        }
       } else if (pc.connectionState === 'disconnected') {
         console.warn('Connection disconnected with', participantId);
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
