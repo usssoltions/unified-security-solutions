@@ -36,8 +36,11 @@ export default function RealtimeVoiceCall({
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
-    ]
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' }
+    ],
+    iceCandidatePoolSize: 10
   };
 
   const callParticipants = isGroupCall ? participants : [targetUser];
@@ -242,8 +245,15 @@ export default function RealtimeVoiceCall({
           });
         } catch (mediaError) {
           console.error('Media access error:', mediaError);
-          alert('Please allow microphone access to make calls');
-          setCallStatus('error');
+          if (mediaError.name === 'NotAllowedError') {
+            alert('Microphone access denied. Please allow microphone permissions in your browser settings.');
+          } else if (mediaError.name === 'NotFoundError') {
+            alert('No microphone found. Please connect a microphone and try again.');
+          } else {
+            alert('Unable to access microphone: ' + mediaError.message);
+          }
+          cleanup();
+          onClose();
           return;
         }
         await initiateOutgoingCall();
@@ -306,8 +316,15 @@ export default function RealtimeVoiceCall({
         });
       } catch (mediaError) {
         console.error('Media access error:', mediaError);
-        alert('Please allow microphone access to answer calls');
-        setCallStatus('error');
+        if (mediaError.name === 'NotAllowedError') {
+          alert('Microphone access denied. Please allow microphone permissions in your browser settings.');
+        } else if (mediaError.name === 'NotFoundError') {
+          alert('No microphone found. Please connect a microphone and try again.');
+        } else {
+          alert('Unable to access microphone: ' + mediaError.message);
+        }
+        cleanup();
+        onClose();
         return;
       }
       
@@ -415,25 +432,49 @@ export default function RealtimeVoiceCall({
     // Handle ICE candidates
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
-        await base44.functions.invoke('rtcSignaling', {
-          action: 'send_candidate',
-          targetUserId: participantId,
-          candidate: event.candidate,
-          callId: callId.current
-        });
+        try {
+          await base44.functions.invoke('rtcSignaling', {
+            action: 'send_candidate',
+            targetUserId: participantId,
+            candidate: event.candidate,
+            callId: callId.current
+          });
+        } catch (error) {
+          console.error('Failed to send ICE candidate:', error);
+        }
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
+      if (pc.connectionState === 'connected') {
+        setCallStatus('connected');
+      } else if (pc.connectionState === 'failed') {
+        console.error('Connection failed');
+        setCallStatus('error');
       }
     };
 
     // Handle connection state
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
+      console.log(`Connection state for ${participantId}: ${state}`);
+
       if (state === 'connected') {
         setConnectedParticipants(prev => 
           prev.includes(participantId) ? prev : [...prev, participantId]
         );
-      } else if (state === 'disconnected' || state === 'failed') {
+        setCallStatus('connected');
+      } else if (state === 'failed') {
+        console.error(`Connection failed for ${participantId}`);
+        // Try to restart ICE
+        if (pc.restartIce) {
+          console.log('Attempting to restart ICE...');
+          pc.restartIce();
+        }
+      } else if (state === 'disconnected') {
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
-        // If all participants disconnected, end call
+        // If all participants disconnected, end call after delay
         setTimeout(() => {
           const allPeers = Object.values(peerConnections.current);
           const allDisconnected = allPeers.every(p => 
@@ -443,9 +484,20 @@ export default function RealtimeVoiceCall({
             cleanup();
             onClose();
           }
-        }, 2000);
+        }, 3000);
       } else if (state === 'closed') {
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
+      }
+    };
+
+    // Add ICE connection state monitoring
+    pc.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state for ${participantId}: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === 'failed') {
+        console.error('ICE connection failed, attempting restart...');
+        if (pc.restartIce) {
+          pc.restartIce();
+        }
       }
     };
 
