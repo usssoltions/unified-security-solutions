@@ -350,30 +350,28 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
   };
 
   return (
-    <div className="min-h-screen p-4 lg:p-6 space-y-6">
+    <div className="min-h-screen p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 w-full overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">AI-Powered Reports</h1>
-            <p className="text-slate-400">Automated activity analysis and insights</p>
-          </div>
+      <div className="flex items-start gap-3 sm:gap-4">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white">AI-Powered Reports</h1>
+          <p className="text-xs sm:text-sm text-slate-400">Automated activity analysis and insights</p>
         </div>
       </div>
 
       {/* Report Configuration */}
-      <Card className="bg-slate-800/50 border-slate-700">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <FileText className="w-5 h-5 text-purple-400" />
+      <Card className="bg-slate-800/50 border-slate-700 w-full">
+        <CardHeader className="p-3 sm:p-4 lg:p-6">
+          <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+            <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
             Generate Report
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-4 lg:p-6 pt-0">
+          <div className="grid grid-cols-1 gap-3 sm:gap-4">
             <div>
               <label className="text-sm text-slate-400 mb-2 block">Report Type</label>
               <Select value={reportType} onValueChange={(value) => {
@@ -445,16 +443,16 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
           <Button
             onClick={generateReport}
             disabled={generating || (reportType !== "overall" && !selectedEntity)}
-            className="w-full h-12 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+            className="w-full h-10 sm:h-11 lg:h-12 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-sm sm:text-base"
           >
             {generating ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Generating AI Report...
+                <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2 animate-spin" />
+                <span className="truncate">Generating AI Report...</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-5 h-5 mr-2" />
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                 Generate Report
               </>
             )}

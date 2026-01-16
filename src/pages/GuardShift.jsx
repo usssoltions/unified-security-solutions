@@ -416,7 +416,8 @@ export default function GuardShift() {
   }
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 pb-24 md:pb-6 max-w-7xl mx-auto">
+    <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 pb-24 md:pb-6 w-full overflow-x-hidden">
+      <div className="max-w-7xl mx-auto w-full">
       <PatrolAssignmentAlert user={user} />
       <MobileInstallPrompt />
       <AutoReportGenerator user={user} shift={activeShift} />
@@ -652,6 +653,7 @@ export default function GuardShift() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 }
