@@ -270,8 +270,10 @@ export default function RealtimeVoiceCall({
         });
       }
       
-      // Don't set to connected yet - wait for peer connections to establish
-      // Status will be updated by peer connection handlers
+      // For group calls, wait a bit for all participants to be ready
+      if (isGroupCall) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
       
       // Start recording
       startRecording();
@@ -364,10 +366,17 @@ export default function RealtimeVoiceCall({
       console.log('✓ Received remote track from', participantId, 'kind:', event.track.kind);
       
       if (event.track.kind === 'audio') {
+        // Ensure old audio is cleaned up
+        if (remoteAudios.current[participantId]) {
+          remoteAudios.current[participantId].pause();
+          remoteAudios.current[participantId].srcObject = null;
+        }
+        
         const audio = new Audio();
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
         audio.volume = 1.0;
+        audio.play().catch(e => console.log('Audio autoplay prevented:', e));
         remoteAudios.current[participantId] = audio;
       }
       
@@ -719,14 +728,16 @@ export default function RealtimeVoiceCall({
       // Log call to history with recording
       await logCallHistory(incomingCallId && callStatus === 'incoming' ? 'declined' : 'completed', recordingUrl);
       
-      // Notify all participants
-      for (const participant of callParticipants) {
-        await base44.functions.invoke('rtcSignaling', {
+      // Notify all participants (use service role to ensure delivery)
+      const notifyPromises = callParticipants.map(participant => 
+        base44.functions.invoke('rtcSignaling', {
           action: 'end_call',
           callId: callId.current,
           targetUserId: participant.id
-        });
-      }
+        }).catch(err => console.error('Failed to notify participant:', err))
+      );
+      
+      await Promise.all(notifyPromises);
     } catch (error) {
       console.error('Error ending call:', error);
     } finally {
@@ -809,28 +820,36 @@ export default function RealtimeVoiceCall({
         <CardContent className="space-y-6">
           {isGroupCall ? (
             <div className="text-center">
-              <div className="flex flex-wrap justify-center gap-3 mb-4">
+              <div className="flex flex-wrap justify-center gap-3 mb-4 max-h-64 overflow-y-auto">
                 {callParticipants.map(participant => (
                   <div key={participant.id} className="text-center">
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-1 ${
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-1 transition-all ${
                       connectedParticipants.includes(participant.id) 
-                        ? 'bg-emerald-500' 
+                        ? 'bg-emerald-500 ring-2 ring-emerald-400 animate-pulse' 
                         : 'bg-slate-600'
                     }`}>
                       <span className="text-white text-xl font-bold">
                         {participant.full_name?.[0]?.toUpperCase()}
                       </span>
                     </div>
-                    <p className="text-white text-xs">{participant.full_name?.split(' ')[0]}</p>
+                    <p className="text-white text-xs font-medium">{participant.full_name?.split(' ')[0]}</p>
+                    {connectedParticipants.includes(participant.id) && (
+                      <p className="text-emerald-400 text-xs">Active</p>
+                    )}
                   </div>
                 ))}
               </div>
-              <p className="text-slate-400 text-sm">
-                {connectedParticipants.length} / {callParticipants.length} connected
-              </p>
-              {callStatus === 'connected' && (
-                <p className="text-emerald-400 text-sm mt-2">{formatDuration(callDuration)}</p>
-              )}
+              <div className="bg-slate-700/50 rounded-lg p-3 mb-2">
+                <p className="text-slate-300 text-sm font-semibold">
+                  {connectedParticipants.length} of {callParticipants.length} participants connected
+                </p>
+                {callStatus === 'connected' && (
+                  <p className="text-emerald-400 text-lg font-bold mt-1">{formatDuration(callDuration)}</p>
+                )}
+                {callStatus === 'connecting' && (
+                  <p className="text-yellow-400 text-sm mt-1">Connecting...</p>
+                )}
+              </div>
             </div>
           ) : targetUser && (
             <div className="text-center">
