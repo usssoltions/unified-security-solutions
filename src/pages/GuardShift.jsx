@@ -28,7 +28,7 @@ import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import LocationTracker from "../components/guard/LocationTracker";
 import ShiftEndNotification from "../components/guard/ShiftEndNotification";
-import AIPatrolGuidance from "../components/guard/AIPatrolGuidance";
+
 import GuardChat from "../components/chat/GuardChat";
 import GuardTrainingView from "../components/training/GuardTrainingView";
 import AutoReportGenerator from "../components/reports/AutoReportGenerator";
