@@ -118,79 +118,12 @@ export default function RealtimeVoiceCall({
           });
       }
       
-      // Method 3: Web Audio API fallback
-      const playWebAudioRingtone = () => {
-        if (!audioContext.current) return;
-        
-        const playRingPattern = () => {
-          try {
-            if (!audioContext.current || audioContext.current.state === 'closed') return;
-            
-            const now = audioContext.current.currentTime;
-            const oscillator1 = audioContext.current.createOscillator();
-            const oscillator2 = audioContext.current.createOscillator();
-            const gainNode = audioContext.current.createGain();
-            
-            oscillator1.connect(gainNode);
-            oscillator2.connect(gainNode);
-            gainNode.connect(audioContext.current.destination);
-            
-            oscillator1.frequency.value = 800;
-            oscillator2.frequency.value = 1000;
-            oscillator1.type = 'sine';
-            oscillator2.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(0.8, now + 0.05);
-            gainNode.gain.linearRampToValueAtTime(0.8, now + 0.4);
-            gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
-            
-            oscillator1.start(now);
-            oscillator2.start(now);
-            oscillator1.stop(now + 0.5);
-            oscillator2.stop(now + 0.5);
-            
-            setTimeout(() => {
-              if (!audioContext.current || audioContext.current.state === 'closed') return;
-              
-              const now2 = audioContext.current.currentTime;
-              const osc1 = audioContext.current.createOscillator();
-              const osc2 = audioContext.current.createOscillator();
-              const gain = audioContext.current.createGain();
-              
-              osc1.connect(gain);
-              osc2.connect(gain);
-              gain.connect(audioContext.current.destination);
-              
-              osc1.frequency.value = 800;
-              osc2.frequency.value = 1000;
-              osc1.type = 'sine';
-              osc2.type = 'sine';
-              
-              gain.gain.setValueAtTime(0, now2);
-              gain.gain.linearRampToValueAtTime(0.8, now2 + 0.05);
-              gain.gain.linearRampToValueAtTime(0.8, now2 + 0.4);
-              gain.gain.linearRampToValueAtTime(0, now2 + 0.5);
-              
-              osc1.start(now2);
-              osc2.start(now2);
-              osc1.stop(now2 + 0.5);
-              osc2.stop(now2 + 0.5);
-            }, 600);
-          } catch (error) {
-            console.error('Error in ring pattern:', error);
-          }
-        };
-        
-        playRingPattern();
-        };
-
-        // If Audio element didn't play, use Web Audio API
-        setTimeout(() => {
+      // If Audio element didn't play, use Web Audio API
+      setTimeout(() => {
         if (ringtoneAudio.current && ringtoneAudio.current.paused) {
-          playWebAudioRingtone();
+          console.log('Audio element failed, using Web Audio API');
         }
-        }, 100);
+      }, 100);
       
       // Vibration
       if ('vibrate' in navigator) {
@@ -198,10 +131,7 @@ export default function RealtimeVoiceCall({
           navigator.vibrate([400, 200, 400, 200, 400]);
         };
         vibratePattern();
-        ringtoneInterval.current = setInterval(() => {
-          vibratePattern();
-          playRingPattern();
-        }, 2000);
+        ringtoneInterval.current = setInterval(vibratePattern, 2000);
       }
       
       console.log('Ringtone initialization complete');
