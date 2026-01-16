@@ -229,16 +229,23 @@ export default function RealtimeVoiceCall({
     try {
       // Don't request media access for incoming calls until answered
       if (!incomingCallId) {
-        localStream.current = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: { ideal: true },
-            noiseSuppression: { ideal: true },
-            autoGainControl: { ideal: true },
-            sampleRate: { ideal: 48000 },
-            channelCount: 1
-          },
-          video: isVideoOn
-        });
+        try {
+          localStream.current = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: { ideal: true },
+              noiseSuppression: { ideal: true },
+              autoGainControl: { ideal: true },
+              sampleRate: { ideal: 48000 },
+              channelCount: 1
+            },
+            video: isVideoOn
+          });
+        } catch (mediaError) {
+          console.error('Media access error:', mediaError);
+          alert('Please allow microphone access to make calls');
+          setCallStatus('error');
+          return;
+        }
         await initiateOutgoingCall();
       } else {
         // For incoming calls, just wait for answer
@@ -286,16 +293,23 @@ export default function RealtimeVoiceCall({
       setCallStatus('connecting');
       
       // Request media access now
-      localStream.current = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: { ideal: true },
-          noiseSuppression: { ideal: true },
-          autoGainControl: { ideal: true },
-          sampleRate: { ideal: 48000 },
-          channelCount: 1
-        },
-        video: isVideoOn
-      });
+      try {
+        localStream.current = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
+            sampleRate: { ideal: 48000 },
+            channelCount: 1
+          },
+          video: isVideoOn
+        });
+      } catch (mediaError) {
+        console.error('Media access error:', mediaError);
+        alert('Please allow microphone access to answer calls');
+        setCallStatus('error');
+        return;
+      }
       
       // Send answer signal to all participants
       for (const participant of callParticipants) {
