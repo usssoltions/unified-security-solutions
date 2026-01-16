@@ -416,7 +416,7 @@ export default function GuardShift() {
   }
 
   return (
-    <div className="min-h-screen p-4 lg:p-6 space-y-6 pb-24 md:pb-6">
+    <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 pb-24 md:pb-6 max-w-7xl mx-auto">
       <PatrolAssignmentAlert user={user} />
       <MobileInstallPrompt />
       <AutoReportGenerator user={user} shift={activeShift} />
@@ -517,25 +517,25 @@ export default function GuardShift() {
 
       {Array.isArray(arrivedAlarms) && arrivedAlarms.length > 0 && (
         <Card className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              On Scene - Complete Response
+          <CardHeader className="p-3 sm:p-6">
+            <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 flex-shrink-0" />
+              <span className="truncate">On Scene - Complete Response</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 p-3 sm:p-6 pt-0">
             {arrivedAlarms.map((alarm) => (
               <div
                 key={alarm.id}
-                className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+                className="p-3 sm:p-4 bg-slate-800/50 rounded-lg border border-slate-700"
               >
-                <h4 className="font-semibold text-white mb-1">
+                <h4 className="font-semibold text-white mb-1 text-sm sm:text-base truncate">
                   {alarm.alarm_type.replace(/_/g, ' ').toUpperCase()}
                 </h4>
-                <p className="text-sm text-slate-400 mb-3">{alarm.address}</p>
+                <p className="text-xs sm:text-sm text-slate-400 mb-3 line-clamp-2">{alarm.address}</p>
                 <Button
                   onClick={() => setAlarmToComplete(alarm)}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-sm sm:text-base"
                 >
                   Complete & Report
                 </Button>
@@ -555,32 +555,32 @@ export default function GuardShift() {
 
       {Array.isArray(pendingAssignments) && pendingAssignments.length > 0 && (
         <Card className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-400" />
-              <CardTitle className="text-white">New Assignments</CardTitle>
-              <Badge className="bg-amber-500">{pendingAssignments.length}</Badge>
+          <CardHeader className="p-3 sm:p-6">
+            <div className="flex items-center gap-2 flex-wrap">
+              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 flex-shrink-0" />
+              <CardTitle className="text-white text-base sm:text-lg">New Assignments</CardTitle>
+              <Badge className="bg-amber-500 text-xs sm:text-sm">{pendingAssignments.length}</Badge>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 p-3 sm:p-6 pt-0">
             {pendingAssignments.map((assignment) => (
               <div
                 key={assignment.id}
-                className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+                className="p-3 sm:p-4 bg-slate-800/50 rounded-lg border border-slate-700"
               >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h4 className="font-semibold text-white">{assignment.title}</h4>
-                    <p className="text-sm text-slate-400">{assignment.description}</p>
+                <div className="flex items-start justify-between mb-2 gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-white text-sm sm:text-base truncate">{assignment.title}</h4>
+                    <p className="text-xs sm:text-sm text-slate-400 line-clamp-2">{assignment.description}</p>
                   </div>
                   <Badge
-                    className={
+                    className={`flex-shrink-0 text-xs sm:text-sm ${
                       assignment.priority === "critical"
                         ? "bg-rose-500"
                         : assignment.priority === "high"
                         ? "bg-orange-500"
                         : "bg-sky-500"
-                    }
+                    }`}
                   >
                     {assignment.priority}
                   </Badge>
@@ -595,7 +595,7 @@ export default function GuardShift() {
                       });
                       queryClient.invalidateQueries(["pendingAssignments"]);
                     }}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm"
                   >
                     Accept
                   </Button>
@@ -608,7 +608,7 @@ export default function GuardShift() {
                       });
                       queryClient.invalidateQueries(["pendingAssignments"]);
                     }}
-                    className="flex-1 border-slate-600 text-slate-300"
+                    className="flex-1 border-slate-600 text-slate-300 text-xs sm:text-sm"
                   >
                     Decline
                   </Button>
@@ -623,27 +623,27 @@ export default function GuardShift() {
 
       {Array.isArray(upcomingShifts) && upcomingShifts.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <Clock className="w-5 h-5 text-sky-400" />
-              Upcoming Shifts
+          <CardHeader className="p-3 sm:p-6">
+            <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-sky-400 flex-shrink-0" />
+              <span>Upcoming Shifts</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 p-3 sm:p-6 pt-0">
             {upcomingShifts.map((shift) => (
               <div
                 key={shift.id}
-                className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-sky-500/50 transition-colors"
+                className="p-3 sm:p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-sky-500/50 transition-colors"
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-semibold text-white">{shift.site_name}</h4>
-                    <p className="text-sm text-slate-400 mt-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-white text-sm sm:text-base truncate">{shift.site_name}</h4>
+                    <p className="text-xs sm:text-sm text-slate-400 mt-1">
                       {new Date(shift.start_time).toLocaleString()} - 
                       {new Date(shift.end_time).toLocaleTimeString()}
                     </p>
                   </div>
-                  <Badge variant="outline" className="border-sky-500 text-sky-400">
+                  <Badge variant="outline" className="border-sky-500 text-sky-400 flex-shrink-0 text-xs sm:text-sm">
                     {shift.status}
                   </Badge>
                 </div>
