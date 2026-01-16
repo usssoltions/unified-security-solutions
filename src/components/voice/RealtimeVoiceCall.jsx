@@ -168,6 +168,46 @@ export default function RealtimeVoiceCall({
     }
   };
 
+  const playRingbackTone = () => {
+    try {
+      // Play ringback tone for caller (the person making the call)
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!ringbackAudioRef.current && AudioContext) {
+        const ctx = new AudioContext();
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        
+        oscillator.frequency.value = 440; // A note
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        gainNode.gain.value = 0.1;
+        
+        oscillator.start();
+        
+        // Pulse the tone on/off
+        let isOn = true;
+        const pulseInterval = setInterval(() => {
+          gainNode.gain.value = isOn ? 0.1 : 0;
+          isOn = !isOn;
+        }, 1000);
+        
+        ringbackAudioRef.current = { ctx, oscillator, pulseInterval };
+      }
+    } catch (error) {
+      console.error('Failed to play ringback tone:', error);
+    }
+  };
+
+  const stopRingbackTone = () => {
+    if (ringbackAudioRef.current) {
+      const { ctx, oscillator, pulseInterval } = ringbackAudioRef.current;
+      clearInterval(pulseInterval);
+      oscillator.stop();
+      ctx.close();
+      ringbackAudioRef.current = null;
+    }
+  };
+
   const initializeCall = async () => {
     try {
       // Don't request media access for incoming calls until answered
@@ -212,6 +252,9 @@ export default function RealtimeVoiceCall({
       setCallStatus('calling');
       console.log('Initiating outgoing call...');
 
+      // Start playing ringback tone for caller
+      playRingbackTone();
+
       // Initiate call and get callId from backend
       const firstParticipant = callParticipants[0];
       const { data: initData } = await base44.functions.invoke('rtcSignaling', {
@@ -240,6 +283,7 @@ export default function RealtimeVoiceCall({
       console.log('✓ Polling started, waiting for answer...');
     } catch (error) {
       console.error('Error initiating call:', error);
+      stopRingbackTone();
       setCallStatus('error');
     }
   };
@@ -520,12 +564,12 @@ export default function RealtimeVoiceCall({
             }
           };
           pc.addEventListener('icegatheringstatechange', checkState);
-          
-          // Timeout after 3 seconds
+
+          // Reduced timeout for faster connection
           setTimeout(() => {
             pc.removeEventListener('icegatheringstatechange', checkState);
             resolve();
-          }, 3000);
+          }, 1500);
         }
       });
     };
@@ -575,7 +619,7 @@ export default function RealtimeVoiceCall({
       } catch (error) {
         console.error('Polling error:', error);
       }
-    }, 500);
+    }, 300); // Faster polling for quicker connection
   };
 
   const handleSignalingMessage = async (message) => {
@@ -586,6 +630,7 @@ export default function RealtimeVoiceCall({
       if (message.type === 'call_answered') {
         console.log('✓✓✓ CALL ANSWERED by', participantId);
         stopRingtone();
+        stopRingbackTone();
         setCallStatus('connecting');
         
         // Small delay for media setup
@@ -748,10 +793,15 @@ export default function RealtimeVoiceCall({
           }
         }
       } else if (message.type === 'call_ended') {
-        console.log('Call ended by remote party');
-        stopRingtone();
-        cleanup();
-        onClose();
+      console.log('Call ended by remote party');
+      stopRingtone();
+      stopRingbackTone();
+
+      // Log the call as completed/missed
+      await logCallHistory(callStatus === 'connected' ? 'completed' : 'missed');
+
+      cleanup();
+      onClose();
       }
     } catch (error) {
       console.error('Error handling signaling:', error);
@@ -877,6 +927,7 @@ export default function RealtimeVoiceCall({
 
   const cleanup = () => {
     stopRingtone();
+    stopRingbackTone();
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
     }
