@@ -6,9 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Navigation, Shield, Clock, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { createPageUrl } from "@/utils";
+import { useNavigate } from "react-router-dom";
 
 export default function ClockInOut({ user, location }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [distance, setDistance] = useState(null);
@@ -121,7 +124,7 @@ export default function ClockInOut({ user, location }) {
     onSuccess: () => {
       queryClient.invalidateQueries();
       // Redirect to start of shift report immediately after clock in
-      window.location.href = '/StartOfShift';
+      navigate(createPageUrl("StartOfShift"));
     },
     onError: (error) => {
       setPinError(error.message);
