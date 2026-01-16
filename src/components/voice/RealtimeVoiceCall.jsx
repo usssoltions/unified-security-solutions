@@ -52,10 +52,16 @@ export default function RealtimeVoiceCall({
     loadCurrentUser();
     if (incomingCallId) {
       // For incoming calls, start ringing immediately
-      // Add a small delay to ensure component is mounted
       setTimeout(() => startRingtone(), 100);
     }
     initializeCall();
+    
+    // Auto-answer if triggered from notification
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auto_answer') === 'true' && incomingCallId) {
+      setTimeout(() => answerCall(), 1000);
+    }
+    
     return () => cleanup();
   }, []);
 

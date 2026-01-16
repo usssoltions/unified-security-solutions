@@ -23,6 +23,27 @@ export default function Contacts() {
 
   useEffect(() => {
     loadUser();
+
+    // Listen for incoming call events from service worker
+    const handleIncomingCallEvent = (event) => {
+      console.log('📞 Incoming call event received:', event.detail);
+      const { callId, callerName, autoAnswer } = event.detail;
+      
+      setIncomingCall({
+        callId: callId,
+        caller: {
+          full_name: callerName,
+          badge_number: callerName
+        },
+        autoAnswer: autoAnswer
+      });
+    };
+
+    window.addEventListener('incoming-call', handleIncomingCallEvent);
+    
+    return () => {
+      window.removeEventListener('incoming-call', handleIncomingCallEvent);
+    };
   }, []);
 
   const loadUser = async () => {

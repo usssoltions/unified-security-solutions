@@ -23,13 +23,14 @@ Deno.serve(async (req) => {
     const pushSubscription = JSON.parse(targetUser.push_subscription);
     
     const payload = JSON.stringify({
-      title: 'Incoming Call 📞',
+      title: '📞 Incoming Voice Call',
       body: `${callerName} is calling you`,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: `incoming-call-${callId}`,
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: `call-${callId}`,
       requireInteraction: true,
-      vibrate: [500, 200, 500, 200, 500, 200, 500],
+      vibrate: [400, 200, 400, 200, 400, 200, 400],
+      silent: false,
       data: {
         type: 'incoming_call',
         callId: callId,
@@ -39,8 +40,8 @@ Deno.serve(async (req) => {
         timestamp: Date.now()
       },
       actions: [
-        { action: 'answer', title: '📞 Answer', icon: '/icon-192.png' },
-        { action: 'decline', title: '❌ Decline', icon: '/icon-192.png' }
+        { action: 'answer', title: '✅ Answer' },
+        { action: 'decline', title: '❌ Decline' }
       ]
     });
 
