@@ -214,7 +214,9 @@ Officer Signature: Signed
       
       if (videoPreviewRef.current) {
         videoPreviewRef.current.srcObject = stream;
-        await videoPreviewRef.current.play();
+        videoPreviewRef.current.muted = true;
+        videoPreviewRef.current.playsInline = true;
+        await videoPreviewRef.current.play().catch(e => console.log('Video play failed:', e));
       }
       
       const recorder = new MediaRecorder(stream);

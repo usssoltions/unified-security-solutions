@@ -37,7 +37,9 @@ export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTAC
       
       if (type === 'video' && videoPreviewRef.current) {
         videoPreviewRef.current.srcObject = stream;
-        videoPreviewRef.current.play();
+        videoPreviewRef.current.muted = true;
+        videoPreviewRef.current.playsInline = true;
+        videoPreviewRef.current.play().catch(e => console.log('Video play failed:', e));
       }
 
       const mediaRecorder = new MediaRecorder(stream, {
@@ -162,6 +164,7 @@ export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTAC
                 ref={videoPreviewRef}
                 className="w-full rounded-lg mb-4 bg-black"
                 playsInline
+                autoPlay
                 muted
               />
             )}
