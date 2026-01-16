@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Users, Video, VideoOff } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Users, Video, VideoOff, Loader2 } from "lucide-react";
 
 export default function RealtimeVoiceCall({ 
   targetUser = null, 
@@ -18,7 +18,10 @@ export default function RealtimeVoiceCall({
   const [callDuration, setCallDuration] = useState(0);
   const [connectedParticipants, setConnectedParticipants] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const callStartTime = useRef(null);
+  const MAX_RECONNECT_ATTEMPTS = 3;
 
   const peerConnections = useRef({});
   const localStream = useRef(null);
@@ -349,6 +352,55 @@ export default function RealtimeVoiceCall({
     });
   };
 
+  const sendSignalingMessage = async (action, data, retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        await base44.functions.invoke('rtcSignaling', { action, ...data });
+        return true;
+      } catch (error) {
+        console.error(`Signaling attempt ${i + 1}/${retries} failed:`, error);
+        if (i === retries - 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+    return false;
+  };
+
+  const attemptReconnect = async (participantId) => {
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('Max reconnect attempts reached');
+      setCallStatus('failed');
+      return;
+    }
+
+    setReconnecting(true);
+    setReconnectAttempts(prev => prev + 1);
+    console.log(`Reconnect attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}`);
+
+    try {
+      // Close existing connection
+      if (peerConnections.current[participantId]) {
+        peerConnections.current[participantId].close();
+        delete peerConnections.current[participantId];
+      }
+
+      // Wait before reconnecting
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Re-create connection
+      await createPeerConnection(participantId);
+      setReconnecting(false);
+      setReconnectAttempts(0);
+    } catch (error) {
+      console.error('Reconnect failed:', error);
+      setReconnecting(false);
+      
+      if (reconnectAttempts + 1 >= MAX_RECONNECT_ATTEMPTS) {
+        setCallStatus('failed');
+      }
+    }
+  };
+
   const createPeerConnection = async (participantId) => {
     console.log('Creating peer for', participantId);
     
@@ -370,7 +422,6 @@ export default function RealtimeVoiceCall({
       console.log('✓ Received remote track from', participantId, 'kind:', event.track.kind);
       
       if (event.track.kind === 'audio') {
-        // Ensure old audio is cleaned up
         if (remoteAudios.current[participantId]) {
           remoteAudios.current[participantId].pause();
           remoteAudios.current[participantId].srcObject = null;
@@ -389,26 +440,23 @@ export default function RealtimeVoiceCall({
       );
     };
 
-    // Send ICE candidates as they're discovered
+    // Send ICE candidates with retry
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
         console.log('Sending ICE candidate to', participantId);
         try {
-          await base44.functions.invoke('rtcSignaling', {
-            action: 'send_candidate',
+          await sendSignalingMessage('send_candidate', {
             targetUserId: participantId,
             candidate: event.candidate,
             callId: callId.current
           });
         } catch (error) {
-          console.error('Failed to send ICE candidate:', error);
+          console.error('Failed to send ICE candidate after retries:', error);
         }
-      } else {
-        console.log('All ICE candidates sent for', participantId);
       }
     };
 
-    // Monitor connection state
+    // Monitor connection state with auto-reconnect
     pc.onconnectionstatechange = () => {
       console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
       
@@ -418,11 +466,26 @@ export default function RealtimeVoiceCall({
           prev.includes(participantId) ? prev : [...prev, participantId]
         );
         setCallStatus('connected');
+        setReconnectAttempts(0);
       } else if (pc.connectionState === 'failed') {
         console.error('Connection failed with', participantId);
+        if (callStatus === 'connected') {
+          attemptReconnect(participantId);
+        } else {
+          setCallStatus('failed');
+        }
       } else if (pc.connectionState === 'disconnected') {
         console.warn('Connection disconnected with', participantId);
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
+        
+        // Try to reconnect if call was active
+        if (callStatus === 'connected') {
+          setTimeout(() => {
+            if (pc.connectionState === 'disconnected') {
+              attemptReconnect(participantId);
+            }
+          }, 3000);
+        }
       }
     };
 
@@ -432,6 +495,9 @@ export default function RealtimeVoiceCall({
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         console.log('✓ ICE connected for', participantId);
         setCallStatus('connected');
+      } else if (pc.iceConnectionState === 'failed' && callStatus === 'connected') {
+        console.error('ICE failed for', participantId);
+        attemptReconnect(participantId);
       }
     };
 
@@ -467,8 +533,7 @@ export default function RealtimeVoiceCall({
       await waitForIceGathering();
 
       console.log('Sending offer...');
-      await base44.functions.invoke('rtcSignaling', {
-        action: 'send_offer',
+      await sendSignalingMessage('send_offer', {
         targetUserId: participantId,
         offer: pc.localDescription,
         callId: callId.current
@@ -571,18 +636,17 @@ export default function RealtimeVoiceCall({
             );
           };
 
-          // ICE candidate handling
+          // ICE candidate handling with retry
           pc.onicecandidate = async (event) => {
             if (event.candidate) {
               try {
-                await base44.functions.invoke('rtcSignaling', {
-                  action: 'send_candidate',
+                await sendSignalingMessage('send_candidate', {
                   targetUserId: participantId,
                   candidate: event.candidate,
                   callId: callId.current
                 });
               } catch (error) {
-                console.error('Failed to send ICE candidate:', error);
+                console.error('Failed to send ICE candidate after retries:', error);
               }
             }
           };
@@ -642,8 +706,7 @@ export default function RealtimeVoiceCall({
               }
             });
 
-            await base44.functions.invoke('rtcSignaling', {
-              action: 'send_answer',
+            await sendSignalingMessage('send_answer', {
               targetUserId: participantId,
               answer: pc.localDescription,
               callId: callId.current
@@ -840,7 +903,9 @@ export default function RealtimeVoiceCall({
             {callStatus === 'initiating' && 'Initiating Call...'}
             {callStatus === 'calling' && 'Calling...'}
             {callStatus === 'connecting' && 'Connecting...'}
-            {callStatus === 'connected' && (isGroupCall ? 'Group Call' : 'Call In Progress')}
+            {reconnecting && `Reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`}
+            {callStatus === 'connected' && !reconnecting && (isGroupCall ? 'Group Call' : 'Call In Progress')}
+            {callStatus === 'failed' && 'Call Failed - Connection Lost'}
             {callStatus === 'error' && 'Call Failed'}
           </CardTitle>
         </CardHeader>
@@ -976,6 +1041,26 @@ export default function RealtimeVoiceCall({
               <Button onClick={onClose} variant="outline" className="border-slate-600">
                 Close
               </Button>
+            </div>
+          )}
+
+          {callStatus === 'failed' && (
+            <div className="text-center">
+              <p className="text-rose-400 mb-4">
+                Connection lost after {reconnectAttempts} reconnect attempts
+              </p>
+              <Button onClick={onClose} variant="outline" className="border-slate-600">
+                Close
+              </Button>
+            </div>
+          )}
+
+          {reconnecting && (
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-2 text-amber-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Attempting to reconnect...</span>
+              </div>
             </div>
           )}
         </CardContent>
