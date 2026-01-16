@@ -411,16 +411,23 @@ export default function RealtimeVoiceCall({
   };
 
   const createPeerConnection = async (participantId) => {
+    console.log('Creating peer connection for', participantId);
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnections.current[participantId] = pc;
 
     // Add local stream
-    localStream.current.getTracks().forEach(track => {
-      pc.addTrack(track, localStream.current);
-    });
+    if (localStream.current) {
+      localStream.current.getTracks().forEach(track => {
+        console.log('Adding local track:', track.kind);
+        pc.addTrack(track, localStream.current);
+      });
+    } else {
+      console.error('No local stream available!');
+    }
 
     // Handle incoming tracks
     pc.ontrack = (event) => {
+      console.log('Received remote track from', participantId);
       const audio = new Audio();
       audio.srcObject = event.streams[0];
       audio.autoplay = true;
@@ -434,6 +441,7 @@ export default function RealtimeVoiceCall({
     // Handle ICE candidates
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
+        console.log('Sending ICE candidate to', participantId);
         try {
           await base44.functions.invoke('rtcSignaling', {
             action: 'send_candidate',
@@ -455,80 +463,50 @@ export default function RealtimeVoiceCall({
         );
         setCallStatus('connected');
       } else if (pc.connectionState === 'failed') {
-        console.error('Connection failed');
-        // Try ICE restart first before failing
+        console.error('Connection failed, attempting ICE restart...');
         if (pc.restartIce) {
-          console.log('Attempting ICE restart...');
           pc.restartIce();
         } else {
           setCallStatus('error');
         }
       } else if (pc.connectionState === 'disconnected') {
+        console.log('Connection disconnected for', participantId);
+        setConnectedParticipants(prev => prev.filter(id => id !== participantId));
+      } else if (pc.connectionState === 'closed') {
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
       }
     };
 
-    // Handle connection state
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      console.log(`Connection state for ${participantId}: ${state}`);
-
-      if (state === 'connected') {
-        setConnectedParticipants(prev => 
-          prev.includes(participantId) ? prev : [...prev, participantId]
-        );
-        setCallStatus('connected');
-      } else if (state === 'failed') {
-        console.error(`Connection failed for ${participantId}`);
-        // Try to restart ICE
-        if (pc.restartIce) {
-          console.log('Attempting to restart ICE...');
-          pc.restartIce();
-        }
-      } else if (state === 'disconnected') {
-        setConnectedParticipants(prev => prev.filter(id => id !== participantId));
-        // If all participants disconnected, end call after delay
-        setTimeout(() => {
-          const allPeers = Object.values(peerConnections.current);
-          const allDisconnected = allPeers.every(p => 
-            ['disconnected', 'failed', 'closed'].includes(p.connectionState)
-          );
-          if (allDisconnected && allPeers.length > 0) {
-            cleanup();
-            onClose();
-          }
-        }, 3000);
-      } else if (state === 'closed') {
-        setConnectedParticipants(prev => prev.filter(id => id !== participantId));
-      }
-    };
-
-    // Add ICE connection state monitoring
     pc.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state for ${participantId}: ${pc.iceConnectionState}`);
+      console.log(`ICE state for ${participantId}: ${pc.iceConnectionState}`);
       if (pc.iceConnectionState === 'failed') {
-        console.error('ICE connection failed, attempting restart...');
+        console.error('ICE connection failed');
         if (pc.restartIce) {
           pc.restartIce();
         }
       }
     };
 
-    // Create offer
-    const offer = await pc.createOffer({ 
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: false
-    });
-    await pc.setLocalDescription(offer);
+    // Create and send offer
+    try {
+      const offer = await pc.createOffer({ 
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: false
+      });
+      await pc.setLocalDescription(offer);
 
-    console.log('Sending offer to', participantId);
-    await base44.functions.invoke('rtcSignaling', {
-      action: 'send_offer',
-      targetUserId: participantId,
-      offer: offer,
-      callId: callId.current
-    });
-    };
+      console.log('Sending offer to', participantId);
+      await base44.functions.invoke('rtcSignaling', {
+        action: 'send_offer',
+        targetUserId: participantId,
+        offer: offer,
+        callId: callId.current
+      });
+    } catch (error) {
+      console.error('Error creating/sending offer:', error);
+      setCallStatus('error');
+    }
+  };
 
   const startPolling = () => {
     if (pollingInterval.current) {
@@ -543,7 +521,7 @@ export default function RealtimeVoiceCall({
 
         if (data?.messages && data.messages.length > 0) {
           for (const message of data.messages) {
-            if (message.callId === callId.current) {
+            if (message.callId === callId.current || message.type === 'call_answered') {
               await handleSignalingMessage(message);
             }
           }
@@ -557,11 +535,14 @@ export default function RealtimeVoiceCall({
   const handleSignalingMessage = async (message) => {
     try {
       const participantId = message.from;
+      console.log('Handling signaling message:', message.type, 'from', participantId);
 
       if (message.type === 'call_answered') {
+        console.log('Call answered by', participantId);
         stopRingtone();
         // Recipient has answered - now create peer connections
         if (callStatus === 'calling') {
+          console.log('Creating peer connections after answer');
           setCallStatus('connecting');
           for (const participant of callParticipants) {
             await createPeerConnection(participant.id);
