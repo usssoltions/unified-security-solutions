@@ -65,7 +65,7 @@ export default function PanicButton({ shiftId, siteId }) {
     <>
       <Button
         onClick={handlePanicPress}
-        className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg shadow-red-500/50 py-4 sm:py-5 lg:py-6 text-sm sm:text-base lg:text-lg font-bold animate-pulse"
+        className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg shadow-red-500/50 py-3 sm:py-4 lg:py-5 text-xs sm:text-sm lg:text-base font-bold animate-pulse"
       >
         <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 mr-1 sm:mr-2" />
         <span className="truncate">🚨 PANIC BUTTON - EMERGENCY</span>
