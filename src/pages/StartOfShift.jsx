@@ -9,8 +9,6 @@ import { FileText, Send, Loader2, CheckCircle2 } from "lucide-react";
 import SignaturePad from "../components/guard/SignaturePad";
 import MediaCapture from "../components/guard/MediaCapture";
 
-const videoPreviewRef = React.useRef(null);
-
 export default function StartOfShift() {
   const [user, setUser] = useState(null);
   const [report, setReport] = useState({
