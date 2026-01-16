@@ -338,7 +338,8 @@ export default function RealtimeVoiceCall({
         });
       }
       
-      setCallStatus('connected');
+      // Don't set to connected yet - wait for peer connections to establish
+      // Status will be updated by peer connection handlers
       
       // Start recording
       startRecording();
@@ -449,10 +450,21 @@ export default function RealtimeVoiceCall({
     pc.onconnectionstatechange = () => {
       console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
       if (pc.connectionState === 'connected') {
+        setConnectedParticipants(prev => 
+          prev.includes(participantId) ? prev : [...prev, participantId]
+        );
         setCallStatus('connected');
       } else if (pc.connectionState === 'failed') {
         console.error('Connection failed');
-        setCallStatus('error');
+        // Try ICE restart first before failing
+        if (pc.restartIce) {
+          console.log('Attempting ICE restart...');
+          pc.restartIce();
+        } else {
+          setCallStatus('error');
+        }
+      } else if (pc.connectionState === 'disconnected') {
+        setConnectedParticipants(prev => prev.filter(id => id !== participantId));
       }
     };
 
@@ -503,16 +515,20 @@ export default function RealtimeVoiceCall({
     };
 
     // Create offer
-    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    const offer = await pc.createOffer({ 
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: false
+    });
     await pc.setLocalDescription(offer);
 
+    console.log('Sending offer to', participantId);
     await base44.functions.invoke('rtcSignaling', {
       action: 'send_offer',
       targetUserId: participantId,
       offer: offer,
       callId: callId.current
     });
-  };
+    };
 
   const startPolling = () => {
     if (pollingInterval.current) {
@@ -533,9 +549,9 @@ export default function RealtimeVoiceCall({
           }
         }
       } catch (error) {
-        // Silent
+        console.error('Polling error:', error);
       }
-    }, 300);
+    }, 500);
   };
 
   const handleSignalingMessage = async (message) => {
@@ -550,9 +566,8 @@ export default function RealtimeVoiceCall({
           for (const participant of callParticipants) {
             await createPeerConnection(participant.id);
           }
-          setCallStatus('connected');
-          
-          // Start recording for caller
+
+          // Start recording for caller (status will be set to 'connected' by peer connection handler)
           startRecording();
         }
       } else if (message.type === 'offer' && incomingCallId) {
