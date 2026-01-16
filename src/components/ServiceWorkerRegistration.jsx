@@ -70,7 +70,7 @@ export default function ServiceWorkerRegistration() {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(
-            'BEl62iUYgUivxIkv69yViEuiBIa-Ib37J8xQmrQhP6RYWQUkUBKpTwSJP8wkD8wz6MqJ7eFCmrXf4tE0nT7nXyk'
+            'BEB76eqwuJJG7P0YxtnRWvu4hQSC5zVwjWb6hKjnXpM2FCiVlDEp6d2hwwn6TyWy3dgOSI5D8Y6dbkTKaa_2R8A'
           )
         });
       }
