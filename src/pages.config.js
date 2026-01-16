@@ -4,6 +4,7 @@ import AdminMaintenance from './pages/AdminMaintenance';
 import Analytics from './pages/Analytics';
 import AssetManagement from './pages/AssetManagement';
 import CallHistory from './pages/CallHistory';
+import CallRecordings from './pages/CallRecordings';
 import ClockInOutReports from './pages/ClockInOutReports';
 import CompletedPatrols from './pages/CompletedPatrols';
 import Configuration from './pages/Configuration';
@@ -28,7 +29,6 @@ import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import CallRecordings from './pages/CallRecordings';
 import __Layout from './Layout.jsx';
 
 
@@ -39,6 +39,7 @@ export const PAGES = {
     "Analytics": Analytics,
     "AssetManagement": AssetManagement,
     "CallHistory": CallHistory,
+    "CallRecordings": CallRecordings,
     "ClockInOutReports": ClockInOutReports,
     "CompletedPatrols": CompletedPatrols,
     "Configuration": Configuration,
@@ -63,7 +64,6 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "CallRecordings": CallRecordings,
 }
 
 export const pagesConfig = {

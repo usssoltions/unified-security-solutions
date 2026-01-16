@@ -63,9 +63,11 @@ export default function Contacts() {
 
 
 
-  // Poll for incoming calls
+  // Poll for incoming calls - CRITICAL FOR RECEIVING CALLS
   useEffect(() => {
     if (!currentUser) return;
+
+    console.log('👂 Started listening for incoming calls...');
 
     const checkIncomingCalls = setInterval(async () => {
       try {
@@ -76,6 +78,7 @@ export default function Contacts() {
         });
 
         if (notifications.length > 0) {
+          console.log('📞 INCOMING CALL DETECTED!', notifications[0]);
           const callNotification = notifications[0];
           const callerName = callNotification.message.replace(' is calling you', '');
           
@@ -93,7 +96,7 @@ export default function Contacts() {
       } catch (error) {
         // Silent fail
       }
-    }, 2000);
+    }, 1000); // Check every second
 
     return () => clearInterval(checkIncomingCalls);
   }, [currentUser]);

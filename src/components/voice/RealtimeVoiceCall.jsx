@@ -484,6 +484,8 @@ export default function RealtimeVoiceCall({
       clearInterval(pollingInterval.current);
     }
 
+    console.log('▶ Starting polling for call:', callId.current);
+
     pollingInterval.current = setInterval(async () => {
       try {
         const { data } = await base44.functions.invoke('rtcSignaling', {
@@ -491,8 +493,10 @@ export default function RealtimeVoiceCall({
         });
 
         if (data?.messages && data.messages.length > 0) {
+          console.log(`📨 Received ${data.messages.length} messages`);
           for (const message of data.messages) {
             if (message.callId === callId.current) {
+              console.log('→ Processing message:', message.type, 'from:', message.from);
               await handleSignalingMessage(message);
             }
           }
@@ -509,20 +513,22 @@ export default function RealtimeVoiceCall({
       console.log('Handling signaling message:', message.type, 'from', participantId, 'callStatus:', callStatus);
 
       if (message.type === 'call_answered') {
-        console.log('✓ ANSWERED by', participantId);
+        console.log('✓✓✓ CALL ANSWERED by', participantId);
         stopRingtone();
         setCallStatus('connecting');
         
-        // Give receiver time to fully set up media
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Small delay for media setup
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         if (!peerConnections.current[participantId]) {
-          console.log('Creating connection to', participantId);
+          console.log('→ Creating peer connection for', participantId);
           await createPeerConnection(participantId);
           
           if (Object.keys(peerConnections.current).length === 1) {
             startRecording();
           }
+        } else {
+          console.log('⚠ Peer connection already exists for', participantId);
         }
       } else if (message.type === 'offer') {
         console.log('✓ Received OFFER from', participantId);
