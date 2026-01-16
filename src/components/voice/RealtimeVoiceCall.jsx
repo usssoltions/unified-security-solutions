@@ -23,7 +23,7 @@ export default function RealtimeVoiceCall({
   const peerConnections = useRef({});
   const localStream = useRef(null);
   const remoteAudios = useRef({});
-  const callId = useRef(incomingCallId || `call_${Date.now()}_${Math.random()}`);
+  const callId = useRef(incomingCallId);
   const pollingInterval = useRef(null);
   const durationInterval = useRef(null);
   const ringtoneInterval = useRef(null);
@@ -272,7 +272,18 @@ export default function RealtimeVoiceCall({
     try {
       setCallStatus('calling');
 
-      // Send push notifications to all participants
+      // Initiate call and get callId from backend
+      const firstParticipant = callParticipants[0];
+      const { data: initData } = await base44.functions.invoke('rtcSignaling', {
+        action: 'initiate_call',
+        targetUserId: firstParticipant.id,
+        isGroupCall: isGroupCall
+      });
+      
+      callId.current = initData.callId;
+      console.log('Call initiated with ID:', callId.current);
+
+      // Send push notifications to all participants with correct callId
       for (const participant of callParticipants) {
         await base44.functions.invoke('sendCallNotification', {
           targetUserId: participant.id,
@@ -280,17 +291,8 @@ export default function RealtimeVoiceCall({
           callId: callId.current,
           callType: isGroupCall ? 'group' : 'direct'
         });
-        
-        // Also send RTC signaling
-        await base44.functions.invoke('rtcSignaling', {
-          action: 'initiate_call',
-          targetUserId: participant.id,
-          callId: callId.current,
-          isGroupCall: isGroupCall
-        });
       }
 
-      // Don't create peer connections yet - wait for recipient to answer
       startPolling();
     } catch (error) {
       console.error('Error initiating call:', error);
@@ -521,7 +523,7 @@ export default function RealtimeVoiceCall({
 
         if (data?.messages && data.messages.length > 0) {
           for (const message of data.messages) {
-            if (message.callId === callId.current || message.type === 'call_answered') {
+            if (message.callId === callId.current) {
               await handleSignalingMessage(message);
             }
           }
