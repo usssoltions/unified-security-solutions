@@ -553,10 +553,6 @@ export default function GuardShift() {
         <PanicButton shiftId={activeShift.id} siteId={activeShift.site_id} />
       )}
 
-      {activeShift && (
-        <AIPatrolGuidance user={user} shift={activeShift} location={location} />
-      )}
-
       {Array.isArray(pendingAssignments) && pendingAssignments.length > 0 && (
         <Card className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20">
           <CardHeader>
