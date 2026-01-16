@@ -201,6 +201,7 @@ export default function RealtimeVoiceCall({
   const initiateOutgoingCall = async () => {
     try {
       setCallStatus('calling');
+      console.log('Initiating outgoing call...');
 
       // Initiate call and get callId from backend
       const firstParticipant = callParticipants[0];
@@ -211,29 +212,23 @@ export default function RealtimeVoiceCall({
       });
       
       callId.current = initData.callId;
-      console.log('Call initiated with ID:', callId.current);
+      console.log('✓ Call initiated with ID:', callId.current);
 
-      // Send push notifications to all participants with correct callId
-      for (const participant of callParticipants) {
-        await base44.functions.invoke('sendCallNotification', {
+      // Send push notifications to all participants
+      const notificationPromises = callParticipants.map(participant =>
+        base44.functions.invoke('sendCallNotification', {
           targetUserId: participant.id,
           callerName: currentUser?.full_name || 'Unknown',
           callId: callId.current,
           callType: isGroupCall ? 'group' : 'direct'
-        });
-      }
+        }).catch(err => console.error('Failed to notify:', err))
+      );
+      
+      await Promise.all(notificationPromises);
+      console.log('✓ Call notifications sent');
 
       startPolling();
-      
-      // Set timeout for no answer (60 seconds)
-      setTimeout(() => {
-        if (callStatus === 'calling' && Object.keys(peerConnections.current).length === 0) {
-          console.log('Call timeout - no answer');
-          setCallStatus('error');
-          cleanup();
-          onClose();
-        }
-      }, 60000);
+      console.log('✓ Polling started, waiting for answer...');
     } catch (error) {
       console.error('Error initiating call:', error);
       setCallStatus('error');
@@ -433,21 +428,13 @@ export default function RealtimeVoiceCall({
       console.log(`Connection state for ${participantId}: ${pc.connectionState}`);
       
       if (pc.connectionState === 'connected') {
-        console.log('✓✓✓ Call connected successfully with', participantId);
+        console.log('✓✓✓ Call CONNECTED successfully with', participantId);
         setConnectedParticipants(prev => 
           prev.includes(participantId) ? prev : [...prev, participantId]
         );
         setCallStatus('connected');
       } else if (pc.connectionState === 'failed') {
         console.error('Connection failed with', participantId);
-        // Only set error if this is the only/last participant
-        if (callParticipants.length === 1 || Object.keys(peerConnections.current).length === 1) {
-          setTimeout(() => {
-            if (callStatus !== 'connected') {
-              setCallStatus('error');
-            }
-          }, 5000); // Wait 5 seconds before failing
-        }
       } else if (pc.connectionState === 'disconnected') {
         console.warn('Connection disconnected with', participantId);
         setConnectedParticipants(prev => prev.filter(id => id !== participantId));
@@ -540,9 +527,12 @@ export default function RealtimeVoiceCall({
       console.log('Handling signaling message:', message.type, 'from', participantId, 'callStatus:', callStatus);
 
       if (message.type === 'call_answered') {
-        console.log('Call answered by', participantId);
+        console.log('✓ Call answered by', participantId);
         stopRingtone();
         setCallStatus('connecting');
+        
+        // Wait a bit for receiver to get media ready
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Create peer connection and send offer to the participant who answered
         if (!peerConnections.current[participantId]) {
