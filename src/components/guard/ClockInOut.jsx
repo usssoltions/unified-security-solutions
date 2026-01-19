@@ -120,11 +120,15 @@ export default function ClockInOut({ user, location }) {
         },
         needs_start_of_shift_report: true
       });
+      
+      return { shouldRedirect: true };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries();
-      // Redirect to start of shift report immediately after clock in
-      navigate(createPageUrl("StartOfShift"));
+      // Small delay to ensure state updates propagate
+      setTimeout(() => {
+        window.location.href = createPageUrl("StartOfShift");
+      }, 100);
     },
     onError: (error) => {
       setPinError(error.message);
