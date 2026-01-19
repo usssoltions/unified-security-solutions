@@ -24,12 +24,12 @@ import PatrolChecklists from './pages/PatrolChecklists';
 import QRScanner from './pages/QRScanner';
 import Reports from './pages/Reports';
 import Scheduling from './pages/Scheduling';
+import ShiftHandover from './pages/ShiftHandover';
 import SiteManagement from './pages/SiteManagement';
 import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import ShiftHandover from './pages/ShiftHandover';
 import __Layout from './Layout.jsx';
 
 
@@ -60,12 +60,12 @@ export const PAGES = {
     "QRScanner": QRScanner,
     "Reports": Reports,
     "Scheduling": Scheduling,
+    "ShiftHandover": ShiftHandover,
     "SiteManagement": SiteManagement,
     "StartOfShift": StartOfShift,
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "ShiftHandover": ShiftHandover,
 }
 
 export const pagesConfig = {

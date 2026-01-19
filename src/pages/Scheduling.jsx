@@ -238,7 +238,10 @@ export default function Scheduling() {
                 onDateSelect={(date) => {
                   const dayShifts = shiftsArray.filter(shift => {
                     const shiftDate = new Date(shift.start_time);
-                    return shiftDate.toDateString() === date.toDateString();
+                    const matchesDate = shiftDate.toDateString() === date.toDateString();
+                    const matchesSite = siteFilter === "all" || shift.site_id === siteFilter;
+                    const matchesGuard = guardFilter === "all" || shift.guard_id === guardFilter;
+                    return matchesDate && matchesSite && matchesGuard;
                   });
                   setSelectedDate(date);
                   setDayModalShifts(dayShifts);
