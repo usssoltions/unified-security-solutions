@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,8 +24,20 @@ import ShiftHistory from "../components/scheduling/ShiftHistory";
 import PrintableSchedule from "../components/scheduling/PrintableSchedule";
 import ShiftListView from "../components/scheduling/ShiftListView";
 import BulkShiftActions from "../components/scheduling/BulkShiftActions";
+import ShiftSwapManager from "../components/scheduling/ShiftSwapManager";
+import OnCallScheduling from "../components/scheduling/OnCallScheduling";
 
 export default function Scheduling() {
+  const [user, setUser] = useState(null);
+  
+  useEffect(() => {
+    loadUser();
+  }, []);
+  
+  const loadUser = async () => {
+    const currentUser = await base44.auth.me();
+    setUser(currentUser);
+  };
   const [showShiftForm, setShowShiftForm] = useState(false);
   const [showBulkScheduler, setShowBulkScheduler] = useState(false);
   const [selectedShift, setSelectedShift] = useState(null);
@@ -275,6 +287,12 @@ export default function Scheduling() {
             }}
           />
         )}
+
+        {/* Shift Swap Manager */}
+        {user && <ShiftSwapManager user={user} />}
+
+        {/* On-Call Scheduling */}
+        {user && <OnCallScheduling user={user} />}
       </div>
     </div>
   );
