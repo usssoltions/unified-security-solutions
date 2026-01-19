@@ -159,31 +159,33 @@ export default function CalendarView({ shifts, onDateSelect, onShiftClick, curre
             );
           })}
         </div>
+      </CardContent>
       </Card>
 
       {/* Legend */}
       <Card className="bg-slate-800/50 border-slate-700">
-        <CardContent className="p-2 sm:p-3">{/* Legend */}
-        <div className="flex flex-wrap gap-2 sm:gap-3 mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-slate-700">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-sky-500" />
-            <span className="text-[10px] sm:text-xs text-slate-400">Scheduled</span>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-emerald-500" />
-            <span className="text-[10px] sm:text-xs text-slate-400">Active</span>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-purple-500" />
-            <span className="text-[10px] sm:text-xs text-slate-400">Open</span>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-slate-500" />
-            <span className="text-[10px] sm:text-xs text-slate-400">Completed</span>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-rose-500" />
-            <span className="text-[10px] sm:text-xs text-slate-400">Missed</span>
+        <CardContent className="p-2 sm:p-3">
+          <div className="flex flex-wrap gap-2 sm:gap-3">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-sky-500" />
+              <span className="text-[10px] sm:text-xs text-slate-400">Scheduled</span>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2">
+              <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-emerald-500" />
+              <span className="text-[10px] sm:text-xs text-slate-400">Active</span>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2">
+              <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-purple-500" />
+              <span className="text-[10px] sm:text-xs text-slate-400">Open</span>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2">
+              <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-slate-500" />
+              <span className="text-[10px] sm:text-xs text-slate-400">Completed</span>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2">
+              <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-rose-500" />
+              <span className="text-[10px] sm:text-xs text-slate-400">Missed</span>
+            </div>
           </div>
         </CardContent>
       </Card>
