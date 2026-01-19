@@ -216,10 +216,10 @@ export default function RealtimeVoiceCall({
         try {
           localStream.current = await navigator.mediaDevices.getUserMedia({
             audio: {
-              echoCancellation: { ideal: true },
-              noiseSuppression: { ideal: true },
-              autoGainControl: { ideal: true },
-              sampleRate: { ideal: 48000 },
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              sampleRate: 48000,
               channelCount: 1
             },
             video: isVideoOn
@@ -298,9 +298,11 @@ export default function RealtimeVoiceCall({
       try {
         localStream.current = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: { ideal: true },
-            noiseSuppression: { ideal: true },
-            autoGainControl: { ideal: true }
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+            channelCount: 1
           },
           video: isVideoOn
         });
@@ -808,15 +810,15 @@ export default function RealtimeVoiceCall({
           }
         }
       } else if (message.type === 'call_ended') {
-      console.log('Call ended by remote party');
-      stopRingtone();
-      stopRingbackTone();
+        console.log('Call ended by remote party');
+        stopRingtone();
+        stopRingbackTone();
 
-      // Log the call as completed/missed
-      await logCallHistory(callStatus === 'connected' ? 'completed' : 'missed');
+        // Log the call as completed/missed
+        await logCallHistory(callStatus === 'connected' ? 'completed' : 'missed');
 
-      cleanup();
-      onClose();
+        cleanup();
+        onClose();
       }
     } catch (error) {
       console.error('Error handling signaling:', error);
@@ -889,16 +891,18 @@ export default function RealtimeVoiceCall({
       // Log call to history with recording
       await logCallHistory(incomingCallId && callStatus === 'incoming' ? 'declined' : 'completed', recordingUrl);
       
-      // Notify all participants (use service role to ensure delivery)
-      const notifyPromises = callParticipants.map(participant => 
-        base44.functions.invoke('rtcSignaling', {
-          action: 'end_call',
-          callId: callId.current,
-          targetUserId: participant.id
-        }).catch(err => console.error('Failed to notify participant:', err))
-      );
-      
-      await Promise.all(notifyPromises);
+      // Notify all participants that call ended
+      if (callId.current) {
+        const notifyPromises = callParticipants.map(participant => 
+          base44.functions.invoke('rtcSignaling', {
+            action: 'end_call',
+            callId: callId.current,
+            targetUserId: participant.id
+          }).catch(err => console.error('Failed to notify participant:', err))
+        );
+        
+        await Promise.all(notifyPromises);
+      }
     } catch (error) {
       console.error('Error ending call:', error);
     } finally {

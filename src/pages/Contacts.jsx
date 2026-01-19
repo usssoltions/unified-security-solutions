@@ -59,11 +59,23 @@ export default function Contacts() {
     queryKey: ["allUsers"],
     queryFn: async () => {
       try {
-        const { data } = await base44.functions.invoke('getAllUsers');
-        return data.users || [];
+        // For guards, use backend function. For admins, use direct entity access
+        if (currentUser.role_type === 'guard') {
+          const { data } = await base44.functions.invoke('getAllUsers');
+          return data.users || [];
+        } else {
+          const users = await base44.entities.User.list();
+          return users;
+        }
       } catch (error) {
         console.error("Failed to fetch users:", error);
-        return [];
+        // Fallback to backend function
+        try {
+          const { data } = await base44.functions.invoke('getAllUsers');
+          return data.users || [];
+        } catch {
+          return [];
+        }
       }
     },
     enabled: !!currentUser,
