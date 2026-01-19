@@ -58,46 +58,48 @@ export default function CalendarView({ shifts, onDateSelect, onShiftClick, curre
   };
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-white flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-sky-400" />
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex items-center justify-between p-2 sm:p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+        <div className="flex items-center gap-2 min-w-0">
+          <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-sky-400 flex-shrink-0" />
+          <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-white truncate">
             {monthNames[currentMonth]} {currentYear}
-          </CardTitle>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={previousMonth}
-              className="border-slate-600 text-slate-300"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={goToToday}
-              className="border-slate-600 text-slate-300"
-            >
-              Today
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={nextMonth}
-              className="border-slate-600 text-slate-300"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
+          </h3>
         </div>
-      </CardHeader>
-      <CardContent className="p-6">
-        <div className="grid grid-cols-7 gap-2">
+        <div className="flex gap-1 sm:gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={previousMonth}
+            className="border-slate-600 text-slate-300 h-8 w-8 sm:h-9 sm:w-9 p-0"
+          >
+            <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={goToToday}
+            className="border-slate-600 text-slate-300 text-[10px] sm:text-xs px-2 sm:px-3"
+          >
+            Today
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={nextMonth}
+            className="border-slate-600 text-slate-300 h-8 w-8 sm:h-9 sm:w-9 p-0"
+          >
+            <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
+          </Button>
+        </div>
+      </div>
+      
+      <Card className="bg-slate-800/50 border-slate-700">
+      <CardContent className="p-2 sm:p-4 lg:p-6">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {/* Day headers */}
           {dayNames.map(day => (
-            <div key={day} className="text-center text-xs font-semibold text-slate-400 py-2">
+            <div key={day} className="text-center text-[10px] sm:text-xs font-semibold text-slate-400 py-1 sm:py-2">
               {day}
             </div>
           ))}
@@ -118,7 +120,7 @@ export default function CalendarView({ shifts, onDateSelect, onShiftClick, curre
               <div
                 key={day}
                 onClick={() => onDateSelect && onDateSelect(date)}
-                className={`aspect-square p-2 rounded-lg border transition-colors cursor-pointer ${
+                className={`aspect-square p-1 sm:p-2 rounded-lg border transition-colors cursor-pointer ${
                   isToday
                     ? "bg-sky-500/20 border-sky-500"
                     : dayShifts.length > 0
@@ -126,30 +128,30 @@ export default function CalendarView({ shifts, onDateSelect, onShiftClick, curre
                     : "bg-slate-900/30 border-slate-700 hover:border-slate-600"
                 }`}
               >
-                <div className="text-sm font-semibold text-white mb-1">{day}</div>
-                <div className="space-y-1">
-                  {dayShifts.slice(0, 3).map((shift) => (
+                <div className="text-[10px] sm:text-xs lg:text-sm font-semibold text-white mb-0.5 sm:mb-1">{day}</div>
+                <div className="space-y-0.5 sm:space-y-1">
+                  {dayShifts.slice(0, 2).map((shift) => (
                     <div
-                      key={shift.id || `${shift.guard_name}-${shift.start_time}`} // Use shift.id as key, fallback to a composite if not present
+                      key={shift.id || `${shift.guard_name}-${shift.start_time}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onShiftClick && onShiftClick(shift);
                       }}
-                      className={`text-xs px-1.5 py-0.5 rounded truncate hover:opacity-80 transition-opacity ${
+                      className={`text-[8px] sm:text-[10px] lg:text-xs px-1 sm:px-1.5 py-0.5 rounded truncate hover:opacity-80 transition-opacity ${
                         shift.status === "scheduled" ? "bg-sky-500 text-white" :
                         shift.status === "active" ? "bg-emerald-500 text-white" :
                         shift.status === "completed" ? "bg-slate-500 text-white" :
                         shift.status === "missed" ? "bg-rose-500 text-white" :
                         shift.status === "open" ? "bg-purple-500 text-white" :
-                        "bg-amber-500 text-white" // Default for other statuses
+                        "bg-amber-500 text-white"
                       }`}
                     >
-                      {shift.guard_name || "Open"}
+                      {shift.guard_name?.split(' ')[0] || "Open"}
                     </div>
                   ))}
-                  {dayShifts.length > 3 && (
-                    <div className="text-xs text-slate-400 text-center">
-                      +{dayShifts.length - 3}
+                  {dayShifts.length > 2 && (
+                    <div className="text-[8px] sm:text-[10px] text-slate-400 text-center">
+                      +{dayShifts.length - 2}
                     </div>
                   )}
                 </div>
@@ -157,31 +159,34 @@ export default function CalendarView({ shifts, onDateSelect, onShiftClick, curre
             );
           })}
         </div>
+      </Card>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-slate-700">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-sky-500" />
-            <span className="text-xs text-slate-400">Scheduled</span>
+      {/* Legend */}
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardContent className="p-2 sm:p-3">{/* Legend */}
+        <div className="flex flex-wrap gap-2 sm:gap-3 mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-slate-700">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-sky-500" />
+            <span className="text-[10px] sm:text-xs text-slate-400">Scheduled</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-emerald-500" />
-            <span className="text-xs text-slate-400">Active</span>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-emerald-500" />
+            <span className="text-[10px] sm:text-xs text-slate-400">Active</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-purple-500" />
-            <span className="text-xs text-slate-400">Open</span>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-purple-500" />
+            <span className="text-[10px] sm:text-xs text-slate-400">Open</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-slate-500" />
-            <span className="text-xs text-slate-400">Completed</span>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-slate-500" />
+            <span className="text-[10px] sm:text-xs text-slate-400">Completed</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-rose-500" />
-            <span className="text-xs text-slate-400">Missed</span>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded bg-rose-500" />
+            <span className="text-[10px] sm:text-xs text-slate-400">Missed</span>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
