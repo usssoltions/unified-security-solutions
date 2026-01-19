@@ -39,6 +39,7 @@ import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
 import PanicButton from "../components/guard/PanicButton";
 import PatrolAssignmentAlert from "../components/guard/PatrolAssignmentAlert";
+import SystemSetup from "../components/SystemSetup";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -621,6 +622,8 @@ export default function GuardShift() {
       )}
 
       <QuickActions location={location} shiftId={activeShift?.id} siteId={activeShift?.site_id} />
+
+      <SystemSetup />
 
       {Array.isArray(upcomingShifts) && upcomingShifts.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
