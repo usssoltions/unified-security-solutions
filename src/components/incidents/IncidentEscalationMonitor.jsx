@@ -19,8 +19,19 @@ export default function IncidentEscalationMonitor({ user }) {
 
         const now = new Date();
         const ESCALATION_THRESHOLD_MINUTES = 30;
+        
+        // Categories that should be escalated (exclude reports/routine items)
+        const escalatableCategories = [
+          'fire', 'theft', 'vandalism', 'medical', 'trespassing', 
+          'suspicious_activity', 'equipment_failure', 'safety_hazard', 'other'
+        ];
 
         for (const incident of incidents) {
+          // Skip if not an escalatable category (e.g., routine reports)
+          if (!escalatableCategories.includes(incident.category)) {
+            continue;
+          }
+
           const reportedAt = new Date(incident.reported_at);
           const minutesSinceReport = (now - reportedAt) / (1000 * 60);
           const shouldEscalate = 
