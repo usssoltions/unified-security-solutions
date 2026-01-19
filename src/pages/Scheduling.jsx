@@ -22,6 +22,8 @@ import CalendarView from "../components/scheduling/CalendarView";
 import ShiftDetailsModal from "../components/scheduling/ShiftDetailsModal";
 import ShiftHistory from "../components/scheduling/ShiftHistory";
 import PrintableSchedule from "../components/scheduling/PrintableSchedule";
+import ShiftListView from "../components/scheduling/ShiftListView";
+import BulkShiftActions from "../components/scheduling/BulkShiftActions";
 
 export default function Scheduling() {
   const [showShiftForm, setShowShiftForm] = useState(false);
@@ -33,6 +35,7 @@ export default function Scheduling() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [showPrintView, setShowPrintView] = useState(false);
+  const [selectedShifts, setSelectedShifts] = useState([]);
   const queryClient = useQueryClient();
 
   const { data: shifts = [] } = useQuery({
@@ -84,6 +87,22 @@ export default function Scheduling() {
     return matchesSite && matchesGuard && matchesMonthYear;
   });
 
+  const handleSelectShift = (shiftId, checked) => {
+    if (checked) {
+      setSelectedShifts([...selectedShifts, shiftId]);
+    } else {
+      setSelectedShifts(selectedShifts.filter(id => id !== shiftId));
+    }
+  };
+
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedShifts(filteredShifts.map(s => s.id));
+    } else {
+      setSelectedShifts([]);
+    }
+  };
+
   const handlePrint = () => {
     setShowPrintView(true);
     // Give a small delay for the PrintableSchedule component to render before printing
@@ -108,61 +127,74 @@ export default function Scheduling() {
   }
 
   return (
-    <div className="min-h-screen p-4 lg:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Shift Scheduling</h1>
-            <p className="text-slate-400 mt-1">Manage guard shifts and assignments</p>
+    <div className="min-h-screen p-3 sm:p-4 lg:p-6 w-full overflow-x-hidden">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+        <div className="flex flex-col gap-3 sm:gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">Shift Scheduling</h1>
+              <p className="text-xs sm:text-sm text-slate-400 mt-1">Manage guard shifts and assignments</p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button onClick={handlePrint} variant="outline" size="sm" className="border-slate-600 text-xs sm:text-sm">
+                <Printer className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Print
+              </Button>
+              <Button onClick={() => setShowBulkScheduler(true)} variant="outline" size="sm" className="border-slate-600 text-xs sm:text-sm">
+                <CalendarIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Bulk
+              </Button>
+              <Button onClick={() => setShowShiftForm(true)} size="sm" className="bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm">
+                <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                New
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button onClick={handlePrint} variant="outline" className="border-slate-600">
-              <Printer className="w-4 h-4 mr-2" />
-              Print
-            </Button>
-            <Button onClick={() => setShowBulkScheduler(true)} variant="outline" className="border-slate-600">
-              <CalendarIcon className="w-4 h-4 mr-2" />
-              Bulk Schedule
-            </Button>
-            <Button onClick={() => setShowShiftForm(true)} className="bg-sky-600 hover:bg-sky-700">
-              <Plus className="w-4 h-4 mr-2" />
-              New Shift
-            </Button>
-          </div>
+
+          {/* Bulk Actions Bar */}
+          {selectedShifts.length > 0 && (
+            <BulkShiftActions
+              selectedShifts={selectedShifts}
+              allShifts={filteredShifts}
+              guards={guards}
+              sites={sites}
+              onClearSelection={() => setSelectedShifts([])}
+            />
+          )}
         </div>
 
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <CardTitle className="text-white">Schedule Overview</CardTitle>
+        <Card className="bg-slate-800/50 border-slate-700 w-full overflow-hidden">
+          <CardHeader className="p-3 sm:p-4 lg:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <CardTitle className="text-white text-base sm:text-lg">Schedule Overview</CardTitle>
               <div className="flex gap-2">
                 <Button
                   variant={viewMode === "calendar" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("calendar")}
-                  className={viewMode === "calendar" ? "bg-sky-600" : "border-slate-600 text-slate-300"}
+                  className={viewMode === "calendar" ? "bg-sky-600 text-xs sm:text-sm" : "border-slate-600 text-slate-300 text-xs sm:text-sm"}
                 >
-                  <Grid className="w-4 h-4 mr-2" />
+                  <Grid className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   Calendar
                 </Button>
                 <Button
                   variant={viewMode === "list" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("list")}
-                  className={viewMode === "list" ? "bg-sky-600" : "border-slate-600 text-slate-300"}
+                  className={viewMode === "list" ? "bg-sky-600 text-xs sm:text-sm" : "border-slate-600 text-slate-300 text-xs sm:text-sm"}
                 >
-                  <List className="w-4 h-4 mr-2" />
+                  <List className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   List
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-4">
+          <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-4 lg:p-6 pt-0">
+            <div className="flex flex-col gap-3 sm:gap-4">
               <select
                 value={siteFilter}
                 onChange={(e) => setSiteFilter(e.target.value)}
-                className="flex-1 bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2 text-sm"
               >
                 <option value="all">All Sites</option>
                 {sites.map(site => (
@@ -172,7 +204,7 @@ export default function Scheduling() {
               <select
                 value={guardFilter}
                 onChange={(e) => setGuardFilter(e.target.value)}
-                className="flex-1 bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2 text-sm"
               >
                 <option value="all">All Guards</option>
                 {guards.map(guard => (
@@ -195,9 +227,14 @@ export default function Scheduling() {
                 }}
               />
             ) : (
-              <ShiftHistory
+              <ShiftListView
                 shifts={filteredShifts}
+                guards={guards}
+                sites={sites}
                 onShiftClick={setSelectedShift}
+                selectedShifts={selectedShifts}
+                onSelectShift={handleSelectShift}
+                onSelectAll={handleSelectAll}
               />
             )}
           </CardContent>
