@@ -111,50 +111,30 @@ export default function StartOfShift() {
         }
       }
 
-      // Create shift handover record (for tracking)
-      await base44.entities.ShiftHandover.create({
+      // Create shift handover record with full report details
+      const handoverData = {
         shift_id: shift.id,
         site_id: shift.site_id,
         site_name: site?.name,
         outgoing_guard_id: user.id,
         outgoing_guard_name: user.full_name,
         handover_time: new Date().toISOString(),
-        special_instructions: formData.additional_notes,
-        key_activities: formData.observations
-          .filter(obs => obs.type || obs.comments)
-          .map(obs => `${obs.type || 'Observation'} at ${obs.time}: ${obs.comments}`)
-      });
-
-      // Create incident record for tracking purposes
-      const incidentData = {
-        title: `Start of Shift Report - ${new Date().toLocaleDateString()}`,
-        description: `
+        special_instructions: `
 SHIFT/POST: ${formData.shift_post}
 SPECIAL INSTRUCTIONS: ${formData.special_instructions}
 POST ITEMS RECEIVED: ${formData.post_items_received}
 RELIEVING OFFICER: ${formData.relieving_officer}
 
-OBSERVATIONS:
-${formData.observations.map((obs, i) => `#${i+1} Type: ${obs.type}, Time: ${obs.time}, Comments: ${obs.comments}`).join('\n')}
-
 ADDITIONAL NOTES:
 ${formData.additional_notes}
-
-PHOTOS: ${formData.photos.length} attached
         `.trim(),
-        category: "other",
-        priority: "low",
-        status: "reported",
-        guard_id: user.id,
-        guard_name: user.full_name,
-        site_id: shift.site_id,
-        site_name: shift.site_name,
-        shift_id: shift.id,
-        reported_at: new Date().toISOString(),
-        media: formData.photos.map(url => ({ type: "photo", url }))
+        key_activities: formData.observations
+          .filter(obs => obs.type || obs.comments)
+          .map(obs => `${obs.type || 'Observation'} at ${obs.time}: ${obs.comments}`),
+        media_attachments: formData.photos.map(url => ({ type: "photo", url }))
       };
 
-      const createdIncident = await base44.entities.Incident.create(incidentData);
+      const createdHandover = await base44.entities.ShiftHandover.create(handoverData);
 
       // Update user - mark that start of shift report is completed
       await base44.auth.updateMe({
@@ -172,7 +152,7 @@ PHOTOS: ${formData.photos.length} attached
         observations: formData.observations.filter(obs => obs.type || obs.comments),
         additional_notes: formData.additional_notes,
         signature: formData.signature,
-        incidentId: createdIncident.id
+        handoverId: createdHandover.id
       };
 
       const mediaArray = formData.photos.map(url => ({ type: "photo", url }));
