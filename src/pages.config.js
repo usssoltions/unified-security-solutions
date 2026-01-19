@@ -26,10 +26,10 @@ import Reports from './pages/Reports';
 import Scheduling from './pages/Scheduling';
 import ShiftHandover from './pages/ShiftHandover';
 import SiteManagement from './pages/SiteManagement';
+import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import StartOfShift from './pages/StartOfShift';
 import __Layout from './Layout.jsx';
 
 
@@ -62,10 +62,10 @@ export const PAGES = {
     "Scheduling": Scheduling,
     "ShiftHandover": ShiftHandover,
     "SiteManagement": SiteManagement,
+    "StartOfShift": StartOfShift,
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "StartOfShift": StartOfShift,
 }
 
 export const pagesConfig = {

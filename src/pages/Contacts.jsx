@@ -72,26 +72,27 @@ export default function Contacts() {
     }
   };
 
-  const { data: allUsers = [], isLoading } = useQuery({
+  const { data: allUsers = [], isLoading, error, refetch } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
+      console.log('Fetching users for role:', currentUser?.role_type);
+      
+      // Try direct entity access first (works for admins and dispatchers)
       try {
-        // For guards, use backend function. For admins, use direct entity access
-        if (currentUser.role_type === 'guard') {
-          const { data } = await base44.functions.invoke('getAllUsers');
-          return data.users || [];
-        } else {
-          const users = await base44.entities.User.list();
-          return users;
-        }
-      } catch (error) {
-        console.error("Failed to fetch users:", error);
-        // Fallback to backend function
+        const users = await base44.entities.User.list();
+        console.log('✓ Loaded users via entity access:', users.length);
+        return users;
+      } catch (entityError) {
+        console.log('Entity access failed, trying backend function...', entityError);
+        
+        // Fallback to backend function (works for guards)
         try {
           const { data } = await base44.functions.invoke('getAllUsers');
-          return data.users || [];
-        } catch {
-          return [];
+          console.log('✓ Loaded users via backend function:', data?.users?.length || 0);
+          return data?.users || [];
+        } catch (functionError) {
+          console.error('Backend function also failed:', functionError);
+          throw new Error('Unable to load user data. Please check your connection and try again.');
         }
       }
     },
@@ -299,7 +300,27 @@ export default function Contacts() {
           </div>
         </div>
 
-        {isLoading ? (
+        {error ? (
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="py-12 text-center">
+              <div className="w-16 h-16 bg-rose-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-white text-lg font-semibold mb-2">Unable to load user data</h3>
+              <p className="text-slate-400 mb-6">
+                {error.message || "Please check your connection and try again"}
+              </p>
+              <Button 
+                onClick={() => refetch()}
+                className="bg-sky-500 hover:bg-sky-600"
+              >
+                Reload Page
+              </Button>
+            </CardContent>
+          </Card>
+        ) : isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
           </div>
