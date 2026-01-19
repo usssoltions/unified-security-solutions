@@ -5,7 +5,9 @@ import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, Shield } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, Send, Shield, Camera } from "lucide-react";
+import SignaturePad from "../components/guard/SignaturePad";
 
 export default function StartOfShift() {
   const navigate = useNavigate();
@@ -14,10 +16,17 @@ export default function StartOfShift() {
   const [site, setSite] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [formData, setFormData] = useState({
-    site_condition: "",
-    notes: "",
-    all_secure: true
+    shift_post: "",
+    special_instructions: "",
+    post_items_received: "",
+    relieving_officer: "",
+    additional_notes: "",
+    observations: [{ type: "", time: "", comments: "" }],
+    photos: [],
+    signature: null
   });
 
   useEffect(() => {
@@ -45,12 +54,64 @@ export default function StartOfShift() {
     }
   };
 
+  const handlePhotoUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    setUploadingPhoto(true);
+    for (const file of files) {
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        setFormData(prev => ({
+          ...prev,
+          photos: [...prev.photos, file_url]
+        }));
+      } catch (error) {
+        alert("Failed to upload photo");
+      }
+    }
+    setUploadingPhoto(false);
+  };
+
+  const addObservation = () => {
+    setFormData(prev => ({
+      ...prev,
+      observations: [...prev.observations, { type: "", time: "", comments: "" }]
+    }));
+  };
+
+  const updateObservation = (index, field, value) => {
+    const newObservations = [...formData.observations];
+    newObservations[index][field] = value;
+    setFormData(prev => ({ ...prev, observations: newObservations }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!formData.signature) {
+      setShowSignature(true);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      // Create shift handover record
+      // Get current location
+      let currentLocation = null;
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+          });
+          currentLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+        } catch (error) {
+          console.error('Failed to get location:', error);
+        }
+      }
+
+      // Create shift handover record (for tracking)
       await base44.entities.ShiftHandover.create({
         shift_id: shift.id,
         site_id: shift.site_id,
@@ -58,16 +119,68 @@ export default function StartOfShift() {
         outgoing_guard_id: user.id,
         outgoing_guard_name: user.full_name,
         handover_time: new Date().toISOString(),
-        site_status: {
-          all_secure: formData.all_secure
-        },
-        special_instructions: formData.notes,
-        weather_conditions: formData.site_condition
+        special_instructions: formData.additional_notes,
+        key_activities: formData.observations
+          .filter(obs => obs.type || obs.comments)
+          .map(obs => `${obs.type || 'Observation'} at ${obs.time}: ${obs.comments}`)
       });
+
+      // Create incident record for tracking purposes
+      const incidentData = {
+        title: `Start of Shift Report - ${new Date().toLocaleDateString()}`,
+        description: `
+SHIFT/POST: ${formData.shift_post}
+SPECIAL INSTRUCTIONS: ${formData.special_instructions}
+POST ITEMS RECEIVED: ${formData.post_items_received}
+RELIEVING OFFICER: ${formData.relieving_officer}
+
+OBSERVATIONS:
+${formData.observations.map((obs, i) => `#${i+1} Type: ${obs.type}, Time: ${obs.time}, Comments: ${obs.comments}`).join('\n')}
+
+ADDITIONAL NOTES:
+${formData.additional_notes}
+
+PHOTOS: ${formData.photos.length} attached
+        `.trim(),
+        category: "other",
+        priority: "low",
+        status: "reported",
+        guard_id: user.id,
+        guard_name: user.full_name,
+        site_id: shift.site_id,
+        site_name: shift.site_name,
+        shift_id: shift.id,
+        reported_at: new Date().toISOString(),
+        media: formData.photos.map(url => ({ type: "photo", url }))
+      };
+
+      const createdIncident = await base44.entities.Incident.create(incidentData);
 
       // Update user - mark that start of shift report is completed
       await base44.auth.updateMe({
         needs_start_of_shift_report: false
+      });
+
+      // Send real-time notifications to all admins using backend function
+      const reportData = {
+        site_name: site?.name,
+        client_name: site?.client_name,
+        shift_post: formData.shift_post,
+        special_instructions: formData.special_instructions,
+        post_items_received: formData.post_items_received,
+        relieving_officer: formData.relieving_officer,
+        observations: formData.observations.filter(obs => obs.type || obs.comments),
+        additional_notes: formData.additional_notes,
+        signature: formData.signature,
+        incidentId: createdIncident.id
+      };
+
+      const mediaArray = formData.photos.map(url => ({ type: "photo", url }));
+
+      await base44.functions.invoke('sendStartOfShiftNotification', {
+        reportData,
+        location: currentLocation,
+        media: mediaArray
       });
 
       // Redirect back to guard shift page
@@ -88,80 +201,246 @@ export default function StartOfShift() {
     );
   }
 
+  if (showSignature) {
+    return (
+      <div className="min-h-screen p-4">
+        <SignaturePad
+          onSave={(sig) => {
+            setFormData(prev => ({ ...prev, signature: sig }));
+            setShowSignature(false);
+          }}
+          onCancel={() => setShowSignature(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <div className="max-w-2xl mx-auto pt-8">
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 bg-sky-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-white" />
-            </div>
-            <CardTitle className="text-2xl text-white">Start of Shift Report</CardTitle>
-            <p className="text-slate-400 mt-2">
+      <div className="max-w-2xl mx-auto pt-8 space-y-4">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-16 h-16 bg-sky-500 rounded-full flex items-center justify-center">
+            <Shield className="w-8 h-8 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Start of Shift Report</h1>
+            <p className="text-slate-400">
               {site?.name} • {new Date().toLocaleDateString()}
             </p>
+          </div>
+        </div>
+
+        {site && (
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardHeader>
+              <CardTitle className="text-white">ID, DATE, CLIENT, & SITE</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <span className="text-slate-400">Internal ID:</span>
+                <span className="text-white">{Date.now()}</span>
+                <span className="text-slate-400">Date Entered:</span>
+                <span className="text-white">{new Date().toLocaleString()}</span>
+                <span className="text-slate-400">Client:</span>
+                <span className="text-white">{site.client_name}</span>
+                <span className="text-slate-400">Site:</span>
+                <span className="text-white">{shift?.site_name}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">OFFICER / ENTERED BY</CardTitle>
           </CardHeader>
-
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="text-white font-medium block mb-2">
-                  Site Condition
-                </label>
-                <Textarea
-                  value={formData.site_condition}
-                  onChange={(e) => setFormData({ ...formData, site_condition: e.target.value })}
-                  placeholder="Describe the current site condition (weather, lighting, etc.)"
-                  className="bg-slate-900 border-slate-700 text-white min-h-[100px]"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-white font-medium block mb-2">
-                  Additional Notes
-                </label>
-                <Textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Any observations, incidents, or special instructions"
-                  className="bg-slate-900 border-slate-700 text-white min-h-[100px]"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 p-4 bg-slate-900/50 rounded-lg">
-                <input
-                  type="checkbox"
-                  id="all_secure"
-                  checked={formData.all_secure}
-                  onChange={(e) => setFormData({ ...formData, all_secure: e.target.checked })}
-                  className="w-5 h-5"
-                />
-                <label htmlFor="all_secure" className="text-white cursor-pointer">
-                  All secure - No immediate issues to report
-                </label>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="w-full h-12 bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white text-lg"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-5 h-5 mr-2" />
-                    Submit & Start Shift
-                  </>
-                )}
-              </Button>
-            </form>
+          <CardContent className="space-y-2 text-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <span className="text-slate-400">Officer Name:</span>
+              <span className="text-white">{user?.full_name}</span>
+              <span className="text-slate-400">Entered By:</span>
+              <span className="text-white">{user?.full_name}</span>
+            </div>
           </CardContent>
         </Card>
+
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">START OF SHIFT INFORMATION</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-white font-medium block mb-2">Shift/Post</label>
+              <Input
+                value={formData.shift_post}
+                onChange={(e) => setFormData({ ...formData, shift_post: e.target.value })}
+                placeholder="e.g., Day shift, Night shift"
+                className="bg-slate-900 border-slate-700 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-white font-medium block mb-2">Special Instructions</label>
+              <Textarea
+                value={formData.special_instructions}
+                onChange={(e) => setFormData({ ...formData, special_instructions: e.target.value })}
+                placeholder="Any special instructions for this shift..."
+                className="bg-slate-900 border-slate-700 text-white"
+                rows={2}
+              />
+            </div>
+
+            <div>
+              <label className="text-white font-medium block mb-2">Post Items Received</label>
+              <Input
+                value={formData.post_items_received}
+                onChange={(e) => setFormData({ ...formData, post_items_received: e.target.value })}
+                placeholder="e.g., Phone, Radio, Keys"
+                className="bg-slate-900 border-slate-700 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-white font-medium block mb-2">Relieving Officer</label>
+              <Input
+                value={formData.relieving_officer}
+                onChange={(e) => setFormData({ ...formData, relieving_officer: e.target.value })}
+                placeholder="Name of officer you're relieving"
+                className="bg-slate-900 border-slate-700 text-white"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">OBSERVATIONS</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {formData.observations.map((obs, index) => (
+              <div key={index} className="p-4 bg-slate-900/50 rounded-lg space-y-3">
+                <h4 className="text-white font-semibold">Observation #{index + 1}</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    placeholder="Type"
+                    value={obs.type}
+                    onChange={(e) => updateObservation(index, 'type', e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <Input
+                    type="time"
+                    value={obs.time}
+                    onChange={(e) => updateObservation(index, 'time', e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                </div>
+                <Textarea
+                  placeholder="Comments"
+                  value={obs.comments}
+                  onChange={(e) => updateObservation(index, 'comments', e.target.value)}
+                  className="bg-slate-800 border-slate-700 text-white"
+                  rows={2}
+                />
+              </div>
+            ))}
+            <Button onClick={addObservation} variant="outline" className="w-full border-slate-600">
+              + Add Observation
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">ADDITIONAL NOTES</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={formData.additional_notes}
+              onChange={(e) => setFormData({ ...formData, additional_notes: e.target.value })}
+              placeholder="Any additional information..."
+              className="bg-slate-900 border-slate-700 text-white"
+              rows={4}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">PHOTOS</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              onChange={handlePhotoUpload}
+              className="hidden"
+              id="photos"
+            />
+            <label htmlFor="photos">
+              <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-sky-500">
+                <Camera className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                <p className="text-slate-400">{uploadingPhoto ? "Uploading..." : "Take/Upload Photos"}</p>
+              </div>
+            </label>
+            {formData.photos.length > 0 && (
+              <div className="grid grid-cols-1 gap-3">
+                {formData.photos.map((url, i) => (
+                  <img key={i} src={url} alt={`Photo ${i+1}`} className="w-full h-auto max-h-96 object-contain bg-slate-900 rounded border border-slate-700" />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {formData.signature && (
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-white font-medium">Digital Signature</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowSignature(true)}
+                  className="text-sky-400"
+                >
+                  Re-sign
+                </Button>
+              </div>
+              <img src={formData.signature} alt="Signature" className="h-24 bg-white rounded" />
+            </CardContent>
+          </Card>
+        )}
+
+        <Button
+          onClick={handleSubmit}
+          disabled={submitting || !shift}
+          className="w-full h-16 text-lg bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 font-bold"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              Submitting Report...
+            </>
+          ) : !formData.signature ? (
+            <>
+              <Send className="w-5 h-5 mr-2" />
+              Sign & Submit Report
+            </>
+          ) : (
+            <>
+              <Send className="w-5 h-5 mr-2" />
+              Submit Report
+            </>
+          )}
+        </Button>
+
+        {!shift && (
+          <p className="text-rose-400 text-center">
+            You must be on an active shift to submit a start of shift report
+          </p>
+        )}
       </div>
     </div>
   );
