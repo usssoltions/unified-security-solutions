@@ -126,7 +126,7 @@ export default function ClockInOut({ user, location }) {
       queryClient.invalidateQueries();
       // Redirect to start of shift report immediately after clock in
       setTimeout(() => {
-        navigate("/start-of-shift");
+        navigate(createPageUrl("StartOfShift"));
       }, 200);
     },
     onError: (error) => {
