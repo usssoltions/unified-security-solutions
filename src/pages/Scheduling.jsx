@@ -41,6 +41,7 @@ export default function Scheduling() {
   const [showShiftForm, setShowShiftForm] = useState(false);
   const [showBulkScheduler, setShowBulkScheduler] = useState(false);
   const [selectedShift, setSelectedShift] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null);
   const [siteFilter, setSiteFilter] = useState("all");
   const [guardFilter, setGuardFilter] = useState("all");
   const [viewMode, setViewMode] = useState("calendar"); // calendar or list
@@ -231,6 +232,10 @@ export default function Scheduling() {
                 guards={guards}
                 sites={sites}
                 onShiftClick={setSelectedShift}
+                onDateSelect={(date) => {
+                  setSelectedDate(date);
+                  setShowShiftForm(true);
+                }}
                 currentMonth={currentMonth}
                 currentYear={currentYear}
                 onMonthChange={(month, year) => {
@@ -256,9 +261,14 @@ export default function Scheduling() {
           <ShiftForm
             guards={guards}
             sites={sites}
-            onClose={() => setShowShiftForm(false)}
+            preselectedDate={selectedDate}
+            onClose={() => {
+              setShowShiftForm(false);
+              setSelectedDate(null);
+            }}
             onSuccess={() => {
               setShowShiftForm(false);
+              setSelectedDate(null);
               queryClient.invalidateQueries(['shifts']);
             }}
           />
