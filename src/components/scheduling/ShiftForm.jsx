@@ -21,22 +21,36 @@ const formatDateTimeForInput = (isoString) => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-export default function ShiftForm({ shift, guards, sites, onClose, onSuccess }) {
+export default function ShiftForm({ shift, guards, sites, preselectedDate, onClose, onSuccess }) {
   const [formData, setFormData] = useState(() => {
     if (shift) {
       return {
-        guard_id: shift.guard_id || null, // Ensure null if unassigned
+        guard_id: shift.guard_id || null,
         site_id: shift.site_id,
         start_time: formatDateTimeForInput(shift.start_time),
         end_time: formatDateTimeForInput(shift.end_time),
         status: shift.status
       };
     } else {
+      // Pre-fill date and time if a date was selected from calendar
+      let defaultStart = "";
+      let defaultEnd = "";
+      
+      if (preselectedDate) {
+        const date = new Date(preselectedDate);
+        date.setHours(8, 0, 0, 0); // Default to 8 AM
+        defaultStart = formatDateTimeForInput(date.toISOString());
+        
+        const endDate = new Date(date);
+        endDate.setHours(20, 0, 0, 0); // Default to 8 PM (12-hour shift)
+        defaultEnd = formatDateTimeForInput(endDate.toISOString());
+      }
+      
       return {
-        guard_ids: [], // Array for multiple guards
+        guard_ids: [],
         site_id: "",
-        start_time: "",
-        end_time: "",
+        start_time: defaultStart,
+        end_time: defaultEnd,
         status: "scheduled"
       };
     }
