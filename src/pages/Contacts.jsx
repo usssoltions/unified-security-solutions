@@ -39,10 +39,27 @@ export default function Contacts() {
       });
     };
 
+    // Listen for service worker messages
+    const handleServiceWorkerMessage = (event) => {
+      if (event.data && event.data.type === 'incoming-call') {
+        console.log('📞 SW message received:', event.data);
+        setIncomingCall({
+          callId: event.data.callId,
+          caller: {
+            full_name: event.data.callerName,
+            badge_number: event.data.callerName
+          },
+          autoAnswer: event.data.autoAnswer
+        });
+      }
+    };
+
     window.addEventListener('incoming-call', handleIncomingCallEvent);
+    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
     
     return () => {
       window.removeEventListener('incoming-call', handleIncomingCallEvent);
+      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
     };
   }, []);
 

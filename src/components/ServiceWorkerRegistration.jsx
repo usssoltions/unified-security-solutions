@@ -11,7 +11,112 @@ export default function ServiceWorkerRegistration() {
 
   const registerServiceWorker = async () => {
     try {
-      const registration = await navigator.serviceWorker.register('/service-worker.js', {
+      // Create inline service worker
+      const swCode = `
+// Service Worker for handling push notifications and background tasks
+const CACHE_NAME = 'secureguard-v1';
+
+self.addEventListener('install', (event) => {
+  console.log('[SW] Installing...');
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating...');
+  event.waitUntil(clients.claim());
+});
+
+self.addEventListener('push', (event) => {
+  console.log('[SW] Push received:', event);
+  
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    console.error('[SW] Error parsing push data:', e);
+  }
+
+  const title = data.title || 'Notification';
+  const options = {
+    body: data.body || '',
+    icon: '/icon-192.png',
+    badge: '/badge-72.png',
+    tag: data.tag || 'notification',
+    requireInteraction: data.tag === 'incoming-call',
+    vibrate: data.tag === 'incoming-call' ? [500, 200, 500, 200, 500, 200, 500] : [200, 100, 200],
+    actions: data.actions || [],
+    data: data.data || {},
+    silent: false
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  console.log('[SW] Notification clicked:', event);
+  event.notification.close();
+
+  const action = event.action;
+  const data = event.notification.data;
+
+  if (action === 'answer' && data.callId) {
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin)) {
+            client.focus();
+            client.postMessage({
+              type: 'incoming-call',
+              callId: data.callId,
+              callerName: data.callerName,
+              autoAnswer: true
+            });
+            return;
+          }
+        }
+        return clients.openWindow('/?incoming_call=' + data.callId + '&auto_answer=true').then((client) => {
+          if (client) {
+            setTimeout(() => {
+              client.postMessage({
+                type: 'incoming-call',
+                callId: data.callId,
+                callerName: data.callerName,
+                autoAnswer: true
+              });
+            }, 1000);
+          }
+        });
+      })
+    );
+  } else {
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin)) {
+            return client.focus();
+          }
+        }
+        return clients.openWindow('/');
+      })
+    );
+  }
+});
+
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+  
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+      `;
+
+      const blob = new Blob([swCode], { type: 'application/javascript' });
+      const swUrl = URL.createObjectURL(blob);
+      
+      const registration = await navigator.serviceWorker.register(swUrl, {
         scope: '/'
       });
 
