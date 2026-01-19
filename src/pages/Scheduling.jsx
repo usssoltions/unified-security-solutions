@@ -26,6 +26,7 @@ import ShiftListView from "../components/scheduling/ShiftListView";
 import BulkShiftActions from "../components/scheduling/BulkShiftActions";
 import ShiftSwapManager from "../components/scheduling/ShiftSwapManager";
 import OnCallScheduling from "../components/scheduling/OnCallScheduling";
+import DayShiftsModal from "../components/scheduling/DayShiftsModal";
 
 export default function Scheduling() {
   const [user, setUser] = useState(null);
@@ -42,6 +43,8 @@ export default function Scheduling() {
   const [showBulkScheduler, setShowBulkScheduler] = useState(false);
   const [selectedShift, setSelectedShift] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [showDayModal, setShowDayModal] = useState(false);
+  const [dayModalShifts, setDayModalShifts] = useState([]);
   const [siteFilter, setSiteFilter] = useState("all");
   const [guardFilter, setGuardFilter] = useState("all");
   const [viewMode, setViewMode] = useState("calendar"); // calendar or list
@@ -233,8 +236,13 @@ export default function Scheduling() {
                 sites={sites}
                 onShiftClick={setSelectedShift}
                 onDateSelect={(date) => {
+                  const dayShifts = shiftsArray.filter(shift => {
+                    const shiftDate = new Date(shift.start_time);
+                    return shiftDate.toDateString() === date.toDateString();
+                  });
                   setSelectedDate(date);
-                  setShowShiftForm(true);
+                  setDayModalShifts(dayShifts);
+                  setShowDayModal(true);
                 }}
                 currentMonth={currentMonth}
                 currentYear={currentYear}
@@ -303,6 +311,27 @@ export default function Scheduling() {
 
         {/* On-Call Scheduling */}
         {user && <OnCallScheduling user={user} />}
+
+        {/* Day Shifts Modal */}
+        {showDayModal && selectedDate && (
+          <DayShiftsModal
+            date={selectedDate}
+            shifts={dayModalShifts}
+            onClose={() => {
+              setShowDayModal(false);
+              setSelectedDate(null);
+              setDayModalShifts([]);
+            }}
+            onCreateShift={() => {
+              setShowDayModal(false);
+              setShowShiftForm(true);
+            }}
+            onEditShift={(shift) => {
+              setShowDayModal(false);
+              setSelectedShift(shift);
+            }}
+          />
+        )}
       </div>
     </div>
   );
