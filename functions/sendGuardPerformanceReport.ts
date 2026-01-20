@@ -104,29 +104,33 @@ Deno.serve(async (req) => {
 
     const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/45d7f532d_ubsnew.png';
 
-    // Generate PDF Report
+    // Generate Enhanced PDF Report
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
     let yPos = 20;
 
-    // Header
+    // BRANDED HEADER
     doc.setFillColor(30, 41, 59);
-    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.rect(0, 0, pageWidth, 40, 'F');
+    
+    doc.setFillColor(220, 38, 38);
+    doc.rect(0, 40, pageWidth, 6, 'F');
+    
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
+    doc.setFontSize(26);
     doc.setFont('helvetica', 'bold');
     doc.text('UNIFIED SECURITY SOLUTIONS', pageWidth / 2, 15, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('Professional Security Management', pageWidth / 2, 22, { align: 'center' });
-    doc.setFontSize(10);
-    doc.text('Guard Performance & Site Activity Report', pageWidth / 2, 29, { align: 'center' });
+    
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Professional Security Management & Advisory', pageWidth / 2, 23, { align: 'center' });
+    
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('GUARD PERFORMANCE & OPERATIONS ANALYSIS', pageWidth / 2, 35, { align: 'center' });
 
-    doc.setDrawColor(220, 38, 38);
-    doc.setLineWidth(2);
-    doc.line(0, 35, pageWidth, 35);
-
-    yPos = 45;
+    yPos = 55;
 
     // Report Title
     doc.setTextColor(30, 41, 59);
