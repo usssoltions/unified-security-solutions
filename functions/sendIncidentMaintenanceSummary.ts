@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 Deno.serve(async (req) => {
   try {
@@ -69,188 +70,256 @@ Deno.serve(async (req) => {
 
     const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/45d7f532d_ubsnew.png';
 
+    // Generate PDF Report
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    let yPos = 20;
+
+    // Header with logo placeholder
+    doc.setFillColor(30, 41, 59);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('UNIFIED SECURITY SOLUTIONS', pageWidth / 2, 15, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text('Professional Security Management', pageWidth / 2, 22, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text('Incident & Maintenance Summary Report', pageWidth / 2, 29, { align: 'center' });
+
+    // Red line separator
+    doc.setDrawColor(220, 38, 38);
+    doc.setLineWidth(2);
+    doc.line(0, 35, pageWidth, 35);
+
+    yPos = 45;
+
+    // Report Title
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Report Period: ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`, 15, yPos);
+    yPos += 15;
+
+    // Executive Summary Box
+    doc.setFillColor(241, 245, 249);
+    doc.rect(15, yPos, pageWidth - 30, 30, 'F');
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('EXECUTIVE SUMMARY', 20, yPos + 8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Total Incidents: ${currentIncidents.length} | Total Maintenance: ${currentMaintenance.length}`, 20, yPos + 16);
+    doc.text(`vs Previous Month: Incidents ${prevIncidents.length} (${incidentChange > 0 ? '+' : ''}${incidentChange}%) | Maintenance ${prevMaintenance.length} (${maintenanceChange > 0 ? '+' : ''}${maintenanceChange}%)`, 20, yPos + 23);
+    yPos += 40;
+
+    // Monthly Overview
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MONTHLY OVERVIEW', 15, yPos);
+    yPos += 8;
+
+    const metrics = [
+      ['Total Incidents', currentIncidents.length.toString(), prevIncidents.length.toString(), `${incidentChange > 0 ? '+' : ''}${incidentChange}%`],
+      ['Critical Incidents', currentIncidents.filter(i => i.priority === 'critical').length.toString(), prevIncidents.filter(i => i.priority === 'critical').length.toString(), '-'],
+      ['Total Maintenance', currentMaintenance.length.toString(), prevMaintenance.length.toString(), `${maintenanceChange > 0 ? '+' : ''}${maintenanceChange}%`],
+      ['Urgent Maintenance', currentMaintenance.filter(m => m.urgency === 'critical' || m.urgency === 'high').length.toString(), '-', '-']
+    ];
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Metric', 15, yPos);
+    doc.text('Current', 80, yPos);
+    doc.text('Previous', 120, yPos);
+    doc.text('Change', 160, yPos);
+    yPos += 5;
+
+    doc.setDrawColor(220, 38, 38);
+    doc.line(15, yPos, pageWidth - 15, yPos);
+    yPos += 5;
+
+    doc.setFont('helvetica', 'normal');
+    metrics.forEach(row => {
+      doc.text(row[0], 15, yPos);
+      doc.text(row[1], 80, yPos);
+      doc.text(row[2], 120, yPos);
+      doc.text(row[3], 160, yPos);
+      yPos += 6;
+    });
+    yPos += 5;
+
+    // Category Breakdown - Incidents
+    if (yPos > pageHeight - 60) {
+      doc.addPage();
+      yPos = 20;
+    }
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INCIDENT CATEGORY BREAKDOWN', 15, yPos);
+    yPos += 8;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    Object.entries(incidentsByCategory).forEach(([cat, count]) => {
+      doc.text(`${cat.replace(/_/g, ' ')}: ${count}`, 20, yPos);
+      yPos += 6;
+    });
+    yPos += 5;
+
+    // Category Breakdown - Maintenance
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MAINTENANCE CATEGORY BREAKDOWN', 15, yPos);
+    yPos += 8;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    Object.entries(maintenanceByCategory).forEach(([cat, count]) => {
+      doc.text(`${cat.replace(/_/g, ' ')}: ${count}`, 20, yPos);
+      yPos += 6;
+    });
+    yPos += 10;
+
+    // Detailed Incident Log
+    if (currentIncidents.length > 0) {
+      doc.addPage();
+      yPos = 20;
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('DETAILED INCIDENT LOG', 15, yPos);
+      yPos += 10;
+
+      currentIncidents.forEach((incident, idx) => {
+        if (yPos > pageHeight - 40) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, yPos - 5, pageWidth - 30, 35, 'F');
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${idx + 1}. ${incident.title}`, 20, yPos);
+        
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        yPos += 6;
+        doc.text(`Priority: ${incident.priority} | Category: ${incident.category.replace(/_/g, ' ')} | Status: ${incident.status}`, 20, yPos);
+        yPos += 5;
+        doc.text(`Site: ${incident.site_name || 'N/A'} | Guard: ${incident.guard_name || 'N/A'}`, 20, yPos);
+        yPos += 5;
+        doc.text(`Reported: ${new Date(incident.reported_at).toLocaleDateString()}`, 20, yPos);
+        yPos += 5;
+        const desc = incident.description || 'No description';
+        doc.text(`Description: ${desc.substring(0, 100)}${desc.length > 100 ? '...' : ''}`, 20, yPos);
+        yPos += 12;
+      });
+    }
+
+    // Detailed Maintenance Log
+    if (currentMaintenance.length > 0) {
+      doc.addPage();
+      yPos = 20;
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('DETAILED MAINTENANCE LOG', 15, yPos);
+      yPos += 10;
+
+      currentMaintenance.forEach((maint, idx) => {
+        if (yPos > pageHeight - 40) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, yPos - 5, pageWidth - 30, 35, 'F');
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${idx + 1}. ${maint.title}`, 20, yPos);
+        
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        yPos += 6;
+        doc.text(`Urgency: ${maint.urgency} | Category: ${maint.category.replace(/_/g, ' ')} | Status: ${maint.status}`, 20, yPos);
+        yPos += 5;
+        doc.text(`Site: ${maint.site_name || 'N/A'} | Guard: ${maint.guard_name || 'N/A'}`, 20, yPos);
+        yPos += 5;
+        doc.text(`Reported: ${new Date(maint.reported_at).toLocaleDateString()}`, 20, yPos);
+        yPos += 5;
+        const desc = maint.description || 'No description';
+        doc.text(`Description: ${desc.substring(0, 100)}${desc.length > 100 ? '...' : ''}`, 20, yPos);
+        yPos += 12;
+      });
+    }
+
+    // Action Items Page
+    doc.addPage();
+    yPos = 20;
+    doc.setFillColor(254, 242, 242);
+    doc.rect(15, yPos - 5, pageWidth - 30, 50, 'F');
+    doc.setTextColor(153, 27, 27);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ACTION ITEMS FOR ESTATE MANAGEMENT', 20, yPos);
+    yPos += 10;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const actionItems = [
+      `Review ${currentIncidents.filter(i => i.priority === 'critical' || i.priority === 'high').length} high-priority incidents`,
+      `${currentMaintenance.filter(m => m.status !== 'completed').length} pending maintenance requests require scheduling`,
+      `Focus areas: ${Object.entries(incidentsByCategory).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([cat, count]) => `${cat} (${count})`).join(', ')}`,
+      'Review guard reports for patterns and additional context',
+      'Consider additional security measures at high-incident sites'
+    ];
+
+    actionItems.forEach(item => {
+      doc.text(`• ${item}`, 20, yPos);
+      yPos += 6;
+    });
+
+    // Footer
+    doc.setTextColor(148, 163, 184);
+    doc.setFontSize(8);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+
+    const pdfBytes = doc.output('arraybuffer');
+    const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBytes)));
+
+    // Upload PDF to get a URL
+    const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const pdfFile = new File([pdfBlob], `Incident_Maintenance_Report_${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).replace(' ', '_')}.pdf`);
+    const { file_url: pdfUrl } = await base44.asServiceRole.integrations.Core.UploadFile({ file: pdfFile });
+
     const emailPromises = recipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
         from_name: 'Unified Security Solutions',
         to: recipient.email,
-        subject: `Incident & Maintenance Summary - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+        subject: `Board Report: Incident & Maintenance Summary - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
         body: `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #0f172a; }
-    .container { max-width: 900px; margin: 20px auto; background: #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-    .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 40px; text-align: center; border-bottom: 4px solid #dc2626; }
-    .logo { max-width: 200px; margin: 0 auto 20px; }
-    .header h1 { margin: 0; font-size: 32px; font-weight: 700; color: white; text-transform: uppercase; letter-spacing: 1px; }
-    .header p { margin: 10px 0 0; color: #94a3b8; font-size: 16px; }
-    .content { padding: 40px; background: white; }
-    .section { margin-bottom: 40px; }
-    .section h2 { color: #1e293b; font-size: 24px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid #dc2626; }
-    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0; }
-    .metric-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 25px; border-radius: 10px; border-left: 5px solid #dc2626; color: white; }
-    .metric-card h3 { margin: 0 0 10px; font-size: 14px; color: #94a3b8; text-transform: uppercase; }
-    .metric-value { font-size: 36px; font-weight: bold; margin-bottom: 5px; }
-    .metric-change { font-size: 14px; font-weight: 600; }
-    .metric-change.up { color: #fca5a5; }
-    .metric-change.down { color: #86efac; }
-    .incident-list, .maintenance-list { margin: 20px 0; }
-    .item-card { background: #f8fafc; border-left: 4px solid #dc2626; padding: 20px; margin-bottom: 15px; border-radius: 6px; }
-    .item-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
-    .item-title { font-size: 18px; font-weight: 600; color: #1e293b; margin: 0; }
-    .item-badge { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
-    .badge-critical { background: #dc2626; color: white; }
-    .badge-high { background: #f59e0b; color: white; }
-    .badge-medium { background: #3b82f6; color: white; }
-    .badge-low { background: #10b981; color: white; }
-    .item-details { color: #475569; font-size: 14px; line-height: 1.6; }
-    .item-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 15px; font-size: 13px; color: #64748b; }
-    .category-breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
-    .category-item { background: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; }
-    .category-item strong { display: block; font-size: 24px; color: #1e293b; margin-bottom: 5px; }
-    .category-item span { color: #64748b; font-size: 13px; text-transform: capitalize; }
-    .footer { background: #0f172a; color: #94a3b8; padding: 30px; text-align: center; font-size: 13px; }
-    .footer strong { color: #dc2626; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <img src="${logoUrl}" alt="Unified Security Solutions" class="logo">
-      <h1>Incident & Maintenance Report</h1>
-      <p>${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-    </div>
-    
-    <div class="content">
-      <div class="section">
-        <h2>📊 Monthly Overview</h2>
-        <div class="metric-grid">
-          <div class="metric-card">
-            <h3>Total Incidents</h3>
-            <div class="metric-value">${currentIncidents.length}</div>
-            <div class="metric-change ${incidentChange > 0 ? 'up' : 'down'}">
-              ${incidentChange > 0 ? '▲' : '▼'} ${Math.abs(incidentChange)}% vs last month (${prevIncidents.length})
-            </div>
-          </div>
-          <div class="metric-card">
-            <h3>Critical Incidents</h3>
-            <div class="metric-value">${currentIncidents.filter(i => i.priority === 'critical').length}</div>
-            <div class="metric-change">Requires immediate attention</div>
-          </div>
-          <div class="metric-card">
-            <h3>Total Maintenance</h3>
-            <div class="metric-value">${currentMaintenance.length}</div>
-            <div class="metric-change ${maintenanceChange > 0 ? 'up' : 'down'}">
-              ${maintenanceChange > 0 ? '▲' : '▼'} ${Math.abs(maintenanceChange)}% vs last month (${prevMaintenance.length})
-            </div>
-          </div>
-          <div class="metric-card">
-            <h3>Urgent Maintenance</h3>
-            <div class="metric-value">${currentMaintenance.filter(m => m.urgency === 'critical' || m.urgency === 'high').length}</div>
-            <div class="metric-change">Action required</div>
-          </div>
-        </div>
-      </div>
+<p>Dear Board Member,</p>
 
-      <div class="section">
-        <h2>🔥 Category Breakdown - Incidents</h2>
-        <div class="category-breakdown">
-          ${Object.entries(incidentsByCategory).map(([cat, count]) => `
-            <div class="category-item">
-              <strong>${count}</strong>
-              <span>${cat.replace(/_/g, ' ')}</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+<p>Please find attached the <strong>Incident & Maintenance Summary Report</strong> for ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
 
-      <div class="section">
-        <h2>🔧 Category Breakdown - Maintenance</h2>
-        <div class="category-breakdown">
-          ${Object.entries(maintenanceByCategory).map(([cat, count]) => `
-            <div class="category-item">
-              <strong>${count}</strong>
-              <span>${cat.replace(/_/g, ' ')}</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+<p><strong>Report Highlights:</strong></p>
+<ul>
+  <li>Total Incidents: ${currentIncidents.length} (${incidentChange > 0 ? '+' : ''}${incidentChange}% vs previous month)</li>
+  <li>Critical Incidents: ${currentIncidents.filter(i => i.priority === 'critical').length}</li>
+  <li>Total Maintenance Requests: ${currentMaintenance.length} (${maintenanceChange > 0 ? '+' : ''}${maintenanceChange}% vs previous month)</li>
+  <li>Urgent Maintenance: ${currentMaintenance.filter(m => m.urgency === 'critical' || m.urgency === 'high').length}</li>
+</ul>
 
-      <div class="section">
-        <h2>⚠️ Detailed Incident Log</h2>
-        <div class="incident-list">
-          ${currentIncidents.length === 0 ? '<p style="color: #64748b; text-align: center; padding: 40px;">No incidents reported this month</p>' : ''}
-          ${currentIncidents.map(incident => `
-            <div class="item-card">
-              <div class="item-header">
-                <h3 class="item-title">${incident.title}</h3>
-                <span class="item-badge badge-${incident.priority}">${incident.priority}</span>
-              </div>
-              <div class="item-details">
-                <strong>Category:</strong> ${incident.category.replace(/_/g, ' ')}<br>
-                <strong>Description:</strong> ${incident.description || 'No description provided'}<br>
-                ${incident.resolution_notes ? `<strong>Resolution:</strong> ${incident.resolution_notes}<br>` : ''}
-              </div>
-              <div class="item-meta">
-                <div><strong>Site:</strong> ${incident.site_name || 'N/A'}</div>
-                <div><strong>Guard:</strong> ${incident.guard_name || 'N/A'}</div>
-                <div><strong>Reported:</strong> ${new Date(incident.reported_at).toLocaleDateString()}</div>
-                <div><strong>Status:</strong> ${incident.status}</div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+<p>The attached PDF contains detailed incident and maintenance logs, category breakdowns, and actionable recommendations for estate management.</p>
 
-      <div class="section">
-        <h2>🔧 Detailed Maintenance Log</h2>
-        <div class="maintenance-list">
-          ${currentMaintenance.length === 0 ? '<p style="color: #64748b; text-align: center; padding: 40px;">No maintenance requests this month</p>' : ''}
-          ${currentMaintenance.map(maint => `
-            <div class="item-card" style="border-left-color: #0ea5e9;">
-              <div class="item-header">
-                <h3 class="item-title">${maint.title}</h3>
-                <span class="item-badge badge-${maint.urgency === 'critical' ? 'critical' : maint.urgency}">${maint.urgency}</span>
-              </div>
-              <div class="item-details">
-                <strong>Category:</strong> ${maint.category.replace(/_/g, ' ')}<br>
-                <strong>Description:</strong> ${maint.description || 'No description provided'}<br>
-                ${maint.completion_notes ? `<strong>Completion:</strong> ${maint.completion_notes}<br>` : ''}
-              </div>
-              <div class="item-meta">
-                <div><strong>Site:</strong> ${maint.site_name || 'N/A'}</div>
-                <div><strong>Guard:</strong> ${maint.guard_name || 'N/A'}</div>
-                <div><strong>Reported:</strong> ${new Date(maint.reported_at).toLocaleDateString()}</div>
-                <div><strong>Status:</strong> ${maint.status}</div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+<p><strong>Download Report:</strong> <a href="${pdfUrl}">Click here to download PDF</a></p>
 
-      <div class="section" style="background: #fef2f2; padding: 20px; border-radius: 8px; border-left: 4px solid #dc2626;">
-        <h2 style="color: #991b1b; border-bottom-color: #fca5a5;">📌 Action Items for Estate Manager</h2>
-        <ul style="color: #7f1d1d; line-height: 1.8;">
-          ${currentIncidents.filter(i => i.priority === 'critical' || i.priority === 'high').length > 0 ? 
-            `<li><strong>Review ${currentIncidents.filter(i => i.priority === 'critical' || i.priority === 'high').length} high-priority incidents</strong> - Implement preventive measures</li>` : ''}
-          ${currentMaintenance.filter(m => m.status !== 'completed').length > 0 ?
-            `<li><strong>${currentMaintenance.filter(m => m.status !== 'completed').length} pending maintenance requests</strong> - Schedule repairs immediately</li>` : ''}
-          ${Object.keys(incidentsByCategory).length > 0 ?
-            `<li><strong>Focus areas:</strong> ${Object.entries(incidentsByCategory).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([cat, count]) => `${cat} (${count})`).join(', ')}</li>` : ''}
-          <li>Review guard reports for patterns and additional context</li>
-          <li>Consider additional security measures at high-incident sites</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="footer">
-      <p><strong>Unified Security Solutions</strong> - Professional Security Management</p>
-      <p>Generated: ${new Date().toLocaleString()}</p>
-    </div>
-  </div>
-</body>
-</html>
+<p>Best regards,<br>
+<strong>Unified Security Solutions</strong><br>
+Professional Security Management</p>
         `
       })
     );

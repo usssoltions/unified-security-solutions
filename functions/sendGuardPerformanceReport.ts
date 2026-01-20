@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 Deno.serve(async (req) => {
   try {
@@ -103,12 +104,221 @@ Deno.serve(async (req) => {
 
     const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/45d7f532d_ubsnew.png';
 
+    // Generate PDF Report
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    let yPos = 20;
+
+    // Header
+    doc.setFillColor(30, 41, 59);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('UNIFIED SECURITY SOLUTIONS', pageWidth / 2, 15, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text('Professional Security Management', pageWidth / 2, 22, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text('Guard Performance & Site Activity Report', pageWidth / 2, 29, { align: 'center' });
+
+    doc.setDrawColor(220, 38, 38);
+    doc.setLineWidth(2);
+    doc.line(0, 35, pageWidth, 35);
+
+    yPos = 45;
+
+    // Report Title
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Report Period: ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`, 15, yPos);
+    yPos += 15;
+
+    // Executive Summary
+    doc.setFillColor(241, 245, 249);
+    doc.rect(15, yPos, pageWidth - 30, 25, 'F');
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('EXECUTIVE SUMMARY', 20, yPos + 8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Active Guards: ${guardPerformance.length} | Total Shifts: ${currentShifts.length} | Late Clock-Ins: ${guardPerformance.reduce((sum, g) => sum + g.late_clock_ins, 0)} | Missed Stay-Awake: ${guardPerformance.reduce((sum, g) => sum + g.stay_awake_missed, 0)}`, 20, yPos + 18);
+    yPos += 35;
+
+    // Guard Performance Table
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('GUARD PERFORMANCE ANALYSIS', 15, yPos);
+    yPos += 10;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Guard', 15, yPos);
+    doc.text('Shifts', 65, yPos);
+    doc.text('Completion', 90, yPos);
+    doc.text('Punctuality', 120, yPos);
+    doc.text('Late', 150, yPos);
+    doc.text('Overall', 170, yPos);
+    yPos += 5;
+
+    doc.setDrawColor(220, 38, 38);
+    doc.line(15, yPos, pageWidth - 15, yPos);
+    yPos += 5;
+
+    doc.setFont('helvetica', 'normal');
+    guardPerformance.forEach(guard => {
+      if (yPos > pageHeight - 20) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      const overallScore = (
+        parseFloat(guard.completion_rate) * 0.3 +
+        parseFloat(guard.punctuality_rate) * 0.3 +
+        parseFloat(guard.stay_awake_response_rate) * 0.2 +
+        parseFloat(guard.patrol_verification_rate) * 0.2
+      ).toFixed(1);
+
+      doc.text(guard.guard_name.substring(0, 20), 15, yPos);
+      doc.text(`${guard.completed_shifts}/${guard.total_shifts}`, 65, yPos);
+      doc.text(`${guard.completion_rate}%`, 90, yPos);
+      doc.text(`${guard.punctuality_rate}%`, 120, yPos);
+      doc.text(guard.late_clock_ins.toString(), 150, yPos);
+      doc.text(`${overallScore}%`, 170, yPos);
+      yPos += 6;
+    });
+    yPos += 10;
+
+    // Late Clock-In Details
+    const lateGuards = guardPerformance.filter(g => g.late_clock_ins > 0);
+    if (lateGuards.length > 0) {
+      if (yPos > pageHeight - 60) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('LATE CLOCK-IN DETAILS', 15, yPos);
+      yPos += 10;
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      lateGuards.forEach(guard => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${guard.guard_name} - ${guard.late_clock_ins} occurrence(s)`, 15, yPos);
+        yPos += 5;
+        doc.setFont('helvetica', 'normal');
+        guard.late_clock_in_details.forEach(detail => {
+          doc.text(`  ${detail.date} at ${detail.site}: ${detail.delay_minutes} min late`, 20, yPos);
+          yPos += 4;
+        });
+        yPos += 3;
+      });
+      yPos += 5;
+    }
+
+    // Site Activity Summary
+    doc.addPage();
+    yPos = 20;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SITE ACTIVITY SUMMARY', 15, yPos);
+    yPos += 10;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Site Name', 15, yPos);
+    doc.text('Shifts', 90, yPos);
+    doc.text('Completed', 120, yPos);
+    doc.text('Coverage %', 150, yPos);
+    doc.text('Guards', 180, yPos);
+    yPos += 5;
+
+    doc.setDrawColor(220, 38, 38);
+    doc.line(15, yPos, pageWidth - 15, yPos);
+    yPos += 5;
+
+    doc.setFont('helvetica', 'normal');
+    siteActivity.forEach(site => {
+      if (yPos > pageHeight - 20) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.text(site.site_name.substring(0, 30), 15, yPos);
+      doc.text(site.total_shifts.toString(), 90, yPos);
+      doc.text(site.completed_shifts.toString(), 120, yPos);
+      doc.text(`${site.coverage_rate}%`, 150, yPos);
+      doc.text(site.unique_guards.toString(), 180, yPos);
+      yPos += 6;
+    });
+    yPos += 10;
+
+    // Recommendations
+    doc.addPage();
+    yPos = 20;
+    doc.setFillColor(254, 242, 242);
+    doc.rect(15, yPos - 5, pageWidth - 30, 70, 'F');
+    doc.setTextColor(153, 27, 27);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RECOMMENDATIONS', 20, yPos);
+    yPos += 10;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const recommendations = [
+      'Implement progressive discipline for repeated late arrivals',
+      'Provide additional training for guards with low performance scores',
+      'Review stay-awake alert settings and guard workload',
+      'Increase patrol frequency at sites with low coverage',
+      'Recognize and reward top-performing guards',
+      'Consider shift reassignments based on performance patterns'
+    ];
+
+    recommendations.forEach(rec => {
+      doc.text(`• ${rec}`, 20, yPos);
+      yPos += 6;
+    });
+
+    // Footer
+    doc.setTextColor(148, 163, 184);
+    doc.setFontSize(8);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+
+    const pdfBytes = doc.output('arraybuffer');
+    const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const pdfFile = new File([pdfBlob], `Guard_Performance_Report_${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).replace(' ', '_')}.pdf`);
+    const { file_url: pdfUrl } = await base44.asServiceRole.integrations.Core.UploadFile({ file: pdfFile });
+
     const emailPromises = recipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
         from_name: 'Unified Security Solutions',
         to: recipient.email,
-        subject: `Guard Performance & Site Activity Report - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+        subject: `Board Report: Guard Performance & Site Activity - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
         body: `
+<p>Dear Board Member,</p>
+
+<p>Please find attached the <strong>Guard Performance & Site Activity Report</strong> for ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+
+<p><strong>Report Highlights:</strong></p>
+<ul>
+  <li>Active Guards Analyzed: ${guardPerformance.length}</li>
+  <li>Total Shifts Completed: ${currentShifts.length}</li>
+  <li>Late Clock-Ins: ${guardPerformance.reduce((sum, g) => sum + g.late_clock_ins, 0)}</li>
+  <li>Missed Stay-Awake Alerts: ${guardPerformance.reduce((sum, g) => sum + g.stay_awake_missed, 0)}</li>
+  <li>Sites Monitored: ${siteActivity.length}</li>
+</ul>
+
+<p>The attached PDF contains comprehensive guard performance metrics, punctuality analysis, site activity summaries, and strategic recommendations for optimizing security operations.</p>
+
+<p><strong>Download Report:</strong> <a href="${pdfUrl}">Click here to download PDF</a></p>
+
+<p>Best regards,<br>
+<strong>Unified Security Solutions</strong><br>
+Professional Security Management</p>
 <!DOCTYPE html>
 <html>
 <head>
