@@ -16,9 +16,13 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.MaintenanceRequest.filter({})
     ]);
 
+    // Filter out any non-incident categories (start of shift reports should use ShiftHandover entity)
+    const validIncidentCategories = ['fire', 'theft', 'vandalism', 'medical', 'trespassing', 'suspicious_activity', 'equipment_failure', 'safety_hazard', 'other'];
+    
     const currentIncidents = incidents.filter(i => {
       const date = new Date(i.reported_at || i.created_date);
-      return date >= currentMonthStart && date <= currentMonthEnd;
+      const isValidCategory = validIncidentCategories.includes(i.category);
+      return date >= currentMonthStart && date <= currentMonthEnd && isValidCategory;
     });
     
     const currentMaintenance = maintenance.filter(m => {
@@ -28,7 +32,8 @@ Deno.serve(async (req) => {
 
     const prevIncidents = incidents.filter(i => {
       const date = new Date(i.reported_at || i.created_date);
-      return date >= prevMonthStart && date <= prevMonthEnd;
+      const isValidCategory = validIncidentCategories.includes(i.category);
+      return date >= prevMonthStart && date <= prevMonthEnd && isValidCategory;
     });
     
     const prevMaintenance = maintenance.filter(m => {
