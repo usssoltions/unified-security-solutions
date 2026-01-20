@@ -154,81 +154,172 @@ Provide:
         to: recipient.email,
         subject: `Monthly Comparison Report - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
         body: `
-<h2>Monthly Comparison Report</h2>
-<h3>${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h3>
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; }
+    .container { max-width: 800px; margin: 20px auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #0ea5e9 0%, #1e40af 100%); padding: 30px; text-align: center; color: white; }
+    .logo { width: 80px; height: 80px; background: white; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; color: #0ea5e9; }
+    .header h1 { margin: 0; font-size: 28px; font-weight: 600; }
+    .header p { margin: 5px 0 0; opacity: 0.95; font-size: 16px; }
+    .content { padding: 30px; }
+    .summary { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #0ea5e9; }
+    .summary h2 { margin: 0 0 10px; color: #1e40af; font-size: 20px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin: 25px 0; }
+    .metric-card { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .metric-card h3 { margin: 0 0 8px; font-size: 13px; color: #64748b; font-weight: 500; text-transform: uppercase; }
+    .metric-value { font-size: 28px; font-weight: bold; color: #1e293b; margin-bottom: 5px; }
+    .metric-change { font-size: 14px; font-weight: 600; }
+    .metric-change.up { color: #dc2626; }
+    .metric-change.down { color: #16a34a; }
+    .metric-change.neutral { color: #64748b; }
+    .chart-section { margin: 30px 0; }
+    .chart-section h3 { color: #1e293b; font-size: 18px; margin-bottom: 15px; border-bottom: 2px solid #0ea5e9; padding-bottom: 8px; }
+    .comparison-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    .comparison-table th { background: #0ea5e9; color: white; padding: 12px; text-align: left; font-size: 14px; font-weight: 600; }
+    .comparison-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+    .comparison-table tr:hover { background: #f8fafc; }
+    .bar-chart { margin: 20px 0; }
+    .bar-row { display: flex; align-items: center; margin-bottom: 15px; }
+    .bar-label { width: 150px; font-size: 13px; color: #475569; font-weight: 500; }
+    .bar-container { flex: 1; background: #e2e8f0; border-radius: 4px; height: 30px; position: relative; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; color: white; font-size: 12px; font-weight: 600; transition: width 0.3s ease; }
+    .bar-current { background: linear-gradient(90deg, #0ea5e9 0%, #3b82f6 100%); }
+    .bar-previous { background: linear-gradient(90deg, #64748b 0%, #94a3b8 100%); }
+    .insights { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 20px; border-radius: 8px; margin: 25px 0; }
+    .insights h3 { margin: 0 0 15px; color: #166534; font-size: 18px; }
+    .insights p { line-height: 1.6; color: #166534; margin: 10px 0; }
+    .footer { background: #1e293b; color: #94a3b8; padding: 20px; text-align: center; font-size: 13px; }
+    .footer strong { color: #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">SG</div>
+      <h1>Monthly Comparison Report</h1>
+      <p>${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+    </div>
+    
+    <div class="content">
+      <div class="summary">
+        <h2>📊 Executive Summary</h2>
+        <p>Comparative analysis of security operations showing month-over-month performance metrics, incident trends, and maintenance activities.</p>
+      </div>
 
-<h3>Key Metrics Comparison</h3>
-<table border="1" cellpadding="10" style="border-collapse: collapse;">
-  <tr>
-    <th>Metric</th>
-    <th>Current Month</th>
-    <th>Previous Month</th>
-    <th>Change</th>
-  </tr>
-  <tr>
-    <td><strong>Total Incidents</strong></td>
-    <td>${currentIncidents.length}</td>
-    <td>${prevIncidents.length}</td>
-    <td style="color: ${incidentChange > 0 ? 'red' : 'green'}">${incidentChange > 0 ? '+' : ''}${incidentChange}%</td>
-  </tr>
-  <tr>
-    <td><strong>Critical Incidents</strong></td>
-    <td>${currentIncidents.filter(i => i.priority === 'critical').length}</td>
-    <td>${prevIncidents.filter(i => i.priority === 'critical').length}</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td><strong>Maintenance Requests</strong></td>
-    <td>${currentMaintenance.length}</td>
-    <td>${prevMaintenance.length}</td>
-    <td style="color: ${maintenanceChange > 0 ? 'orange' : 'green'}">${maintenanceChange > 0 ? '+' : ''}${maintenanceChange}%</td>
-  </tr>
-  <tr>
-    <td><strong>Patrol Stops</strong></td>
-    <td>${currentPatrols.length}</td>
-    <td>${prevPatrols.length}</td>
-    <td style="color: ${patrolChange < 0 ? 'red' : 'green'}">${patrolChange > 0 ? '+' : ''}${patrolChange}%</td>
-  </tr>
-  <tr>
-    <td><strong>Shifts Completed</strong></td>
-    <td>${currentShifts.length}</td>
-    <td>${prevShifts.length}</td>
-    <td>${shiftChange > 0 ? '+' : ''}${shiftChange}%</td>
-  </tr>
-  <tr>
-    <td><strong>System Alerts</strong></td>
-    <td>${currentAlerts.length}</td>
-    <td>${prevAlerts.length}</td>
-    <td>-</td>
-  </tr>
-</table>
+      <div class="metric-grid">
+        <div class="metric-card">
+          <h3>Total Incidents</h3>
+          <div class="metric-value">${currentIncidents.length}</div>
+          <div class="metric-change ${incidentChange > 0 ? 'up' : incidentChange < 0 ? 'down' : 'neutral'}">
+            ${incidentChange > 0 ? '▲' : incidentChange < 0 ? '▼' : '●'} ${Math.abs(incidentChange)}% vs last month
+          </div>
+        </div>
+        <div class="metric-card">
+          <h3>Critical Incidents</h3>
+          <div class="metric-value">${currentIncidents.filter(i => i.priority === 'critical').length}</div>
+          <div class="metric-change neutral">Previous: ${prevIncidents.filter(i => i.priority === 'critical').length}</div>
+        </div>
+        <div class="metric-card">
+          <h3>Maintenance</h3>
+          <div class="metric-value">${currentMaintenance.length}</div>
+          <div class="metric-change ${maintenanceChange > 0 ? 'up' : maintenanceChange < 0 ? 'down' : 'neutral'}">
+            ${maintenanceChange > 0 ? '▲' : maintenanceChange < 0 ? '▼' : '●'} ${Math.abs(maintenanceChange)}% vs last month
+          </div>
+        </div>
+        <div class="metric-card">
+          <h3>Patrol Stops</h3>
+          <div class="metric-value">${currentPatrols.length}</div>
+          <div class="metric-change ${patrolChange < 0 ? 'up' : patrolChange > 0 ? 'down' : 'neutral'}">
+            ${patrolChange > 0 ? '▲' : patrolChange < 0 ? '▼' : '●'} ${Math.abs(patrolChange)}% vs last month
+          </div>
+        </div>
+      </div>
 
-<h3>Site Performance Comparison (Top 5)</h3>
-<table border="1" cellpadding="10" style="border-collapse: collapse;">
-  <tr>
-    <th>Site</th>
-    <th>Current Incidents</th>
-    <th>Previous Incidents</th>
-    <th>Change</th>
-    <th>Current Maintenance</th>
-    <th>Previous Maintenance</th>
-  </tr>
-  ${siteComparison.slice(0, 5).map(s => `
-  <tr>
-    <td>${s.name}</td>
-    <td>${s.currentIncidents}</td>
-    <td>${s.prevIncidents}</td>
-    <td style="color: ${s.incidentChange > 0 ? 'red' : 'green'}">${s.incidentChange > 0 ? '+' : ''}${s.incidentChange}%</td>
-    <td>${s.currentMaintenance}</td>
-    <td>${s.prevMaintenance}</td>
-  </tr>
-  `).join('')}
-</table>
+      <div class="chart-section">
+        <h3>📈 Activity Comparison Chart</h3>
+        <div class="bar-chart">
+          <div class="bar-row">
+            <div class="bar-label">Incidents (Current)</div>
+            <div class="bar-container">
+              <div class="bar-fill bar-current" style="width: ${Math.min(currentIncidents.length / Math.max(currentIncidents.length, prevIncidents.length) * 100, 100)}%">
+                ${currentIncidents.length}
+              </div>
+            </div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">Incidents (Previous)</div>
+            <div class="bar-container">
+              <div class="bar-fill bar-previous" style="width: ${Math.min(prevIncidents.length / Math.max(currentIncidents.length, prevIncidents.length) * 100, 100)}%">
+                ${prevIncidents.length}
+              </div>
+            </div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">Maintenance (Current)</div>
+            <div class="bar-container">
+              <div class="bar-fill bar-current" style="width: ${Math.min(currentMaintenance.length / Math.max(currentMaintenance.length, prevMaintenance.length) * 100, 100)}%">
+                ${currentMaintenance.length}
+              </div>
+            </div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">Maintenance (Previous)</div>
+            <div class="bar-container">
+              <div class="bar-fill bar-previous" style="width: ${Math.min(prevMaintenance.length / Math.max(currentMaintenance.length, prevMaintenance.length) * 100, 100)}%">
+                ${prevMaintenance.length}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-<h3>AI Analysis & Insights</h3>
-<div style="white-space: pre-wrap; font-family: Arial; background-color: #f5f5f5; padding: 15px; border-radius: 5px;">${aiAnalysis}</div>
+      <div class="chart-section">
+        <h3>🏢 Site Performance Comparison</h3>
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Site</th>
+              <th>Current Incidents</th>
+              <th>Previous Incidents</th>
+              <th>Change</th>
+              <th>Current Maintenance</th>
+              <th>Previous Maintenance</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${siteComparison.slice(0, 5).map(s => `
+            <tr>
+              <td><strong>${s.name}</strong></td>
+              <td>${s.currentIncidents}</td>
+              <td>${s.prevIncidents}</td>
+              <td style="color: ${s.incidentChange > 0 ? '#dc2626' : s.incidentChange < 0 ? '#16a34a' : '#64748b'}; font-weight: 600;">
+                ${s.incidentChange > 0 ? '▲' : s.incidentChange < 0 ? '▼' : '●'} ${Math.abs(s.incidentChange)}%
+              </td>
+              <td>${s.currentMaintenance}</td>
+              <td>${s.prevMaintenance}</td>
+            </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
 
-<p><em>This is an automated monthly comparison report from SecureGuard Analytics System</em></p>
+      <div class="insights">
+        <h3>🤖 AI Analysis & Recommendations</h3>
+        <p style="white-space: pre-wrap;">${aiAnalysis}</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p><strong>SecureGuard Analytics</strong></p>
+      <p>This is an automated monthly comparison report</p>
+      <p>Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+    </div>
+  </div>
+</body>
+</html>
         `
       })
     );
