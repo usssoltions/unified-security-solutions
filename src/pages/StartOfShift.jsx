@@ -62,20 +62,27 @@ export default function StartOfShift() {
     
     for (const file of files) {
       try {
-        const result = await base44.integrations.Core.UploadFile({ file });
+        // Validate file
+        if (!file.type.startsWith('image/')) {
+          alert(`${file.name} is not an image file`);
+          continue;
+        }
         
-        if (result && result.file_url) {
+        // Upload using the integration
+        const result = await base44.integrations.Core.UploadFile({ file: file });
+        
+        if (result?.file_url) {
           setFormData(prev => ({
             ...prev,
             photos: [...prev.photos, result.file_url]
           }));
         } else {
-          console.error("Upload returned no URL:", result);
-          alert(`Failed to upload ${file.name}. Please try again.`);
+          throw new Error('No file URL returned from upload');
         }
       } catch (fileError) {
-        console.error("Error uploading file:", fileError);
-        alert(`Failed to upload ${file.name}: ${fileError.message || 'Unknown error'}`);
+        console.error("Full error details:", fileError);
+        const errorMsg = fileError?.response?.data?.message || fileError?.message || 'Unknown error occurred';
+        alert(`Upload failed: ${errorMsg}. Please try again or contact support if issue persists.`);
       }
     }
     
