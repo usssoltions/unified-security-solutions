@@ -60,32 +60,27 @@ export default function StartOfShift() {
     
     setUploadingPhoto(true);
     
-    try {
-      for (const file of files) {
-        try {
-          // Convert file to proper format
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          const { file_url } = await base44.integrations.Core.UploadFile({ file });
-          
+    for (const file of files) {
+      try {
+        const result = await base44.integrations.Core.UploadFile({ file });
+        
+        if (result && result.file_url) {
           setFormData(prev => ({
             ...prev,
-            photos: [...prev.photos, file_url]
+            photos: [...prev.photos, result.file_url]
           }));
-        } catch (fileError) {
-          console.error("Error uploading file:", fileError);
+        } else {
+          console.error("Upload returned no URL:", result);
           alert(`Failed to upload ${file.name}. Please try again.`);
         }
+      } catch (fileError) {
+        console.error("Error uploading file:", fileError);
+        alert(`Failed to upload ${file.name}: ${fileError.message || 'Unknown error'}`);
       }
-    } catch (error) {
-      console.error("Photo upload error:", error);
-      alert("Failed to upload photos. Please check your connection and try again.");
-    } finally {
-      setUploadingPhoto(false);
-      // Reset file input
-      e.target.value = '';
     }
+    
+    setUploadingPhoto(false);
+    e.target.value = '';
   };
 
   const addObservation = () => {
