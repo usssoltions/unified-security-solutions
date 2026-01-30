@@ -46,6 +46,22 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     loadUser();
     
+    // Keep screen awake
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('Wake lock active');
+        }
+      } catch (err) {
+        console.log('Wake lock error:', err);
+      }
+    };
+    
+    requestWakeLock();
+    document.addEventListener('visibilitychange', requestWakeLock);
+    
     // Suppress WebSocket errors globally
     const originalError = console.error;
     const originalWarn = console.warn;
@@ -79,6 +95,10 @@ export default function Layout({ children, currentPageName }) {
     return () => {
       console.error = originalError;
       console.warn = originalWarn;
+      document.removeEventListener('visibilitychange', requestWakeLock);
+      if (wakeLock) {
+        wakeLock.release();
+      }
     };
   }, [retryCount]);
 

@@ -93,45 +93,26 @@ export default function RealtimeVoiceCall({
     stopRingtone();
     
     try {
-      // Request wake lock to keep screen on
-      if ('wakeLock' in navigator) {
-        navigator.wakeLock.request('screen').catch(() => {});
-      }
-      
-      // Use a more alarming ringtone sound - police siren pattern
-      const createRingtoneDataURL = () => {
-        // Better quality ringtone with louder, more urgent sound
-        return 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-      };
-      
-      ringtoneAudio.current = new Audio(createRingtoneDataURL());
+      // Use a loud, alarming ringtone from a CDN
+      ringtoneAudio.current = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
       ringtoneAudio.current.loop = true;
       ringtoneAudio.current.volume = 1.0;
       
-      // Try to play immediately
-      const playPromise = ringtoneAudio.current.play();
+      // Force play with user interaction fallback
+      ringtoneAudio.current.play().catch(error => {
+        console.log('Ringtone play failed:', error);
+      });
       
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            console.log('Ringtone playing via Audio element');
-          })
-          .catch(error => {
-            console.log('Audio autoplay blocked, using Web Audio API fallback', error);
-            playWebAudioRingtone();
-          });
-      }
-      
-      // Vibration with more urgent pattern
+      // Aggressive vibration pattern
       if ('vibrate' in navigator) {
         const vibratePattern = () => {
-          navigator.vibrate([500, 100, 500, 100, 500]);
+          navigator.vibrate([1000, 500, 1000, 500, 1000]);
         };
         vibratePattern();
-        ringtoneInterval.current = setInterval(vibratePattern, 1500);
+        ringtoneInterval.current = setInterval(vibratePattern, 3000);
       }
       
-      console.log('Ringtone initialization complete');
+      console.log('Ringtone started');
     } catch (error) {
       console.error('Error starting ringtone:', error);
     }
@@ -203,16 +184,9 @@ export default function RealtimeVoiceCall({
         try {
           localStream.current = await navigator.mediaDevices.getUserMedia({
             audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              sampleRate: 48000,
-              channelCount: 1,
-              // Additional constraints to prevent feedback
-              googEchoCancellation: true,
-              googAutoGainControl: true,
-              googNoiseSuppression: true,
-              googHighpassFilter: true
+              echoCancellation: { exact: true },
+              noiseSuppression: { exact: true },
+              autoGainControl: { exact: true }
             },
             video: isVideoOn
           });
@@ -290,16 +264,9 @@ export default function RealtimeVoiceCall({
       try {
         localStream.current = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 48000,
-            channelCount: 1,
-            // Additional constraints to prevent feedback
-            googEchoCancellation: true,
-            googAutoGainControl: true,
-            googNoiseSuppression: true,
-            googHighpassFilter: true
+            echoCancellation: { exact: true },
+            noiseSuppression: { exact: true },
+            autoGainControl: { exact: true }
           },
           video: isVideoOn
         });
@@ -691,16 +658,7 @@ export default function RealtimeVoiceCall({
               const audio = new Audio();
               audio.srcObject = event.streams[0];
               audio.autoplay = true;
-              audio.volume = 0.8; // Slightly reduce volume to prevent feedback
-              
-              // Add audio processing to prevent feedback
-              const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-              const source = audioContext.createMediaStreamSource(event.streams[0]);
-              const gainNode = audioContext.createGain();
-              gainNode.gain.value = 0.8;
-              source.connect(gainNode);
-              gainNode.connect(audioContext.destination);
-              
+              audio.volume = 0.5; // Lower volume to prevent feedback
               audio.play().catch(e => console.log('Audio autoplay prevented:', e));
               remoteAudios.current[participantId] = audio;
             }
