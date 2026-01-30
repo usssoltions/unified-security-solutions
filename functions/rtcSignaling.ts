@@ -124,18 +124,33 @@ Deno.serve(async (req) => {
                 });
 
             case 'end_call':
+                // Get call data before deleting
+                const callData = activeConnections.get(callId);
+                
                 // Clean up call data
                 if (callId) {
                     activeConnections.delete(callId);
                     
-                    // Notify the other party
-                    const callData = activeConnections.get(callId);
+                    // Notify the other party that call ended
                     if (callData) {
                         const otherUserId = callData.initiator === user.id ? callData.target : callData.initiator;
                         if (!signalingMessages.has(otherUserId)) {
                             signalingMessages.set(otherUserId, []);
                         }
                         signalingMessages.get(otherUserId).push({
+                            type: 'call_ended',
+                            from: user.id,
+                            callId,
+                            timestamp: Date.now()
+                        });
+                    }
+                    
+                    // Also notify via targetUserId if provided
+                    if (targetUserId && targetUserId !== user.id) {
+                        if (!signalingMessages.has(targetUserId)) {
+                            signalingMessages.set(targetUserId, []);
+                        }
+                        signalingMessages.get(targetUserId).push({
                             type: 'call_ended',
                             from: user.id,
                             callId,
