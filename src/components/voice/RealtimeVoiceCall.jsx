@@ -93,21 +93,15 @@ export default function RealtimeVoiceCall({
     stopRingtone();
     
     try {
-      // Method 1: Try Web Audio API
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (AudioContext) {
-        audioContext.current = new AudioContext();
-        
-        // Force resume if suspended
-        audioContext.current.resume().then(() => {
-          console.log('AudioContext resumed, state:', audioContext.current.state);
-        });
+      // Request wake lock to keep screen on
+      if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').catch(() => {});
       }
       
-      // Method 2: Fallback to HTML5 Audio with data URL ringtone
+      // Use a more alarming ringtone sound - police siren pattern
       const createRingtoneDataURL = () => {
-        // Create a simple beep sound using data URL
-        return 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZSA0PVqzn77BdGAg+ltryxnMpBSl+zPLaizsIGGS57OihUBELTKXh8bllHAU2jdXzzn0vBSF1xe/glEILElyx6+6nVBML';
+        // Better quality ringtone with louder, more urgent sound
+        return 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
       };
       
       ringtoneAudio.current = new Audio(createRingtoneDataURL());
@@ -128,20 +122,13 @@ export default function RealtimeVoiceCall({
           });
       }
       
-      // If Audio element didn't play, use Web Audio API
-      setTimeout(() => {
-        if (ringtoneAudio.current && ringtoneAudio.current.paused) {
-          console.log('Audio element failed, using Web Audio API');
-        }
-      }, 100);
-      
-      // Vibration
+      // Vibration with more urgent pattern
       if ('vibrate' in navigator) {
         const vibratePattern = () => {
-          navigator.vibrate([400, 200, 400, 200, 400]);
+          navigator.vibrate([500, 100, 500, 100, 500]);
         };
         vibratePattern();
-        ringtoneInterval.current = setInterval(vibratePattern, 2000);
+        ringtoneInterval.current = setInterval(vibratePattern, 1500);
       }
       
       console.log('Ringtone initialization complete');
@@ -220,7 +207,12 @@ export default function RealtimeVoiceCall({
               noiseSuppression: true,
               autoGainControl: true,
               sampleRate: 48000,
-              channelCount: 1
+              channelCount: 1,
+              // Additional constraints to prevent feedback
+              googEchoCancellation: true,
+              googAutoGainControl: true,
+              googNoiseSuppression: true,
+              googHighpassFilter: true
             },
             video: isVideoOn
           });
@@ -302,7 +294,12 @@ export default function RealtimeVoiceCall({
             noiseSuppression: true,
             autoGainControl: true,
             sampleRate: 48000,
-            channelCount: 1
+            channelCount: 1,
+            // Additional constraints to prevent feedback
+            googEchoCancellation: true,
+            googAutoGainControl: true,
+            googNoiseSuppression: true,
+            googHighpassFilter: true
           },
           video: isVideoOn
         });
@@ -694,7 +691,16 @@ export default function RealtimeVoiceCall({
               const audio = new Audio();
               audio.srcObject = event.streams[0];
               audio.autoplay = true;
-              audio.volume = 1.0;
+              audio.volume = 0.8; // Slightly reduce volume to prevent feedback
+              
+              // Add audio processing to prevent feedback
+              const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              const source = audioContext.createMediaStreamSource(event.streams[0]);
+              const gainNode = audioContext.createGain();
+              gainNode.gain.value = 0.8;
+              source.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              
               audio.play().catch(e => console.log('Audio autoplay prevented:', e));
               remoteAudios.current[participantId] = audio;
             }
