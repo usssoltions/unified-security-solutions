@@ -777,12 +777,7 @@ export default function RealtimeVoiceCall({
         console.log('Call ended by remote party');
         stopRingtone();
         stopRingbackTone();
-
-        // Log the call as completed/missed
-        await logCallHistory(callStatus === 'connected' ? 'completed' : 'missed');
-
-        cleanup();
-        onClose();
+        endCall();
       }
     } catch (error) {
       console.error('Error handling signaling:', error);
