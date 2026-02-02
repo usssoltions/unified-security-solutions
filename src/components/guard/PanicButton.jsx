@@ -39,9 +39,11 @@ export default function PanicButton({ shiftId, siteId }) {
 
     setSending(true);
     try {
-      const response = await base44.functions.invoke('sendPanicAlert', {
+      const user = await base44.auth.me();
+      const response = await base44.functions.invoke('sendPanicAlertMultiChannel', {
+        guardId: user.id,
+        guardName: user.full_name,
         location,
-        notes,
         shiftId,
         siteId
       });
