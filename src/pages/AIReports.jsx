@@ -11,7 +11,7 @@ import ReportHistory from "../components/reports/ReportHistory";
 import AutomatedReportScheduler from "../components/reports/AutomatedReportScheduler";
 
 export default function AIReports() {
-  const [reportType, setReportType] = useState("guard"); // guard, site, overall
+  const [reportType, setReportType] = useState("guard"); // guard, site, overall, monthly_incidents, monthly_maintenance
   const [reportPeriod, setReportPeriod] = useState("daily"); // daily, weekly, monthly
   const [selectedEntity, setSelectedEntity] = useState(null); // guard ID or site ID
   const [generatedReport, setGeneratedReport] = useState(null);
@@ -137,6 +137,30 @@ export default function AIReports() {
   };
 
   const generateReport = async () => {
+    // Monthly reports don't need entity selection
+    if (reportType === "monthly_incidents" || reportType === "monthly_maintenance") {
+      setGenerating(true);
+      try {
+        const functionName = reportType === "monthly_incidents" 
+          ? 'generateMonthlyIncidentReport' 
+          : 'generateMonthlyMaintenanceReport';
+        
+        const { data } = await base44.functions.invoke(functionName);
+        
+        if (data.success) {
+          window.open(data.pdfUrl, '_blank');
+          alert('Monthly report generated successfully! Check your downloads.');
+        } else {
+          alert('Failed to generate report: ' + data.error);
+        }
+      } catch (error) {
+        alert("Failed to generate report: " + error.message);
+      } finally {
+        setGenerating(false);
+      }
+      return;
+    }
+    
     if (reportType !== "overall" && !selectedEntity) {
       alert("Please select a guard or site");
       return;
@@ -385,6 +409,8 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
                   <SelectItem value="guard">Guard Performance</SelectItem>
                   <SelectItem value="site">Site Activity</SelectItem>
                   <SelectItem value="overall">Overall Operations</SelectItem>
+                  <SelectItem value="monthly_incidents">Monthly Incidents Report (PDF)</SelectItem>
+                  <SelectItem value="monthly_maintenance">Monthly Maintenance Report (PDF)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -442,7 +468,7 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
 
           <Button
             onClick={generateReport}
-            disabled={generating || (reportType !== "overall" && !selectedEntity)}
+            disabled={generating || (reportType !== "overall" && reportType !== "monthly_incidents" && reportType !== "monthly_maintenance" && !selectedEntity)}
             className="w-full h-10 sm:h-11 lg:h-12 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-sm sm:text-base"
           >
             {generating ? (
