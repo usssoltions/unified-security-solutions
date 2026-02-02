@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function RealTimeAlertMonitor({ user }) {
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
+  const [soundPlayed, setSoundPlayed] = useState(new Set());
   const queryClient = useQueryClient();
 
   // Fetch active critical alerts
@@ -40,18 +41,21 @@ export default function RealTimeAlertMonitor({ user }) {
       if (event.type === "create" && event.data?.priority === "critical") {
         queryClient.invalidateQueries(["criticalAlerts"]);
         
-        // Play alert sound for critical alerts
-        playAlertSound();
-        
-        // Vibrate if supported
-        if (navigator.vibrate) {
-          navigator.vibrate([200, 100, 200]);
+        // Only play sound once per alert
+        if (!soundPlayed.has(event.data.id)) {
+          playAlertSound();
+          setSoundPlayed(prev => new Set(prev).add(event.data.id));
+          
+          // Vibrate if supported
+          if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+          }
         }
       }
     });
 
     return unsubscribe;
-  }, [queryClient]);
+  }, [queryClient, soundPlayed]);
 
   const playAlertSound = () => {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -84,6 +88,28 @@ export default function RealTimeAlertMonitor({ user }) {
     }
   };
 
+  const handleDismissAll = async () => {
+    const alertIds = visibleAlerts.map(a => a.id);
+    setDismissedAlerts(prev => {
+      const newSet = new Set(prev);
+      alertIds.forEach(id => newSet.add(id));
+      return newSet;
+    });
+    
+    try {
+      for (const alertId of alertIds) {
+        await base44.entities.Alert.update(alertId, {
+          status: "acknowledged",
+          acknowledged_by: user.id,
+          acknowledged_at: new Date().toISOString()
+        });
+      }
+      queryClient.invalidateQueries(["criticalAlerts"]);
+    } catch (error) {
+      console.error("Failed to acknowledge alerts:", error);
+    }
+  };
+
   const getAlertIcon = (type) => {
     switch (type) {
       case "missed_checkin":
@@ -107,6 +133,17 @@ export default function RealTimeAlertMonitor({ user }) {
 
   return (
     <div className="fixed top-20 right-4 z-50 w-full max-w-md space-y-2">
+      {visibleAlerts.length > 1 && (
+        <div className="flex justify-end">
+          <Button
+            onClick={handleDismissAll}
+            size="sm"
+            className="bg-slate-800 hover:bg-slate-700 text-white shadow-lg"
+          >
+            Dismiss All ({visibleAlerts.length})
+          </Button>
+        </div>
+      )}
       <AnimatePresence>
         {visibleAlerts.map((alert) => (
           <motion.div
