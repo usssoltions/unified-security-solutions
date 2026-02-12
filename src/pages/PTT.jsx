@@ -152,7 +152,7 @@ export default function PTT() {
   };
 
   const stopTransmitting = async () => {
-    if (!localStream.current) return;
+    if (!localStream.current || !transmitting) return;
     
     // Mute audio immediately
     localStream.current.getAudioTracks().forEach(track => track.enabled = false);
@@ -171,8 +171,8 @@ export default function PTT() {
     Object.values(peerConnections.current).forEach(pc => pc.close());
     peerConnections.current = {};
     
-    // Set transmitting to false after cleanup
-    setTimeout(() => setTransmitting(false), 100);
+    // Keep transmitting state as false
+    setTransmitting(false);
   };
 
   const createPeerConnection = async (targetUserId) => {
@@ -625,33 +625,40 @@ export default function PTT() {
                       <button
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          startTransmitting();
+                          if (!transmitting) startTransmitting();
                         }}
                         onMouseUp={(e) => {
                           e.preventDefault();
-                          stopTransmitting();
+                          if (transmitting) stopTransmitting();
                         }}
                         onMouseLeave={(e) => {
                           if (transmitting) stopTransmitting();
                         }}
                         onTouchStart={(e) => {
                           e.preventDefault();
-                          startTransmitting();
+                          e.stopPropagation();
+                          if (!transmitting) startTransmitting();
                         }}
                         onTouchEnd={(e) => {
                           e.preventDefault();
-                          stopTransmitting();
+                          e.stopPropagation();
+                          if (transmitting) stopTransmitting();
                         }}
                         onTouchCancel={(e) => {
                           e.preventDefault();
-                          stopTransmitting();
+                          if (transmitting) stopTransmitting();
                         }}
-                        className={`w-32 h-32 rounded-full flex items-center justify-center transition-all select-none touch-none ${
+                        className={`w-32 h-32 rounded-full flex items-center justify-center transition-all select-none ${
                           transmitting
                             ? "bg-rose-500 scale-110 shadow-2xl shadow-rose-500/50"
                             : "bg-sky-500 hover:bg-sky-600 shadow-lg"
                         }`}
-                        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+                        style={{ 
+                          WebkitTouchCallout: 'none', 
+                          WebkitUserSelect: 'none',
+                          touchAction: 'none',
+                          userSelect: 'none'
+                        }}
                       >
                         <Mic className="w-16 h-16 text-white" />
                       </button>
