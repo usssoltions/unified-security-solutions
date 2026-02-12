@@ -80,8 +80,9 @@ import SiteManagement from './pages/SiteManagement';
 import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
-import UserManagement from './pages/UserManagement';
 import TestDataManager from './pages/TestDataManager';
+import UserManagement from './pages/UserManagement';
+import PTTRecordings from './pages/PTTRecordings';
 import __Layout from './Layout.jsx';
 
 
@@ -119,8 +120,9 @@ export const PAGES = {
     "StartOfShift": StartOfShift,
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
-    "UserManagement": UserManagement,
     "TestDataManager": TestDataManager,
+    "UserManagement": UserManagement,
+    "PTTRecordings": PTTRecordings,
 }
 
 export const pagesConfig = {

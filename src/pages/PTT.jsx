@@ -136,12 +136,50 @@ export default function PTT() {
   };
 
   const startTransmitting = async () => {
-    if (!selectedChannel || !localStream.current) return;
+    if (!selectedChannel || !localStream.current || transmitting) return;
     
     setTransmitting(true);
     
     // Enable audio
     localStream.current.getAudioTracks().forEach(track => track.enabled = true);
+
+    // Start recording PTT transmission
+    try {
+      const mediaRecorder = new MediaRecorder(localStream.current, { mimeType: 'audio/webm' });
+      const chunks = [];
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      
+      mediaRecorder.onstop = async () => {
+        if (chunks.length > 0) {
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = async () => {
+            const base64 = reader.result.split(',')[1];
+            const duration = Math.floor((Date.now() - window.pttStartTime) / 1000);
+            
+            try {
+              await base44.functions.invoke('recordPTT', {
+                channelId: selectedChannel.id,
+                audioBlob: base64,
+                duration
+              });
+            } catch (error) {
+              console.error('Failed to save PTT recording:', error);
+            }
+          };
+        }
+      };
+      
+      window.pttStartTime = Date.now();
+      mediaRecorder.start();
+      window.pttMediaRecorder = mediaRecorder;
+    } catch (error) {
+      console.error('PTT recording error:', error);
+    }
 
     // Notify channel members
     const otherMembers = selectedChannel.members.filter(m => m.user_id !== user.id);
@@ -153,6 +191,11 @@ export default function PTT() {
 
   const stopTransmitting = async () => {
     if (!localStream.current || !transmitting) return;
+    
+    // Stop recording
+    if (window.pttMediaRecorder && window.pttMediaRecorder.state !== 'inactive') {
+      window.pttMediaRecorder.stop();
+    }
     
     // Mute audio immediately
     localStream.current.getAudioTracks().forEach(track => track.enabled = false);

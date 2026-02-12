@@ -321,6 +321,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
+        { title: "PTT Recordings", url: createPageUrl("PTTRecordings"), icon: Radio },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },

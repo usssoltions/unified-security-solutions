@@ -42,18 +42,28 @@ export default function OneSignalSetup() {
         // Handle notification clicks
         window.OneSignal.on('notificationDisplay', function(event) {
           console.log('OneSignal notification displayed:', event);
+          
+          // Force vibration and sound for critical alerts
+          if (event.data?.type === 'panic' || event.data?.type === 'call') {
+            if ('vibrate' in navigator) {
+              navigator.vibrate([1000, 500, 1000, 500, 1000]);
+            }
+          }
         });
 
         window.OneSignal.on('notificationClicked', function(event) {
           console.log('OneSignal notification clicked:', event);
           
+          // Bring app to foreground
+          window.focus();
+          
           // Handle different notification types
           const data = event.data;
           if (data?.type === 'call') {
-            // Bring app to foreground and navigate to call
-            window.focus();
+            // Navigate to contacts or appropriate page
+            window.location.href = '/contacts';
           } else if (data?.type === 'panic') {
-            window.focus();
+            // Navigate to control room for admins
             window.location.href = '/control-room';
           }
         });

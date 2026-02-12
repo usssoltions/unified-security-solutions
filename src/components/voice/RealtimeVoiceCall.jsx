@@ -233,15 +233,28 @@ export default function RealtimeVoiceCall({
       callId.current = initData.callId;
       console.log('✓ Call initiated with ID:', callId.current);
 
-      // Send push notifications to all participants
-      const notificationPromises = callParticipants.map(participant =>
-        base44.functions.invoke('sendCallNotification', {
-          targetUserId: participant.id,
-          callerName: currentUser?.full_name || 'Unknown',
-          callId: callId.current,
-          callType: isGroupCall ? 'group' : 'direct'
-        }).catch(err => console.error('Failed to notify:', err))
-      );
+      // Send both in-app and push notifications
+      const notificationPromises = callParticipants.map(async (participant) => {
+        try {
+          // In-app notification
+          await base44.functions.invoke('sendCallNotification', {
+            targetUserId: participant.id,
+            callerName: currentUser?.full_name || 'Unknown',
+            callId: callId.current,
+            callType: isGroupCall ? 'group' : 'direct'
+          });
+          
+          // OneSignal push notification
+          await base44.functions.invoke('sendCallPushNotification', {
+            recipientId: participant.id,
+            callerName: currentUser?.full_name || 'Unknown',
+            callId: callId.current,
+            isGroupCall: isGroupCall
+          });
+        } catch (err) {
+          console.error('Failed to notify:', err);
+        }
+      });
       
       await Promise.all(notificationPromises);
       console.log('✓ Call notifications sent');
