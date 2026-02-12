@@ -195,6 +195,14 @@ export default function Layout({ children, currentPageName }) {
 
   const handleLogout = async () => {
     try {
+      // Clear all local state and navigate to root
+      localStorage.clear();
+      sessionStorage.clear();
+      queryClient.clear();
+      
+      // Force navigate to root before logout to prevent state persistence
+      navigate('/');
+      
       await base44.auth.logout();
     } catch (err) {
       window.location.reload();
@@ -429,7 +437,20 @@ export default function Layout({ children, currentPageName }) {
               )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Current User Display - Mobile */}
+              <div className="md:hidden flex items-center gap-2 px-2 py-1 bg-slate-800/50 rounded-lg">
+                <div className="w-7 h-7 bg-sky-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-xs">
+                    {user.full_name?.[0]?.toUpperCase() || "U"}
+                  </span>
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-medium text-white truncate max-w-[100px]">{user.full_name}</p>
+                  <p className="text-xs text-slate-400 capitalize">{user.role_type}</p>
+                </div>
+              </div>
+
               <button 
                 className="relative text-slate-300 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-800"
                 onClick={() => setShowNotifications(true)}
@@ -442,7 +463,8 @@ export default function Layout({ children, currentPageName }) {
                   </span>
                 )}
               </button>
-              
+
+              {/* Current User Display - Desktop */}
               <div className="hidden md:flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-lg">
                 <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center">
                   <span className="text-white font-semibold text-sm">

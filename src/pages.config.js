@@ -70,6 +70,7 @@ import Home from './pages/Home';
 import NotificationPreferences from './pages/NotificationPreferences';
 import PTT from './pages/PTT';
 import PatrolChecklists from './pages/PatrolChecklists';
+import Profile from './pages/Profile';
 import QRScanner from './pages/QRScanner';
 import ReportScheduling from './pages/ReportScheduling';
 import Reports from './pages/Reports';
@@ -80,7 +81,6 @@ import StartOfShift from './pages/StartOfShift';
 import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import UserManagement from './pages/UserManagement';
-import Profile from './pages/Profile';
 import __Layout from './Layout.jsx';
 
 
@@ -108,6 +108,7 @@ export const PAGES = {
     "NotificationPreferences": NotificationPreferences,
     "PTT": PTT,
     "PatrolChecklists": PatrolChecklists,
+    "Profile": Profile,
     "QRScanner": QRScanner,
     "ReportScheduling": ReportScheduling,
     "Reports": Reports,
@@ -118,7 +119,6 @@ export const PAGES = {
     "StayAwakeConfiguration": StayAwakeConfiguration,
     "SystemSetup": SystemSetup,
     "UserManagement": UserManagement,
-    "Profile": Profile,
 }
 
 export const pagesConfig = {
