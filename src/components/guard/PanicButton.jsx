@@ -40,16 +40,28 @@ export default function PanicButton({ shiftId, siteId }) {
     setSending(true);
     try {
       const user = await base44.auth.me();
-      const response = await base44.functions.invoke('sendPanicAlertMultiChannel', {
-        guardId: user.id,
-        guardName: user.full_name,
+      
+      // Send panic alert
+      const response = await base44.functions.invoke('sendPanicAlert', {
         location,
+        notes,
         shiftId,
         siteId
       });
 
+      // Send OneSignal push notification
+      try {
+        await base44.functions.invoke('sendPanicPushNotification', {
+          guardName: user.full_name,
+          location,
+          notes
+        });
+      } catch (pushError) {
+        console.warn('Push notification failed:', pushError);
+      }
+
       if (response.data.success) {
-        alert(`🚨 PANIC ALERT SENT! ${response.data.notificationsSent} admins notified. Help is on the way!`);
+        alert(`🚨 PANIC ALERT SENT! ${response.data.notificationsSent || 0} admins notified. Help is on the way!`);
         setShowConfirm(false);
         setNotes("");
       } else {

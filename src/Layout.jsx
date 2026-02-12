@@ -195,15 +195,15 @@ export default function Layout({ children, currentPageName }) {
 
   const handleLogout = async () => {
     try {
-      // Clear all local state and navigate to root
+      // Clear all local state
       localStorage.clear();
       sessionStorage.clear();
-      queryClient.clear();
       
-      // Force navigate to root before logout to prevent state persistence
-      navigate('/');
-      
+      // Navigate to login
       await base44.auth.logout();
+      
+      // Force reload to clear all state
+      window.location.href = '/';
     } catch (err) {
       window.location.reload();
     }
@@ -334,6 +334,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
         { title: "Incident Queue", url: createPageUrl("AdminIncidents"), icon: AlertTriangle },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
+        { title: "PTT Recordings", url: createPageUrl("PTTRecordings"), icon: Radio },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
