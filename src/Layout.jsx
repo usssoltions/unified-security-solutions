@@ -411,7 +411,7 @@ export default function Layout({ children, currentPageName }) {
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50 safe-area-top">
+        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
               {/* Back button on mobile child screens, logo on root screens */}
@@ -519,7 +519,7 @@ export default function Layout({ children, currentPageName }) {
             )}
           </aside>
 
-          <main className="flex-1 min-h-screen w-full overflow-x-hidden">
+          <main className="flex-1 min-h-screen w-full overflow-x-hidden pb-0 md:pb-0">
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
@@ -527,6 +527,7 @@ export default function Layout({ children, currentPageName }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
+                className="pb-24 md:pb-0"
               >
                 {children}
               </motion.div>
