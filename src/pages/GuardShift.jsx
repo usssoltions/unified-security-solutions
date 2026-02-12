@@ -627,6 +627,45 @@ export default function GuardShift() {
         </Button>
       </div>
 
+      {/* Mobile quick access menu */}
+      {user.role_type === "guard" && (
+        <div className="md:hidden fixed top-20 right-4 z-30 flex flex-col gap-2">
+          <Button
+            onClick={() => setShowChat(true)}
+            size="icon"
+            className="w-12 h-12 rounded-full bg-sky-600 hover:bg-sky-700 shadow-xl"
+          >
+            <MessageCircle className="w-5 h-5" />
+            {unreadMessages > 0 && (
+              <Badge className="absolute -top-1 -right-1 bg-rose-500 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                {unreadMessages > 9 ? '9+' : unreadMessages}
+              </Badge>
+            )}
+          </Button>
+          
+          <Button
+            onClick={() => setShowTraining(true)}
+            size="icon"
+            className="w-12 h-12 rounded-full bg-purple-600 hover:bg-purple-700 shadow-xl"
+          >
+            <GraduationCap className="w-5 h-5" />
+            {pendingTrainings > 0 && (
+              <Badge className="absolute -top-1 -right-1 bg-rose-500 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                {pendingTrainings > 9 ? '9+' : pendingTrainings}
+              </Badge>
+            )}
+          </Button>
+          
+          <Button
+            onClick={() => setShowReports(true)}
+            size="icon"
+            className="w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 shadow-xl"
+          >
+            <FileText className="w-5 h-5" />
+          </Button>
+        </div>
+      )}
+
       {Array.isArray(upcomingShifts) && upcomingShifts.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader className="p-3 sm:p-6">
