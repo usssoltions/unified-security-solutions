@@ -665,7 +665,8 @@ export default function GuardShift() {
           </CardContent>
         </Card>
       )}
+        </div>
       </div>
-    </div>
+    </PullToRefresh>
   );
 }
