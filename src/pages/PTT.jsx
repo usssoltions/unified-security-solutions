@@ -55,9 +55,19 @@ export default function PTT() {
     queryFn: async () => {
       if (!user) return [];
       const allChannels = await base44.entities.PTTChannel.list();
-      return allChannels
-        .filter(ch => ch.members.some(m => m.user_id === user.id))
-        .sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
+      
+      // Filter channels based on user role
+      let filtered = allChannels.filter(ch => ch.members.some(m => m.user_id === user.id));
+      
+      // Guards only see their direct channels, admins/dispatchers see all
+      if (user.role_type === 'guard') {
+        filtered = filtered.filter(ch => 
+          ch.type === 'direct' || 
+          ch.members.some(m => m.user_id === user.id && m.role !== 'guard')
+        );
+      }
+      
+      return filtered.sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
     },
     enabled: !!user
   });
@@ -144,20 +154,25 @@ export default function PTT() {
   const stopTransmitting = async () => {
     if (!localStream.current) return;
     
-    setTransmitting(false);
-    
-    // Mute audio
+    // Mute audio immediately
     localStream.current.getAudioTracks().forEach(track => track.enabled = false);
 
     // Notify end of transmission
-    await base44.functions.invoke('rtcSignaling', {
-      action: 'end_transmission',
-      channelId: selectedChannel.id
-    });
+    try {
+      await base44.functions.invoke('rtcSignaling', {
+        action: 'end_transmission',
+        channelId: selectedChannel.id
+      });
+    } catch (e) {
+      console.error('End transmission error:', e);
+    }
 
     // Close all peer connections
     Object.values(peerConnections.current).forEach(pc => pc.close());
     peerConnections.current = {};
+    
+    // Set transmitting to false after cleanup
+    setTimeout(() => setTransmitting(false), 100);
   };
 
   const createPeerConnection = async (targetUserId) => {
