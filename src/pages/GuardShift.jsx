@@ -34,7 +34,7 @@ import GuardChat from "../components/chat/GuardChat";
 import GuardTrainingView from "../components/training/GuardTrainingView";
 import AutoReportGenerator from "../components/reports/AutoReportGenerator";
 import GeneratedReportsView from "../components/reports/GeneratedReportsView";
-import MobileOptimizedGuardNav from "../components/MobileOptimizedGuardNav";
+import UnifiedMobileNav from "../components/MobileOptimizedGuardNav";
 import MobileInstallPrompt from "../components/MobileInstallPrompt";
 import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
@@ -470,7 +470,7 @@ export default function GuardShift() {
         </Button>
       </div>
 
-      <MobileOptimizedGuardNav 
+      <UnifiedMobileNav 
         user={user}
         unreadMessages={unreadMessages}
         pendingTrainings={pendingTrainings}

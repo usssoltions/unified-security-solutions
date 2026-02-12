@@ -19,10 +19,16 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
-const incidentIcon = new L.Icon({
+const getComputedColor = (colorVar, fallback) => {
+  if (typeof window === 'undefined') return fallback;
+  const rgb = getComputedStyle(document.documentElement).getPropertyValue(colorVar);
+  return rgb ? `rgb(${rgb})` : fallback;
+};
+
+const createIncidentIcon = () => new L.Icon({
   iconUrl: 'data:image/svg+xml;base64,' + btoa(`
     <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="16" cy="16" r="14" fill="#ef4444" stroke="white" stroke-width="2"/>
+      <circle cx="16" cy="16" r="14" fill="${getComputedColor('--rose-500-rgb', '#ef4444')}" stroke="white" stroke-width="2"/>
       <text x="16" y="22" font-size="20" text-anchor="middle" fill="white">!</text>
     </svg>
   `),
@@ -31,10 +37,10 @@ const incidentIcon = new L.Icon({
   popupAnchor: [0, -32]
 });
 
-const guardIcon = new L.Icon({
+const createGuardIcon = () => new L.Icon({
   iconUrl: 'data:image/svg+xml;base64,' + btoa(`
     <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="16" cy="16" r="14" fill="#10b981" stroke="white" stroke-width="2"/>
+      <circle cx="16" cy="16" r="14" fill="${getComputedColor('--emerald-500-rgb', '#10b981')}" stroke="white" stroke-width="2"/>
       <circle cx="16" cy="16" r="4" fill="white"/>
     </svg>
   `),
@@ -43,10 +49,10 @@ const guardIcon = new L.Icon({
   popupAnchor: [0, -32]
 });
 
-const nearestGuardIcon = new L.Icon({
+const createNearestGuardIcon = () => new L.Icon({
   iconUrl: 'data:image/svg+xml;base64,' + btoa(`
     <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="20" cy="20" r="18" fill="#3b82f6" stroke="white" stroke-width="3"/>
+      <circle cx="20" cy="20" r="18" fill="${getComputedColor('--sky-500-rgb', '#3b82f6')}" stroke="white" stroke-width="3"/>
       <circle cx="20" cy="20" r="12" fill="white" opacity="0.3"/>
       <circle cx="20" cy="20" r="5" fill="white"/>
     </svg>
@@ -55,6 +61,10 @@ const nearestGuardIcon = new L.Icon({
   iconAnchor: [20, 40],
   popupAnchor: [0, -40]
 });
+
+const incidentIcon = createIncidentIcon();
+const guardIcon = createGuardIcon();
+const nearestGuardIcon = createNearestGuardIcon();
 
 function MapController({ center, zoom }) {
   const map = useMap();
@@ -555,7 +565,11 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                     <Circle
                       center={[formData.location.lat, formData.location.lng]}
                       radius={500}
-                      pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.1 }}
+                      pathOptions={{ 
+                        color: getComputedColor('--rose-500-rgb', '#ef4444'), 
+                        fillColor: getComputedColor('--rose-500-rgb', '#ef4444'), 
+                        fillOpacity: 0.1 
+                      }}
                     />
                     
                     {activeGuards.map((guard) => {
@@ -591,7 +605,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                       <Polyline
                         positions={routeCoordinates}
                         pathOptions={{ 
-                          color: '#3b82f6', 
+                          color: getComputedColor('--sky-500-rgb', '#3b82f6'), 
                           weight: 4, 
                           opacity: 0.7,
                           dashArray: '10, 10'

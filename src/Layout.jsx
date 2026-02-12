@@ -38,7 +38,16 @@ import OneSignalSetup from "@/components/OneSignalSetup";
 import ThemeProvider from "@/components/ThemeProvider";
 import { AnimatePresence, motion } from "framer-motion";
 
+// Tab state context for preserving navigation history
+const TabStateContext = React.createContext({
+  tabStates: {},
+  updateTabState: () => {}
+});
+
+export const useTabState = () => React.useContext(TabStateContext);
+
 export default function Layout({ children, currentPageName }) {
+  const [tabStates, setTabStates] = React.useState({});
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -182,6 +191,36 @@ export default function Layout({ children, currentPageName }) {
     setRetryCount(prev => prev + 1);
   };
 
+  const updateTabState = React.useCallback((tabName, state) => {
+    setTabStates(prev => ({
+      ...prev,
+      [tabName]: {
+        ...prev[tabName],
+        ...state,
+        lastVisited: Date.now()
+      }
+    }));
+  }, []);
+
+  // Save scroll position when navigating away
+  React.useEffect(() => {
+    const saveScrollPosition = () => {
+      const tabName = currentPageName;
+      if (tabName) {
+        updateTabState(tabName, {
+          scrollPosition: window.scrollY,
+          path: location.pathname
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', saveScrollPosition);
+    return () => {
+      saveScrollPosition();
+      window.removeEventListener('beforeunload', saveScrollPosition);
+    };
+  }, [currentPageName, location.pathname, updateTabState]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -292,8 +331,9 @@ export default function Layout({ children, currentPageName }) {
   const canGoBack = !isRootPage && window.history.length > 1;
 
   return (
-    <ThemeProvider>
-      <ErrorBoundary>
+    <TabStateContext.Provider value={{ tabStates, updateTabState }}>
+      <ThemeProvider>
+        <ErrorBoundary>
           <ServiceWorkerRegistration />
           <PWAInstaller />
           <OneSignalSetup />
@@ -441,5 +481,6 @@ export default function Layout({ children, currentPageName }) {
       </div>
       </ErrorBoundary>
       </ThemeProvider>
+      </TabStateContext.Provider>
       );
       }

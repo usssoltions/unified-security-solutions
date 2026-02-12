@@ -17,11 +17,11 @@ L.Icon.Default.mergeOptions({
 
 const createGuardIcon = (status, isSelected) => {
   const colors = {
-    active: '#10b981',
-    on_patrol: '#3b82f6',
-    responding: '#ef4444',
-    idle: '#f59e0b',
-    offline: '#64748b'
+    active: 'rgb(var(--emerald-500-rgb, 16 185 129))',
+    on_patrol: 'rgb(var(--sky-500-rgb, 14 165 233))',
+    responding: 'rgb(var(--rose-500-rgb, 244 63 94))',
+    idle: 'rgb(var(--amber-500-rgb, 245 158 11))',
+    offline: 'rgb(var(--slate-500-rgb, 100 116 139))'
   };
   const color = colors[status] || colors.active;
   const size = isSelected ? 44 : 36;
@@ -270,7 +270,7 @@ export default function LiveMap({ activeGuards }) {
           <Polyline
             positions={historicalRoute}
             pathOptions={{
-              color: '#3b82f6',
+              color: 'rgb(var(--sky-500-rgb, 59 130 246))',
               weight: 4,
               opacity: 0.7,
               dashArray: '10, 10'
