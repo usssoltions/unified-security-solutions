@@ -68,6 +68,13 @@
     --safe-area-inset-bottom: env(safe-area-inset-bottom);
     --safe-area-inset-left: env(safe-area-inset-left);
     --safe-area-inset-right: env(safe-area-inset-right);
+    
+    /* RGB values for Leaflet dynamic colors */
+    --emerald-500-rgb: 16 185 129;
+    --sky-500-rgb: 14 165 233;
+    --rose-500-rgb: 244 63 94;
+    --amber-500-rgb: 245 158 11;
+    --slate-500-rgb: 100 116 139;
   }
   
   body {
