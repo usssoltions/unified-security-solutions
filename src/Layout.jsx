@@ -35,6 +35,8 @@ import PWAInstaller from "@/components/PWAInstaller";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
+import ThemeProvider from "@/components/ThemeProvider";
+import { AnimatePresence, motion } from "framer-motion";
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
@@ -290,15 +292,16 @@ export default function Layout({ children, currentPageName }) {
   const canGoBack = !isRootPage && window.history.length > 1;
 
   return (
-    <ErrorBoundary>
-        <ServiceWorkerRegistration />
-        <PWAInstaller />
-        <OneSignalSetup />
-        {user && <PermissionEnforcement />}
-        <IncidentEscalationMonitor user={user} />
-        <RealTimeAlertMonitor user={user} />
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
+    <ThemeProvider>
+      <ErrorBoundary>
+          <ServiceWorkerRegistration />
+          <PWAInstaller />
+          <OneSignalSetup />
+          {user && <PermissionEnforcement />}
+          <IncidentEscalationMonitor user={user} />
+          <RealTimeAlertMonitor user={user} />
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50 safe-area-top">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
               {canGoBack && (
@@ -381,7 +384,7 @@ export default function Layout({ children, currentPageName }) {
         </header>
 
         <div className="flex flex-col lg:flex-row">
-          <aside className="hidden lg:flex flex-col w-full lg:w-64 bg-slate-900/60 backdrop-blur-lg lg:border-r border-slate-700/50 min-h-screen flex-shrink-0">
+          <aside className="hidden lg:flex flex-col w-full lg:w-64 bg-slate-900/60 backdrop-blur-lg lg:border-r border-slate-700/50 min-h-screen flex-shrink-0 safe-area-bottom">
             <nav className="flex-1 p-4 space-y-2">
               {navigationItems.map((item) => (
                 <Link
@@ -412,9 +415,19 @@ export default function Layout({ children, currentPageName }) {
           </aside>
 
           <main className="flex-1 min-h-screen w-full overflow-x-hidden">
-            {children}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
           </main>
-        </div>
+          </div>
 
         {showNotifications && (
           <NotificationCenter
@@ -426,6 +439,7 @@ export default function Layout({ children, currentPageName }) {
           />
         )}
       </div>
-    </ErrorBoundary>
-  );
-}
+      </ErrorBoundary>
+      </ThemeProvider>
+      );
+      }

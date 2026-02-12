@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { X, Loader2, Calendar, Users } from "lucide-react";
-import { useMutation } from '@tanstack/react-query'; // Import useMutation
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 // Helper function to format ISO date strings for datetime-local input
 const formatDateTimeForInput = (isoString) => {
@@ -57,8 +57,37 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
   });
   
   const [selectedGuards, setSelectedGuards] = useState([]);
+  const queryClient = useQueryClient();
 
   const createShiftMutation = useMutation({
+    onMutate: async (newShift) => {
+      await queryClient.cancelQueries({ queryKey: ['shifts'] });
+      const previousShifts = queryClient.getQueryData(['shifts']);
+
+      if (!shift) {
+        // Optimistically add new shifts
+        queryClient.setQueryData(['shifts'], (old = []) => {
+          const optimisticShifts = newShift.guard_ids.map(guardId => {
+            const guard = guards.find(g => g.id === guardId);
+            const site = sites.find(s => s.id === newShift.site_id);
+            return {
+              id: `temp-${Date.now()}-${guardId}`,
+              guard_id: guardId,
+              guard_name: guard?.full_name,
+              site_id: newShift.site_id,
+              site_name: site?.name,
+              start_time: newShift.start_time,
+              end_time: newShift.end_time,
+              status: newShift.status,
+              created_date: new Date().toISOString()
+            };
+          });
+          return [...optimisticShifts, ...old];
+        });
+      }
+
+      return { previousShifts };
+    },
     mutationFn: async (shiftsData) => {
       if (shift) {
         // Update existing shift (single guard)
@@ -125,11 +154,18 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
       }
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
       onSuccess();
     },
-    onError: (error) => {
+    onError: (error, newShift, context) => {
+      if (context?.previousShifts) {
+        queryClient.setQueryData(['shifts'], context.previousShifts);
+      }
       console.error("Shift operation failed:", error);
       alert(`Failed to ${shift ? 'update' : 'create'} shift: ${error.message || 'Unknown error'}`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
     }
   });
 

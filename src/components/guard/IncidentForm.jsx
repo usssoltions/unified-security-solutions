@@ -52,6 +52,33 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
+    onMutate: async (newIncident) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['incidents'] });
+
+      // Snapshot previous value
+      const previousIncidents = queryClient.getQueryData(['incidents']);
+
+      // Optimistically update
+      queryClient.setQueryData(['incidents'], (old = []) => [
+        {
+          id: `temp-${Date.now()}`,
+          title: `Incident Report - ${newIncident.incident_type}`,
+          description: 'Submitting...',
+          category: newIncident.incident_type?.toLowerCase() || 'other',
+          priority: 'high',
+          status: 'reported',
+          guard_name: user.full_name,
+          site_name: shift?.site_name || '',
+          reported_at: new Date().toISOString(),
+          created_date: new Date().toISOString(),
+          media: newIncident.media || []
+        },
+        ...old
+      ]);
+
+      return { previousIncidents };
+    },
     mutationFn: async (data) => {
       const reportContent = `
 INCIDENT REPORT
@@ -174,8 +201,15 @@ Officer Signature: Signed
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       onSuccess();
     },
-    onError: (error) => {
+    onError: (error, newIncident, context) => {
+      // Rollback on error
+      if (context?.previousIncidents) {
+        queryClient.setQueryData(['incidents'], context.previousIncidents);
+      }
       alert(`Failed to report incident: ${error.message}`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
     }
   });
 

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { X, Camera, Upload, Mic, StopCircle, Sparkles, PenTool, Loader2, Send, Video, Play } from "lucide-react";
 import SignaturePad from "./SignaturePad";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function MaintenanceForm({ user, shift, location, onClose, onSuccess }) {
   const maintenanceCategories = [
@@ -40,6 +41,103 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
   const [videoPreview, setVideoPreview] = useState(null);
   const [recordedAudio, setRecordedAudio] = useState(null);
   const videoPreviewRef = useRef(null);
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    onMutate: async (newRequest) => {
+      await queryClient.cancelQueries({ queryKey: ['maintenanceRequests'] });
+      const previous = queryClient.getQueryData(['maintenanceRequests']);
+
+      queryClient.setQueryData(['maintenanceRequests'], (old = []) => [
+        {
+          id: `temp-${Date.now()}`,
+          title: `Maintenance: ${newRequest.maintenance_type}`,
+          description: 'Submitting...',
+          category: 'other',
+          urgency: 'medium',
+          status: 'reported',
+          guard_name: user.full_name,
+          site_name: shift?.site_name || '',
+          reported_at: new Date().toISOString(),
+          created_date: new Date().toISOString()
+        },
+        ...old
+      ]);
+
+      return { previous };
+    },
+    mutationFn: async (data) => {
+      const reportContent = `
+MAINTENANCE REQUEST
+Time Zone: Africa/Johannesburg
+
+DATE, CLIENT, & SITE
+Date Entered: ${new Date().toLocaleString()}
+Client: ${shift?.client_name || 'N/A'}
+Site: ${data.site_name}
+
+OFFICER INFORMATION
+Officer Name: ${data.guard_name}
+
+MAINTENANCE REQUEST
+Maintenance Type: ${data.maintenance_type}
+${data.maintenance_type_other ? `If Other, What Type: ${data.maintenance_type_other}` : ''}
+Details: ${data.details}
+
+NOTIFICATION
+Who has been notified: ${data.who_notified}
+Email Client: ${data.email_client}
+
+PHOTOS: ${data.media.filter(m => m.type === 'photo').length} photo(s) attached
+MEDIA: ${data.media.filter(m => m.type === 'video').length} video(s) attached
+Voice Notes: ${data.voice_notes.length} voice note(s) attached
+Officer Signature: Signed
+      `.trim();
+
+      const maintenanceRequest = await base44.entities.MaintenanceRequest.create({
+        title: `Maintenance: ${data.maintenance_type}`,
+        description: reportContent,
+        category: "other",
+        urgency: "medium",
+        guard_id: data.guard_id,
+        guard_name: data.guard_name,
+        site_id: data.site_id,
+        site_name: data.site_name,
+        location: data.location,
+        reported_at: data.reported_at,
+        media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
+      });
+
+      try {
+        await base44.functions.invoke('notifyAdminsMaintenance', {
+          maintenanceId: maintenanceRequest.id,
+          guardName: data.guard_name,
+          maintenanceType: data.maintenance_type,
+          siteName: data.site_name,
+          details: data.details.substring(0, 200),
+          location: data.location
+        });
+      } catch (error) {
+        console.error('Failed to send maintenance notification:', error);
+      }
+
+      return maintenanceRequest;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenanceRequests'] });
+      alert("Maintenance request submitted successfully!");
+      onSuccess();
+    },
+    onError: (error, newRequest, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['maintenanceRequests'], context.previous);
+      }
+      alert(`Error: ${error.message}`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenanceRequests'] });
+    }
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -49,73 +147,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
       return;
     }
     
-    setSubmitting(true);
-
-    try {
-      const reportContent = `
-MAINTENANCE REQUEST
-Time Zone: Africa/Johannesburg
-
-DATE, CLIENT, & SITE
-Date Entered: ${new Date().toLocaleString()}
-Client: ${shift?.client_name || 'N/A'}
-Site: ${formData.site_name}
-
-OFFICER INFORMATION
-Officer Name: ${formData.guard_name}
-
-MAINTENANCE REQUEST
-Maintenance Type: ${formData.maintenance_type}
-${formData.maintenance_type_other ? `If Other, What Type: ${formData.maintenance_type_other}` : ''}
-Details: ${formData.details}
-
-NOTIFICATION
-Who has been notified: ${formData.who_notified}
-Email Client: ${formData.email_client}
-
-PHOTOS: ${formData.media.filter(m => m.type === 'photo').length} photo(s) attached
-MEDIA: ${formData.media.filter(m => m.type === 'video').length} video(s) attached
-Voice Notes: ${formData.voice_notes.length} voice note(s) attached
-Officer Signature: Signed
-      `.trim();
-
-      const maintenanceRequest = await base44.entities.MaintenanceRequest.create({
-        title: `Maintenance: ${formData.maintenance_type}`,
-        description: reportContent,
-        category: "other",
-        urgency: "medium",
-        guard_id: formData.guard_id,
-        guard_name: formData.guard_name,
-        site_id: formData.site_id,
-        site_name: formData.site_name,
-        location: formData.location,
-        reported_at: formData.reported_at,
-        media: [...formData.media, ...formData.voice_notes.map(url => ({ type: 'audio', url }))]
-      });
-
-      // Send immediate notifications via backend with location
-      try {
-        await base44.functions.invoke('notifyAdminsMaintenance', {
-          maintenanceId: maintenanceRequest.id,
-          guardName: formData.guard_name,
-          maintenanceType: formData.maintenance_type,
-          siteName: formData.site_name,
-          details: formData.details.substring(0, 200),
-          location: formData.location
-        });
-      } catch (error) {
-        console.error('Failed to send maintenance notification:', error);
-      }
-
-      // Removed email notification sending logic as per the outline.
-
-      alert("Maintenance request submitted successfully!"); // Changed alert message
-      onSuccess();
-    } catch (error) {
-      alert(`Error: ${error.message}`);
-    } finally {
-      setSubmitting(false);
-    }
+    createMutation.mutate(formData);
   };
 
   const handlePhotoCapture = async (e) => {
@@ -596,10 +628,10 @@ Please provide:
                 </Button>
                 <Button
                   type="submit"
-                  disabled={submitting}
+                  disabled={createMutation.isPending}
                   className="flex-1 bg-amber-600 hover:bg-amber-700"
                 >
-                  {submitting ? (
+                  {createMutation.isPending ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                       Submitting...
