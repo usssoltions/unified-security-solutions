@@ -16,7 +16,6 @@ import SupervisorChat from "../components/chat/SupervisorChat";
 import SupervisorPatrolPlanner from "../components/patrol/SupervisorPatrolPlanner";
 import SupervisorTrainingManager from "../components/training/SupervisorTrainingManager";
 import ReportTemplateManager from "../components/reports/ReportTemplateManager";
-import UnifiedMobileNav from "../components/MobileOptimizedGuardNav";
 
 export default function ControlRoom() {
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
@@ -103,10 +102,8 @@ export default function ControlRoom() {
   }
 
   return (
-    <>
-      <UnifiedMobileNav user={user} />
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
-        <div className="max-w-[1800px] mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+      <div className="max-w-[1800px] mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center animate-pulse">
@@ -262,7 +259,6 @@ export default function ControlRoom() {
       {showReportTemplates && (
         <ReportTemplateManager user={user} onClose={() => setShowReportTemplates(false)} />
       )}
-      </div>
-    </>
+    </div>
   );
 }

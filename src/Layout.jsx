@@ -23,7 +23,10 @@ import {
   Mic,
   Clock,
   ArrowLeft,
-  UserCircle
+  UserCircle,
+  Wrench,
+  QrCode,
+  MessageCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,13 +44,24 @@ import { AnimatePresence, motion } from "framer-motion";
 // Tab state context for preserving navigation history
 const TabStateContext = React.createContext({
   tabStates: {},
-  updateTabState: () => {}
+  updateTabState: () => {},
+  navigateToTab: () => {}
 });
 
 export const useTabState = () => React.useContext(TabStateContext);
 
 export default function Layout({ children, currentPageName }) {
-  const [tabStates, setTabStates] = React.useState({});
+  const [tabStates, setTabStates] = React.useState({
+    // Initialize with root URLs for each tab
+    guard: { url: createPageUrl("GuardShift"), root: createPageUrl("GuardShift") },
+    incidents: { url: createPageUrl("GuardIncidents"), root: createPageUrl("GuardIncidents") },
+    maintenance: { url: createPageUrl("GuardMaintenance"), root: createPageUrl("GuardMaintenance") },
+    qr: { url: createPageUrl("QRScanner"), root: createPageUrl("QRScanner") },
+    control: { url: createPageUrl("ControlRoom"), root: createPageUrl("ControlRoom") },
+    ptt: { url: createPageUrl("PTT"), root: createPageUrl("PTT") },
+    scheduling: { url: createPageUrl("Scheduling"), root: createPageUrl("Scheduling") },
+    sites: { url: createPageUrl("SiteManagement"), root: createPageUrl("SiteManagement") }
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -191,35 +205,51 @@ export default function Layout({ children, currentPageName }) {
     setRetryCount(prev => prev + 1);
   };
 
-  const updateTabState = React.useCallback((tabName, state) => {
+  const updateTabState = React.useCallback((tabName, url) => {
     setTabStates(prev => ({
       ...prev,
       [tabName]: {
         ...prev[tabName],
-        ...state,
+        url: url,
         lastVisited: Date.now()
       }
     }));
   }, []);
 
-  // Save scroll position when navigating away
+  // Track current URL for each tab
   React.useEffect(() => {
-    const saveScrollPosition = () => {
-      const tabName = currentPageName;
-      if (tabName) {
-        updateTabState(tabName, {
-          scrollPosition: window.scrollY,
-          path: location.pathname
-        });
-      }
+    const currentPath = location.pathname;
+    
+    // Map paths to tabs
+    const tabMapping = {
+      [createPageUrl("GuardShift")]: "guard",
+      [createPageUrl("GuardIncidents")]: "incidents",
+      [createPageUrl("GuardMaintenance")]: "maintenance",
+      [createPageUrl("QRScanner")]: "qr",
+      [createPageUrl("ControlRoom")]: "control",
+      [createPageUrl("PTT")]: "ptt",
+      [createPageUrl("Scheduling")]: "scheduling",
+      [createPageUrl("SiteManagement")]: "sites"
     };
 
-    window.addEventListener('beforeunload', saveScrollPosition);
-    return () => {
-      saveScrollPosition();
-      window.removeEventListener('beforeunload', saveScrollPosition);
-    };
-  }, [currentPageName, location.pathname, updateTabState]);
+    const tabName = tabMapping[currentPath];
+    if (tabName) {
+      updateTabState(tabName, currentPath);
+    }
+  }, [location.pathname, updateTabState]);
+
+  const navigateToTab = React.useCallback((tabName) => {
+    const tabState = tabStates[tabName];
+    if (!tabState) return;
+
+    // If already on this tab, reset to root
+    if (location.pathname === tabState.url && tabState.url !== tabState.root) {
+      navigate(tabState.root);
+    } else {
+      // Navigate to last saved URL for this tab
+      navigate(tabState.url);
+    }
+  }, [tabStates, location.pathname, navigate]);
 
   if (loading) {
     return (
@@ -330,8 +360,35 @@ export default function Layout({ children, currentPageName }) {
   );
   const canGoBack = !isRootPage && window.history.length > 1;
 
+  // Mobile bottom nav configuration
+  const getMobileNavItems = () => {
+    const role = user.role_type;
+
+    if (role === "guard") {
+      return [
+        { title: "My Shift", tab: "guard", icon: Shield, color: "text-emerald-400" },
+        { title: "Incidents", tab: "incidents", icon: AlertTriangle, color: "text-rose-400" },
+        { title: "Maintenance", tab: "maintenance", icon: Wrench, color: "text-amber-400" },
+        { title: "Scan QR", tab: "qr", icon: QrCode, color: "text-sky-400" }
+      ];
+    }
+
+    if (role === "dispatcher" || role === "admin") {
+      return [
+        { title: "Control", tab: "control", icon: Radio, color: "text-sky-400" },
+        { title: "PTT", tab: "ptt", icon: MessageCircle, color: "text-purple-400" },
+        { title: "Shifts", tab: "scheduling", icon: Calendar, color: "text-emerald-400" },
+        { title: "Sites", tab: "sites", icon: MapPin, color: "text-amber-400" }
+      ];
+    }
+
+    return [];
+  };
+
+  const mobileNavItems = getMobileNavItems();
+
   return (
-    <TabStateContext.Provider value={{ tabStates, updateTabState }}>
+    <TabStateContext.Provider value={{ tabStates, updateTabState, navigateToTab }}>
       <ThemeProvider>
         <ErrorBoundary>
           <ServiceWorkerRegistration />
@@ -344,7 +401,8 @@ export default function Layout({ children, currentPageName }) {
         <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50 safe-area-top">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {canGoBack && (
+              {/* Back button on mobile child screens, logo on root screens */}
+              {canGoBack ? (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -353,20 +411,22 @@ export default function Layout({ children, currentPageName }) {
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
+              ) : (
+                <Shield className="w-8 h-8 text-sky-400 lg:hidden" />
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="lg:hidden text-slate-300"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                {mobileMenuOpen ? <X /> : <Menu />}
-              </Button>
-              <Shield className="w-8 h-8 text-sky-400" />
-              <div>
+
+              {/* Desktop always shows logo and menu */}
+              <Shield className="w-8 h-8 text-sky-400 hidden lg:block" />
+              <div className={canGoBack ? "hidden lg:block" : ""}>
                 <h1 className="font-bold text-white text-lg">SecureGuard</h1>
                 <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
               </div>
+              {!canGoBack && (
+                <div className="lg:hidden">
+                  <h1 className="font-bold text-white text-lg">SecureGuard</h1>
+                  <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -398,30 +458,8 @@ export default function Layout({ children, currentPageName }) {
                 <LogOut className="w-5 h-5" />
               </Button>
             </div>
-          </div>
-
-          {mobileMenuOpen && (
-            <div className="lg:hidden bg-slate-800 border-t border-slate-700/50">
-              <nav className="p-4 space-y-2">
-                {navigationItems.map((item) => (
-                  <Link
-                    key={item.title}
-                    to={item.url}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                      location.pathname === item.url
-                        ? "bg-sky-500 text-white"
-                        : "text-slate-300 hover:bg-slate-700"
-                    }`}
-                  >
-                    <item.icon className="w-5 h-5" />
-                    <span className="font-medium">{item.title}</span>
-                  </Link>
-                ))}
-              </nav>
             </div>
-          )}
-        </header>
+            </header>
 
         <div className="flex flex-col lg:flex-row">
           <aside className="hidden lg:flex flex-col w-full lg:w-64 bg-slate-900/60 backdrop-blur-lg lg:border-r border-slate-700/50 min-h-screen flex-shrink-0 safe-area-bottom">
