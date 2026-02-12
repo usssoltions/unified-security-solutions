@@ -199,12 +199,10 @@ export default function Layout({ children, currentPageName }) {
       localStorage.clear();
       sessionStorage.clear();
       
-      // Navigate to login
+      // Logout without redirect loop
       await base44.auth.logout();
-      
-      // Force reload to clear all state
-      window.location.href = '/';
     } catch (err) {
+      // Force reload on error
       window.location.reload();
     }
   };
