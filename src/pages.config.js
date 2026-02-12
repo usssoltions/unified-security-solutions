@@ -83,6 +83,7 @@ import SystemSetup from './pages/SystemSetup';
 import TestDataManager from './pages/TestDataManager';
 import UserManagement from './pages/UserManagement';
 import PTTRecordings from './pages/PTTRecordings';
+import OneSignalTest from './pages/OneSignalTest';
 import __Layout from './Layout.jsx';
 
 
@@ -123,6 +124,7 @@ export const PAGES = {
     "TestDataManager": TestDataManager,
     "UserManagement": UserManagement,
     "PTTRecordings": PTTRecordings,
+    "OneSignalTest": OneSignalTest,
 }
 
 export const pagesConfig = {
