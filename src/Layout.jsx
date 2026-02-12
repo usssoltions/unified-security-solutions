@@ -544,6 +544,35 @@ export default function Layout({ children, currentPageName }) {
             }}
           />
         )}
+
+        {/* Mobile Bottom Navigation */}
+        {mobileNavItems.length > 0 && (
+          <nav 
+            className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-700/50 z-50" 
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div className="flex justify-around items-center h-16">
+              {mobileNavItems.map((item) => {
+                const Icon = item.icon;
+                const tabState = tabStates[item.tab];
+                const isActive = tabState && location.pathname === tabState.url;
+                
+                return (
+                  <button
+                    key={item.tab}
+                    onClick={() => navigateToTab(item.tab)}
+                    className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+                      isActive ? item.color : 'text-slate-400'
+                    }`}
+                  >
+                    <Icon className={`w-6 h-6 mb-1 ${isActive ? 'scale-110' : ''} transition-transform`} />
+                    <span className="text-xs font-medium">{item.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        )}
       </div>
       </ErrorBoundary>
       </ThemeProvider>
