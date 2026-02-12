@@ -21,7 +21,9 @@ import {
   Zap,
   FileText,
   Mic,
-  Clock
+  Clock,
+  ArrowLeft,
+  UserCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -236,19 +238,20 @@ export default function Layout({ children, currentPageName }) {
 
     if (role === "guard") {
       return [
-        { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield },
+        { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield, isRoot: true },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
-        { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin }
+        { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
+        { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
 
     if (role === "dispatcher" || role === "admin") {
       return [
-        { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio },
+        { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
@@ -263,15 +266,17 @@ export default function Layout({ children, currentPageName }) {
         { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Stay Awake", url: createPageUrl("StayAwakeConfiguration"), icon: Zap },
-        { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders }
+        { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
+        { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
 
     if (role === "client") {
       return [
-        { title: "Dashboard", url: createPageUrl("ClientDashboard"), icon: BarChart3 },
+        { title: "Dashboard", url: createPageUrl("ClientDashboard"), icon: BarChart3, isRoot: true },
         { title: "Reports", url: createPageUrl("ClientReports"), icon: Shield },
-        { title: "Incidents", url: createPageUrl("ClientIncidents"), icon: AlertTriangle }
+        { title: "Incidents", url: createPageUrl("ClientIncidents"), icon: AlertTriangle },
+        { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
 
@@ -279,6 +284,10 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const navigationItems = getNavigationItems();
+  const isRootPage = navigationItems.some(
+    item => item.isRoot && location.pathname === item.url
+  );
+  const canGoBack = !isRootPage && window.history.length > 1;
 
   return (
     <ErrorBoundary>
@@ -292,6 +301,16 @@ export default function Layout({ children, currentPageName }) {
         <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
+              {canGoBack && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate(-1)}
+                  className="text-slate-300 hover:text-white lg:hidden"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"

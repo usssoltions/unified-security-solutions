@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, AlertTriangle, Clock, MapPin } from "lucide-react";
 import IncidentForm from "../components/guard/IncidentForm";
+import PullToRefresh from "../components/PullToRefresh";
 
 export default function GuardIncidents() {
   const queryClient = useQueryClient();
@@ -81,8 +82,11 @@ export default function GuardIncidents() {
   }
 
   return (
-    <div className="min-h-screen p-4 lg:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <PullToRefresh onRefresh={async () => {
+      await queryClient.invalidateQueries(["incidents"]);
+    }}>
+      <div className="min-h-screen p-4 lg:p-6 space-y-6">
+        <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Incident Reports</h1>
           <p className="text-slate-400 mt-1">Document and track security incidents</p>
@@ -175,7 +179,8 @@ export default function GuardIncidents() {
             </CardContent>
           </Card>
         )}
+        </div>
       </div>
-    </div>
+    </PullToRefresh>
   );
 }

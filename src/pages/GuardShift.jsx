@@ -28,6 +28,7 @@ import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import LocationTracker from "../components/guard/LocationTracker";
 import ShiftEndNotification from "../components/guard/ShiftEndNotification";
+import PullToRefresh from "../components/PullToRefresh";
 
 import GuardChat from "../components/chat/GuardChat";
 import GuardTrainingView from "../components/training/GuardTrainingView";
@@ -137,12 +138,12 @@ export default function GuardShift() {
       return shifts?.[0] || null;
     },
     enabled: !!user,
-    refetchInterval: 5000, // Real-time sync every 5 seconds
+    refetchInterval: 5000,
     retry: 3,
     retryDelay: 1000,
     initialData: null,
-    staleTime: 0, // Always fetch fresh data
-    cacheTime: 0 // Don't cache
+    staleTime: 0,
+    cacheTime: 0
   });
 
   const { data: upcomingShifts = [] } = useQuery({
@@ -417,8 +418,16 @@ export default function GuardShift() {
   }
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 pb-24 md:pb-6 w-full overflow-x-hidden">
-      <div className="max-w-7xl mx-auto w-full">
+    <PullToRefresh onRefresh={async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(["activeShift"]),
+        queryClient.invalidateQueries(["upcomingShifts"]),
+        queryClient.invalidateQueries(["pendingAssignments"]),
+        queryClient.invalidateQueries(["arrivedAlarms"])
+      ]);
+    }}>
+      <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 pb-24 md:pb-6 w-full overflow-x-hidden">
+        <div className="max-w-7xl mx-auto w-full">
       <PatrolAssignmentAlert user={user} />
       <MobileInstallPrompt />
       <AutoReportGenerator user={user} shift={activeShift} />

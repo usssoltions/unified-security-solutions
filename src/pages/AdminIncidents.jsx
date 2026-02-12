@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Search, Filter, Eye, MapPin, Clock, User, Download } from "lucide-react";
 import moment from "moment";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import PullToRefresh from "../components/PullToRefresh";
 
 export default function AdminIncidents() {
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState(moment().subtract(30, 'days').format('YYYY-MM-DD'));
   const [dateTo, setDateTo] = useState(moment().format('YYYY-MM-DD'));
@@ -97,8 +99,11 @@ export default function AdminIncidents() {
   const categories = ["fire", "theft", "vandalism", "medical", "trespassing", "suspicious_activity", "equipment_failure", "safety_hazard", "other"];
 
   return (
-    <div className="min-h-screen p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <PullToRefresh onRefresh={async () => {
+      await queryClient.invalidateQueries(["incidents"]);
+    }}>
+      <div className="min-h-screen p-4 md:p-6 space-y-6">
+        <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
             <AlertTriangle className="w-8 h-8 text-rose-400" />
@@ -361,6 +366,7 @@ export default function AdminIncidents() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </PullToRefresh>
   );
 }
