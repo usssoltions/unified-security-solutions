@@ -3,14 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Bell, BellOff, Battery, Wifi, Power, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Bell, BellOff, Battery, Wifi, Power, CheckCircle2, XCircle, AlertTriangle, X } from "lucide-react";
 
 export default function PermissionEnforcement() {
   const [permissions, setPermissions] = useState({
     notifications: 'unknown',
     batteryOptimization: 'unknown',
     backgroundData: 'unknown',
-    autoLaunch: 'unknown'
+    autoLaunch: 'unknown',
+    dismissed: false
   });
 
   useEffect(() => {
@@ -75,111 +76,83 @@ export default function PermissionEnforcement() {
     return <Badge className="bg-slate-500">Unknown</Badge>;
   };
 
-  if (allCriticalGranted) {
-    return null; // Don't show if everything is OK
+  if (allCriticalGranted || permissions.dismissed) {
+    return null; // Don't show if everything is OK or dismissed
   }
 
   return (
-    <Card className="bg-gradient-to-br from-amber-900/20 to-rose-900/20 border-amber-500/30">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2">
-          <AlertTriangle className="w-6 h-6 text-amber-400" />
-          Critical Permissions Required
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Alert className="bg-amber-900/30 border-amber-500/50">
-          <AlertDescription className="text-amber-200">
-            For reliable emergency alerts and real-time communication, please enable all required permissions.
+    <div className="fixed top-4 right-4 left-4 md:left-auto md:w-96 z-30">
+      <Card className="bg-gradient-to-br from-amber-900/20 to-rose-900/20 border-amber-500/30 shadow-2xl">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <CardTitle className="text-white text-sm">Permissions Needed</CardTitle>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setPermissions({ ...permissions, dismissed: true })}
+              className="h-6 w-6 p-0 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-0">
+        <Alert className="bg-amber-900/30 border-amber-500/50 py-2">
+          <AlertDescription className="text-amber-200 text-xs">
+            Enable permissions for emergency alerts
           </AlertDescription>
         </Alert>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           {/* Notifications */}
-          <div className="bg-slate-800/50 rounded-lg p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="bg-slate-800/50 rounded-lg p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
               {getStatusIcon(permissions.notifications)}
               <div>
-                <p className="text-white font-medium">Push Notifications</p>
-                <p className="text-xs text-slate-400">Critical for emergency alerts and calls</p>
+                <p className="text-white font-medium text-sm">Push Notifications</p>
+                <p className="text-xs text-slate-400">Emergency alerts</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {getStatusBadge(permissions.notifications)}
               {permissions.notifications !== 'granted' && (
                 <Button 
                   onClick={requestNotifications}
                   size="sm"
-                  className="bg-amber-500 hover:bg-amber-600"
+                  className="bg-amber-500 hover:bg-amber-600 h-7 text-xs"
                 >
-                  <Bell className="w-4 h-4 mr-1" />
                   Enable
                 </Button>
               )}
             </div>
           </div>
 
-          {/* Background Data */}
-          <div className="bg-slate-800/50 rounded-lg p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {getStatusIcon(permissions.backgroundData)}
+          <details className="bg-slate-800/50 rounded-lg">
+            <summary className="p-3 cursor-pointer text-sm text-white font-medium">
+              Setup Instructions (Battery & Auto-Launch)
+            </summary>
+            <div className="px-3 pb-3 space-y-2 text-xs text-slate-300">
               <div>
-                <p className="text-white font-medium">Background Data</p>
-                <p className="text-xs text-slate-400">Required for real-time updates</p>
+                <p className="font-semibold text-amber-400">Battery Optimization:</p>
+                <p>Settings → Apps → SecureGuard → Battery → Unrestricted</p>
+              </div>
+              <div>
+                <p className="font-semibold text-amber-400">Auto Launch:</p>
+                <p>Settings → Apps → SecureGuard → Enable Auto-start</p>
               </div>
             </div>
-            {getStatusBadge(permissions.backgroundData)}
-          </div>
-
-          {/* Battery Optimization */}
-          <div className="bg-slate-800/50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-2">
-              {getStatusIcon(permissions.batteryOptimization)}
-              <div className="flex-1">
-                <p className="text-white font-medium">Battery Optimization</p>
-                <p className="text-xs text-slate-400">Must be disabled for this app</p>
-              </div>
-              {getStatusBadge(permissions.batteryOptimization)}
-            </div>
-            <div className="mt-3 p-3 bg-slate-900/50 rounded text-sm text-slate-300">
-              <p className="font-semibold mb-1">Manual Setup Required:</p>
-              <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Go to device Settings → Apps</li>
-                <li>Find "SecureGuard" or this app</li>
-                <li>Tap Battery → Unrestricted</li>
-                <li>Disable battery optimization</li>
-              </ol>
-            </div>
-          </div>
-
-          {/* Auto Launch */}
-          <div className="bg-slate-800/50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-2">
-              {getStatusIcon(permissions.autoLaunch)}
-              <div className="flex-1">
-                <p className="text-white font-medium">Auto Launch</p>
-                <p className="text-xs text-slate-400">Allow app to start automatically</p>
-              </div>
-              {getStatusBadge(permissions.autoLaunch)}
-            </div>
-            <div className="mt-3 p-3 bg-slate-900/50 rounded text-sm text-slate-300">
-              <p className="font-semibold mb-1">Manual Setup Required:</p>
-              <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Go to device Settings → Apps</li>
-                <li>Find "SecureGuard" or this app</li>
-                <li>Enable "Auto-start" or "Auto-launch"</li>
-                <li>Allow app to start in background</li>
-              </ol>
-            </div>
-          </div>
+          </details>
         </div>
 
-        <Alert className="bg-rose-900/30 border-rose-500/50">
-          <AlertDescription className="text-rose-200 text-sm">
-            ⚠️ Without these permissions, you may miss critical emergency alerts, panic buttons, and incoming calls.
+        <Alert className="bg-rose-900/30 border-rose-500/50 py-2">
+          <AlertDescription className="text-rose-200 text-xs">
+            ⚠️ Critical for emergency alerts
           </AlertDescription>
         </Alert>
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   );
 }
