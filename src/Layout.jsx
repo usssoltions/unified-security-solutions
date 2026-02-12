@@ -32,6 +32,7 @@ import RealTimeAlertMonitor from "@/components/alerts/RealTimeAlertMonitor";
 import PWAInstaller from "@/components/PWAInstaller";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import PermissionEnforcement from "@/components/PermissionEnforcement";
+import OneSignalSetup from "@/components/OneSignalSetup";
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
@@ -283,6 +284,7 @@ export default function Layout({ children, currentPageName }) {
     <ErrorBoundary>
         <ServiceWorkerRegistration />
         <PWAInstaller />
+        <OneSignalSetup />
         {user && <PermissionEnforcement />}
         <IncidentEscalationMonitor user={user} />
         <RealTimeAlertMonitor user={user} />
