@@ -346,6 +346,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Stay Awake", url: createPageUrl("StayAwakeConfiguration"), icon: Zap },
+        { title: "Test Data Manager", url: createPageUrl("TestDataManager"), icon: RefreshCw },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
