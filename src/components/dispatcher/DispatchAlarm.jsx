@@ -390,7 +390,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         </CardHeader>
         
         <CardContent className="overflow-y-auto flex-1 p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
+            {/* Form Fields Section */}
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -535,8 +536,9 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="h-[500px] rounded-lg overflow-hidden border-2 border-slate-700">
+            {/* Map Section - Full Width */}
+            <div className="w-full">
+              <div className="h-[400px] lg:h-[500px] rounded-lg overflow-hidden border-2 border-slate-700">
                 {formData.location ? (
                   <MapContainer
                     center={mapCenter}

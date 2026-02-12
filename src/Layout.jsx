@@ -331,6 +331,7 @@ export default function Layout({ children, currentPageName }) {
     if (role === "dispatcher" || role === "admin") {
       return [
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
+        { title: "Incident Queue", url: createPageUrl("AdminIncidents"), icon: AlertTriangle },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
