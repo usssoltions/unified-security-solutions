@@ -54,9 +54,21 @@ Deno.serve(async (req) => {
         android_importance: 5,
         android_sound: 'default',
         android_accent_color: 'FF10B981',
+        android_led_color: 'FF10B981',
+        android_group: 'calls',
+        android_group_message: {
+          en: "Incoming calls"
+        },
+        content_available: true,
+        mutable_content: true,
         ios_sound: 'default',
         ios_badgeType: 'Increase',
         ios_badgeCount: 1,
+        ios_category: 'call',
+        apns_alert: {
+          title: "📞 Incoming Call",
+          subtitle: isGroupCall ? "Group Call" : "Direct Call"
+        },
         url: `${Deno.env.get('BASE44_APP_URL') || 'https://app.base44.ai'}?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
         web_url: `${Deno.env.get('BASE44_APP_URL') || 'https://app.base44.ai'}?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
         data: {
