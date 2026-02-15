@@ -73,6 +73,24 @@ export default function Layout({ children, currentPageName }) {
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    // Force re-authentication on app startup (for shared device usage)
+    const sessionKey = 'guard_session_active';
+    const isNewSession = !sessionStorage.getItem(sessionKey);
+    
+    if (isNewSession) {
+      // Clear all auth data to force fresh login
+      localStorage.removeItem('sb-qtrypzzcjebvfcihiynt-auth-token');
+      sessionStorage.clear();
+      sessionStorage.setItem(sessionKey, 'true');
+      
+      // Redirect to login
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/login') {
+        window.location.href = '/login';
+        return;
+      }
+    }
+    
     loadUser();
     
     // Keep screen awake
@@ -195,15 +213,17 @@ export default function Layout({ children, currentPageName }) {
 
   const handleLogout = async () => {
     try {
-      // Clear all local state
+      // Clear all state including session marker
       localStorage.clear();
       sessionStorage.clear();
       
-      // Logout without redirect loop
-      await base44.auth.logout();
+      // Logout and redirect
+      await base44.auth.logout('/login');
     } catch (err) {
-      // Force reload on error
-      window.location.reload();
+      // Force clear and reload
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/login';
     }
   };
 

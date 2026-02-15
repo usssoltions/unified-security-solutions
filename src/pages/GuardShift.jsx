@@ -421,17 +421,12 @@ export default function GuardShift() {
       <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 pb-24 md:pb-6 w-full overflow-x-hidden">
         <div className="max-w-7xl mx-auto w-full">
       <PatrolAssignmentAlert user={user} />
-      <MobileInstallPrompt />
       <AutoReportGenerator user={user} shift={activeShift} />
       <LocationTracker 
         user={user} 
         shift={activeShift} 
         enabled={!!activeShift && user.is_clocked_in} 
       />
-
-
-
-      {showChat && <GuardChat user={user} onClose={() => setShowChat(false)} />}
 
       {showStayAwake && (
         <StayAwakeAlert
@@ -586,78 +581,7 @@ export default function GuardShift() {
 
       <SystemSetup />
 
-      {/* Desktop floating action buttons */}
-      <div className="hidden md:flex fixed bottom-6 right-6 flex-col gap-3 z-40">
-        <Button
-          onClick={() => setShowReports(true)}
-          className="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-700 shadow-2xl"
-        >
-          <FileText className="w-6 h-6" />
-        </Button>
-        
-        <Button
-          onClick={() => setShowTraining(true)}
-          className="w-16 h-16 rounded-full bg-purple-600 hover:bg-purple-700 shadow-2xl"
-        >
-          <GraduationCap className="w-6 h-6" />
-          {pendingTrainings > 0 && (
-            <Badge className="absolute -top-2 -right-2 bg-rose-500 h-6 w-6 p-0 flex items-center justify-center">
-              {pendingTrainings}
-            </Badge>
-          )}
-        </Button>
-        
-        <Button
-          onClick={() => setShowChat(true)}
-          className="w-16 h-16 rounded-full bg-sky-600 hover:bg-sky-700 shadow-2xl"
-        >
-          <MessageCircle className="w-6 h-6" />
-          {unreadMessages > 0 && (
-            <Badge className="absolute -top-2 -right-2 bg-rose-500 h-6 w-6 p-0 flex items-center justify-center">
-              {unreadMessages}
-            </Badge>
-          )}
-        </Button>
-      </div>
 
-      {/* Mobile quick access menu */}
-      {user.role_type === "guard" && (
-        <div className="md:hidden fixed top-20 right-4 z-30 flex flex-col gap-2">
-          <Button
-            onClick={() => setShowChat(true)}
-            size="icon"
-            className="w-12 h-12 rounded-full bg-sky-600 hover:bg-sky-700 shadow-xl"
-          >
-            <MessageCircle className="w-5 h-5" />
-            {unreadMessages > 0 && (
-              <Badge className="absolute -top-1 -right-1 bg-rose-500 h-5 w-5 p-0 flex items-center justify-center text-xs">
-                {unreadMessages > 9 ? '9+' : unreadMessages}
-              </Badge>
-            )}
-          </Button>
-          
-          <Button
-            onClick={() => setShowTraining(true)}
-            size="icon"
-            className="w-12 h-12 rounded-full bg-purple-600 hover:bg-purple-700 shadow-xl"
-          >
-            <GraduationCap className="w-5 h-5" />
-            {pendingTrainings > 0 && (
-              <Badge className="absolute -top-1 -right-1 bg-rose-500 h-5 w-5 p-0 flex items-center justify-center text-xs">
-                {pendingTrainings > 9 ? '9+' : pendingTrainings}
-              </Badge>
-            )}
-          </Button>
-          
-          <Button
-            onClick={() => setShowReports(true)}
-            size="icon"
-            className="w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 shadow-xl"
-          >
-            <FileText className="w-5 h-5" />
-          </Button>
-        </div>
-      )}
 
       {Array.isArray(upcomingShifts) && upcomingShifts.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
