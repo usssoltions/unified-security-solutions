@@ -461,6 +461,16 @@ export default function Layout({ children, currentPageName }) {
             </div>
 
             <div className="flex items-center gap-2 md:gap-3">
+              {/* Mobile Menu Button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileMenuOpen(true)}
+                className="lg:hidden text-slate-300 hover:text-white"
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+
               {/* Current User Display - Mobile */}
               <div className="md:hidden flex items-center gap-2 px-2 py-1 bg-slate-800/50 rounded-lg">
                 <div className="w-7 h-7 bg-sky-500 rounded-full flex items-center justify-center">
@@ -552,6 +562,46 @@ export default function Layout({ children, currentPageName }) {
               loadNotificationCount();
             }}
           />
+        )}
+
+        {/* Mobile Menu Drawer */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <div 
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <div className="absolute top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-slate-900 border-r border-slate-700 overflow-y-auto">
+              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-white">Menu</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-slate-400"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+              <nav className="p-4 space-y-2">
+                {navigationItems.map((item) => (
+                  <Link
+                    key={item.title}
+                    to={item.url}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                      location.pathname === item.url
+                        ? "bg-sky-500 text-white"
+                        : "text-slate-300 hover:bg-slate-800"
+                    }`}
+                  >
+                    <item.icon className="w-5 h-5" />
+                    <span className="font-medium">{item.title}</span>
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          </div>
         )}
 
         {/* Mobile Bottom Navigation */}
