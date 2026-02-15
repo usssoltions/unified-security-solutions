@@ -30,7 +30,16 @@ export default function OneSignalSetup() {
               scope: '/'
             },
             serviceWorkerPath: 'OneSignalSDKWorker.js',
-            persistNotification: false
+            persistNotification: true,
+            // Critical settings for background notifications
+            notificationClickHandlerMatch: 'origin',
+            promptOptions: {
+              slidedown: {
+                enabled: true,
+                autoPrompt: true,
+                timeDelay: 5
+              }
+            }
           });
           
           // Only request on first setup and if not already failed

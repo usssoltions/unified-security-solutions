@@ -38,6 +38,7 @@ import PWAInstaller from "@/components/PWAInstaller";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
+import BackgroundNotificationManager from "@/components/BackgroundNotificationManager";
 import ThemeProvider from "@/components/ThemeProvider";
 import { AnimatePresence, motion } from "framer-motion";
 import IncomingCallHandler from "@/components/IncomingCallHandler";
@@ -366,6 +367,7 @@ export default function Layout({ children, currentPageName }) {
           <ServiceWorkerRegistration />
           <PWAInstaller />
           <OneSignalSetup />
+          {user && <BackgroundNotificationManager user={user} />}
           {user && <PermissionEnforcement />}
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />

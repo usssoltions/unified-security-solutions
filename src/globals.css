@@ -69,6 +69,8 @@
     height: 100%;
     position: fixed;
     -webkit-overflow-scrolling: touch;
+    /* Ensure notifications can appear on top */
+    z-index: auto;
   }
 
   :root {
