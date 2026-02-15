@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -48,14 +47,32 @@ export default function QRScanner() {
   };
 
   const getLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
+    if (!navigator.geolocation) {
+      console.error("Geolocation not available");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
         setLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude
         });
-      });
-    }
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        // Try again on permission denied
+        if (error.code === 1) {
+          console.log("Location permission denied, trying again...");
+          setTimeout(getLocation, 2000);
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
   };
 
   const { data: site } = useQuery({
@@ -98,26 +115,51 @@ export default function QRScanner() {
   const handleScan = async (qrCodeText) => {
     try {
       const currentTime = new Date().toISOString();
-      const currentLocation = location;
+      let currentLocation = location;
 
+      // If location not yet available, try to get it
       if (!currentLocation) {
-        alert("Please enable location services to scan checkpoints");
-        return;
+        console.log("Location not available, requesting...");
+        await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              currentLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+              };
+              setLocation(currentLocation);
+              resolve();
+            },
+            (error) => {
+              console.error("Failed to get location:", error);
+              resolve(); // Continue anyway
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 0
+            }
+          );
+        });
+      }
+
+      // Allow scanning even without location if it fails - use last known or null
+      if (!currentLocation) {
+        console.warn("No location available, proceeding with scan anyway");
+        // Don't block scan, just continue
       }
 
       if (!site || !site.checkpoints || site.checkpoints.length === 0) {
-        alert("No checkpoints configured for this site. Using scanned code as is.");
-        
         // Accept any QR code even without checkpoints
         setScannedData({ qr_code: qrCodeText });
         setCheckpoint({
           id: "manual-" + Date.now(),
           name: "Scanned Checkpoint",
           qr_code: qrCodeText,
-          location: currentLocation
+          location: currentLocation || { lat: 0, lng: 0 }
         });
         setScanTimestamp(currentTime);
-        setScanLocation(currentLocation);
+        setScanLocation(currentLocation || { lat: 0, lng: 0 });
         setDistanceFromCheckpoint(0);
         
         if (templates.length > 0) {
@@ -158,7 +200,7 @@ export default function QRScanner() {
           id: "manual-" + Date.now(),
           name: "Scanned Checkpoint",
           qr_code: qrCodeText,
-          location: currentLocation
+          location: currentLocation || { lat: 0, lng: 0 }
         };
       }
 
@@ -213,10 +255,10 @@ export default function QRScanner() {
         id: "manual-" + Date.now(),
         name: "Scanned Checkpoint",
         qr_code: qrCodeText,
-        location: currentLocation
+        location: currentLocation || { lat: 0, lng: 0 }
       });
       setScanTimestamp(currentTime);
-      setScanLocation(currentLocation);
+      setScanLocation(currentLocation || { lat: 0, lng: 0 });
       setDistanceFromCheckpoint(0);
 
       if (templates.length > 0) {
