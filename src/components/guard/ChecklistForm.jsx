@@ -36,18 +36,33 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
     
     try {
       if (!file) {
-        alert("No file selected");
-        handleItemChange(index, "uploading", false);
-        return;
+        throw new Error("No file selected");
       }
 
+      // Verify file is a Blob or File object
+      if (!(file instanceof Blob)) {
+        throw new Error("Invalid file object");
+      }
+
+      // Check file size (max 10MB)
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        throw new Error("File too large. Maximum size is 10MB");
+      }
+
+      console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type);
+
+      // Upload the file
       const result = await base44.integrations.Core.UploadFile({ file });
       
+      console.log("Upload result:", result);
+
       if (!result || !result.file_url) {
-        throw new Error("No file URL returned from upload");
+        throw new Error("Upload returned no file URL");
       }
 
       const file_url = result.file_url;
+      console.log("File uploaded successfully:", file_url);
       
       // Create photo metadata
       const photoData = {
@@ -65,7 +80,7 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
     } catch (error) {
       console.error("Photo upload error:", error);
       handleItemChange(index, "uploading", false);
-      alert("Failed to upload photo: " + error.message);
+      alert("Failed to upload photo: " + (error?.message || "Unknown error"));
     }
   };
 
@@ -223,8 +238,17 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
                         accept="image/*"
                         capture="environment"
                         onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handlePhotoUpload(index, file);
+                          try {
+                            const file = e.target.files?.[0];
+                            if (!file) {
+                              alert("No file selected");
+                              return;
+                            }
+                            handlePhotoUpload(index, file);
+                          } catch (err) {
+                            console.error("File selection error:", err);
+                            alert("Error selecting file: " + err.message);
+                          }
                         }}
                         className="hidden"
                         id={`photo-${index}`}
