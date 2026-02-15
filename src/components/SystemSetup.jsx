@@ -25,18 +25,26 @@ export default function SystemSetup() {
 
   const handleEnableNotifications = async () => {
     if ("Notification" in window) {
-      const permission = await Notification.requestPermission();
-      setNotificationPermission(permission);
-      
-      if (permission === "granted") {
-        // Mark setup as completed
-        localStorage.setItem("systemSetupCompleted", "true");
-        setIsEnabled(false);
+      try {
+        const permission = await Notification.requestPermission();
+        setNotificationPermission(permission);
         
-        // Auto-dismiss after success
-        setTimeout(() => {
-          setIsDismissed(true);
-        }, 2000);
+        if (permission === "granted") {
+          localStorage.setItem("systemSetupCompleted", "true");
+          setIsEnabled(false);
+          setTimeout(() => {
+            setIsDismissed(true);
+          }, 2000);
+        } else if (permission === "denied") {
+          // Mark as attempted even if denied to prevent repeated prompts
+          localStorage.setItem("systemSetupCompleted", "true");
+          localStorage.setItem("notificationsFailed", "true");
+        }
+      } catch (error) {
+        // Silently fail and mark as attempted
+        localStorage.setItem("systemSetupCompleted", "true");
+        localStorage.setItem("notificationsFailed", "true");
+        setIsDismissed(true);
       }
     }
   };

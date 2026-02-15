@@ -15,9 +15,10 @@ export default function PermissionEnforcement() {
   });
 
   useEffect(() => {
-    // Check if dismissed permanently
+    // Check if dismissed permanently or notifications failed
     const isDismissed = localStorage.getItem('permissionEnforcementDismissed');
-    if (isDismissed === 'true') {
+    const notificationsFailed = localStorage.getItem('notificationsFailed');
+    if (isDismissed === 'true' || notificationsFailed === 'true') {
       setPermissions(prev => ({ ...prev, dismissed: true }));
       return;
     }
@@ -57,11 +58,18 @@ export default function PermissionEnforcement() {
       setPermissions(prev => ({ ...prev, notifications: permission }));
       
       if (permission === 'granted') {
-        alert('Notifications enabled! You will now receive critical alerts.');
+        // Success - close panel
+        localStorage.setItem('permissionEnforcementDismissed', 'true');
+        setPermissions(prev => ({ ...prev, dismissed: true }));
+      } else if (permission === 'denied') {
+        // Mark as failed to prevent repeated prompts
+        localStorage.setItem('notificationsFailed', 'true');
+        setPermissions(prev => ({ ...prev, dismissed: true }));
       }
     } catch (error) {
-      console.error('Permission request error:', error);
-      alert('Failed to request notification permission');
+      // Silently fail and dismiss
+      localStorage.setItem('notificationsFailed', 'true');
+      setPermissions(prev => ({ ...prev, dismissed: true }));
     }
   };
 
