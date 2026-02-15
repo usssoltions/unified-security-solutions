@@ -82,7 +82,14 @@ export default function CustomReportBuilder({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto" 
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="min-h-screen p-4 flex items-start justify-center pt-20">
         <Card className="w-full max-w-3xl bg-slate-800 border-slate-700">
           <CardHeader>
