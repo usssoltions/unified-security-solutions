@@ -72,6 +72,7 @@ import OneSignalTest from './pages/OneSignalTest';
 import PTT from './pages/PTT';
 import PTTRecordings from './pages/PTTRecordings';
 import PatrolChecklists from './pages/PatrolChecklists';
+import PatrolMonitoring from './pages/PatrolMonitoring';
 import Profile from './pages/Profile';
 import QRScanner from './pages/QRScanner';
 import ReportScheduling from './pages/ReportScheduling';
@@ -84,7 +85,6 @@ import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import TestDataManager from './pages/TestDataManager';
 import UserManagement from './pages/UserManagement';
-import PatrolMonitoring from './pages/PatrolMonitoring';
 import __Layout from './Layout.jsx';
 
 
@@ -114,6 +114,7 @@ export const PAGES = {
     "PTT": PTT,
     "PTTRecordings": PTTRecordings,
     "PatrolChecklists": PatrolChecklists,
+    "PatrolMonitoring": PatrolMonitoring,
     "Profile": Profile,
     "QRScanner": QRScanner,
     "ReportScheduling": ReportScheduling,
@@ -126,7 +127,6 @@ export const PAGES = {
     "SystemSetup": SystemSetup,
     "TestDataManager": TestDataManager,
     "UserManagement": UserManagement,
-    "PatrolMonitoring": PatrolMonitoring,
 }
 
 export const pagesConfig = {

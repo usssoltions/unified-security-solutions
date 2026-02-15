@@ -14,6 +14,7 @@ export default function GuardPatrolChecklist() {
   const [activePatrol, setActivePatrol] = useState(null);
   const [completedItems, setCompletedItems] = useState({});
   const [itemPhotos, setItemPhotos] = useState({});
+  const [location, setLocation] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
   const [signature, setSignature] = useState(null);
@@ -26,6 +27,19 @@ export default function GuardPatrolChecklist() {
       setUser(currentUser);
     };
     loadUser();
+
+    // Get location for photo metadata
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+        },
+        () => console.log("Location access denied")
+      );
+    }
   }, []);
 
   const { data: activeShift } = useQuery({
@@ -118,14 +132,22 @@ export default function GuardPatrolChecklist() {
     setUploading(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setItemPhotos(prev => ({ ...prev, [itemId]: file_url }));
+      const photoMetadata = {
+        url: file_url,
+        timestamp: new Date().toISOString(),
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        location: location ? { lat: location.lat, lng: location.lng } : null
+      };
+      setItemPhotos(prev => ({ ...prev, [itemId]: { url: file_url, metadata: photoMetadata } }));
       setCompletedItems(prev => ({
         ...prev,
         [itemId]: {
           ...prev[itemId],
           item_id: itemId,
           checked: true,
-          photo_url: file_url
+          photo_url: file_url,
+          photo_metadata: photoMetadata
         }
       }));
     } catch (error) {
@@ -272,13 +294,34 @@ export default function GuardPatrolChecklist() {
                     )}
 
                     {(item.type === "photo" || itemPhotos[item.id]) && (
-                      <div>
+                      <div className="space-y-2">
                         {itemPhotos[item.id] ? (
-                          <img
-                            src={itemPhotos[item.id]}
-                            alt="Evidence"
-                            className="w-full h-48 object-cover rounded-lg"
-                          />
+                          <div>
+                            <img
+                              src={itemPhotos[item.id].url}
+                              alt="Evidence"
+                              className="w-full h-48 object-cover rounded-lg border border-slate-700"
+                            />
+                            {itemPhotos[item.id].metadata && (
+                              <div className="p-3 bg-slate-900/50 rounded border border-slate-700 text-xs space-y-1">
+                                <p className="text-slate-300"><span className="text-slate-400">📷 Captured:</span> {itemPhotos[item.id].metadata.timestamp}</p>
+                              </div>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setItemPhotos(prev => {
+                                  const updated = { ...prev };
+                                  delete updated[item.id];
+                                  return updated;
+                                });
+                              }}
+                              className="w-full border-slate-700 text-slate-300"
+                            >
+                              Replace Photo
+                            </Button>
+                          </div>
                         ) : (
                           <div>
                             <input
