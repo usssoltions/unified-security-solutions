@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Users, Plus, Search, Shield, Radio, UserCheck, Building } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import PullToRefresh from "@/components/PullToRefresh";
 import UserForm from "../components/users/UserForm";
 import UserCard from "../components/users/UserCard";
 
@@ -71,9 +72,12 @@ export default function UserManagement() {
   };
 
   return (
-    <div className="min-h-screen p-4 lg:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <PullToRefresh onRefresh={async () => {
+      await queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+    }}>
+      <div className="min-h-screen p-4 lg:p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-gradient-to-br from-sky-400 to-sky-600 rounded-full flex items-center justify-center">
             <Users className="w-6 h-6 text-white" />
@@ -277,6 +281,7 @@ export default function UserManagement() {
           }}
         />
       )}
-    </div>
+      </div>
+    </PullToRefresh>
   );
 }

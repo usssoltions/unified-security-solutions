@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { X, Camera, Upload, Mic, StopCircle, Sparkles, PenTool, Loader2, Send, Video, Play } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import SignaturePad from "./SignaturePad";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -382,17 +389,20 @@ Please provide:
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="text-sm text-slate-400 mb-2 block">Maintenance Type *</label>
-                <select
+                <Select
                   value={formData.maintenance_type}
-                  onChange={(e) => setFormData({ ...formData, maintenance_type: e.target.value })}
-                  className="w-full bg-slate-900/50 border border-slate-700 text-white rounded-md p-2"
+                  onValueChange={(value) => setFormData({ ...formData, maintenance_type: value })}
                   required
                 >
-                  <option value="">Select maintenance type...</option>
-                  {maintenanceCategories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                    <SelectValue placeholder="Select maintenance type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {maintenanceCategories.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
@@ -428,14 +438,18 @@ Please provide:
 
               <div>
                 <label className="text-sm text-slate-400 mb-2 block">Email Client:</label>
-                <select
+                <Select
                   value={formData.email_client}
-                  onChange={(e) => setFormData({ ...formData, email_client: e.target.value })}
-                  className="w-full bg-slate-900/50 border border-slate-700 text-white rounded-md p-2"
+                  onValueChange={(value) => setFormData({ ...formData, email_client: value })}
                 >
-                  <option value="YES">YES</option>
-                  <option value="NO">NO</option>
-                </select>
+                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="YES">YES</SelectItem>
+                    <SelectItem value="NO">NO</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>

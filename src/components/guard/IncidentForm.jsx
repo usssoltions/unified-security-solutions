@@ -6,6 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle, Upload, Video, Play } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import SignaturePad from "./SignaturePad";
 import { createPageUrl } from "@/utils";
 
@@ -536,17 +543,20 @@ Provide detailed analysis in JSON format:
 
               <div>
                 <label className="text-white font-medium block mb-2">Incident Type *</label>
-                <select
+                <Select
                   value={formData.incident_type}
-                  onChange={(e) => setFormData({ ...formData, incident_type: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                  onValueChange={(value) => setFormData({ ...formData, incident_type: value })}
                   required
                 >
-                  <option value="">Select incident type...</option>
-                  {incidentTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                    <SelectValue placeholder="Select incident type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {incidentTypes.map(type => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -647,14 +657,18 @@ Provide detailed analysis in JSON format:
 
               <div>
                 <label className="text-white font-medium block mb-2">Police Called?</label>
-                <select
+                <Select
                   value={formData.police_called}
-                  onChange={(e) => setFormData({ ...formData, police_called: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                  onValueChange={(value) => setFormData({ ...formData, police_called: value })}
                 >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
+                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Yes">Yes</SelectItem>
+                    <SelectItem value="No">No</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {formData.police_called === "Yes" && (
