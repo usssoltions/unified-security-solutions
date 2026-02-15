@@ -61,9 +61,6 @@ export default function GuardShift() {
   useEffect(() => {
     loadUser();
     startLocationTracking();
-    
-    // Clear all cache on mount to ensure fresh data
-    queryClient.clear();
   }, []);
 
   const loadUser = async () => {
@@ -137,12 +134,11 @@ export default function GuardShift() {
       return shifts?.[0] || null;
     },
     enabled: !!user,
-    refetchInterval: 5000,
-    retry: 3,
-    retryDelay: 1000,
-    initialData: null,
-    staleTime: 0,
-    cacheTime: 0
+    refetchInterval: 10000,
+    retry: 2,
+    retryDelay: 500,
+    staleTime: 5000,
+    gcTime: 10000
   });
 
   const { data: upcomingShifts = [] } = useQuery({
@@ -162,11 +158,10 @@ export default function GuardShift() {
       return shifts || [];
     },
     enabled: !!user,
-    initialData: [],
-    retry: 3,
-    refetchInterval: 10000, // Real-time sync
-    staleTime: 0,
-    cacheTime: 0
+    refetchInterval: 30000,
+    retry: 2,
+    staleTime: 15000,
+    gcTime: 30000
   });
 
   const { data: pendingAssignments = [] } = useQuery({
@@ -182,11 +177,10 @@ export default function GuardShift() {
       return assignments || [];
     },
     enabled: !!user,
-    initialData: [],
-    retry: 3,
-    refetchInterval: 5000, // Real-time sync
-    staleTime: 0,
-    cacheTime: 0
+    refetchInterval: 15000,
+    retry: 2,
+    staleTime: 10000,
+    gcTime: 20000
   });
 
   const { data: arrivedAlarms = [] } = useQuery({
@@ -202,11 +196,10 @@ export default function GuardShift() {
       return alarms || [];
     },
     enabled: !!user,
-    initialData: [],
-    retry: 3,
-    refetchInterval: 3000, // Real-time sync for alarms
-    staleTime: 0,
-    cacheTime: 0
+    refetchInterval: 10000,
+    retry: 2,
+    staleTime: 5000,
+    gcTime: 15000
   });
 
   const { data: unreadMessages = 0 } = useQuery({
@@ -222,10 +215,10 @@ export default function GuardShift() {
       return myMessages.length;
     },
     enabled: !!user,
-    refetchInterval: 5000,
-    initialData: 0,
-    staleTime: 0,
-    cacheTime: 0
+    refetchInterval: 15000,
+    retry: 1,
+    staleTime: 10000,
+    gcTime: 20000
   });
 
   const { data: pendingTrainings = 0 } = useQuery({
@@ -239,10 +232,10 @@ export default function GuardShift() {
       return Array.isArray(trainings) ? trainings.length : 0;
     },
     enabled: !!user,
-    refetchInterval: 30000,
-    initialData: 0,
-    staleTime: 0,
-    cacheTime: 0
+    refetchInterval: 60000,
+    retry: 1,
+    staleTime: 30000,
+    gcTime: 60000
   });
 
   // Stay Awake Alert System

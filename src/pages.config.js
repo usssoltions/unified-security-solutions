@@ -68,7 +68,9 @@ import GuardPerformanceAnalytics from './pages/GuardPerformanceAnalytics';
 import GuardShift from './pages/GuardShift';
 import Home from './pages/Home';
 import NotificationPreferences from './pages/NotificationPreferences';
+import OneSignalTest from './pages/OneSignalTest';
 import PTT from './pages/PTT';
+import PTTRecordings from './pages/PTTRecordings';
 import PatrolChecklists from './pages/PatrolChecklists';
 import Profile from './pages/Profile';
 import QRScanner from './pages/QRScanner';
@@ -82,8 +84,6 @@ import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import TestDataManager from './pages/TestDataManager';
 import UserManagement from './pages/UserManagement';
-import PTTRecordings from './pages/PTTRecordings';
-import OneSignalTest from './pages/OneSignalTest';
 import __Layout from './Layout.jsx';
 
 
@@ -109,7 +109,9 @@ export const PAGES = {
     "GuardShift": GuardShift,
     "Home": Home,
     "NotificationPreferences": NotificationPreferences,
+    "OneSignalTest": OneSignalTest,
     "PTT": PTT,
+    "PTTRecordings": PTTRecordings,
     "PatrolChecklists": PatrolChecklists,
     "Profile": Profile,
     "QRScanner": QRScanner,
@@ -123,8 +125,6 @@ export const PAGES = {
     "SystemSetup": SystemSetup,
     "TestDataManager": TestDataManager,
     "UserManagement": UserManagement,
-    "PTTRecordings": PTTRecordings,
-    "OneSignalTest": OneSignalTest,
 }
 
 export const pagesConfig = {
