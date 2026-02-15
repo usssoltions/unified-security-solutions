@@ -282,18 +282,10 @@ export default function QRScanner() {
     const files = Array.from(e.target.files);
     for (const file of files) {
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const result = await base44.functions.invoke('uploadPhotoFile', {}, formData);
-        if (result.data?.file_url) {
-          setPhotos([...photos, result.data.file_url]);
-        } else {
-          throw new Error(result.data?.error || "Upload failed");
-        }
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        setPhotos([...photos, file_url]);
       } catch (error) {
         console.error("Photo upload error:", error);
-        alert("Failed to upload photo");
       }
     }
   };
@@ -537,20 +529,11 @@ export default function QRScanner() {
                           onChange={async (e) => {
                             try {
                               const file = e.target.files?.[0];
-                              if (!file) {
-                                return;
-                              }
-                              const formData = new FormData();
-                              formData.append('file', file);
-                              const result = await base44.functions.invoke('uploadPhotoFile', {}, formData);
-                              if (result.data?.file_url) {
-                                handleItemChange(index, "photo_url", result.data.file_url);
-                              } else {
-                                throw new Error(result.data?.error || "Upload failed");
-                              }
+                              if (!file) return;
+                              const { file_url } = await base44.integrations.Core.UploadFile({ file });
+                              handleItemChange(index, "photo_url", file_url);
                             } catch (error) {
-                              console.error("Checklist photo upload error:", error);
-                              alert("Failed to upload photo");
+                              console.error("Photo upload error:", error);
                             }
                           }}
                           className="hidden"

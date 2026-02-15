@@ -38,16 +38,7 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
         throw new Error("No file selected");
       }
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const result = await base44.functions.invoke('uploadPhotoFile', {}, formData);
-
-      if (!result.data?.file_url) {
-        throw new Error(result.data?.error || "Upload failed");
-      }
-
-      const file_url = result.data.file_url;
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
       
       // Create photo metadata
       const photoData = {
