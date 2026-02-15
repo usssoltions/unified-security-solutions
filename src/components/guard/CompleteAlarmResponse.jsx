@@ -107,9 +107,9 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
-      <div className="min-h-screen p-4 flex items-start justify-center pt-20">
-        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700">
+    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="min-h-screen p-4 flex items-start justify-center py-4">
+        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-4">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
