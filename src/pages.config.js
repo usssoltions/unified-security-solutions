@@ -84,6 +84,7 @@ import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import TestDataManager from './pages/TestDataManager';
 import UserManagement from './pages/UserManagement';
+import PatrolMonitoring from './pages/PatrolMonitoring';
 import __Layout from './Layout.jsx';
 
 
@@ -125,6 +126,7 @@ export const PAGES = {
     "SystemSetup": SystemSetup,
     "TestDataManager": TestDataManager,
     "UserManagement": UserManagement,
+    "PatrolMonitoring": PatrolMonitoring,
 }
 
 export const pagesConfig = {

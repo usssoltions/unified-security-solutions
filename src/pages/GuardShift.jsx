@@ -270,8 +270,8 @@ export default function GuardShift() {
       }
     };
 
-    // Check every minute, but only show alert when interval has passed
-    const intervalId = setInterval(checkStayAwake, 60000);
+    // Check every 30 seconds for more reliable triggering
+    const intervalId = setInterval(checkStayAwake, 30000);
 
     return () => clearInterval(intervalId);
   }, [user, activeShift]);
