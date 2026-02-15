@@ -67,24 +67,28 @@ export default function GuardShift() {
     setLoadingUser(true);
     try {
       const currentUser = await base44.auth.me();
-      
-      // Force clock-in check for guards
-      if (currentUser.role_type === 'guard') {
-        // Check if user has an active shift
-        const activeShifts = await base44.entities.Shift.filter({
-          guard_id: currentUser.id,
-          status: "active"
-        });
-        
-        // If no active shift but is_clocked_in is true, reset it
-        if (activeShifts.length === 0 && currentUser.is_clocked_in) {
-          await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
-          currentUser.is_clocked_in = false;
-          currentUser.current_shift_id = null;
-        }
-      }
-      
       setUser(currentUser);
+      
+      // Defer clock-in validation to not block initial render
+      if (currentUser.role_type === 'guard') {
+        setTimeout(async () => {
+          try {
+            const activeShifts = await base44.entities.Shift.filter({
+              guard_id: currentUser.id,
+              status: "active"
+            });
+            
+            if (activeShifts.length === 0 && currentUser.is_clocked_in) {
+              await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
+              currentUser.is_clocked_in = false;
+              currentUser.current_shift_id = null;
+              setUser({...currentUser});
+            }
+          } catch (error) {
+            console.error("Clock-in validation error:", error);
+          }
+        }, 1000);
+      }
     } catch (error) {
       console.error("Failed to load user:", error);
     } finally {
@@ -93,33 +97,36 @@ export default function GuardShift() {
   };
 
   const startLocationTracking = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        async (position) => {
-          const newLocation = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setLocation(newLocation);
-          
-          try {
-            const currentUser = await base44.auth.me();
-            if (currentUser && currentUser.is_clocked_in) {
-              await base44.auth.updateMe({
-                last_location: {
-                  ...newLocation,
-                  timestamp: new Date().toISOString()
-                }
-              });
+    // Defer location tracking by 2 seconds to not block initial render
+    setTimeout(() => {
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          async (position) => {
+            const newLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            };
+            setLocation(newLocation);
+            
+            try {
+              const currentUser = await base44.auth.me();
+              if (currentUser && currentUser.is_clocked_in) {
+                await base44.auth.updateMe({
+                  last_location: {
+                    ...newLocation,
+                    timestamp: new Date().toISOString()
+                  }
+                });
+              }
+            } catch (error) {
+              console.error("Failed to update location:", error);
             }
-          } catch (error) {
-            console.error("Failed to update location:", error);
-          }
-        },
-        (error) => console.error("Location error:", error),
-        { enableHighAccuracy: true, maximumAge: 10000 }
-      );
-    }
+          },
+          (error) => console.error("Location error:", error),
+          { enableHighAccuracy: true, maximumAge: 10000 }
+        );
+      }
+    }, 2000);
   };
 
   const { data: activeShift, isLoading: shiftsLoading } = useQuery({
@@ -134,11 +141,12 @@ export default function GuardShift() {
       return shifts?.[0] || null;
     },
     enabled: !!user,
-    refetchInterval: 20000,
-    retry: 1,
-    retryDelay: 1000,
-    staleTime: 15000,
-    gcTime: 30000
+    refetchInterval: 30000,
+    retry: 0,
+    staleTime: 25000,
+    gcTime: 60000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false
   });
 
   const { data: upcomingShifts = [] } = useQuery({
@@ -152,16 +160,18 @@ export default function GuardShift() {
           status: "scheduled"
         },
         "start_time",
-        5
+        3
       );
       
       return shifts || [];
     },
-    enabled: !!user,
-    refetchInterval: 60000,
-    retry: 1,
-    staleTime: 45000,
-    gcTime: 60000
+    enabled: !!user && !shiftsLoading,
+    refetchInterval: 120000,
+    retry: 0,
+    staleTime: 100000,
+    gcTime: 180000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false
   });
 
   const { data: pendingAssignments = [] } = useQuery({
@@ -176,11 +186,13 @@ export default function GuardShift() {
       
       return assignments || [];
     },
-    enabled: !!user,
-    refetchInterval: 30000,
-    retry: 1,
-    staleTime: 20000,
-    gcTime: 40000
+    enabled: !!user && !shiftsLoading,
+    refetchInterval: 60000,
+    retry: 0,
+    staleTime: 50000,
+    gcTime: 120000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false
   });
 
   const { data: arrivedAlarms = [] } = useQuery({
@@ -206,7 +218,7 @@ export default function GuardShift() {
     queryKey: ["unreadMessages", user?.id],
     queryFn: async () => {
       if (!user) return 0;
-      const allMessages = await base44.entities.ChatMessage.list("-created_date", 30);
+      const allMessages = await base44.entities.ChatMessage.list("-created_date", 20);
       const messageArray = Array.isArray(allMessages) ? allMessages : [];
       const myMessages = messageArray.filter(m => 
         (m.recipient_id === user.id || m.is_broadcast) && 
@@ -214,11 +226,13 @@ export default function GuardShift() {
       );
       return myMessages.length;
     },
-    enabled: !!user,
-    refetchInterval: 30000,
-    retry: 1,
-    staleTime: 25000,
-    gcTime: 40000
+    enabled: !!user && !shiftsLoading,
+    refetchInterval: 60000,
+    retry: 0,
+    staleTime: 50000,
+    gcTime: 120000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false
   });
 
   const { data: pendingTrainings = 0 } = useQuery({
@@ -231,11 +245,13 @@ export default function GuardShift() {
       });
       return Array.isArray(trainings) ? trainings.length : 0;
     },
-    enabled: !!user,
-    refetchInterval: 60000,
-    retry: 1,
-    staleTime: 30000,
-    gcTime: 60000
+    enabled: !!user && !shiftsLoading,
+    refetchInterval: 120000,
+    retry: 0,
+    staleTime: 100000,
+    gcTime: 240000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false
   });
 
   // Stay Awake Alert System
