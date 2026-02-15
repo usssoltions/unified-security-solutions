@@ -164,13 +164,21 @@ Officer Signature: Signed
     setUploading(true);
     try {
       for (const file of files) {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setFormData(prev => ({
-          ...prev,
-          media: [...prev.media, { type: 'photo', url: file_url }]
-        }));
+        try {
+          const result = await base44.integrations.Core.UploadFile({ file });
+          if (result && result.file_url) {
+            setFormData(prev => ({
+              ...prev,
+              media: [...prev.media, { type: 'photo', url: result.file_url }]
+            }));
+          }
+        } catch (err) {
+          console.error("Upload error:", err);
+          alert("Failed to upload photo. Please try again.");
+        }
       }
     } catch (error) {
+      console.error("Photo capture error:", error);
       alert("Failed to upload photo");
     } finally {
       setUploading(false);
@@ -361,8 +369,8 @@ Please provide:
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
-      <div className="min-h-screen p-4 pt-20 pb-20">
+    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto safe-area-top safe-area-bottom">
+      <div className="min-h-screen p-4 pt-20 pb-32">
         <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700">
           <CardHeader className="sticky top-0 z-10 bg-slate-800 border-b border-slate-700 rounded-t-lg -mx-6 -mt-6 pt-6 px-6">
             <div className="flex items-center justify-between">
@@ -631,19 +639,19 @@ Please provide:
                 </div>
               )}
 
-              <div className="flex gap-3 pt-4 sticky bottom-0 bg-slate-800 pb-4 -mx-6 px-6 border-t border-slate-700">
+              <div className="flex gap-3 pt-6 pb-6">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={onClose}
-                  className="flex-1 border-slate-600"
+                  className="flex-1 border-slate-600 h-12"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 h-12"
                 >
                   {createMutation.isPending ? (
                     <>

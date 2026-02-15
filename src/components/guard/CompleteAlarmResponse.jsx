@@ -24,19 +24,33 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
   const [showSignature, setShowSignature] = useState(false);
 
   const handleMediaUpload = async (files, type) => {
+    if (!files || files.length === 0) return;
+    
     setUploading(true);
     try {
       const urls = [];
       for (const file of files) {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        urls.push(file_url);
+        try {
+          const result = await base44.integrations.Core.UploadFile({ file });
+          if (result && result.file_url) {
+            urls.push(result.file_url);
+          }
+        } catch (err) {
+          console.error("Upload error for file:", err);
+        }
       }
-      setFormData({
-        ...formData,
-        [type]: [...formData[type], ...urls]
-      });
+      
+      if (urls.length > 0) {
+        setFormData({
+          ...formData,
+          [type]: [...formData[type], ...urls]
+        });
+      } else {
+        alert("Failed to upload media. Please try again.");
+      }
     } catch (error) {
-      alert("Failed to upload media");
+      console.error("Media upload error:", error);
+      alert("Failed to upload media. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -107,9 +121,9 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      <div className="min-h-screen p-3 sm:p-4 flex items-start justify-center py-3 sm:py-4">
-        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-2 sm:my-4">
+    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto safe-area-top safe-area-bottom">
+      <div className="min-h-screen p-4 pt-20 pb-24">
+        <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -271,18 +285,18 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
               )}
             </div>
 
-            <div className="flex gap-3 pt-4">
+            <div className="flex gap-3 pt-6 sticky bottom-0 bg-slate-800 -mx-6 px-6 pb-6 border-t border-slate-700 mt-6">
               <Button
                 variant="outline"
                 onClick={onClose}
-                className="flex-1 border-slate-600 text-slate-300"
+                className="flex-1 border-slate-600 text-slate-300 h-12"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleComplete}
                 disabled={submitting}
-                className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600"
+                className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 h-12"
               >
                 {submitting ? (
                   <>
