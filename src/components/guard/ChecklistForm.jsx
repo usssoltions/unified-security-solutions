@@ -189,7 +189,8 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
                   {item.photo_url ? (
                     <div className="space-y-2">
                       <div className="relative">
-                        <img src={item.photo_url} alt="Uploaded" className="w-full h-48 object-cover rounded-lg border border-slate-700" />
+                        <img src={item.photo_url} alt="Uploaded" className="w-full h-48 object-cover rounded-lg border border-emerald-500/50 bg-slate-900" />
+                        <div className="absolute top-2 left-2 bg-emerald-500 text-white text-xs px-2 py-1 rounded">✓ Uploaded</div>
                         <Button
                           size="sm"
                           variant="outline"
@@ -199,7 +200,7 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
                           }}
                           className="absolute top-2 right-2"
                         >
-                          Remove
+                          Replace
                         </Button>
                       </div>
                       {item.photo_metadata && (
@@ -209,6 +210,11 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
                           <p className="text-slate-300"><span className="text-slate-400">🎯 Checkpoint:</span> {item.photo_metadata.checkpoint}</p>
                         </div>
                       )}
+                    </div>
+                  ) : item.uploading ? (
+                    <div className="border-2 border-dashed border-sky-500 rounded-lg p-8 text-center bg-sky-500/5">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-400 mx-auto mb-2" />
+                      <p className="text-sm text-sky-400 font-medium">Uploading...</p>
                     </div>
                   ) : (
                     <div>
@@ -222,8 +228,9 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
                         }}
                         className="hidden"
                         id={`photo-${index}`}
+                        disabled={item.uploading}
                       />
-                      <label htmlFor={`photo-${index}`}>
+                      <label htmlFor={`photo-${index}`} className={item.uploading ? "pointer-events-none opacity-50" : ""}>
                         <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-sky-500 transition-colors">
                           <Camera className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                           <p className="text-sm text-slate-400">Take Photo</p>
