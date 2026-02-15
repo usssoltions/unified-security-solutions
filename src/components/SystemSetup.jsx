@@ -61,56 +61,40 @@ export default function SystemSetup() {
   }
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700 relative">
+    <Card className="bg-slate-800/50 border-slate-700 relative mb-4">
       <Button
         variant="ghost"
         size="icon"
         onClick={handleDismiss}
-        className="absolute top-2 right-2 h-6 w-6 text-slate-400 hover:text-white"
+        className="absolute top-2 right-2 h-6 w-6 text-slate-400 hover:text-white z-10"
       >
         <X className="h-4 w-4" />
       </Button>
 
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 pr-10">
         <CardTitle className="text-white text-sm flex items-center gap-2">
-          {notificationPermission === "granted" ? (
-            <>
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              Setup Complete
-            </>
-          ) : (
-            <>Setup Required</>
-          )}
+          Setup Required
         </CardTitle>
       </CardHeader>
 
-      <CardContent className="space-y-3">
-        {isEnabled && (
-          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
-            <div className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-amber-400" />
-              <span className="text-sm text-white">Enable Notifications</span>
-            </div>
-            <Button
-              size="sm"
-              onClick={handleEnableNotifications}
-              className="bg-amber-500 hover:bg-amber-600 text-white text-xs"
-            >
-              Enable
-            </Button>
+      <CardContent className="space-y-3 pt-0">
+        <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Bell className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <span className="text-sm text-white">Enable Notifications</span>
           </div>
-        )}
-
-        {notificationPermission === "granted" && (
-          <div className="text-xs text-emerald-400 flex items-center gap-2">
-            <CheckCircle2 className="w-3 h-3" />
-            All systems ready
-          </div>
-        )}
+          <Button
+            size="sm"
+            onClick={handleEnableNotifications}
+            className="bg-amber-500 hover:bg-amber-600 text-white text-xs flex-shrink-0"
+          >
+            Enable
+          </Button>
+        </div>
 
         {notificationPermission === "denied" && (
-          <p className="text-xs text-rose-400">
-            Notifications blocked. Enable in browser settings if needed.
+          <p className="text-xs text-slate-400 px-3">
+            Notifications blocked. Enable in device settings if needed.
           </p>
         )}
       </CardContent>

@@ -587,9 +587,7 @@ export default function GuardShift() {
 
       <QuickActions location={location} shiftId={activeShift?.id} siteId={activeShift?.site_id} />
 
-      <SystemSetup />
-
-
+      {!activeShift && <SystemSetup />}
 
       {Array.isArray(upcomingShifts) && upcomingShifts.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
