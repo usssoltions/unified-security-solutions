@@ -428,8 +428,8 @@ export default function Layout({ children, currentPageName }) {
           {user && <PermissionEnforcement />}
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 w-full max-w-full overflow-x-hidden">
+        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50 w-full" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
               {/* Back button on mobile child screens, logo on root screens */}
@@ -516,7 +516,7 @@ export default function Layout({ children, currentPageName }) {
             </div>
             </header>
 
-        <div className="flex flex-col lg:flex-row">
+        <div className="flex flex-col lg:flex-row w-full max-w-full">
           <aside className="hidden lg:flex flex-col w-full lg:w-64 bg-slate-900/60 backdrop-blur-lg lg:border-r border-slate-700/50 min-h-screen flex-shrink-0 safe-area-bottom">
             <nav className="flex-1 p-4 space-y-2">
               {navigationItems.map((item) => (
@@ -547,8 +547,8 @@ export default function Layout({ children, currentPageName }) {
             )}
           </aside>
 
-          <main className="flex-1 min-h-screen w-full overflow-x-hidden pb-0 md:pb-0">
-            <div className="pb-24 md:pb-0">
+          <main className="flex-1 min-h-screen w-full max-w-full overflow-x-hidden pb-0 md:pb-0">
+            <div className="pb-24 md:pb-0 w-full max-w-full">
               {children}
             </div>
           </main>
