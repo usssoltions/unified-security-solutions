@@ -402,17 +402,17 @@ Please provide:
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
+              <div className="overflow-hidden">
                 <label className="text-sm text-slate-400 mb-2 block">Maintenance Type *</label>
                 <Select
                   value={formData.maintenance_type}
                   onValueChange={(value) => setFormData({ ...formData, maintenance_type: value })}
                   required
                 >
-                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                  <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white w-full">
                     <SelectValue placeholder="Select maintenance type..." />
                   </SelectTrigger>
-                  <SelectContent className="z-[9999]">
+                  <SelectContent className="z-[9999] w-full">
                     {maintenanceCategories.map(cat => (
                       <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                     ))}

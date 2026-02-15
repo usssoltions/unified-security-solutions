@@ -556,17 +556,17 @@ Provide detailed analysis in JSON format:
                 </div>
               </div>
 
-              <div>
+              <div className="overflow-hidden">
                 <label className="text-white font-medium block mb-2">Incident Type *</label>
                 <Select
                   value={formData.incident_type}
                   onValueChange={(value) => setFormData({ ...formData, incident_type: value })}
                   required
                 >
-                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white w-full">
                     <SelectValue placeholder="Select incident type..." />
                   </SelectTrigger>
-                  <SelectContent className="z-[9999]">
+                  <SelectContent className="z-[9999] w-full">
                     {incidentTypes.map(type => (
                       <SelectItem key={type} value={type}>{type}</SelectItem>
                     ))}
