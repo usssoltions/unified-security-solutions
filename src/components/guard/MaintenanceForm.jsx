@@ -412,7 +412,7 @@ Please provide:
                   <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
                     <SelectValue placeholder="Select maintenance type..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[9999]">
                     {maintenanceCategories.map(cat => (
                       <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                     ))}
@@ -460,7 +460,7 @@ Please provide:
                   <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[9999]">
                     <SelectItem value="YES">YES</SelectItem>
                     <SelectItem value="NO">NO</SelectItem>
                   </SelectContent>

@@ -566,7 +566,7 @@ Provide detailed analysis in JSON format:
                   <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
                     <SelectValue placeholder="Select incident type..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[9999]">
                     {incidentTypes.map(type => (
                       <SelectItem key={type} value={type}>{type}</SelectItem>
                     ))}
@@ -679,7 +679,7 @@ Provide detailed analysis in JSON format:
                   <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[9999]">
                     <SelectItem value="Yes">Yes</SelectItem>
                     <SelectItem value="No">No</SelectItem>
                   </SelectContent>
