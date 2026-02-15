@@ -77,17 +77,22 @@ export default function Layout({ children, currentPageName }) {
     // Force re-authentication on app startup (for shared device usage)
     const sessionKey = 'guard_session_active';
     const isNewSession = !sessionStorage.getItem(sessionKey);
-    
+
     if (isNewSession) {
       // Clear all auth data to force fresh login
       localStorage.removeItem('sb-qtrypzzcjebvfcihiynt-auth-token');
       sessionStorage.clear();
       sessionStorage.setItem(sessionKey, 'true');
-      
-      // Redirect to login
-      const currentPath = window.location.pathname;
-      if (currentPath !== '/login') {
-        window.location.href = '/login';
+
+      // Force re-authentication through Base44
+      try {
+        const currentUser = await base44.auth.me();
+        if (!currentUser) {
+          base44.auth.redirectToLogin();
+          return;
+        }
+      } catch {
+        base44.auth.redirectToLogin();
         return;
       }
     }
@@ -218,13 +223,13 @@ export default function Layout({ children, currentPageName }) {
       localStorage.clear();
       sessionStorage.clear();
       
-      // Logout and redirect
-      await base44.auth.logout('/login');
+      // Logout and let Base44 handle redirect
+      await base44.auth.logout();
     } catch (err) {
       // Force clear and reload
       localStorage.clear();
       sessionStorage.clear();
-      window.location.href = '/login';
+      window.location.reload();
     }
   };
 
