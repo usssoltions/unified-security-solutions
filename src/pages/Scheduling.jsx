@@ -16,6 +16,13 @@ import {
   List,
   Grid
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import ShiftForm from "../components/scheduling/ShiftForm";
 import BulkScheduler from "../components/scheduling/BulkScheduler";
 import CalendarView from "../components/scheduling/CalendarView";
@@ -207,26 +214,29 @@ export default function Scheduling() {
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-4 lg:p-6 pt-0">
             <div className="flex flex-col gap-3 sm:gap-4">
-              <select
-                value={siteFilter}
-                onChange={(e) => setSiteFilter(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2 text-sm"
-              >
-                <option value="all">All Sites</option>
-                {sites.map(site => (
-                  <option key={site.id} value={site.id}>{site.name}</option>
-                ))}
-              </select>
-              <select
-                value={guardFilter}
-                onChange={(e) => setGuardFilter(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2 text-sm"
-              >
-                <option value="all">All Guards</option>
-                {guards.map(guard => (
-                  <option key={guard.id} value={guard.id}>{guard.full_name}</option>
-                ))}
-              </select>
+              <Select value={siteFilter} onValueChange={setSiteFilter}>
+                <SelectTrigger className="bg-slate-900 border-slate-700 text-white text-sm">
+                  <SelectValue placeholder="All Sites" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sites</SelectItem>
+                  {sites.map(site => (
+                    <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select value={guardFilter} onValueChange={setGuardFilter}>
+                <SelectTrigger className="bg-slate-900 border-slate-700 text-white text-sm">
+                  <SelectValue placeholder="All Guards" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Guards</SelectItem>
+                  {guards.map(guard => (
+                    <SelectItem key={guard.id} value={guard.id}>{guard.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {viewMode === "calendar" ? (
