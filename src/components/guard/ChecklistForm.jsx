@@ -15,7 +15,8 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
       checked: false,
       value: "",
       photo_url: "",
-      photo_metadata: null
+      photo_metadata: null,
+      uploading: false
     }))
   );
   const [signature, setSignature] = useState(null);
@@ -30,8 +31,23 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
   };
 
   const handlePhotoUpload = async (index, file) => {
+    // Set uploading state
+    handleItemChange(index, "uploading", true);
+    
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      if (!file) {
+        alert("No file selected");
+        handleItemChange(index, "uploading", false);
+        return;
+      }
+
+      const result = await base44.integrations.Core.UploadFile({ file });
+      
+      if (!result || !result.file_url) {
+        throw new Error("No file URL returned from upload");
+      }
+
+      const file_url = result.file_url;
       
       // Create photo metadata
       const photoData = {
@@ -45,8 +61,11 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
       
       handleItemChange(index, "photo_url", file_url);
       handleItemChange(index, "photo_metadata", photoData);
+      handleItemChange(index, "uploading", false);
     } catch (error) {
-      alert("Failed to upload photo");
+      console.error("Photo upload error:", error);
+      handleItemChange(index, "uploading", false);
+      alert("Failed to upload photo: " + error.message);
     }
   };
 
