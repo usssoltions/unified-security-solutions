@@ -369,7 +369,14 @@ Please provide:
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto safe-area-top safe-area-bottom">
+    <div 
+      className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto safe-area-top safe-area-bottom"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="min-h-screen p-4 pt-20 pb-32">
         <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700">
           <CardHeader className="sticky top-0 z-10 bg-slate-800 border-b border-slate-700 rounded-t-lg -mx-6 -mt-6 pt-6 px-6">

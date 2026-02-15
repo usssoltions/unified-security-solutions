@@ -373,7 +373,14 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center p-4 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <Card className="w-full max-w-6xl bg-slate-800 border-rose-500/50 max-h-[95vh] flex flex-col">
         <CardHeader className="border-b border-slate-700 flex-shrink-0">
           <div className="flex items-center justify-between">

@@ -145,7 +145,14 @@ Provide a detailed analysis including:
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="min-h-screen p-4 flex items-start justify-center pt-10">
         <Card className="w-full max-w-4xl bg-slate-800 border-purple-500/30">
           <CardHeader>
