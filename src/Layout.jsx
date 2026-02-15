@@ -153,12 +153,12 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     if (user) {
       loadNotificationCount();
-      const interval = setInterval(loadNotificationCount, 10000);
+      const interval = setInterval(loadNotificationCount, 30000);
       return () => clearInterval(interval);
     }
   }, [user]);
 
-  // Keep-alive mechanism
+  // Keep-alive mechanism - reduced frequency
   useEffect(() => {
     if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
       const keepAlive = setInterval(async () => {
@@ -167,7 +167,7 @@ export default function Layout({ children, currentPageName }) {
         } catch (error) {
           // Silent fail
         }
-      }, 5 * 60 * 1000);
+      }, 15 * 60 * 1000);
 
       return () => clearInterval(keepAlive);
     }

@@ -34,7 +34,7 @@ export default function IncomingCallHandler({ user }) {
     // Listen for URL changes (from notifications)
     window.addEventListener('popstate', checkUrlParams);
 
-    // Poll for incoming call notifications every 1 second (faster for better responsiveness)
+    // Poll for incoming call notifications every 3 seconds
     const pollInterval = setInterval(async () => {
       try {
         const notifications = await base44.entities.Notification.filter({
@@ -61,9 +61,9 @@ export default function IncomingCallHandler({ user }) {
       } catch (error) {
         // Silent fail - non-critical background polling
       }
-    }, 1000);
+    }, 3000);
 
-    // Poll for call end signals
+    // Poll for call end signals only when there's an active call
     const callEndPollInterval = setInterval(async () => {
       if (incomingCall?.callId) {
         try {
@@ -85,7 +85,7 @@ export default function IncomingCallHandler({ user }) {
           // Silent fail
         }
       }
-    }, 500);
+    }, 2000);
 
     return () => {
       clearInterval(pollInterval);
