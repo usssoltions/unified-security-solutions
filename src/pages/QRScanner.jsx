@@ -282,15 +282,18 @@ export default function QRScanner() {
     const files = Array.from(e.target.files);
     for (const file of files) {
       try {
-        console.log("Uploading photo:", file.name, file.size);
-        const result = await base44.integrations.Core.UploadFile({ file });
-        if (!result || !result.file_url) {
-          throw new Error("No file URL returned");
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const result = await base44.functions.invoke('uploadPhotoFile', {}, formData);
+        if (result.data?.file_url) {
+          setPhotos([...photos, result.data.file_url]);
+        } else {
+          throw new Error(result.data?.error || "Upload failed");
         }
-        setPhotos([...photos, result.file_url]);
       } catch (error) {
         console.error("Photo upload error:", error);
-        alert("Failed to upload photo: " + error.message);
+        alert("Failed to upload photo");
       }
     }
   };
@@ -535,18 +538,19 @@ export default function QRScanner() {
                             try {
                               const file = e.target.files?.[0];
                               if (!file) {
-                                alert("No file selected");
                                 return;
                               }
-                              console.log("Uploading checklist photo:", file.name, file.size);
-                              const result = await base44.integrations.Core.UploadFile({ file });
-                              if (!result || !result.file_url) {
-                                throw new Error("No file URL returned from upload");
+                              const formData = new FormData();
+                              formData.append('file', file);
+                              const result = await base44.functions.invoke('uploadPhotoFile', {}, formData);
+                              if (result.data?.file_url) {
+                                handleItemChange(index, "photo_url", result.data.file_url);
+                              } else {
+                                throw new Error(result.data?.error || "Upload failed");
                               }
-                              handleItemChange(index, "photo_url", result.file_url);
                             } catch (error) {
                               console.error("Checklist photo upload error:", error);
-                              alert("Failed to upload photo: " + error.message);
+                              alert("Failed to upload photo");
                             }
                           }}
                           className="hidden"
