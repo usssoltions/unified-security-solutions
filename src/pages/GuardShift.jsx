@@ -134,11 +134,11 @@ export default function GuardShift() {
       return shifts?.[0] || null;
     },
     enabled: !!user,
-    refetchInterval: 10000,
-    retry: 2,
-    retryDelay: 500,
-    staleTime: 5000,
-    gcTime: 10000
+    refetchInterval: 20000,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 15000,
+    gcTime: 30000
   });
 
   const { data: upcomingShifts = [] } = useQuery({
@@ -158,10 +158,10 @@ export default function GuardShift() {
       return shifts || [];
     },
     enabled: !!user,
-    refetchInterval: 30000,
-    retry: 2,
-    staleTime: 15000,
-    gcTime: 30000
+    refetchInterval: 60000,
+    retry: 1,
+    staleTime: 45000,
+    gcTime: 60000
   });
 
   const { data: pendingAssignments = [] } = useQuery({
@@ -177,10 +177,10 @@ export default function GuardShift() {
       return assignments || [];
     },
     enabled: !!user,
-    refetchInterval: 15000,
-    retry: 2,
-    staleTime: 10000,
-    gcTime: 20000
+    refetchInterval: 30000,
+    retry: 1,
+    staleTime: 20000,
+    gcTime: 40000
   });
 
   const { data: arrivedAlarms = [] } = useQuery({
@@ -196,17 +196,17 @@ export default function GuardShift() {
       return alarms || [];
     },
     enabled: !!user,
-    refetchInterval: 10000,
-    retry: 2,
-    staleTime: 5000,
-    gcTime: 15000
+    refetchInterval: 15000,
+    retry: 1,
+    staleTime: 10000,
+    gcTime: 20000
   });
 
   const { data: unreadMessages = 0 } = useQuery({
     queryKey: ["unreadMessages", user?.id],
     queryFn: async () => {
       if (!user) return 0;
-      const allMessages = await base44.entities.ChatMessage.list("-created_date", 50);
+      const allMessages = await base44.entities.ChatMessage.list("-created_date", 30);
       const messageArray = Array.isArray(allMessages) ? allMessages : [];
       const myMessages = messageArray.filter(m => 
         (m.recipient_id === user.id || m.is_broadcast) && 
@@ -215,10 +215,10 @@ export default function GuardShift() {
       return myMessages.length;
     },
     enabled: !!user,
-    refetchInterval: 15000,
+    refetchInterval: 30000,
     retry: 1,
-    staleTime: 10000,
-    gcTime: 20000
+    staleTime: 25000,
+    gcTime: 40000
   });
 
   const { data: pendingTrainings = 0 } = useQuery({
