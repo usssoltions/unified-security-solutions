@@ -74,82 +74,50 @@ export default function Layout({ children, currentPageName }) {
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    // Just mark session as active without blocking
     sessionStorage.setItem('guard_session_active', 'true');
-    
     loadUser();
     
-    // Defer wake lock by 3 seconds to not block startup
-    setTimeout(() => {
-      let wakeLock = null;
-      const requestWakeLock = async () => {
-        try {
-          if ('wakeLock' in navigator) {
-            wakeLock = await navigator.wakeLock.request('screen');
-          }
-        } catch (err) {
-          // Silent fail
+    // Wake lock
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
         }
-      };
-      
-      requestWakeLock();
-      document.addEventListener('visibilitychange', requestWakeLock);
-    }, 3000);
-    
-    // Suppress WebSocket errors globally (non-blocking)
-    const originalError = console.error;
-    const originalWarn = console.warn;
-    
-    console.error = (...args) => {
-      const msg = args[0]?.toString() || '';
-      if (msg.includes('WebSocket') || msg.includes('websocket') || msg.includes('WS') || msg.includes('socket')) {
-        return;
+      } catch (err) {
+        // Silent fail
       }
-      originalError.apply(console, args);
     };
     
-    console.warn = (...args) => {
-      const msg = args[0]?.toString() || '';
-      if (msg.includes('WebSocket') || msg.includes('websocket') || msg.includes('WS') || msg.includes('socket')) {
-        return;
-      }
-      originalWarn.apply(console, args);
-    };
-
+    requestWakeLock();
+    document.addEventListener('visibilitychange', requestWakeLock);
+    
     return () => {
-      console.error = originalError;
-      console.warn = originalWarn;
+      if (wakeLock) wakeLock.release();
+      document.removeEventListener('visibilitychange', requestWakeLock);
     };
   }, [retryCount]);
 
   useEffect(() => {
     if (user) {
-      // Defer notification loading by 5 seconds to not block initial render
-      const timeout = setTimeout(() => {
-        loadNotificationCount();
-        const interval = setInterval(loadNotificationCount, 45000);
-        return () => clearInterval(interval);
-      }, 5000);
-      return () => clearTimeout(timeout);
+      loadNotificationCount();
+      const interval = setInterval(loadNotificationCount, 45000);
+      return () => clearInterval(interval);
     }
   }, [user]);
 
-  // Keep-alive mechanism - defer by 30 seconds
+  // Keep-alive mechanism
   useEffect(() => {
     if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
-      const timeout = setTimeout(() => {
-        const keepAlive = setInterval(async () => {
-          try {
-            await base44.auth.me();
-          } catch (error) {
-            // Silent fail
-          }
-        }, 15 * 60 * 1000);
-        
-        return () => clearInterval(keepAlive);
-      }, 30000);
-
-      return () => clearTimeout(timeout);
+      const keepAlive = setInterval(async () => {
+        try {
+          await base44.auth.me();
+        } catch (error) {
+          // Silent fail
+        }
+      }, 15 * 60 * 1000);
+      
+      return () => clearInterval(keepAlive);
     }
   }, [user]);
 

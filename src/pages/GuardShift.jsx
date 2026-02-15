@@ -60,8 +60,7 @@ export default function GuardShift() {
 
   useEffect(() => {
     loadUser();
-    // Defer location tracking by 3 seconds
-    setTimeout(startLocationTracking, 3000);
+    startLocationTracking();
   }, []);
 
   const loadUser = async () => {
@@ -72,23 +71,21 @@ export default function GuardShift() {
       
       // Defer clock-in validation to not block initial render
       if (currentUser.role_type === 'guard') {
-        setTimeout(async () => {
-          try {
-            const activeShifts = await base44.entities.Shift.filter({
-              guard_id: currentUser.id,
-              status: "active"
-            });
-            
-            if (activeShifts.length === 0 && currentUser.is_clocked_in) {
-              await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
-              currentUser.is_clocked_in = false;
-              currentUser.current_shift_id = null;
-              setUser({...currentUser});
-            }
-          } catch (error) {
-            console.error("Clock-in validation error:", error);
+        try {
+          const activeShifts = await base44.entities.Shift.filter({
+            guard_id: currentUser.id,
+            status: "active"
+          });
+          
+          if (activeShifts.length === 0 && currentUser.is_clocked_in) {
+            await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
+            currentUser.is_clocked_in = false;
+            currentUser.current_shift_id = null;
+            setUser({...currentUser});
           }
-        }, 1000);
+        } catch (error) {
+          console.error("Clock-in validation error:", error);
+        }
       }
     } catch (error) {
       console.error("Failed to load user:", error);
