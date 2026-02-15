@@ -155,9 +155,13 @@ export default function Layout({ children, currentPageName }) {
 
   useEffect(() => {
     if (user) {
-      loadNotificationCount();
+      // Defer notification loading by 2 seconds to not block initial render
+      const timeout = setTimeout(loadNotificationCount, 2000);
       const interval = setInterval(loadNotificationCount, 30000);
-      return () => clearInterval(interval);
+      return () => {
+        clearTimeout(timeout);
+        clearInterval(interval);
+      };
     }
   }, [user]);
 
@@ -180,24 +184,13 @@ export default function Layout({ children, currentPageName }) {
     setLoading(true);
     setError(null);
     
-    let attempts = 0;
-    const maxAttempts = 3;
-    
-    while (attempts < maxAttempts) {
-      try {
-        const currentUser = await base44.auth.me();
-        setUser(currentUser);
-        setError(null);
-        break;
-      } catch (err) {
-        attempts++;
-        if (attempts >= maxAttempts) {
-          console.error("Failed to load user after retries:", err);
-          setError(err);
-        } else {
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
-        }
-      }
+    try {
+      const currentUser = await base44.auth.me();
+      setUser(currentUser);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to load user:", err);
+      setError(err);
     }
     
     setLoading(false);
