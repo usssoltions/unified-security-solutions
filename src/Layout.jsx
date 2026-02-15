@@ -444,12 +444,14 @@ export default function Layout({ children, currentPageName }) {
                 <Shield className="w-8 h-8 text-sky-400 lg:hidden" />
               )}
 
-              {/* Desktop always shows logo and menu */}
+              {/* Desktop always shows logo and title */}
               <Shield className="w-8 h-8 text-sky-400 hidden lg:block" />
-              <div className={canGoBack ? "hidden lg:block" : ""}>
+              <div className="hidden lg:block">
                 <h1 className="font-bold text-white text-lg">SecureGuard</h1>
                 <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
               </div>
+              
+              {/* Mobile: show title only on root pages */}
               {!canGoBack && (
                 <div className="lg:hidden">
                   <h1 className="font-bold text-white text-lg">SecureGuard</h1>

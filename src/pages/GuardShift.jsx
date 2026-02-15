@@ -426,8 +426,8 @@ export default function GuardShift() {
   }
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 w-full max-w-full overflow-x-hidden">
-      <div className="max-w-4xl mx-auto w-full max-w-full px-2">
+    <div className="min-h-screen p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-6">
+      <div className="max-w-4xl mx-auto w-full max-w-full">
       <PatrolAssignmentAlert user={user} />
       <AutoReportGenerator user={user} shift={activeShift} />
       <LocationTracker 

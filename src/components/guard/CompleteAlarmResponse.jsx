@@ -107,9 +107,9 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-      <div className="min-h-screen p-4 flex items-start justify-center py-4">
-        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-4">
+    <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="min-h-screen p-3 sm:p-4 flex items-start justify-center py-3 sm:py-4">
+        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-2 sm:my-4">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -123,7 +123,7 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4">
             <div className="p-3 bg-slate-900/50 rounded-lg">
               <p className="text-sm text-slate-400">Alarm Type</p>
               <p className="text-white font-semibold">{alarm.alarm_type.replace(/_/g, ' ')}</p>
@@ -138,7 +138,7 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
                 placeholder="Brief summary of the situation..."
                 value={formData.summary}
                 onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
-                className="bg-slate-900 border-slate-700 text-white min-h-24"
+                className="bg-slate-900 border-slate-700 text-white min-h-20"
               />
             </div>
 
@@ -148,7 +148,7 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
                 placeholder="What actions did you take?"
                 value={formData.actions_taken}
                 onChange={(e) => setFormData({ ...formData, actions_taken: e.target.value })}
-                className="bg-slate-900 border-slate-700 text-white min-h-24"
+                className="bg-slate-900 border-slate-700 text-white min-h-20"
               />
             </div>
 
@@ -158,7 +158,7 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
                 placeholder="What did you find at the scene?"
                 value={formData.findings}
                 onChange={(e) => setFormData({ ...formData, findings: e.target.value })}
-                className="bg-slate-900 border-slate-700 text-white min-h-24"
+                className="bg-slate-900 border-slate-700 text-white min-h-20"
               />
             </div>
 
