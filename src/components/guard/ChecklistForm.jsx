@@ -14,7 +14,8 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
       ...item,
       checked: false,
       value: "",
-      photo_url: ""
+      photo_url: "",
+      photo_metadata: null
     }))
   );
   const [signature, setSignature] = useState(null);
@@ -31,7 +32,19 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
   const handlePhotoUpload = async (index, file) => {
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      
+      // Create photo metadata
+      const photoData = {
+        url: file_url,
+        timestamp: new Date().toISOString(),
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        location: location ? { lat: location.lat, lng: location.lng } : null,
+        checkpoint: checkpoint?.name || "Unknown"
+      };
+      
       handleItemChange(index, "photo_url", file_url);
+      handleItemChange(index, "photo_metadata", photoData);
     } catch (error) {
       alert("Failed to upload photo");
     }
@@ -74,7 +87,8 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
           item_id: item.id,
           checked: item.checked,
           value: item.value,
-          photo_url: item.photo_url
+          photo_url: item.photo_url,
+          photo_metadata: item.photo_metadata
         })),
         signature: signature ? {
           data_url: signature,
@@ -154,16 +168,28 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
                     {item.required && <span className="text-rose-400 ml-1">*</span>}
                   </label>
                   {item.photo_url ? (
-                    <div className="relative">
-                      <img src={item.photo_url} alt="Uploaded" className="w-full h-48 object-cover rounded-lg" />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleItemChange(index, "photo_url", "")}
-                        className="absolute top-2 right-2"
-                      >
-                        Remove
-                      </Button>
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <img src={item.photo_url} alt="Uploaded" className="w-full h-48 object-cover rounded-lg border border-slate-700" />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            handleItemChange(index, "photo_url", "");
+                            handleItemChange(index, "photo_metadata", null);
+                          }}
+                          className="absolute top-2 right-2"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      {item.photo_metadata && (
+                        <div className="p-3 bg-slate-900/50 rounded border border-slate-700 text-xs space-y-1">
+                          <p className="text-slate-300"><span className="text-slate-400">📷 Captured:</span> {item.photo_metadata.timestamp}</p>
+                          <p className="text-slate-300"><span className="text-slate-400">📍 Location:</span> {item.photo_metadata.location ? `${item.photo_metadata.location.lat.toFixed(6)}, ${item.photo_metadata.location.lng.toFixed(6)}` : "N/A"}</p>
+                          <p className="text-slate-300"><span className="text-slate-400">🎯 Checkpoint:</span> {item.photo_metadata.checkpoint}</p>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>
