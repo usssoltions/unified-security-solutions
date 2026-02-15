@@ -157,10 +157,14 @@ export default function Layout({ children, currentPageName }) {
     try {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
+      setError(null);
       setLoading(false);
     } catch (err) {
       console.error("Failed to load user:", err);
-      setError(err);
+      // Only set error after multiple retries
+      if (retryCount >= 2) {
+        setError(err);
+      }
       setLoading(false);
     }
   };
@@ -254,26 +258,29 @@ export default function Layout({ children, currentPageName }) {
     );
   }
 
-  if (error && !user) {
+  if (error && !user && retryCount >= 2) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
         <div className="text-center max-w-md">
-          <Shield className="w-16 h-16 text-rose-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Connection Error</h1>
+          <Shield className="w-16 h-16 text-amber-400 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-white mb-2">Unable to Load</h1>
           <p className="text-slate-400 mb-6">
-            Unable to connect to the server. Please check your internet connection and try again.
+            Having trouble loading your session. Please try refreshing the page.
           </p>
           <div className="flex gap-3 justify-center">
-            <Button onClick={handleRetry} className="bg-sky-500 hover:bg-sky-600">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Retry
-            </Button>
             <Button 
               onClick={() => window.location.reload()} 
+              className="bg-sky-500 hover:bg-sky-600"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Reload Page
+            </Button>
+            <Button 
+              onClick={() => base44.auth.redirectToLogin()}
               variant="outline" 
               className="border-slate-600 text-slate-300"
             >
-              Reload Page
+              Log In Again
             </Button>
           </div>
         </div>
