@@ -162,27 +162,18 @@ Officer Signature: Signed
     if (!files.length) return;
 
     setUploading(true);
-    try {
-      for (const file of files) {
-        try {
-          const result = await base44.integrations.Core.UploadFile({ file });
-          if (result && result.file_url) {
-            setFormData(prev => ({
-              ...prev,
-              media: [...prev.media, { type: 'photo', url: result.file_url }]
-            }));
-          }
-        } catch (err) {
-          console.error("Upload error:", err);
-          alert("Failed to upload photo. Please try again.");
-        }
+    for (const file of files) {
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        setFormData(prev => ({
+          ...prev,
+          media: [...prev.media, { type: 'photo', url: file_url }]
+        }));
+      } catch (err) {
+        console.error("Upload error:", err);
       }
-    } catch (error) {
-      console.error("Photo capture error:", error);
-      alert("Failed to upload photo");
-    } finally {
-      setUploading(false);
     }
+    setUploading(false);
   };
 
   const handleFileUpload = async (e) => {
@@ -371,14 +362,15 @@ Please provide:
   return (
     <div 
       className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto safe-area-top safe-area-bottom"
+      style={{ overflowX: 'hidden' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <div className="min-h-screen p-4 pt-20 pb-32">
-        <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700">
+      <div className="min-h-screen p-4 pt-20 pb-32 w-screen overflow-hidden">
+        <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700 overflow-visible">
           <CardHeader className="sticky top-0 z-10 bg-slate-800 border-b border-slate-700 rounded-t-lg -mx-6 -mt-6 pt-6 px-6">
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-xl font-bold">Maintenance Request</CardTitle>
@@ -400,8 +392,8 @@ Please provide:
             </div>
           </CardHeader>
 
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <CardContent className="overflow-visible">
+            <form onSubmit={handleSubmit} className="space-y-4 overflow-visible">
               <div className="overflow-hidden">
                 <label className="text-sm text-slate-400 mb-2 block">Maintenance Type *</label>
                 <Select
