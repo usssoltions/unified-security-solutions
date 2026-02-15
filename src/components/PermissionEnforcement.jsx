@@ -15,6 +15,12 @@ export default function PermissionEnforcement() {
   });
 
   useEffect(() => {
+    // Check if dismissed permanently
+    const isDismissed = localStorage.getItem('permissionEnforcementDismissed');
+    if (isDismissed === 'true') {
+      setPermissions(prev => ({ ...prev, dismissed: true }));
+      return;
+    }
     checkPermissions();
   }, []);
 
@@ -92,7 +98,10 @@ export default function PermissionEnforcement() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => setPermissions({ ...permissions, dismissed: true })}
+              onClick={() => {
+                localStorage.setItem('permissionEnforcementDismissed', 'true');
+                setPermissions({ ...permissions, dismissed: true });
+              }}
               className="h-6 w-6 p-0 text-slate-400 hover:text-white"
             >
               <X className="w-4 h-4" />

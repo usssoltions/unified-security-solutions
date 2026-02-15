@@ -41,9 +41,9 @@ export default function OneSignalSetup() {
         window.OneSignal.getUserId(async function(playerId) {
           if (playerId) {
             try {
-              // Import base44 client
               const { base44 } = await import('@/api/base44Client');
               await base44.auth.updateMe({ onesignal_player_id: playerId });
+              localStorage.setItem('oneSignalSetupAttempted', 'true');
             } catch (error) {
               console.error('Failed to save player ID:', error);
             }
@@ -94,14 +94,18 @@ export default function OneSignalSetup() {
           }
         });
 
-        // Auto-prompt for subscription immediately
-        setTimeout(() => {
-          window.OneSignal.isPushNotificationsEnabled(function(isEnabled) {
-            if (!isEnabled) {
-              window.OneSignal.showSlidedownPrompt();
-            }
-          });
-        }, 1000);
+        // Only show prompt on first setup
+        if (!setupAttempted) {
+          setTimeout(() => {
+            window.OneSignal.isPushNotificationsEnabled(function(isEnabled) {
+              if (!isEnabled) {
+                window.OneSignal.showSlidedownPrompt().catch(err => {
+                  console.log('Slidedown prompt failed:', err);
+                });
+              }
+            });
+          }, 2000);
+        }
       });
     };
 
