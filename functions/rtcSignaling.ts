@@ -143,6 +143,20 @@ Deno.serve(async (req) => {
                             callId,
                             timestamp: Date.now()
                         });
+                        
+                        // Also clear any pending notifications for this call
+                        try {
+                            const notifications = await base44.asServiceRole.entities.Notification.filter({
+                                related_id: callId,
+                                type: 'call_incoming'
+                            });
+                            
+                            for (const notif of notifications) {
+                                await base44.asServiceRole.entities.Notification.update(notif.id, { read: true });
+                            }
+                        } catch (err) {
+                            console.error('Failed to clear notifications:', err);
+                        }
                     }
                     
                     // Also notify via targetUserId if provided

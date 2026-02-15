@@ -856,6 +856,7 @@ export default function RealtimeVoiceCall({
     try {
       // Stop ringtone immediately
       stopRingtone();
+      stopRingbackTone();
       
       // Stop and upload recording
       const recordingUrl = await stopRecording();
@@ -874,6 +875,21 @@ export default function RealtimeVoiceCall({
         );
         
         await Promise.all(notifyPromises);
+        
+        // Clear any incoming call notifications
+        try {
+          const notifications = await base44.entities.Notification.filter({
+            related_id: callId.current,
+            type: 'call_incoming',
+            read: false
+          });
+          
+          for (const notif of notifications) {
+            await base44.entities.Notification.update(notif.id, { read: true });
+          }
+        } catch (err) {
+          console.error('Failed to clear notifications:', err);
+        }
       }
     } catch (error) {
       console.error('Error ending call:', error);
