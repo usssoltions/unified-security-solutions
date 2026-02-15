@@ -14,6 +14,8 @@ export default function OneSignalSetup() {
         window.OneSignal.init({
           appId: "efd5b25f-e103-4aca-bc00-2b010194fdb9",
           allowLocalhostAsSecureOrigin: true,
+          autoResubscribe: true,
+          requiresUserPrivacyConsent: false,
           notifyButton: {
             enable: false
           },
@@ -23,7 +25,16 @@ export default function OneSignalSetup() {
           serviceWorkerParam: {
             scope: '/'
           },
-          serviceWorkerPath: 'OneSignalSDKWorker.js'
+          serviceWorkerPath: 'OneSignalSDKWorker.js',
+          // Request notification permission immediately
+          persistNotification: false
+        });
+        
+        // Request notification permission aggressively
+        window.OneSignal.isPushNotificationsEnabled(function(isEnabled) {
+          if (!isEnabled) {
+            window.OneSignal.registerForPushNotifications();
+          }
         });
 
         // Save player ID to user record
@@ -48,34 +59,49 @@ export default function OneSignalSetup() {
             if ('vibrate' in navigator) {
               navigator.vibrate([1000, 500, 1000, 500, 1000]);
             }
+            
+            // Try to bring app to foreground
+            if (document.visibilityState === 'hidden') {
+              try {
+                // Request to show notification with requireInteraction
+                if ('Notification' in window && Notification.permission === 'granted') {
+                  // Notification will appear on top due to high priority from server
+                }
+              } catch (err) {
+                console.log('Foreground request failed:', err);
+              }
+            }
           }
         });
 
         window.OneSignal.on('notificationClicked', function(event) {
           console.log('OneSignal notification clicked:', event);
           
-          // Bring app to foreground
-          window.focus();
+          // Aggressively bring app to foreground
+          if (window.focus) window.focus();
+          if (window.parent) window.parent.focus();
           
           // Handle different notification types
           const data = event.data;
-          if (data?.type === 'call') {
-            // Navigate to contacts or appropriate page
-            window.location.href = '/contacts';
+          if (data?.type === 'call' && data?.callId) {
+            // Navigate directly to call with deep link
+            const callerName = encodeURIComponent(data.callerName || 'Unknown');
+            window.location.href = `/?call_id=${data.callId}&caller_name=${callerName}&auto_answer=false`;
           } else if (data?.type === 'panic') {
-            // Navigate to control room for admins
             window.location.href = '/control-room';
+          } else if (data?.url) {
+            window.location.href = data.url;
           }
         });
 
-        // Prompt for subscription if not subscribed
-        window.OneSignal.isPushNotificationsEnabled(function(isEnabled) {
-          if (!isEnabled) {
-            setTimeout(() => {
+        // Auto-prompt for subscription immediately
+        setTimeout(() => {
+          window.OneSignal.isPushNotificationsEnabled(function(isEnabled) {
+            if (!isEnabled) {
               window.OneSignal.showSlidedownPrompt();
-            }, 3000);
-          }
-        });
+            }
+          });
+        }, 1000);
       });
     };
 
