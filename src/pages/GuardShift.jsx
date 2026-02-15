@@ -124,7 +124,7 @@ export default function GuardShift() {
         (error) => {
           // Silent fail
         },
-        { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 }
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
       );
     }
   };
