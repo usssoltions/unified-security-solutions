@@ -410,16 +410,8 @@ export default function GuardShift() {
   }
 
   return (
-    <PullToRefresh onRefresh={async () => {
-      await Promise.all([
-        queryClient.invalidateQueries(["activeShift"]),
-        queryClient.invalidateQueries(["upcomingShifts"]),
-        queryClient.invalidateQueries(["pendingAssignments"]),
-        queryClient.invalidateQueries(["arrivedAlarms"])
-      ]);
-    }}>
-      <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 pb-24 md:pb-6 w-full overflow-x-hidden">
-        <div className="max-w-7xl mx-auto w-full">
+    <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 w-full overflow-x-hidden">
+      <div className="max-w-4xl mx-auto w-full">
       <PatrolAssignmentAlert user={user} />
       <AutoReportGenerator user={user} shift={activeShift} />
       <LocationTracker 
@@ -614,8 +606,7 @@ export default function GuardShift() {
           </CardContent>
         </Card>
       )}
-        </div>
       </div>
-    </PullToRefresh>
+    </div>
   );
 }
