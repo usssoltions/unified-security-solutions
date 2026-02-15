@@ -221,31 +221,22 @@ Officer Signature: Signed
   });
 
   const handlePhotoCapture = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
+   const files = Array.from(e.target.files);
+   if (!files.length) return;
 
-    setUploading(true);
-    try {
-      for (const file of files) {
-        try {
-          const result = await base44.integrations.Core.UploadFile({ file });
-          if (result && result.file_url) {
-            setFormData(prev => ({
-              ...prev,
-              media: [...prev.media, { type: 'photo', url: result.file_url }]
-            }));
-          }
-        } catch (err) {
-          console.error("Upload error:", err);
-          alert("Failed to upload photo. Please try again.");
-        }
-      }
-    } catch (error) {
-      console.error("Photo capture error:", error);
-      alert("Failed to upload photo");
-    } finally {
-      setUploading(false);
-    }
+   setUploading(true);
+   for (const file of files) {
+     try {
+       const { file_url } = await base44.integrations.Core.UploadFile({ file });
+       setFormData(prev => ({
+         ...prev,
+         media: [...prev.media, { type: 'photo', url: file_url }]
+       }));
+     } catch (err) {
+       console.error("Upload error:", err);
+     }
+   }
+   setUploading(false);
   };
 
   const handleFileUpload = async (e) => {
@@ -505,14 +496,15 @@ Provide detailed analysis in JSON format:
   return (
     <div 
       className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto safe-area-top safe-area-bottom"
+      style={{ overflowX: 'hidden' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <div className="min-h-screen p-4 pt-20 pb-32">
-        <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700">
+      <div className="min-h-screen p-4 pt-20 pb-32 w-screen overflow-hidden">
+        <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700 overflow-visible">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-xl">Incident Report</CardTitle>
@@ -533,8 +525,8 @@ Provide detailed analysis in JSON format:
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <CardContent className="overflow-visible">
+            <form onSubmit={handleSubmit} className="space-y-4 overflow-visible">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-white font-medium block mb-2">Report #</label>
