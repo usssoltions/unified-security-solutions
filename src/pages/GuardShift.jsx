@@ -60,7 +60,8 @@ export default function GuardShift() {
 
   useEffect(() => {
     loadUser();
-    startLocationTracking();
+    // Defer location tracking by 3 seconds
+    setTimeout(startLocationTracking, 3000);
   }, []);
 
   const loadUser = async () => {
@@ -97,36 +98,35 @@ export default function GuardShift() {
   };
 
   const startLocationTracking = () => {
-    // Defer location tracking by 2 seconds to not block initial render
-    setTimeout(() => {
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(
-          async (position) => {
-            const newLocation = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude
-            };
-            setLocation(newLocation);
-            
-            try {
-              const currentUser = await base44.auth.me();
-              if (currentUser && currentUser.is_clocked_in) {
-                await base44.auth.updateMe({
-                  last_location: {
-                    ...newLocation,
-                    timestamp: new Date().toISOString()
-                  }
-                });
-              }
-            } catch (error) {
-              console.error("Failed to update location:", error);
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        async (position) => {
+          const newLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setLocation(newLocation);
+          
+          try {
+            const currentUser = await base44.auth.me();
+            if (currentUser && currentUser.is_clocked_in) {
+              await base44.auth.updateMe({
+                last_location: {
+                  ...newLocation,
+                  timestamp: new Date().toISOString()
+                }
+              });
             }
-          },
-          (error) => console.error("Location error:", error),
-          { enableHighAccuracy: true, maximumAge: 10000 }
-        );
-      }
-    }, 2000);
+          } catch (error) {
+            // Silent fail
+          }
+        },
+        (error) => {
+          // Silent fail
+        },
+        { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 }
+      );
+    }
   };
 
   const { data: activeShift, isLoading: shiftsLoading } = useQuery({

@@ -74,57 +74,35 @@ export default function Layout({ children, currentPageName }) {
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    // Force re-authentication on app startup (for shared device usage)
-    const sessionKey = 'guard_session_active';
-    const isNewSession = !sessionStorage.getItem(sessionKey);
-
-    if (isNewSession) {
-      // Clear all auth data to force fresh login
-      localStorage.removeItem('sb-qtrypzzcjebvfcihiynt-auth-token');
-      sessionStorage.clear();
-      sessionStorage.setItem(sessionKey, 'true');
-
-      // Force re-authentication through Base44
-      base44.auth.me().then(currentUser => {
-        if (!currentUser) {
-          base44.auth.redirectToLogin();
-        }
-      }).catch(() => {
-        base44.auth.redirectToLogin();
-      });
-      return;
-    }
-
+    // Just mark session as active without blocking
+    sessionStorage.setItem('guard_session_active', 'true');
+    
     loadUser();
     
-    // Keep screen awake
-    let wakeLock = null;
-    const requestWakeLock = async () => {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-          console.log('Wake lock active');
+    // Defer wake lock by 3 seconds to not block startup
+    setTimeout(() => {
+      let wakeLock = null;
+      const requestWakeLock = async () => {
+        try {
+          if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+          }
+        } catch (err) {
+          // Silent fail
         }
-      } catch (err) {
-        console.log('Wake lock error:', err);
-      }
-    };
+      };
+      
+      requestWakeLock();
+      document.addEventListener('visibilitychange', requestWakeLock);
+    }, 3000);
     
-    requestWakeLock();
-    document.addEventListener('visibilitychange', requestWakeLock);
-    
-    // Suppress WebSocket errors globally
+    // Suppress WebSocket errors globally (non-blocking)
     const originalError = console.error;
     const originalWarn = console.warn;
     
     console.error = (...args) => {
       const msg = args[0]?.toString() || '';
-      if (
-        msg.includes('WebSocket') || 
-        msg.includes('websocket') ||
-        msg.includes('WS') ||
-        msg.includes('socket')
-      ) {
+      if (msg.includes('WebSocket') || msg.includes('websocket') || msg.includes('WS') || msg.includes('socket')) {
         return;
       }
       originalError.apply(console, args);
@@ -132,12 +110,7 @@ export default function Layout({ children, currentPageName }) {
     
     console.warn = (...args) => {
       const msg = args[0]?.toString() || '';
-      if (
-        msg.includes('WebSocket') || 
-        msg.includes('websocket') ||
-        msg.includes('WS') ||
-        msg.includes('socket')
-      ) {
+      if (msg.includes('WebSocket') || msg.includes('websocket') || msg.includes('WS') || msg.includes('socket')) {
         return;
       }
       originalWarn.apply(console, args);
@@ -146,54 +119,50 @@ export default function Layout({ children, currentPageName }) {
     return () => {
       console.error = originalError;
       console.warn = originalWarn;
-      document.removeEventListener('visibilitychange', requestWakeLock);
-      if (wakeLock) {
-        wakeLock.release();
-      }
     };
   }, [retryCount]);
 
   useEffect(() => {
     if (user) {
-      // Defer notification loading by 2 seconds to not block initial render
-      const timeout = setTimeout(loadNotificationCount, 2000);
-      const interval = setInterval(loadNotificationCount, 30000);
-      return () => {
-        clearTimeout(timeout);
-        clearInterval(interval);
-      };
+      // Defer notification loading by 5 seconds to not block initial render
+      const timeout = setTimeout(() => {
+        loadNotificationCount();
+        const interval = setInterval(loadNotificationCount, 45000);
+        return () => clearInterval(interval);
+      }, 5000);
+      return () => clearTimeout(timeout);
     }
   }, [user]);
 
-  // Keep-alive mechanism - reduced frequency
+  // Keep-alive mechanism - defer by 30 seconds
   useEffect(() => {
     if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
-      const keepAlive = setInterval(async () => {
-        try {
-          await base44.auth.me();
-        } catch (error) {
-          // Silent fail
-        }
-      }, 15 * 60 * 1000);
+      const timeout = setTimeout(() => {
+        const keepAlive = setInterval(async () => {
+          try {
+            await base44.auth.me();
+          } catch (error) {
+            // Silent fail
+          }
+        }, 15 * 60 * 1000);
+        
+        return () => clearInterval(keepAlive);
+      }, 30000);
 
-      return () => clearInterval(keepAlive);
+      return () => clearTimeout(timeout);
     }
   }, [user]);
 
   const loadUser = async () => {
-    setLoading(true);
-    setError(null);
-    
     try {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
-      setError(null);
+      setLoading(false);
     } catch (err) {
       console.error("Failed to load user:", err);
       setError(err);
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const loadNotificationCount = async () => {
