@@ -2,6 +2,9 @@ import { useEffect } from 'react';
 
 export default function OneSignalSetup() {
   useEffect(() => {
+    // Check if OneSignal setup was attempted
+    const setupAttempted = localStorage.getItem('oneSignalSetupAttempted');
+    
     // Load OneSignal SDK
     const script = document.createElement('script');
     script.src = 'https://cdn.onesignal.com/sdks/OneSignalSDK.js';
@@ -26,16 +29,20 @@ export default function OneSignalSetup() {
             scope: '/'
           },
           serviceWorkerPath: 'OneSignalSDKWorker.js',
-          // Request notification permission immediately
           persistNotification: false
         });
         
-        // Request notification permission aggressively
-        window.OneSignal.isPushNotificationsEnabled(function(isEnabled) {
-          if (!isEnabled) {
-            window.OneSignal.registerForPushNotifications();
-          }
-        });
+        // Only request on first setup
+        if (!setupAttempted) {
+          window.OneSignal.isPushNotificationsEnabled(function(isEnabled) {
+            if (!isEnabled) {
+              window.OneSignal.registerForPushNotifications().catch(err => {
+                console.log('OneSignal registration failed:', err);
+                localStorage.setItem('oneSignalSetupAttempted', 'true');
+              });
+            }
+          });
+        }
 
         // Save player ID to user record
         window.OneSignal.getUserId(async function(playerId) {
