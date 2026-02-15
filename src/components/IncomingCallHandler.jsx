@@ -9,25 +9,32 @@ export default function IncomingCallHandler({ user }) {
     if (!user) return;
 
     // Check URL parameters for incoming call from notification
-    const urlParams = new URLSearchParams(window.location.search);
-    const callId = urlParams.get('call_id');
-    const callerName = urlParams.get('caller_name');
-    
-    if (callId && callerName) {
-      console.log('📞 Incoming call from notification:', callId, callerName);
-      setIncomingCall({
-        callId: callId,
-        caller: {
-          full_name: callerName,
-          badge_number: callerName
-        }
-      });
+    const checkUrlParams = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const callId = urlParams.get('call_id');
+      const callerName = urlParams.get('caller_name');
       
-      // Clear URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+      if (callId && callerName) {
+        console.log('📞 Incoming call from notification:', callId, callerName);
+        setIncomingCall({
+          callId: callId,
+          caller: {
+            full_name: decodeURIComponent(callerName),
+            badge_number: 'Incoming'
+          }
+        });
+        
+        // Clear URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
 
-    // Poll for incoming call notifications every 2 seconds
+    checkUrlParams();
+    
+    // Listen for URL changes (from notifications)
+    window.addEventListener('popstate', checkUrlParams);
+
+    // Poll for incoming call notifications every 1 second (faster for better responsiveness)
     const pollInterval = setInterval(async () => {
       try {
         const notifications = await base44.entities.Notification.filter({
@@ -54,10 +61,38 @@ export default function IncomingCallHandler({ user }) {
       } catch (error) {
         // Silent fail - non-critical background polling
       }
-    }, 2000);
+    }, 1000);
 
-    return () => clearInterval(pollInterval);
-  }, [user]);
+    // Poll for call end signals
+    const callEndPollInterval = setInterval(async () => {
+      if (incomingCall?.callId) {
+        try {
+          const { data } = await base44.functions.invoke('rtcSignaling', {
+            action: 'poll_messages'
+          });
+
+          if (data?.messages) {
+            const endMessage = data.messages.find(
+              msg => msg.callId === incomingCall.callId && msg.type === 'call_ended'
+            );
+            
+            if (endMessage) {
+              console.log('Call ended by remote party');
+              setIncomingCall(null);
+            }
+          }
+        } catch (error) {
+          // Silent fail
+        }
+      }
+    }, 500);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearInterval(callEndPollInterval);
+      window.removeEventListener('popstate', checkUrlParams);
+    };
+  }, [user, incomingCall]);
 
   if (!incomingCall) return null;
 
