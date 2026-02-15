@@ -85,18 +85,16 @@ export default function Layout({ children, currentPageName }) {
       sessionStorage.setItem(sessionKey, 'true');
 
       // Force re-authentication through Base44
-      try {
-        const currentUser = await base44.auth.me();
+      base44.auth.me().then(currentUser => {
         if (!currentUser) {
           base44.auth.redirectToLogin();
-          return;
         }
-      } catch {
+      }).catch(() => {
         base44.auth.redirectToLogin();
-        return;
-      }
+      });
+      return;
     }
-    
+
     loadUser();
     
     // Keep screen awake
