@@ -282,10 +282,15 @@ export default function QRScanner() {
     const files = Array.from(e.target.files);
     for (const file of files) {
       try {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setPhotos([...photos, file_url]);
+        console.log("Uploading photo:", file.name, file.size);
+        const result = await base44.integrations.Core.UploadFile({ file });
+        if (!result || !result.file_url) {
+          throw new Error("No file URL returned");
+        }
+        setPhotos([...photos, result.file_url]);
       } catch (error) {
-        alert("Failed to upload photo");
+        console.error("Photo upload error:", error);
+        alert("Failed to upload photo: " + error.message);
       }
     }
   };
@@ -527,10 +532,21 @@ export default function QRScanner() {
                           accept="image/*"
                           capture="environment"
                           onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const { file_url } = await base44.integrations.Core.UploadFile({ file });
-                              handleItemChange(index, "photo_url", file_url);
+                            try {
+                              const file = e.target.files?.[0];
+                              if (!file) {
+                                alert("No file selected");
+                                return;
+                              }
+                              console.log("Uploading checklist photo:", file.name, file.size);
+                              const result = await base44.integrations.Core.UploadFile({ file });
+                              if (!result || !result.file_url) {
+                                throw new Error("No file URL returned from upload");
+                              }
+                              handleItemChange(index, "photo_url", result.file_url);
+                            } catch (error) {
+                              console.error("Checklist photo upload error:", error);
+                              alert("Failed to upload photo: " + error.message);
                             }
                           }}
                           className="hidden"
