@@ -66,6 +66,7 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
   if (isMobile) {
     return (
       <SelectPrimitive.Portal>
+        <div className="fixed inset-0 z-[9998] bg-black/50" />
         <SelectPrimitive.Content
           ref={ref}
           className={cn(
@@ -74,16 +75,13 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
             "data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full",
-            "w-full max-w-full",
             className
           )}
           position="popper"
-          sideOffset={0}
-          align="center"
           {...props}
         >
           <div className="w-12 h-1.5 bg-slate-600 rounded-full mx-auto mt-3 mb-2" />
-          <SelectPrimitive.Viewport className="p-4 pb-8 max-h-[70vh] overflow-y-auto w-full">
+          <SelectPrimitive.Viewport className="p-4 pb-8 max-h-[70vh] overflow-y-auto">
             {children}
           </SelectPrimitive.Viewport>
         </SelectPrimitive.Content>
@@ -131,7 +129,7 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-lg outline-none transition-colors",
+        "relative flex w-full cursor-default select-none items-center rounded-lg outline-none transition-colors overflow-hidden",
         isMobile 
           ? "py-4 pl-4 pr-12 text-base font-medium text-white focus:bg-slate-800 data-[highlighted]:bg-slate-800 active:bg-slate-700 min-h-[56px]" 
           : "py-1.5 pl-2 pr-8 text-sm focus:bg-accent focus:text-accent-foreground",
@@ -139,10 +137,10 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
         className
       )}
       {...props}>
-      <SelectPrimitive.ItemText className="flex-1 truncate">
+      <SelectPrimitive.ItemText className="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap max-w-full">
         {children}
       </SelectPrimitive.ItemText>
-      <span className={cn("absolute flex items-center justify-center", isMobile ? "right-4 h-6 w-6" : "right-2 h-3.5 w-3.5")}>
+      <span className={cn("absolute flex items-center justify-center flex-shrink-0", isMobile ? "right-4 h-6 w-6" : "right-2 h-3.5 w-3.5")}>
         <SelectPrimitive.ItemIndicator>
           <Check className={cn(isMobile ? "h-5 w-5 text-emerald-400" : "h-4 w-4")} />
         </SelectPrimitive.ItemIndicator>
