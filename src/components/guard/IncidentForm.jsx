@@ -494,17 +494,14 @@ Provide detailed analysis in JSON format:
   }
 
   return (
-    <div 
-      className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto safe-area-top safe-area-bottom"
-      style={{ overflowX: 'hidden' }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div className="min-h-screen p-4 pt-20 pb-32 w-screen overflow-hidden">
-        <Card className="w-full max-w-2xl mx-auto bg-slate-800 border-slate-700 overflow-visible">
+    <>
+      <div 
+        className="fixed inset-0 bg-black/80 z-[60]"
+        onClick={onClose}
+      />
+      <div className="fixed inset-0 z-[61] overflow-y-auto safe-area-top safe-area-bottom">
+        <div className="min-h-screen p-4 pt-20 pb-32 flex items-start justify-center">
+          <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 relative">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-xl">Incident Report</CardTitle>
@@ -525,8 +522,8 @@ Provide detailed analysis in JSON format:
               </div>
             </div>
           </CardHeader>
-          <CardContent className="overflow-visible">
-            <form onSubmit={handleSubmit} className="space-y-4 overflow-visible">
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-white font-medium block mb-2">Report #</label>
@@ -548,7 +545,7 @@ Provide detailed analysis in JSON format:
                 </div>
               </div>
 
-              <div className="overflow-hidden">
+              <div>
                 <label className="text-white font-medium block mb-2">Incident Type *</label>
                 <Select
                   value={formData.incident_type}
@@ -558,7 +555,7 @@ Provide detailed analysis in JSON format:
                   <SelectTrigger className="bg-slate-900 border-slate-700 text-white w-full">
                     <SelectValue placeholder="Select incident type..." />
                   </SelectTrigger>
-                  <SelectContent className="z-[9999] w-full">
+                  <SelectContent className="z-[200]">
                     {incidentTypes.map(type => (
                       <SelectItem key={type} value={type}>{type}</SelectItem>
                     ))}
@@ -977,7 +974,8 @@ Provide detailed analysis in JSON format:
             </form>
           </CardContent>
         </Card>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
