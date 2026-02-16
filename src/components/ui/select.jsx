@@ -3,7 +3,6 @@
 import * as React from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
-import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer"
 import { cn } from "@/lib/utils"
 
 const useIsMobile = () => {
@@ -29,7 +28,7 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background data-[placeholder]:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
     {...props}>
@@ -59,8 +58,7 @@ const SelectScrollDownButton = React.forwardRef(({ className, ...props }, ref) =
     <ChevronDown className="h-4 w-4" />
   </SelectPrimitive.ScrollDownButton>
 ))
-SelectScrollDownButton.displayName =
-  SelectPrimitive.ScrollDownButton.displayName
+SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayName
 
 const SelectContent = React.forwardRef(({ className, children, position = "popper", ...props }, ref) => {
   const isMobile = useIsMobile();
@@ -68,20 +66,25 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
   if (isMobile) {
     return (
       <SelectPrimitive.Portal>
+        <div className="fixed inset-0 z-[100] bg-black/50" />
         <SelectPrimitive.Content
           ref={ref}
           className={cn(
-            "fixed inset-x-0 bottom-0 z-[100] bg-slate-900 border-t-2 border-slate-700 rounded-t-2xl shadow-2xl",
+            "fixed left-0 right-0 bottom-0 z-[101]",
+            "bg-slate-900 border-t-2 border-slate-700 rounded-t-2xl shadow-2xl",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-            "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+            "data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full",
+            "w-full max-w-full",
             className
           )}
           position="popper"
+          sideOffset={0}
+          align="center"
           {...props}
         >
           <div className="w-12 h-1.5 bg-slate-600 rounded-full mx-auto mt-3 mb-2" />
-          <SelectPrimitive.Viewport className="p-4 pb-safe max-h-[70vh] overflow-y-auto">
+          <SelectPrimitive.Viewport className="p-4 pb-8 max-h-[70vh] overflow-y-auto w-full">
             {children}
           </SelectPrimitive.Viewport>
         </SelectPrimitive.Content>
@@ -129,21 +132,22 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-lg py-3 pl-3 pr-10 text-base outline-none",
-        isMobile ? "focus:bg-slate-800 data-[highlighted]:bg-slate-800 active:bg-slate-700" : "focus:bg-accent focus:text-accent-foreground",
-        "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors",
-        isMobile ? "text-white" : "",
+        "relative flex w-full cursor-default select-none items-center rounded-lg outline-none transition-colors",
+        isMobile 
+          ? "py-4 pl-4 pr-12 text-base font-medium text-white focus:bg-slate-800 data-[highlighted]:bg-slate-800 active:bg-slate-700 min-h-[56px]" 
+          : "py-1.5 pl-2 pr-8 text-sm focus:bg-accent focus:text-accent-foreground",
+        "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className
       )}
       {...props}>
-      <span className="absolute right-3 flex h-5 w-5 items-center justify-center">
-        <SelectPrimitive.ItemIndicator>
-          <Check className={cn("h-5 w-5", isMobile ? "text-emerald-400" : "")} />
-        </SelectPrimitive.ItemIndicator>
-      </span>
-      <SelectPrimitive.ItemText className={isMobile ? "text-base font-medium" : ""}>
+      <SelectPrimitive.ItemText className="flex-1 truncate">
         {children}
       </SelectPrimitive.ItemText>
+      <span className={cn("absolute flex items-center justify-center", isMobile ? "right-4 h-6 w-6" : "right-2 h-3.5 w-3.5")}>
+        <SelectPrimitive.ItemIndicator>
+          <Check className={cn(isMobile ? "h-5 w-5 text-emerald-400" : "h-4 w-4")} />
+        </SelectPrimitive.ItemIndicator>
+      </span>
     </SelectPrimitive.Item>
   );
 })
