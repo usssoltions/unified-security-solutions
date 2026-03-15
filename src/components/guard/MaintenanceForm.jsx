@@ -337,19 +337,10 @@ Officer Signature: Signed
 
               {formData.media.length > 0 && (
                 <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                  <p className="text-sm text-slate-400 mb-2">Media Attached:</p>
+                  <p className="text-sm text-slate-400 mb-2">Photos Attached ({formData.media.length}):</p>
                   <div className="flex gap-2 overflow-x-auto">
                     {formData.media.map((media, idx) => (
-                      <div key={idx} className="relative flex-shrink-0">
-                        {media.type === 'video' ? (
-                          <video src={media.url} className="h-20 w-20 object-cover rounded" />
-                        ) : (
-                          <img src={media.url} alt="Maintenance" className="h-20 w-20 object-cover rounded" />
-                        )}
-                        <span className="absolute top-1 right-1 bg-black/70 text-white text-xs px-1 rounded">
-                          {media.type === 'video' ? '📹' : '📷'}
-                        </span>
-                      </div>
+                      <img key={idx} src={media.url} alt="Maintenance" className="h-20 w-20 object-cover rounded flex-shrink-0" />
                     ))}
                   </div>
                 </div>
