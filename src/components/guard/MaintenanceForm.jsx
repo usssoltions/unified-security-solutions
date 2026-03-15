@@ -316,10 +316,10 @@ Officer Signature: Signed
               </div>
 
               <div>
-                <label className="text-sm text-slate-400 mb-2 block">Upload Media</label>
+                <label className="text-sm text-slate-400 mb-2 block">Upload Photos from Gallery</label>
                 <input
                   type="file"
-                  accept="image/*,video/*"
+                  accept="image/*"
                   multiple
                   onChange={handleFileUpload}
                   className="hidden"
@@ -329,101 +329,10 @@ Officer Signature: Signed
                   <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
                     <div>
                       <Upload className="w-4 h-4 mr-2" />
-                      Upload Photos/Videos from Gallery
+                      Upload Photos from Gallery
                     </div>
                   </Button>
                 </label>
-              </div>
-
-              <div>
-                <label className="text-white font-medium block mb-2">Record Video (max 30 seconds)</label>
-                {videoRecording && videoPreview && (
-                  <div className="mb-2 relative">
-                    <video
-                      ref={videoPreviewRef}
-                      className="w-full h-48 bg-black rounded-lg"
-                      playsInline
-                      autoPlay
-                      muted
-                    />
-                    <div className="absolute top-2 right-2 bg-rose-600 px-3 py-1 rounded-full flex items-center gap-2">
-                      <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
-                      <span className="text-white text-sm font-bold">REC</span>
-                    </div>
-                  </div>
-                )}
-                <Button
-                  type="button"
-                  onClick={videoRecording ? stopRecording : startVideoRecording}
-                  className={`w-full ${videoRecording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                >
-                  {videoRecording ? (
-                    <>
-                      <StopCircle className="w-5 h-5 mr-2 animate-pulse" />
-                      Stop Recording Video
-                    </>
-                  ) : (
-                    <>
-                      <Video className="w-5 h-5 mr-2" />
-                      Record Video
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              <div>
-                <label className="text-sm text-slate-400 mb-2 block">Voice Notes</label>
-                {recordedAudio && (
-                  <div className="mb-2 p-3 bg-slate-900/50 rounded-lg border border-emerald-500/20">
-                    <audio src={recordedAudio} controls className="w-full mb-2" />
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={saveAudioRecording}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                      >
-                        Save Voice Note
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setRecordedAudio(null)}
-                        className="border-slate-600"
-                      >
-                        Discard
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {!recordedAudio && (
-                  <Button
-                    type="button"
-                    onClick={recording ? stopRecording : startAudioRecording}
-                    className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                  >
-                    {recording ? (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
-                          <Mic className="w-5 h-5" />
-                          <span>Recording... Tap to Stop</span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="w-5 h-5 mr-2" />
-                        Record Voice Note
-                      </>
-                    )}
-                  </Button>
-                )}
-                {formData.voice_notes.length > 0 && (
-                  <p className="text-sm text-emerald-400 mt-2">
-                    ✓ {formData.voice_notes.length} voice note(s) saved
-                  </p>
-                )}
               </div>
 
               {formData.media.length > 0 && (
