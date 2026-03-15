@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Upload, Mic, StopCircle, Sparkles, PenTool, Loader2, Send, Video, Play } from "lucide-react";
+import { X, Camera, Upload, PenTool, Loader2, Send } from "lucide-react";
 import {
   Select,
   SelectContent,
