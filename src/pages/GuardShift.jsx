@@ -32,7 +32,6 @@ import PullToRefresh from "../components/PullToRefresh";
 
 import GuardChat from "../components/chat/GuardChat";
 import GuardTrainingView from "../components/training/GuardTrainingView";
-import AutoReportGenerator from "../components/reports/AutoReportGenerator";
 import GeneratedReportsView from "../components/reports/GeneratedReportsView";
 import MobileInstallPrompt from "../components/MobileInstallPrompt";
 import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
