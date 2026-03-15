@@ -221,21 +221,9 @@ Officer Signature: Signed
           <CardHeader className="sticky top-0 z-10 bg-slate-800 border-b border-slate-700 rounded-t-lg -mx-6 -mt-6 pt-6 px-6">
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-xl font-bold">Maintenance Request</CardTitle>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={getAIAssistance}
-                  disabled={aiAssisting || !formData.maintenance_type}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  <Sparkles className="w-4 h-4 mr-1" />
-                  {aiAssisting ? "AI Assisting..." : "AI Assist"}
-                </Button>
-                <Button variant="ghost" size="icon" onClick={onClose}>
-                  <X className="w-5 h-5 text-white" />
-                </Button>
-              </div>
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="w-5 h-5 text-white" />
+              </Button>
             </div>
           </CardHeader>
 
