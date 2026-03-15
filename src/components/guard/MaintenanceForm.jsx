@@ -176,10 +176,9 @@ Officer Signature: Signed
     try {
       for (const file of files) {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        const type = file.type.startsWith('video') ? 'video' : 'photo';
         setFormData(prev => ({
           ...prev,
-          media: [...prev.media, { type, url: file_url }]
+          media: [...prev.media, { type: 'photo', url: file_url }]
         }));
       }
     } catch (error) {
