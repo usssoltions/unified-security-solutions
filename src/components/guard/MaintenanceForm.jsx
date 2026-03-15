@@ -38,16 +38,8 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
     reported_at: new Date().toISOString()
   });
   
-  const [submitting, setSubmitting] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [videoRecording, setVideoRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [aiAssisting, setAiAssisting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [videoPreview, setVideoPreview] = useState(null);
-  const [recordedAudio, setRecordedAudio] = useState(null);
-  const videoPreviewRef = useRef(null);
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({

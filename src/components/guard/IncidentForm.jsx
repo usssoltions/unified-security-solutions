@@ -47,15 +47,6 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
 
   const [uploading, setUploading] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [videoRecording, setVideoRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [aiAssisting, setAiAssisting] = useState(false);
-  const [videoPreview, setVideoPreview] = useState(null);
-  const [recordedAudio, setRecordedAudio] = useState(null);
-  const [aiSuggestions, setAiSuggestions] = useState(null);
-  const [similarIncidents, setSimilarIncidents] = useState([]);
-  const videoPreviewRef = useRef(null);
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
