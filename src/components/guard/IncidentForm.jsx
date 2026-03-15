@@ -291,21 +291,9 @@ Officer Signature: Signed
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-xl">Incident Report</CardTitle>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={getAIAssistance}
-                  disabled={aiAssisting || !formData.incident_type}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  <Sparkles className="w-4 h-4 mr-1" />
-                  {aiAssisting ? "AI Assisting..." : "AI Assist"}
-                </Button>
-                <Button variant="ghost" size="icon" onClick={onClose}>
-                  <X />
-                </Button>
-              </div>
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X />
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
