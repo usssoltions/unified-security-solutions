@@ -20,8 +20,8 @@ export default function LocationTracker({ user, activeShift }) {
       const handleSuccess = async (position) => {
         const now = Date.now();
         
-        // Rate limit: only update every 60 seconds
-        if (lastUpdateRef.current && now - lastUpdateRef.current < 60000) {
+        // Rate limit: only update every 10 seconds
+        if (lastUpdateRef.current && now - lastUpdateRef.current < 10000) {
           return;
         }
 

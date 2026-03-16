@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Loader2, Send, PenTool, Upload } from "lucide-react";
+import { X, Camera, Loader2, Send, PenTool, Mic, Sparkles, StopCircle, Upload, Video, Play } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -47,6 +47,15 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
 
   const [uploading, setUploading] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [videoRecording, setVideoRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [aiAssisting, setAiAssisting] = useState(false);
+  const [videoPreview, setVideoPreview] = useState(null);
+  const [recordedAudio, setRecordedAudio] = useState(null);
+  const [aiSuggestions, setAiSuggestions] = useState(null);
+  const [similarIncidents, setSimilarIncidents] = useState([]);
+  const videoPreviewRef = useRef(null);
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
@@ -238,9 +247,10 @@ Officer Signature: Signed
     try {
       for (const file of files) {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const type = file.type.startsWith('video') ? 'video' : 'photo';
         setFormData(prev => ({
           ...prev,
-          media: [...prev.media, { type: 'photo', url: file_url }]
+          media: [...prev.media, { type, url: file_url }]
         }));
       }
     } catch (error) {
@@ -250,7 +260,213 @@ Officer Signature: Signed
     }
   };
 
+  const startAudioRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
 
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(blob);
+        setRecordedAudio(audioUrl);
+
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setRecording(true);
+    } catch (error) {
+      alert("Failed to access microphone");
+    }
+  };
+
+  const saveAudioRecording = async () => {
+    if (!recordedAudio) return;
+
+    try {
+      const response = await fetch(recordedAudio);
+      const blob = await response.blob();
+      const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setFormData(prev => ({
+        ...prev,
+        voice_notes: [...prev.voice_notes, file_url]
+      }));
+
+      setRecordedAudio(null);
+      alert("Voice note saved!");
+    } catch (error) {
+      alert("Failed to save voice note");
+    }
+  };
+
+  const startVideoRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: true
+      });
+
+      setVideoPreview(stream);
+
+      if (videoPreviewRef.current) {
+        videoPreviewRef.current.srcObject = stream;
+        videoPreviewRef.current.muted = true;
+        videoPreviewRef.current.playsInline = true;
+        await videoPreviewRef.current.play().catch(e => console.log('Video play failed:', e));
+      }
+
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const file = new File([blob], `video-${Date.now()}.webm`, { type: 'video/webm' });
+
+        try {
+          const { file_url } = await base44.integrations.Core.UploadFile({ file });
+          setFormData(prev => ({
+            ...prev,
+            media: [...prev.media, { type: 'video', url: file_url }]
+          }));
+          alert("Video saved!");
+        } catch (error) {
+          alert("Failed to upload video");
+        }
+
+        stream.getTracks().forEach(track => track.stop());
+        setVideoPreview(null);
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setVideoRecording(true);
+
+      setTimeout(() => {
+        if (recorder.state === 'recording') {
+          stopRecording();
+        }
+      }, 30000);
+    } catch (error) {
+      alert("Failed to access camera: " + error.message);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setRecording(false);
+      setVideoRecording(false);
+      setMediaRecorder(null);
+    }
+  };
+
+  const getAIAssistance = async () => {
+    if (!formData.incident_type || !formData.incident_summary) {
+      alert("Please fill in Incident Type and Summary first");
+      return;
+    }
+
+    setAiAssisting(true);
+    try {
+      // Fetch all recent incidents to check for similarities
+      const allIncidents = await base44.entities.Incident.list('-created_date', 50);
+
+      const prompt = `You are a security incident analysis expert. Analyze this incident and provide comprehensive insights:
+
+CURRENT INCIDENT:
+- Type: ${formData.incident_type}
+- Location: ${formData.incident_location}
+- Summary: ${formData.incident_summary}
+- Details: ${formData.who_what_when_details}
+- Victim Info: ${formData.victim_names}
+- Suspect Info: ${formData.suspect_names}
+- Witness Info: ${formData.witness_names}
+
+RECENT INCIDENTS FOR COMPARISON:
+${allIncidents.slice(0, 20).map((inc, idx) => `
+${idx + 1}. ${inc.title}
+   Category: ${inc.category}
+   Priority: ${inc.priority}
+   Date: ${inc.reported_at || inc.created_date}
+   Site: ${inc.site_name}
+   Description: ${inc.description?.substring(0, 200)}
+`).join('\n')}
+
+Provide detailed analysis in JSON format:
+1. recommended_category: One of [fire, theft, vandalism, medical, trespassing, suspicious_activity, equipment_failure, safety_hazard, other]
+2. recommended_priority: One of [critical, high, medium, low]
+3. priority_reason: Brief explanation for the priority level
+4. enhanced_summary: Professional rewrite of the incident summary
+5. suggested_actions: Immediate actions the officer should take
+6. response_actions: List of recommended response steps (array of strings)
+7. safety_notes: Important safety considerations
+8. similar_incident_ids: Array of incident IDs from the recent incidents list that are similar (consider location, type, timing)
+9. pattern_detected: Boolean - if this appears to be part of a pattern
+10. pattern_description: If pattern detected, describe it`;
+
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt: prompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            recommended_category: { 
+              type: "string",
+              enum: ["fire", "theft", "vandalism", "medical", "trespassing", "suspicious_activity", "equipment_failure", "safety_hazard", "other"]
+            },
+            recommended_priority: { 
+              type: "string",
+              enum: ["critical", "high", "medium", "low"]
+            },
+            priority_reason: { type: "string" },
+            enhanced_summary: { type: "string" },
+            suggested_actions: { type: "string" },
+            response_actions: { 
+              type: "array",
+              items: { type: "string" }
+            },
+            safety_notes: { type: "string" },
+            similar_incident_ids: {
+              type: "array",
+              items: { type: "string" }
+            },
+            pattern_detected: { type: "boolean" },
+            pattern_description: { type: "string" }
+          }
+        }
+      });
+
+      setAiSuggestions(response);
+
+      // Find similar incidents
+      const similar = allIncidents.filter(inc => 
+        response.similar_incident_ids?.includes(inc.id)
+      );
+      setSimilarIncidents(similar);
+
+      // Update form with AI suggestions (don't overwrite existing content)
+      setFormData(prev => ({
+        ...prev,
+        incident_summary: prev.incident_summary.trim() ? 
+          prev.incident_summary + "\n\n[AI Enhancement]\n" + response.enhanced_summary :
+          response.enhanced_summary,
+        officer_actions: prev.officer_actions.trim() ?
+          prev.officer_actions + "\n\n[AI Suggestions]\n" + response.suggested_actions :
+          response.suggested_actions
+      }));
+
+    } catch (error) {
+      console.error("AI assistance error:", error);
+      alert("AI analysis failed. Please try again.");
+    } finally {
+      setAiAssisting(false);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -291,9 +507,21 @@ Officer Signature: Signed
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-xl">Incident Report</CardTitle>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X />
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={getAIAssistance}
+                  disabled={aiAssisting || !formData.incident_type}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  {aiAssisting ? "AI Assisting..." : "AI Assist"}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                  <X />
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -482,10 +710,10 @@ Officer Signature: Signed
               </div>
 
               <div>
-                <label className="text-white font-medium block mb-2">Upload Photos from Gallery</label>
+                <label className="text-white font-medium block mb-2">Upload Media</label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*"
                   multiple
                   onChange={handleFileUpload}
                   className="hidden"
@@ -495,18 +723,118 @@ Officer Signature: Signed
                   <Button type="button" variant="outline" className="w-full border-slate-700" asChild>
                     <div>
                       <Upload className="w-4 h-4 mr-2" />
-                      Upload Photos from Gallery
+                      Upload Photos/Videos from Gallery
                     </div>
                   </Button>
                 </label>
               </div>
 
+              <div>
+                <label className="text-white font-medium block mb-2">Record Video (max 30 seconds)</label>
+                {videoRecording && videoPreview && (
+                  <div className="mb-2 relative">
+                    <video
+                      ref={videoPreviewRef}
+                      className="w-full h-48 bg-black rounded-lg"
+                      playsInline
+                      autoPlay
+                      muted
+                    />
+                    <div className="absolute top-2 right-2 bg-rose-600 px-3 py-1 rounded-full flex items-center gap-2">
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+                      <span className="text-white text-sm font-bold">REC</span>
+                    </div>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  onClick={videoRecording ? stopRecording : startVideoRecording}
+                  className={`w-full ${videoRecording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                >
+                  {videoRecording ? (
+                    <>
+                      <StopCircle className="w-5 h-5 mr-2 animate-pulse" />
+                      Stop Recording Video
+                    </>
+                  ) : (
+                    <>
+                      <Video className="w-5 h-5 mr-2" />
+                      Record Video
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div>
+                <label className="text-white font-medium block mb-2">Voice Notes</label>
+                {recordedAudio && (
+                  <div className="mb-2 p-3 bg-slate-900/50 rounded-lg border border-emerald-500/20">
+                    <audio src={recordedAudio} controls className="w-full mb-2" />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={saveAudioRecording}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                      >
+                        Save Voice Note
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRecordedAudio(null)}
+                        className="border-slate-600"
+                      >
+                        Discard
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {!recordedAudio && (
+                  <Button
+                    type="button"
+                    onClick={recording ? stopRecording : startAudioRecording}
+                    className={`w-full ${recording ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                  >
+                    {recording ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+                          <Mic className="w-5 h-5" />
+                          <span>Recording... Tap to Stop</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-5 h-5 mr-2" />
+                        Record Voice Note
+                      </>
+                    )}
+                  </Button>
+                )}
+                {formData.voice_notes.length > 0 && (
+                  <p className="text-sm text-emerald-400 mt-2">
+                    ✓ {formData.voice_notes.length} voice note(s) saved
+                  </p>
+                )}
+              </div>
+
               {formData.media.length > 0 && (
                 <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                  <p className="text-sm text-slate-400 mb-2">Photos Attached ({formData.media.length}):</p>
+                  <p className="text-sm text-slate-400 mb-2">Media Attached:</p>
                   <div className="grid grid-cols-3 gap-2">
                     {formData.media.map((item, idx) => (
-                      <img key={idx} src={item.url} alt="Evidence" className="w-full h-24 object-cover rounded" />
+                      <div key={idx} className="relative">
+                        {item.type === 'video' ? (
+                          <video src={item.url} className="w-full h-24 object-cover rounded" />
+                        ) : (
+                          <img src={item.url} alt="Evidence" className="w-full h-24 object-cover rounded" />
+                        )}
+                        <span className="absolute top-1 right-1 bg-black/70 text-white text-xs px-1 rounded">
+                          {item.type === 'video' ? '📹' : '📷'}
+                        </span>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -530,7 +858,88 @@ Officer Signature: Signed
                 </div>
               )}
 
+              {aiSuggestions && (
+                <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg space-y-3">
+                  <div className="flex items-center gap-2 text-purple-300 font-semibold">
+                    <Sparkles className="w-5 h-5" />
+                    AI Analysis Results
+                  </div>
 
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-1">Recommended Category</p>
+                      <p className="text-white font-medium capitalize">{aiSuggestions.recommended_category?.replace(/_/g, ' ')}</p>
+                    </div>
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-1">Recommended Priority</p>
+                      <p className={`font-medium uppercase ${
+                        aiSuggestions.recommended_priority === 'critical' ? 'text-rose-400' :
+                        aiSuggestions.recommended_priority === 'high' ? 'text-orange-400' :
+                        aiSuggestions.recommended_priority === 'medium' ? 'text-amber-400' :
+                        'text-sky-400'
+                      }`}>
+                        {aiSuggestions.recommended_priority}
+                      </p>
+                    </div>
+                  </div>
+
+                  {aiSuggestions.priority_reason && (
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-1">Priority Reasoning</p>
+                      <p className="text-sm text-slate-300">{aiSuggestions.priority_reason}</p>
+                    </div>
+                  )}
+
+                  {aiSuggestions.response_actions && aiSuggestions.response_actions.length > 0 && (
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-2">Recommended Response Actions</p>
+                      <ul className="space-y-1">
+                        {aiSuggestions.response_actions.map((action, idx) => (
+                          <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                            <span className="text-emerald-400 mt-1">•</span>
+                            <span>{action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aiSuggestions.safety_notes && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded">
+                      <p className="text-xs text-amber-400 mb-1">⚠️ Safety Notes</p>
+                      <p className="text-sm text-amber-300">{aiSuggestions.safety_notes}</p>
+                    </div>
+                  )}
+
+                  {aiSuggestions.pattern_detected && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded">
+                      <p className="text-xs text-rose-400 mb-1">🔴 Pattern Detected</p>
+                      <p className="text-sm text-rose-300">{aiSuggestions.pattern_description}</p>
+                    </div>
+                  )}
+
+                  {similarIncidents.length > 0 && (
+                    <div className="p-3 bg-slate-900/50 rounded">
+                      <p className="text-xs text-slate-400 mb-2">Similar Recent Incidents ({similarIncidents.length})</p>
+                      <div className="space-y-2">
+                        {similarIncidents.map(inc => (
+                          <div key={inc.id} className="p-2 bg-slate-800/50 rounded border border-slate-700">
+                            <p className="text-sm text-white font-medium">{inc.title}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                              <span>{inc.site_name}</span>
+                              <span>•</span>
+                              <span>{new Date(inc.reported_at || inc.created_date).toLocaleDateString()}</span>
+                              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 capitalize">
+                                {inc.priority}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-3 pt-6 pb-6">
                 <Button
