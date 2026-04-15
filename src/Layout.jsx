@@ -315,6 +315,40 @@ export default function Layout({ children, currentPageName }) {
       ];
     }
 
+    if (role === "resident") {
+      return [
+        { title: "Home", url: createPageUrl("ResidentDashboard"), icon: Users, isRoot: true },
+        { title: "Visitors", url: createPageUrl("ResidentVisitors"), icon: QrCode },
+        { title: "Bookings", url: createPageUrl("ResidentBookings"), icon: Calendar },
+        { title: "Order Food/Shop", url: createPageUrl("ResidentOrders"), icon: Package },
+        { title: "Tickets", url: createPageUrl("ResidentTickets"), icon: FileText },
+        { title: "Payments", url: createPageUrl("ResidentPayments"), icon: Wrench },
+        { title: "Announcements", url: createPageUrl("ResidentAnnouncements"), icon: Bell },
+        { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
+      ];
+    }
+
+    if (role === "estate_manager") {
+      return [
+        { title: "Dashboard", url: createPageUrl("EstateManagerDashboard"), icon: BarChart3, isRoot: true },
+        { title: "Residents", url: createPageUrl("EstateResidents"), icon: Users },
+        { title: "Venues", url: createPageUrl("EstateVenues"), icon: MapPin },
+        { title: "Vendors", url: createPageUrl("EstateVendors"), icon: Package },
+        { title: "Levy Management", url: createPageUrl("EstateLevy"), icon: Sliders },
+        { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
+        { title: "Security", url: createPageUrl("ControlRoom"), icon: Shield },
+        { title: "Announcements", url: createPageUrl("EstateManagerDashboard"), icon: Bell },
+        { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
+      ];
+    }
+
+    if (role === "vendor") {
+      return [
+        { title: "My Portal", url: createPageUrl("VendorPortal"), icon: Package, isRoot: true },
+        { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
+      ];
+    }
+
     if (role === "client") {
       return [
         { title: "Dashboard", url: createPageUrl("ClientDashboard"), icon: BarChart3, isRoot: true },
@@ -355,6 +389,7 @@ export default function Layout({ children, currentPageName }) {
       ];
     }
 
+    // Resident and estate manager roles don't use the bottom tab system
     return [];
   };
 
@@ -393,15 +428,19 @@ export default function Layout({ children, currentPageName }) {
               {/* Desktop always shows logo and title */}
               <Shield className="w-8 h-8 text-sky-400 hidden lg:block" />
               <div className="hidden lg:block">
-                <h1 className="font-bold text-white text-lg">SecureGuard</h1>
-                <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
+                <h1 className="font-bold text-white text-lg">
+                  {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
+                </h1>
+                <p className="text-xs text-slate-400 capitalize">{user.role_type?.replace("_", " ")} Portal</p>
               </div>
               
               {/* Mobile: show title only on root pages */}
               {!canGoBack && (
                 <div className="lg:hidden">
-                  <h1 className="font-bold text-white text-lg">SecureGuard</h1>
-                  <p className="text-xs text-slate-400 capitalize">{user.role_type} Portal</p>
+                  <h1 className="font-bold text-white text-lg">
+                    {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
+                  </h1>
+                  <p className="text-xs text-slate-400 capitalize">{user.role_type?.replace("_", " ")} Portal</p>
                 </div>
               )}
             </div>
