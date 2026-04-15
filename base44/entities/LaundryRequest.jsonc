@@ -1,0 +1,95 @@
+{
+  "name": "LaundryRequest",
+  "type": "object",
+  "properties": {
+    "resident_id": {
+      "type": "string"
+    },
+    "resident_name": {
+      "type": "string"
+    },
+    "unit_number": {
+      "type": "string"
+    },
+    "vendor_id": {
+      "type": "string"
+    },
+    "vendor_name": {
+      "type": "string"
+    },
+    "pickup_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "pickup_time_slot": {
+      "type": "string"
+    },
+    "delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "delivery_time_slot": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "wash",
+              "dry_clean",
+              "iron",
+              "wash_iron"
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "special_instructions": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "picked_up",
+        "processing",
+        "ready",
+        "delivered",
+        "cancelled"
+      ],
+      "default": "scheduled"
+    },
+    "estimated_cost": {
+      "type": "number"
+    },
+    "final_cost": {
+      "type": "number"
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "unpaid",
+        "paid"
+      ],
+      "default": "unpaid"
+    },
+    "payment_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "resident_id",
+    "pickup_date"
+  ]
+}

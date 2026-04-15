@@ -1,0 +1,92 @@
+{
+  "name": "Visitor",
+  "type": "object",
+  "properties": {
+    "resident_id": {
+      "type": "string"
+    },
+    "resident_name": {
+      "type": "string"
+    },
+    "unit_number": {
+      "type": "string"
+    },
+    "visitor_name": {
+      "type": "string"
+    },
+    "visitor_id_number": {
+      "type": "string"
+    },
+    "visitor_phone": {
+      "type": "string"
+    },
+    "vehicle_registration": {
+      "type": "string"
+    },
+    "visit_type": {
+      "type": "string",
+      "enum": [
+        "pre_registered",
+        "unexpected",
+        "contractor",
+        "delivery"
+      ],
+      "default": "pre_registered"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "denied",
+        "entered",
+        "exited",
+        "expired"
+      ],
+      "default": "pending"
+    },
+    "valid_from": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "otp_code": {
+      "type": "string"
+    },
+    "qr_code": {
+      "type": "string"
+    },
+    "id_scan_url": {
+      "type": "string"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "approved_by": {
+      "type": "string"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "entered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "exited_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "visitor_name",
+    "resident_id",
+    "visit_type"
+  ]
+}

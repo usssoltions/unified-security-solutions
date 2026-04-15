@@ -1,0 +1,96 @@
+{
+  "name": "AccessLog",
+  "type": "object",
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "entry",
+        "exit",
+        "denied"
+      ]
+    },
+    "person_type": {
+      "type": "string",
+      "enum": [
+        "resident",
+        "visitor",
+        "guard",
+        "vendor",
+        "unknown"
+      ]
+    },
+    "person_id": {
+      "type": "string"
+    },
+    "person_name": {
+      "type": "string"
+    },
+    "unit_number": {
+      "type": "string"
+    },
+    "gate_name": {
+      "type": "string"
+    },
+    "scan_method": {
+      "type": "string",
+      "enum": [
+        "qr_code",
+        "sa_id",
+        "drivers_licence",
+        "vehicle_disc",
+        "manual",
+        "face"
+      ]
+    },
+    "scanned_data": {
+      "type": "string"
+    },
+    "vehicle_registration": {
+      "type": "string"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "visitor_id": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "flagged": {
+      "type": "boolean",
+      "default": false
+    },
+    "flag_reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_type",
+    "person_type",
+    "gate_name",
+    "timestamp"
+  ]
+}

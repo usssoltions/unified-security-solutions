@@ -1,0 +1,74 @@
+{
+  "name": "LevyAccount",
+  "type": "object",
+  "properties": {
+    "resident_id": {
+      "type": "string"
+    },
+    "resident_name": {
+      "type": "string"
+    },
+    "unit_number": {
+      "type": "string"
+    },
+    "monthly_levy": {
+      "type": "number"
+    },
+    "balance_due": {
+      "type": "number",
+      "default": 0
+    },
+    "balance_credit": {
+      "type": "number",
+      "default": 0
+    },
+    "last_payment_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "last_payment_amount": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "current",
+        "overdue",
+        "suspended"
+      ],
+      "default": "current"
+    },
+    "statements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "debit": {
+            "type": "number"
+          },
+          "credit": {
+            "type": "number"
+          },
+          "balance": {
+            "type": "number"
+          }
+        }
+      },
+      "default": []
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "resident_id",
+    "unit_number",
+    "monthly_levy"
+  ]
+}

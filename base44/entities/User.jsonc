@@ -1,0 +1,77 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "default": "user"
+    },
+    "role_type": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "estate_manager",
+        "guard",
+        "dispatcher",
+        "resident",
+        "vendor",
+        "client"
+      ],
+      "default": "resident"
+    },
+    "badge_number": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "whatsapp": {
+      "type": "string"
+    },
+    "unit_number": {
+      "type": "string"
+    },
+    "is_clocked_in": {
+      "type": "boolean",
+      "default": false
+    },
+    "profile_photo": {
+      "type": "string"
+    },
+    "push_token": {
+      "type": "string"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "custom_contacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "whatsapp": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    }
+  }
+}

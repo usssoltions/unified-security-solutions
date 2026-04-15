@@ -1,0 +1,82 @@
+{
+  "name": "Vendor",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "business_name": {
+      "type": "string"
+    },
+    "contact_name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "whatsapp": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "restaurant",
+        "shop",
+        "laundry",
+        "plumbing",
+        "electrical",
+        "landscaping",
+        "cleaning",
+        "security",
+        "other"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "logo_url": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "suspended"
+      ],
+      "default": "active"
+    },
+    "rating": {
+      "type": "number"
+    },
+    "operating_hours": {
+      "type": "string"
+    },
+    "delivery_available": {
+      "type": "boolean",
+      "default": false
+    },
+    "delivery_fee": {
+      "type": "number",
+      "default": 0
+    },
+    "minimum_order": {
+      "type": "number",
+      "default": 0
+    },
+    "bank_account": {
+      "type": "string"
+    },
+    "vat_number": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "business_name",
+    "category",
+    "phone"
+  ]
+}

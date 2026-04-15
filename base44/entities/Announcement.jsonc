@@ -1,0 +1,102 @@
+{
+  "name": "Announcement",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "news",
+        "maintenance",
+        "event",
+        "security",
+        "emergency",
+        "advertisement",
+        "promotion",
+        "other"
+      ],
+      "default": "news"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal"
+    },
+    "media": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "target_audience": {
+      "type": "string",
+      "enum": [
+        "all",
+        "residents",
+        "guards",
+        "vendors",
+        "specific"
+      ],
+      "default": "all"
+    },
+    "target_units": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "send_whatsapp": {
+      "type": "boolean",
+      "default": false
+    },
+    "send_email": {
+      "type": "boolean",
+      "default": false
+    },
+    "send_push": {
+      "type": "boolean",
+      "default": true
+    },
+    "published": {
+      "type": "boolean",
+      "default": false
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "created_by_name": {
+      "type": "string"
+    },
+    "read_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "title",
+    "body"
+  ]
+}

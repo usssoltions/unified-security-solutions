@@ -47,6 +47,20 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
+import AccessControl from './pages/AccessControl';
+import EstateLevy from './pages/EstateLevy';
+import EstateManagerDashboard from './pages/EstateManagerDashboard';
+import EstateResidents from './pages/EstateResidents';
+import EstateVendors from './pages/EstateVendors';
+import EstateVenues from './pages/EstateVenues';
+import ResidentAnnouncements from './pages/ResidentAnnouncements';
+import ResidentBookings from './pages/ResidentBookings';
+import ResidentDashboard from './pages/ResidentDashboard';
+import ResidentOrders from './pages/ResidentOrders';
+import ResidentPayments from './pages/ResidentPayments';
+import ResidentTickets from './pages/ResidentTickets';
+import ResidentVisitors from './pages/ResidentVisitors';
+import VendorPortal from './pages/VendorPortal';
 import AIReports from './pages/AIReports';
 import AdminIncidents from './pages/AdminIncidents';
 import AdminMaintenance from './pages/AdminMaintenance';
@@ -89,6 +103,20 @@ import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
+    "AccessControl": AccessControl,
+    "EstateLevy": EstateLevy,
+    "EstateManagerDashboard": EstateManagerDashboard,
+    "EstateResidents": EstateResidents,
+    "EstateVendors": EstateVendors,
+    "EstateVenues": EstateVenues,
+    "ResidentAnnouncements": ResidentAnnouncements,
+    "ResidentBookings": ResidentBookings,
+    "ResidentDashboard": ResidentDashboard,
+    "ResidentOrders": ResidentOrders,
+    "ResidentPayments": ResidentPayments,
+    "ResidentTickets": ResidentTickets,
+    "ResidentVisitors": ResidentVisitors,
+    "VendorPortal": VendorPortal,
     "AIReports": AIReports,
     "AdminIncidents": AdminIncidents,
     "AdminMaintenance": AdminMaintenance,

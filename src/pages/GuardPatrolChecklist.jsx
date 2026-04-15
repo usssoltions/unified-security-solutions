@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { createPageUrl } from "@/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,19 @@ export default function GuardPatrolChecklist() {
       });
     },
     enabled: !!activeShift
+  });
+
+  // Query for active patrol plans with checkpoints - must be unconditional
+  const { data: activePatrolPlans = [] } = useQuery({
+    queryKey: ["activePatrolPlans", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      return await base44.entities.PatrolPlan.filter({
+        assigned_to: user.id,
+        status: { $in: ["active", "pending"] }
+      });
+    },
+    enabled: !!user
   });
 
   const completeMutation = useMutation({
@@ -383,19 +397,6 @@ export default function GuardPatrolChecklist() {
       </div>
     );
   }
-
-  // Query for active patrol plans with checkpoints
-  const { data: activePatrolPlans = [] } = useQuery({
-    queryKey: ["activePatrolPlans", user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      return await base44.entities.PatrolPlan.filter({
-        assigned_to: user.id,
-        status: { $in: ["active", "pending"] }
-      });
-    },
-    enabled: !!user
-  });
 
   return (
     <div className="min-h-screen p-4 pb-24 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">

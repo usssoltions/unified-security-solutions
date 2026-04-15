@@ -1,0 +1,72 @@
+{
+  "name": "Venue",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "clubhouse",
+        "pool",
+        "gym",
+        "tennis_court",
+        "braai_area",
+        "conference_room",
+        "sports_field",
+        "other"
+      ]
+    },
+    "capacity": {
+      "type": "number"
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "booking_fee": {
+      "type": "number",
+      "default": 0
+    },
+    "deposit_required": {
+      "type": "number",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "maintenance"
+      ],
+      "default": "active"
+    },
+    "available_hours_start": {
+      "type": "string"
+    },
+    "available_hours_end": {
+      "type": "string"
+    },
+    "rules": {
+      "type": "string"
+    },
+    "amenities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "name",
+    "category"
+  ]
+}
