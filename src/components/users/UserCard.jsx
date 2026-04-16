@@ -84,15 +84,20 @@ export default function UserCard({ user, onEdit, onDelete }) {
           )}
         </div>
 
+        {!user.role_type && (
+          <div className="mb-3 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 text-center">
+            ⚠️ Role not set — click Edit to assign a role
+          </div>
+        )}
+
         <div className="flex gap-2 pt-3 border-t border-slate-700">
           <Button
             onClick={() => onEdit(user)}
             size="sm"
-            variant="outline"
-            className="flex-1 border-slate-600 text-slate-300"
+            className={`flex-1 ${!user.role_type ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-transparent border border-slate-600 text-slate-300 hover:bg-slate-700"}`}
           >
             <Edit className="w-4 h-4 mr-1" />
-            Edit
+            {!user.role_type ? "Set Role" : "Edit"}
           </Button>
           <Button
             onClick={() => onDelete(user.id)}

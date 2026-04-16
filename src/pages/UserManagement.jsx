@@ -48,7 +48,10 @@ export default function UserManagement() {
   const filterUsers = (roleType) => {
     let filtered = users;
     
-    if (roleType !== "all") {
+    if (roleType === "admin") {
+      // Show both explicit admins AND users with no role_type set yet
+      filtered = users.filter(u => u.role_type === "admin" || !u.role_type);
+    } else if (roleType !== "all") {
       filtered = users.filter(u => u.role_type === roleType);
     }
 
