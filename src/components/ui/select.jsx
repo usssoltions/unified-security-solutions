@@ -76,7 +76,7 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
             "data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full",
             className
           )}
-          position="popper"
+          position="item-aligned"
           {...props}
         >
           <div className="w-12 h-1.5 bg-slate-600 rounded-full mx-auto mt-3 mb-2" />
@@ -136,8 +136,8 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
         className
       )}
       {...props}>
-      <SelectPrimitive.ItemText className="flex-1 text-left whitespace-normal break-words leading-snug">
-        {children}
+      <SelectPrimitive.ItemText>
+        <span className="flex-1 text-left whitespace-normal break-words leading-snug">{children}</span>
       </SelectPrimitive.ItemText>
       <span className={cn("absolute flex items-center justify-center flex-shrink-0", isMobile ? "right-4 h-6 w-6" : "right-2 h-3.5 w-3.5")}>
         <SelectPrimitive.ItemIndicator>
