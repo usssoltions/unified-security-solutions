@@ -69,7 +69,7 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
         <SelectPrimitive.Content
           ref={ref}
           className={cn(
-            "fixed left-0 right-0 bottom-0 z-[9999]",
+            "fixed left-0 right-0 bottom-0 z-[9999] w-full",
             "bg-slate-900 border-t-2 border-slate-700 rounded-t-2xl shadow-2xl",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
@@ -128,7 +128,7 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-lg outline-none transition-colors overflow-hidden",
+        "relative flex w-full cursor-default select-none items-center rounded-lg outline-none transition-colors",
         isMobile 
           ? "py-4 pl-4 pr-12 text-base font-medium text-white focus:bg-slate-800 data-[highlighted]:bg-slate-800 active:bg-slate-700 min-h-[56px]" 
           : "py-1.5 pl-2 pr-8 text-sm focus:bg-accent focus:text-accent-foreground",
@@ -136,7 +136,7 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
         className
       )}
       {...props}>
-      <SelectPrimitive.ItemText className="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap max-w-full">
+      <SelectPrimitive.ItemText className="flex-1 text-left whitespace-normal break-words leading-snug">
         {children}
       </SelectPrimitive.ItemText>
       <span className={cn("absolute flex items-center justify-center flex-shrink-0", isMobile ? "right-4 h-6 w-6" : "right-2 h-3.5 w-3.5")}>
