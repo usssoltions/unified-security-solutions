@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, UserPlus, Lock } from "lucide-react";
+import { X, UserPlus, Lock, Mail } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function UserForm({ user, onClose, onSuccess }) {
@@ -21,6 +21,10 @@ export default function UserForm({ user, onClose, onSuccess }) {
     new_password: ""
   });
 
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("guard");
+  const [inviteStatus, setInviteStatus] = useState(null);
+
   const updateUserMutation = useMutation({
     mutationFn: async (data) => {
       const updateData = {
@@ -30,7 +34,6 @@ export default function UserForm({ user, onClose, onSuccess }) {
         phone_number: data.phone_number,
         security_pin: data.security_pin
       };
-      
       return await base44.entities.User.update(user.id, updateData);
     },
     onSuccess: () => {
@@ -46,10 +49,27 @@ export default function UserForm({ user, onClose, onSuccess }) {
     }
   };
 
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) {
+      setInviteStatus({ error: "Please enter an email address." });
+      return;
+    }
+    setInviteStatus({ loading: true });
+    try {
+      // Base44 invite — role must be "admin" or "user"; we set role_type via update after
+      const baseRole = ["admin"].includes(inviteRole) ? "admin" : "user";
+      await base44.users.inviteUser(inviteEmail.trim(), baseRole);
+      setInviteStatus({ success: `Invitation sent to ${inviteEmail}. Once they log in, edit their profile to set their specific role (${inviteRole}).` });
+      setInviteEmail("");
+    } catch (err) {
+      setInviteStatus({ error: err?.message || "Failed to send invitation. The user may already exist." });
+    }
+  };
+
   if (!user) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-8">
           <CardHeader className="border-b border-slate-700">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -61,22 +81,57 @@ export default function UserForm({ user, onClose, onSuccess }) {
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="p-6">
-            <Alert className="bg-sky-500/10 border-sky-500/20">
-              <AlertDescription className="text-slate-300">
-                <p className="font-semibold mb-2">To add new users:</p>
-                <ol className="list-decimal list-inside space-y-1 text-sm">
-                  <li>Go to your Base44 Dashboard</li>
-                  <li>Navigate to <strong>Settings → Users</strong></li>
-                  <li>Click <strong>"Invite User"</strong></li>
-                  <li>Enter their email and assign role</li>
-                  <li>They'll receive an invitation to set their password</li>
-                </ol>
+          <CardContent className="p-6 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Email Address *</Label>
+              <Input
+                type="email"
+                placeholder="user@example.com"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                className="bg-slate-900 border-slate-700 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Role *</Label>
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="dispatcher">Dispatcher / Supervisor</SelectItem>
+                  <SelectItem value="guard">Security Guard</SelectItem>
+                  <SelectItem value="client">Client</SelectItem>
+                  <SelectItem value="estate_manager">Estate Manager</SelectItem>
+                  <SelectItem value="resident">Resident</SelectItem>
+                  <SelectItem value="vendor">Vendor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {inviteStatus?.success && (
+              <Alert className="bg-emerald-500/10 border-emerald-500/20">
+                <AlertDescription className="text-emerald-300 text-sm">{inviteStatus.success}</AlertDescription>
+              </Alert>
+            )}
+            {inviteStatus?.error && (
+              <Alert className="bg-rose-500/10 border-rose-500/20">
+                <AlertDescription className="text-rose-300 text-sm">{inviteStatus.error}</AlertDescription>
+              </Alert>
+            )}
+
+            <Alert className="bg-amber-500/10 border-amber-500/20">
+              <AlertDescription className="text-slate-300 text-sm">
+                The user will receive an email invitation. After they log in for the first time, you can edit their profile to confirm their role and add additional details like badge number and phone.
               </AlertDescription>
             </Alert>
-            <div className="mt-6 flex justify-end">
-              <Button onClick={onClose} variant="outline" className="border-slate-600 text-slate-300">
-                Got it
+
+            <div className="flex gap-3 pt-2">
+              <Button onClick={onClose} variant="outline" className="flex-1 border-slate-600 text-slate-300">Cancel</Button>
+              <Button onClick={handleInvite} disabled={inviteStatus?.loading} className="flex-1 bg-sky-600 hover:bg-sky-700">
+                <Mail className="w-4 h-4 mr-2" />
+                {inviteStatus?.loading ? "Sending..." : "Send Invitation"}
               </Button>
             </div>
           </CardContent>
@@ -131,9 +186,12 @@ export default function UserForm({ user, onClose, onSuccess }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="dispatcher">Dispatcher/Supervisor</SelectItem>
+                    <SelectItem value="dispatcher">Dispatcher / Supervisor</SelectItem>
                     <SelectItem value="guard">Security Guard</SelectItem>
                     <SelectItem value="client">Client</SelectItem>
+                    <SelectItem value="estate_manager">Estate Manager</SelectItem>
+                    <SelectItem value="resident">Resident</SelectItem>
+                    <SelectItem value="vendor">Vendor</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -186,10 +244,13 @@ export default function UserForm({ user, onClose, onSuccess }) {
             <div className="p-4 bg-slate-900/50 rounded-lg">
               <p className="text-sm font-semibold text-slate-300 mb-2">Role Descriptions:</p>
               <ul className="text-xs text-slate-400 space-y-1">
-                <li><strong className="text-sky-400">Admin:</strong> Full system access, can manage all users and settings</li>
-                <li><strong className="text-purple-400">Dispatcher/Supervisor:</strong> Control room access, can assign shifts and manage operations</li>
-                <li><strong className="text-emerald-400">Security Guard:</strong> Field operations, can clock in/out and report incidents</li>
-                <li><strong className="text-amber-400">Client:</strong> View-only access to reports and incidents for their sites</li>
+                <li><strong className="text-sky-400">Admin:</strong> Full system access</li>
+                <li><strong className="text-purple-400">Dispatcher/Supervisor:</strong> Control room, shifts, operations</li>
+                <li><strong className="text-emerald-400">Security Guard:</strong> Field operations, clock in/out, incidents</li>
+                <li><strong className="text-amber-400">Client:</strong> View reports and incidents for their sites</li>
+                <li><strong className="text-teal-400">Estate Manager:</strong> Manage residents, venues, vendors, levies</li>
+                <li><strong className="text-indigo-400">Resident:</strong> Visitors, bookings, orders, payments</li>
+                <li><strong className="text-orange-400">Vendor:</strong> Manage menu items and orders</li>
               </ul>
             </div>
 

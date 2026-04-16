@@ -68,7 +68,10 @@ export default function UserManagement() {
     admins: users.filter(u => u.role_type === "admin").length,
     dispatchers: users.filter(u => u.role_type === "dispatcher").length,
     guards: users.filter(u => u.role_type === "guard").length,
-    clients: users.filter(u => u.role_type === "client").length
+    clients: users.filter(u => u.role_type === "client").length,
+    estate_managers: users.filter(u => u.role_type === "estate_manager").length,
+    residents: users.filter(u => u.role_type === "resident").length,
+    vendors: users.filter(u => u.role_type === "vendor").length,
   };
 
   return (
@@ -170,100 +173,32 @@ export default function UserManagement() {
 
       {/* User Tabs */}
       <Tabs defaultValue="all" className="w-full">
-        <TabsList className="bg-slate-800/50">
-          <TabsTrigger value="all">All Users</TabsTrigger>
+        <TabsList className="bg-slate-800/50 flex-wrap h-auto gap-1">
+          <TabsTrigger value="all">All ({userStats.total})</TabsTrigger>
           <TabsTrigger value="admin">Admins</TabsTrigger>
           <TabsTrigger value="dispatcher">Dispatchers</TabsTrigger>
           <TabsTrigger value="guard">Guards</TabsTrigger>
           <TabsTrigger value="client">Clients</TabsTrigger>
+          <TabsTrigger value="estate_manager">Estate Mgr</TabsTrigger>
+          <TabsTrigger value="resident">Residents</TabsTrigger>
+          <TabsTrigger value="vendor">Vendors</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {isLoading ? (
-              <p className="text-slate-400 col-span-full text-center py-8">Loading users...</p>
-            ) : filterUsers("all").length === 0 ? (
-              <p className="text-slate-400 col-span-full text-center py-8">No users found</p>
-            ) : (
-              filterUsers("all").map(user => (
-                <UserCard
-                  key={user.id}
-                  user={user}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="admin" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filterUsers("admin").length === 0 ? (
-              <p className="text-slate-400 col-span-full text-center py-8">No admins found</p>
-            ) : (
-              filterUsers("admin").map(user => (
-                <UserCard
-                  key={user.id}
-                  user={user}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="dispatcher" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filterUsers("dispatcher").length === 0 ? (
-              <p className="text-slate-400 col-span-full text-center py-8">No dispatchers found</p>
-            ) : (
-              filterUsers("dispatcher").map(user => (
-                <UserCard
-                  key={user.id}
-                  user={user}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="guard" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filterUsers("guard").length === 0 ? (
-              <p className="text-slate-400 col-span-full text-center py-8">No guards found</p>
-            ) : (
-              filterUsers("guard").map(user => (
-                <UserCard
-                  key={user.id}
-                  user={user}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="client" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filterUsers("client").length === 0 ? (
-              <p className="text-slate-400 col-span-full text-center py-8">No clients found</p>
-            ) : (
-              filterUsers("client").map(user => (
-                <UserCard
-                  key={user.id}
-                  user={user}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </div>
-        </TabsContent>
+        {["all", "admin", "dispatcher", "guard", "client", "estate_manager", "resident", "vendor"].map(tab => (
+          <TabsContent key={tab} value={tab} className="mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {isLoading ? (
+                <p className="text-slate-400 col-span-full text-center py-8">Loading users...</p>
+              ) : filterUsers(tab).length === 0 ? (
+                <p className="text-slate-400 col-span-full text-center py-8">No users found</p>
+              ) : (
+                filterUsers(tab).map(u => (
+                  <UserCard key={u.id} user={u} onEdit={handleEdit} onDelete={handleDelete} />
+                ))
+              )}
+            </div>
+          </TabsContent>
+        ))}
       </Tabs>
 
       {/* User Form Modal */}

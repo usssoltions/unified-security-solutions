@@ -543,102 +543,56 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               </div>
             </div>
 
-            {/* Map Section - Full Width */}
-            <div className="w-full">
-              <div className="h-[400px] lg:h-[500px] rounded-lg overflow-hidden border-2 border-slate-700">
-                {formData.location ? (
+            {/* Map Section - only shown when location is set */}
+            {formData.location && (
+              <div className="w-full">
+                <label className="text-sm text-slate-300 font-medium block mb-2">Live Map</label>
+                <div className="h-[300px] rounded-lg overflow-hidden border-2 border-slate-700">
                   <MapContainer
+                    key="dispatch-map"
                     center={mapCenter}
                     zoom={mapZoom}
                     style={{ height: "100%", width: "100%" }}
-                    scrollWheelZoom={true}
+                    scrollWheelZoom={false}
                   >
                     <MapController center={mapCenter} zoom={mapZoom} />
                     <TileLayer
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       attribution='&copy; OpenStreetMap contributors'
                     />
-                    
-                    <Marker 
-                      position={[formData.location.lat, formData.location.lng]}
-                      icon={incidentIcon}
-                    >
+                    <Marker position={[formData.location.lat, formData.location.lng]} icon={incidentIcon}>
                       <Popup>
-                        <div className="text-center">
-                          <p className="font-bold text-rose-600">Incident Location</p>
-                          <p className="text-sm">{formData.address}</p>
-                        </div>
+                        <p className="font-bold text-rose-600">Incident Location</p>
+                        <p className="text-sm">{formData.address}</p>
                       </Popup>
                     </Marker>
-                    
                     <Circle
                       center={[formData.location.lat, formData.location.lng]}
                       radius={500}
-                      pathOptions={{ 
-                        color: getComputedColor('--rose-500-rgb', '#ef4444'), 
-                        fillColor: getComputedColor('--rose-500-rgb', '#ef4444'), 
-                        fillOpacity: 0.1 
-                      }}
+                      pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.1 }}
                     />
-                    
                     {activeGuards.map((guard) => {
                       if (!guard.guard_location?.lat || !guard.guard_location?.lng) return null;
-                      
                       const isSelected = formData.assigned_to === guard.guard_id;
-                      const dist = calculateDistance(
-                        formData.location.lat, // Incident first
-                        formData.location.lng,
-                        guard.guard_location.lat,
-                        guard.guard_location.lng
-                      );
-                      
+                      const dist = calculateDistance(formData.location.lat, formData.location.lng, guard.guard_location.lat, guard.guard_location.lng);
                       return (
-                        <Marker 
-                          key={guard.guard_id}
-                          position={[guard.guard_location.lat, guard.guard_location.lng]}
-                          icon={isSelected ? nearestGuardIcon : guardIcon}
-                        >
+                        <Marker key={guard.guard_id} position={[guard.guard_location.lat, guard.guard_location.lng]} icon={isSelected ? nearestGuardIcon : guardIcon}>
                           <Popup>
-                            <div className="text-center">
-                              <p className="font-bold text-emerald-600">{guard.guard_full_name}</p>
-                              {isSelected && <p className="text-xs text-sky-500 font-bold">SELECTED</p>}
-                              <p className="text-sm">{guard.site_name}</p>
-                              <p className="text-xs text-gray-600">{dist.toFixed(1)} km away</p>
-                            </div>
+                            <p className="font-bold text-emerald-600">{guard.guard_full_name}</p>
+                            {isSelected && <p className="text-xs text-sky-500 font-bold">SELECTED</p>}
+                            <p className="text-sm">{guard.site_name}</p>
+                            <p className="text-xs text-gray-600">{dist.toFixed(1)} km away</p>
                           </Popup>
                         </Marker>
                       );
                     })}
-                    
                     {routeCoordinates && formData.assigned_to && (
-                      <Polyline
-                        positions={routeCoordinates}
-                        pathOptions={{ 
-                          color: getComputedColor('--sky-500-rgb', '#3b82f6'), 
-                          weight: 4, 
-                          opacity: 0.7,
-                          dashArray: '10, 10'
-                        }}
-                      />
+                      <Polyline positions={routeCoordinates} pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.7, dashArray: '10, 10' }} />
                     )}
                   </MapContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center bg-slate-900">
-                    <div className="text-center">
-                      <MapPin className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-                      <p className="text-slate-400">Set incident location to view map</p>
-                      <Button
-                        onClick={getCurrentLocation}
-                        className="mt-4 bg-sky-600 hover:bg-sky-700"
-                      >
-                        <MapPin className="w-4 h-4 mr-2" />
-                        Get Current Location
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </CardContent>
 

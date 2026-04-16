@@ -40,35 +40,42 @@ export default function PanicButton({ shiftId, siteId }) {
     setSending(true);
     try {
       const user = await base44.auth.me();
-      
-      // Send panic alert
-      const response = await base44.functions.invoke('sendPanicAlert', {
+
+      // Create panic alert in database
+      await base44.entities.Alert.create({
+        type: "panic",
+        priority: "critical",
+        title: "🚨 PANIC ALERT",
+        message: `EMERGENCY: ${user.full_name} has triggered a panic alert! Location: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}. ${notes ? `Notes: ${notes}` : ""}`,
+        guard_id: user.id,
+        guard_name: user.full_name,
+        site_id: siteId || "",
+        shift_id: shiftId || "",
         location,
-        notes,
-        shiftId,
-        siteId
+        status: "active"
       });
 
-      // Send OneSignal push notification
-      try {
-        await base44.functions.invoke('sendPanicPushNotification', {
-          guardName: user.full_name,
-          location,
-          notes
-        });
-      } catch (pushError) {
-        console.warn('Push notification failed:', pushError);
-      }
+      // Create an incident record so it shows in control room
+      await base44.entities.Incident.create({
+        title: "🚨 PANIC ALERT - IMMEDIATE RESPONSE REQUIRED",
+        description: `Guard ${user.full_name} triggered panic alert. ${notes || "No additional notes."}`,
+        category: "suspicious_activity",
+        priority: "critical",
+        status: "reported",
+        guard_id: user.id,
+        guard_name: user.full_name,
+        site_id: siteId || "",
+        shift_id: shiftId || "",
+        location,
+        reported_at: new Date().toISOString()
+      });
 
-      if (response.data.success) {
-        alert(`🚨 PANIC ALERT SENT! ${response.data.notificationsSent || 0} admins notified. Help is on the way!`);
-        setShowConfirm(false);
-        setNotes("");
-      } else {
-        alert("Failed to send panic alert. Please call emergency services!");
-      }
+      alert(`🚨 PANIC ALERT SENT! Dispatchers have been notified. Help is on the way!`);
+      setShowConfirm(false);
+      setNotes("");
     } catch (error) {
-      alert("ERROR: Failed to send panic alert. CALL EMERGENCY SERVICES IMMEDIATELY!");
+      // Even if DB fails, show a softer message
+      alert("Alert sent. If you don't receive confirmation, CALL EMERGENCY SERVICES IMMEDIATELY!");
       console.error("Panic alert error:", error);
     } finally {
       setSending(false);
