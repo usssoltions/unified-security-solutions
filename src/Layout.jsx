@@ -101,9 +101,13 @@ export default function Layout({ children, currentPageName }) {
 
   useEffect(() => {
     if (user) {
-      loadNotificationCount();
-      const interval = setInterval(loadNotificationCount, 45000);
-      return () => clearInterval(interval);
+      // Delay initial load to avoid rate limiting on startup
+      const initialDelay = setTimeout(loadNotificationCount, 5000);
+      const interval = setInterval(loadNotificationCount, 90000);
+      return () => {
+        clearTimeout(initialDelay);
+        clearInterval(interval);
+      };
     }
   }, [user]);
 
