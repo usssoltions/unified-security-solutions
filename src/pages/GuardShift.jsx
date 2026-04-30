@@ -1,22 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Shield,
-  Clock,
-  MapPin,
-  QrCode,
-  AlertCircle,
-  CheckCircle2,
-  Navigation,
-  Wrench,
-  ChevronRight,
-  MessageCircle,
-  GraduationCap,
-  FileText
+  Shield, Clock, MapPin, QrCode, AlertCircle, CheckCircle2,
+  Wrench, ChevronRight, MessageCircle, GraduationCap, FileText,
+  Zap, Activity, Bell, Navigation, Star, TrendingUp, Cpu
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
@@ -29,12 +21,10 @@ import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
 import LocationTracker from "../components/guard/LocationTracker";
 import ShiftEndNotification from "../components/guard/ShiftEndNotification";
 import PullToRefresh from "../components/PullToRefresh";
-
 import GuardChat from "../components/chat/GuardChat";
 import GuardTrainingView from "../components/training/GuardTrainingView";
 import AutoReportGenerator from "../components/reports/AutoReportGenerator";
 import GeneratedReportsView from "../components/reports/GeneratedReportsView";
-import MobileInstallPrompt from "../components/MobileInstallPrompt";
 import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
 import PanicButton from "../components/guard/PanicButton";
@@ -55,94 +45,58 @@ export default function GuardShift() {
   const [showTraining, setShowTraining] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [showDailyReportModal, setShowDailyReportModal] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const lastStayAwakeCheck = useRef(null);
   const lastPatrolCheck = useRef(null);
 
   useEffect(() => {
     loadUser();
     startLocationTracking();
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
   }, []);
 
   const loadUser = async () => {
     setLoadingUser(true);
-    try {
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
-      
-      // Defer clock-in validation to not block initial render
-      if (currentUser.role_type === 'guard') {
-        try {
-          const activeShifts = await base44.entities.Shift.filter({
-            guard_id: currentUser.id,
-            status: "active"
-          });
-          
-          if (activeShifts.length === 0 && currentUser.is_clocked_in) {
-            await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
-            currentUser.is_clocked_in = false;
-            currentUser.current_shift_id = null;
-            setUser({...currentUser});
-          }
-        } catch (error) {
-          console.error("Clock-in validation error:", error);
-        }
+    const currentUser = await base44.auth.me();
+    setUser(currentUser);
+    if (currentUser.role_type === 'guard') {
+      const activeShifts = await base44.entities.Shift.filter({ guard_id: currentUser.id, status: "active" });
+      if (activeShifts.length === 0 && currentUser.is_clocked_in) {
+        await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
+        setUser({ ...currentUser, is_clocked_in: false, current_shift_id: null });
       }
-    } catch (error) {
-      console.error("Failed to load user:", error);
-    } finally {
-      setLoadingUser(false);
     }
+    setLoadingUser(false);
   };
 
   const startLocationTracking = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        async (position) => {
-          const newLocation = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setLocation(newLocation);
-          
-          try {
-            const currentUser = await base44.auth.me();
-            if (currentUser && currentUser.is_clocked_in) {
-              await base44.auth.updateMe({
-                last_location: {
-                  ...newLocation,
-                  timestamp: new Date().toISOString()
-                }
-              });
-            }
-          } catch (error) {
-            // Silent fail
-          }
-        },
-        (error) => {
-          // Silent fail
-        },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
-      );
-    }
+    if (!navigator.geolocation) return;
+    navigator.geolocation.watchPosition(
+      async (position) => {
+        const newLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setLocation(newLocation);
+        const currentUser = await base44.auth.me();
+        if (currentUser?.is_clocked_in) {
+          await base44.auth.updateMe({ last_location: { ...newLocation, timestamp: new Date().toISOString() } });
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
   };
 
   const { data: activeShift, isLoading: shiftsLoading } = useQuery({
     queryKey: ["activeShift", user?.id],
     queryFn: async () => {
       if (!user) return null;
-      
-      const shifts = await base44.entities.Shift.filter({
-        guard_id: user.id,
-        status: "active"
-      });
+      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "active" });
       return shifts?.[0] || null;
     },
     enabled: !!user,
     refetchInterval: 30000,
     retry: 0,
     staleTime: 25000,
-    gcTime: 60000,
-    refetchOnMount: true,
     refetchOnWindowFocus: false
   });
 
@@ -150,24 +104,12 @@ export default function GuardShift() {
     queryKey: ["upcomingShifts", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      
-      const shifts = await base44.entities.Shift.filter(
-        {
-          guard_id: user.id,
-          status: "scheduled"
-        },
-        "start_time",
-        3
-      );
-      
+      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "scheduled" }, "start_time", 3);
       return shifts || [];
     },
     enabled: !!user && !shiftsLoading,
     refetchInterval: 120000,
-    retry: 0,
     staleTime: 100000,
-    gcTime: 180000,
-    refetchOnMount: false,
     refetchOnWindowFocus: false
   });
 
@@ -175,20 +117,11 @@ export default function GuardShift() {
     queryKey: ["pendingAssignments", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      
-      const assignments = await base44.entities.Assignment.filter({
-        assigned_to: user.id,
-        status: "pending"
-      });
-      
-      return assignments || [];
+      return await base44.entities.Assignment.filter({ assigned_to: user.id, status: "pending" }) || [];
     },
     enabled: !!user && !shiftsLoading,
     refetchInterval: 60000,
-    retry: 0,
     staleTime: 50000,
-    gcTime: 120000,
-    refetchOnMount: false,
     refetchOnWindowFocus: false
   });
 
@@ -196,19 +129,11 @@ export default function GuardShift() {
     queryKey: ["arrivedAlarms", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      
-      const alarms = await base44.entities.AlarmResponse.filter({
-        assigned_to: user.id,
-        status: "arrived"
-      });
-      
-      return alarms || [];
+      return await base44.entities.AlarmResponse.filter({ assigned_to: user.id, status: "arrived" }) || [];
     },
     enabled: !!user,
     refetchInterval: 15000,
-    retry: 1,
-    staleTime: 10000,
-    gcTime: 20000
+    staleTime: 10000
   });
 
   const { data: unreadMessages = 0 } = useQuery({
@@ -216,133 +141,64 @@ export default function GuardShift() {
     queryFn: async () => {
       if (!user) return 0;
       const allMessages = await base44.entities.ChatMessage.list("-created_date", 20);
-      const messageArray = Array.isArray(allMessages) ? allMessages : [];
-      const myMessages = messageArray.filter(m => 
-        (m.recipient_id === user.id || m.is_broadcast) && 
-        !(Array.isArray(m.read_by) && m.read_by.includes(user.id))
-      );
-      return myMessages.length;
+      const msgs = Array.isArray(allMessages) ? allMessages : [];
+      return msgs.filter(m => (m.recipient_id === user.id || m.is_broadcast) && !(Array.isArray(m.read_by) && m.read_by.includes(user.id))).length;
     },
     enabled: !!user && !shiftsLoading,
     refetchInterval: 60000,
-    retry: 0,
     staleTime: 50000,
-    gcTime: 120000,
-    refetchOnMount: false,
     refetchOnWindowFocus: false
   });
 
-  const { data: pendingTrainings = 0 } = useQuery({
-    queryKey: ["pendingTrainings", user?.id],
-    queryFn: async () => {
-      if (!user) return 0;
-      const trainings = await base44.entities.TrainingAssignment.filter({
-        assigned_to: user.id,
-        status: { $in: ["pending", "in_progress"] }
-      });
-      return Array.isArray(trainings) ? trainings.length : 0;
-    },
-    enabled: !!user && !shiftsLoading,
-    refetchInterval: 120000,
-    retry: 0,
-    staleTime: 100000,
-    gcTime: 240000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false
-  });
-
-  // Stay Awake Alert System
+  // Stay Awake system
   useEffect(() => {
     if (!user || !activeShift || !user.stay_awake_enabled) return;
-
-    // Initialize the last check time to now if not set (prevents immediate alert on clock-in)
-    if (!lastStayAwakeCheck.current) {
-      lastStayAwakeCheck.current = Date.now();
-    }
-
-    const checkStayAwake = () => {
-      const now = Date.now();
+    if (!lastStayAwakeCheck.current) lastStayAwakeCheck.current = Date.now();
+    const id = setInterval(() => {
       const interval = (user.stay_awake_interval_minutes || 30) * 60 * 1000;
-
-      if ((now - lastStayAwakeCheck.current) >= interval) {
-        lastStayAwakeCheck.current = now;
+      if (Date.now() - lastStayAwakeCheck.current >= interval) {
+        lastStayAwakeCheck.current = Date.now();
         setShowStayAwake(true);
       }
-    };
-
-    // Check every 30 seconds for more reliable triggering
-    const intervalId = setInterval(checkStayAwake, 30000);
-
-    return () => clearInterval(intervalId);
+    }, 30000);
+    return () => clearInterval(id);
   }, [user, activeShift]);
 
-  // Patrol Route Reminder System
+  // Patrol reminder system
   useEffect(() => {
     if (!user || !activeShift || !user.patrol_reminder_enabled) return;
-
-    // Initialize the last check time to now if not set (prevents immediate alert on clock-in)
-    if (!lastPatrolCheck.current) {
-      lastPatrolCheck.current = Date.now();
-    }
-
-    const checkPatrolReminder = () => {
-      const now = Date.now();
+    if (!lastPatrolCheck.current) lastPatrolCheck.current = Date.now();
+    const id = setInterval(() => {
       const interval = (user.patrol_reminder_interval_minutes || 60) * 60 * 1000;
-
-      if ((now - lastPatrolCheck.current) >= interval) {
-        lastPatrolCheck.current = now;
+      if (Date.now() - lastPatrolCheck.current >= interval) {
+        lastPatrolCheck.current = Date.now();
         setShowPatrolRoute(true);
       }
-    };
-
-    // Check every minute, but only show alert when interval has passed
-    const intervalId = setInterval(checkPatrolReminder, 60000);
-
-    return () => clearInterval(intervalId);
+    }, 60000);
+    return () => clearInterval(id);
   }, [user, activeShift]);
 
-  // Check for force sign out after clock out
-  // Check if daily report is needed after clock-in
   useEffect(() => {
-    if (user?.needs_daily_report && activeShift && user.is_clocked_in) {
-      setShowDailyReportModal(true);
-    }
+    if (user?.needs_daily_report && activeShift && user.is_clocked_in) setShowDailyReportModal(true);
   }, [user, activeShift]);
 
   useEffect(() => {
     if (user && !user.is_clocked_in && user.role_type === 'guard') {
-      const checkForceSignOut = async () => {
-        try {
-          const recentShift = await base44.entities.Shift.filter(
-            { guard_id: user.id, status: 'completed' },
-            '-clock_out.timestamp',
-            1
-          );
-
-          if (recentShift && recentShift.length > 0 && recentShift[0].clock_out) {
-            const clockOutTime = new Date(recentShift[0].clock_out.timestamp);
-            const now = new Date();
-            const minutesSinceClockOut = (now.getTime() - clockOutTime.getTime()) / 1000 / 60;
-
-            if (minutesSinceClockOut >= 0 && minutesSinceClockOut < 2) {
-              setShowForceSignOut(true);
-            }
-          }
-        } catch (error) {
-          console.error("Error checking sign out status:", error);
+      base44.entities.Shift.filter({ guard_id: user.id, status: 'completed' }, '-clock_out.timestamp', 1).then(recent => {
+        if (recent?.[0]?.clock_out) {
+          const mins = (Date.now() - new Date(recent[0].clock_out.timestamp).getTime()) / 60000;
+          if (mins >= 0 && mins < 2) setShowForceSignOut(true);
         }
-      };
-
-      checkForceSignOut();
+      });
     }
   }, [user]);
 
   if (loadingUser || shiftsLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400 mx-auto mb-4" />
-          <p className="text-slate-400">Loading your shift...</p>
+          <div className="w-16 h-16 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-400 text-sm">Loading your shift...</p>
         </div>
       </div>
     );
@@ -350,55 +206,38 @@ export default function GuardShift() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-slate-950 p-4">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-rose-400 mx-auto mb-4" />
-          <p className="text-white text-lg mb-2">Unable to load user data</p>
-          <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700">
-            Reload Page
-          </Button>
+          <p className="text-white text-lg mb-4">Unable to load user data</p>
+          <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700">Reload</Button>
         </div>
       </div>
     );
   }
 
-  if (showForceSignOut) {
-    return <ForceSignOutModal user={user} />;
-  }
+  if (showForceSignOut) return <ForceSignOutModal user={user} />;
+  if (!user.is_clocked_in && user.role_type === "guard") return <ClockInOut user={user} location={location} />;
 
-  // ENFORCE CLOCK-IN WORKFLOW FOR GUARDS
-  if (!user.is_clocked_in && user.role_type === "guard") {
-    return <ClockInOut user={user} location={location} />;
-  }
-
-  // MANDATORY DAILY REPORT AFTER CLOCK-IN
   if (showDailyReportModal && user?.needs_daily_report) {
     return (
-      <div className="fixed inset-0 bg-slate-900/98 z-50 overflow-hidden">
-        <div className="h-full flex flex-col">
-          <div className="bg-rose-500/20 border-b border-rose-500/50 p-4 flex-shrink-0">
-            <h2 className="text-xl font-bold text-white text-center">⚠️ Daily Report Required</h2>
-            <p className="text-slate-300 text-center mt-1">Complete your daily activity report to continue</p>
-          </div>
-          <iframe 
-            src={createPageUrl("DailyReport")} 
-            className="flex-1 w-full border-0"
-            title="Daily Report"
-          />
+      <div className="fixed inset-0 bg-slate-900/98 z-50 overflow-hidden flex flex-col">
+        <div className="bg-rose-500/20 border-b border-rose-500/50 p-4 shrink-0">
+          <h2 className="text-xl font-bold text-white text-center">⚠ Daily Report Required</h2>
+          <p className="text-slate-300 text-center mt-1 text-sm">Complete your daily activity report to continue</p>
         </div>
+        <iframe src={createPageUrl("DailyReport")} className="flex-1 w-full border-0" title="Daily Report" />
       </div>
     );
   }
 
   if (showTraining) {
     return (
-      <div className="min-h-screen p-4 lg:p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
+      <div className="min-h-screen bg-slate-950 p-4">
+        <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-white">Training Center</h1>
-            <Button variant="ghost" onClick={() => setShowTraining(false)}>
-              Back to Shift
-            </Button>
+            <h1 className="text-xl font-bold text-white">Training Center</h1>
+            <Button variant="ghost" onClick={() => setShowTraining(false)} className="text-slate-300">← Back</Button>
           </div>
           <GuardTrainingView user={user} />
         </div>
@@ -408,13 +247,11 @@ export default function GuardShift() {
 
   if (showReports) {
     return (
-      <div className="min-h-screen p-4 lg:p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
+      <div className="min-h-screen bg-slate-950 p-4">
+        <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-white">My Reports</h1>
-            <Button variant="ghost" onClick={() => setShowReports(false)}>
-              Back to Shift
-            </Button>
+            <h1 className="text-xl font-bold text-white">My Reports</h1>
+            <Button variant="ghost" onClick={() => setShowReports(false)} className="text-slate-300">← Back</Button>
           </div>
           <GeneratedReportsView user={user} />
         </div>
@@ -422,202 +259,203 @@ export default function GuardShift() {
     );
   }
 
+  const shiftDuration = activeShift ? Math.round((Date.now() - new Date(activeShift.start_time).getTime()) / 3600000 * 10) / 10 : 0;
+
   return (
-    <div className="min-h-screen p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-6">
-      <div className="max-w-4xl mx-auto w-full max-w-full">
-      <PatrolAssignmentAlert user={user} />
-      <AutoReportGenerator user={user} shift={activeShift} />
-      <LocationTracker 
-        user={user} 
-        shift={activeShift} 
-        enabled={!!activeShift && user.is_clocked_in} 
-      />
+    <PullToRefresh onRefresh={async () => { await queryClient.invalidateQueries(); }}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 pb-28">
 
-      {showStayAwake && (
-        <StayAwakeAlert
-          shift={activeShift}
-          user={user}
-          onConfirm={() => {
-            setShowStayAwake(false);
-            lastStayAwakeCheck.current = Date.now();
-          }}
-          location={location}
-        />
-      )}
+        {/* Background utilities */}
+        <PatrolAssignmentAlert user={user} />
+        <AutoReportGenerator user={user} shift={activeShift} />
+        <LocationTracker user={user} shift={activeShift} enabled={!!activeShift && user.is_clocked_in} />
 
-      {showPatrolRoute && (
-        <PatrolRouteGuidance
-          user={user}
-          shift={activeShift}
-          location={location}
-          onDismiss={() => {
-            setShowPatrolRoute(false);
-            lastPatrolCheck.current = Date.now();
-          }}
-        />
-      )}
-
-      {activeShift && (
-        <ShiftEndNotification
-          shift={activeShift}
-          user={user}
-          location={location}
-        />
-      )}
-
-      {user && <AlarmNotification user={user} />}
-
-      {alarmToComplete && (
-        <CompleteAlarmResponse
-          alarm={alarmToComplete}
-          onClose={() => setAlarmToComplete(null)}
-          onSuccess={() => {
-            setAlarmToComplete(null);
-            queryClient.invalidateQueries(["arrivedAlarms"]);
-          }}
-        />
-      )}
-
-      {Array.isArray(arrivedAlarms) && arrivedAlarms.length > 0 && (
-        <Card className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
-          <CardHeader className="p-3 sm:p-6">
-            <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
-              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 flex-shrink-0" />
-              <span className="truncate">On Scene - Complete Response</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 p-3 sm:p-6 pt-0">
-            {arrivedAlarms.map((alarm) => (
-              <div
-                key={alarm.id}
-                className="p-3 sm:p-4 bg-slate-800/50 rounded-lg border border-slate-700"
-              >
-                <h4 className="font-semibold text-white mb-1 text-sm sm:text-base truncate">
-                  {alarm.alarm_type.replace(/_/g, ' ').toUpperCase()}
-                </h4>
-                <p className="text-xs sm:text-sm text-slate-400 mb-3 line-clamp-2">{alarm.address}</p>
-                <Button
-                  onClick={() => setAlarmToComplete(alarm)}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-sm sm:text-base"
-                >
-                  Complete & Report
-                </Button>
+        {/* Header */}
+        <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${
+                user.is_clocked_in ? "bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-emerald-500/30" : "bg-slate-700"
+              }`}>
+                <Shield className="w-5 h-5 text-white" />
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {activeShift && (
-        <ActiveShiftCard shift={activeShift} user={user} location={location} />
-      )}
-
-      {activeShift && (
-        <PanicButton shiftId={activeShift.id} siteId={activeShift.site_id} />
-      )}
-
-      {Array.isArray(pendingAssignments) && pendingAssignments.length > 0 && (
-        <Card className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20">
-          <CardHeader className="p-3 sm:p-6">
-            <div className="flex items-center gap-2 flex-wrap">
-              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 flex-shrink-0" />
-              <CardTitle className="text-white text-base sm:text-lg">New Assignments</CardTitle>
-              <Badge className="bg-amber-500 text-xs sm:text-sm">{pendingAssignments.length}</Badge>
+              <div>
+                <h1 className="text-white font-bold text-base leading-tight">
+                  {user.full_name?.split(' ')[0] || "Guard"}
+                </h1>
+                <div className="flex items-center gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full ${user.is_clocked_in ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`} />
+                  <span className={`text-xs font-medium ${user.is_clocked_in ? "text-emerald-400" : "text-slate-400"}`}>
+                    {user.is_clocked_in ? `On Duty • ${shiftDuration}h` : "Off Duty"}
+                  </span>
+                </div>
+              </div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3 p-3 sm:p-6 pt-0">
-            {pendingAssignments.map((assignment) => (
-              <div
-                key={assignment.id}
-                className="p-3 sm:p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+
+            <div className="flex items-center gap-2">
+              {pendingAssignments.length > 0 && (
+                <div className="relative">
+                  <Bell className="w-5 h-5 text-amber-400" />
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {pendingAssignments.length}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={() => setShowChat(true)}
+                className="relative w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center"
               >
-                <div className="flex items-start justify-between mb-2 gap-2">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-white text-sm sm:text-base truncate">{assignment.title}</h4>
-                    <p className="text-xs sm:text-sm text-slate-400 line-clamp-2">{assignment.description}</p>
+                <MessageCircle className="w-4 h-4 text-slate-300" />
+                {unreadMessages > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {unreadMessages}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
+
+          {/* Alerts & Modals */}
+          <AnimatePresence>
+            {showStayAwake && (
+              <StayAwakeAlert shift={activeShift} user={user} onConfirm={() => { setShowStayAwake(false); lastStayAwakeCheck.current = Date.now(); }} location={location} />
+            )}
+            {showPatrolRoute && (
+              <PatrolRouteGuidance user={user} shift={activeShift} location={location} onDismiss={() => { setShowPatrolRoute(false); lastPatrolCheck.current = Date.now(); }} />
+            )}
+          </AnimatePresence>
+
+          {activeShift && <ShiftEndNotification shift={activeShift} user={user} location={location} />}
+          {user && <AlarmNotification user={user} />}
+
+          {alarmToComplete && (
+            <CompleteAlarmResponse alarm={alarmToComplete} onClose={() => setAlarmToComplete(null)} onSuccess={() => { setAlarmToComplete(null); queryClient.invalidateQueries(["arrivedAlarms"]); }} />
+          )}
+
+          {/* On-Scene Alarms */}
+          {arrivedAlarms.length > 0 && (
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+              <Card className="bg-gradient-to-r from-emerald-500/15 to-emerald-600/10 border-emerald-500/30">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-white flex items-center gap-2 text-base">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    On Scene — Complete Response
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 space-y-3">
+                  {arrivedAlarms.map(alarm => (
+                    <div key={alarm.id} className="bg-slate-800/60 rounded-xl p-3">
+                      <p className="text-white font-semibold text-sm">{alarm.alarm_type?.replace(/_/g, ' ').toUpperCase()}</p>
+                      <p className="text-slate-400 text-xs mt-0.5 mb-3">{alarm.address}</p>
+                      <Button onClick={() => setAlarmToComplete(alarm)} className="w-full bg-emerald-600 hover:bg-emerald-700 h-10">
+                        Complete & Report
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Active Shift Card */}
+          {activeShift && <ActiveShiftCard shift={activeShift} user={user} location={location} />}
+
+          {/* Panic Button */}
+          {activeShift && <PanicButton shiftId={activeShift.id} siteId={activeShift.site_id} />}
+
+          {/* Pending Assignments */}
+          {pendingAssignments.length > 0 && (
+            <Card className="bg-gradient-to-r from-amber-500/15 to-orange-500/10 border-amber-500/30">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-400" />
+                  <CardTitle className="text-white text-base">New Assignments</CardTitle>
+                  <Badge className="bg-amber-500 ml-auto">{pendingAssignments.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-3">
+                {pendingAssignments.map(assignment => (
+                  <div key={assignment.id} className="bg-slate-800/60 rounded-xl p-3">
+                    <div className="flex items-start gap-2 mb-3">
+                      <div className="flex-1">
+                        <p className="text-white font-semibold text-sm">{assignment.title}</p>
+                        <p className="text-slate-400 text-xs mt-0.5">{assignment.description}</p>
+                      </div>
+                      <Badge className={`shrink-0 text-xs ${assignment.priority === "critical" ? "bg-rose-500" : assignment.priority === "high" ? "bg-orange-500" : "bg-sky-500"}`}>
+                        {assignment.priority}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={async () => {
+                        await base44.entities.Assignment.update(assignment.id, { status: "accepted", accepted_at: new Date().toISOString() });
+                        queryClient.invalidateQueries(["pendingAssignments"]);
+                      }} className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-9">Accept</Button>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        await base44.entities.Assignment.update(assignment.id, { status: "declined" });
+                        queryClient.invalidateQueries(["pendingAssignments"]);
+                      }} className="flex-1 border-slate-600 text-slate-300 h-9">Decline</Button>
+                    </div>
                   </div>
-                  <Badge
-                    className={`flex-shrink-0 text-xs sm:text-sm ${
-                      assignment.priority === "critical"
-                        ? "bg-rose-500"
-                        : assignment.priority === "high"
-                        ? "bg-orange-500"
-                        : "bg-sky-500"
-                    }`}
-                  >
-                    {assignment.priority}
-                  </Badge>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      await base44.entities.Assignment.update(assignment.id, {
-                        status: "accepted",
-                        accepted_at: new Date().toISOString()
-                      });
-                      queryClient.invalidateQueries(["pendingAssignments"]);
-                    }}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm"
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      await base44.entities.Assignment.update(assignment.id, {
-                        status: "declined"
-                      });
-                      queryClient.invalidateQueries(["pendingAssignments"]);
-                    }}
-                    className="flex-1 border-slate-600 text-slate-300 text-xs sm:text-sm"
-                  >
-                    Decline
-                  </Button>
-                </div>
-              </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Quick Actions */}
+          <QuickActions location={location} shiftId={activeShift?.id} siteId={activeShift?.site_id} />
+
+          {/* Feature Grid */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { icon: GraduationCap, label: "Training", color: "from-purple-600 to-purple-700", action: () => setShowTraining(true), badge: null },
+              { icon: FileText, label: "Reports", color: "from-sky-600 to-sky-700", action: () => setShowReports(true), badge: null },
+              { icon: MapPin, label: "Access Log", color: "from-emerald-600 to-emerald-700", action: () => navigate(createPageUrl("AccessControl")), badge: null },
+            ].map(({ icon: Icon, label, color, action, badge }) => (
+              <button key={label} onClick={action} className={`bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all shadow-lg relative`}>
+                <Icon className="w-6 h-6 text-white mx-auto mb-1.5" />
+                <p className="text-white text-xs font-semibold">{label}</p>
+                {badge && (
+                  <span className="absolute top-2 right-2 w-5 h-5 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center">{badge}</span>
+                )}
+              </button>
             ))}
-          </CardContent>
-        </Card>
-      )}
+          </div>
 
-      <QuickActions location={location} shiftId={activeShift?.id} siteId={activeShift?.site_id} />
+          {/* No active shift setup */}
+          {!activeShift && <SystemSetup />}
 
-      {!activeShift && <SystemSetup />}
-
-      {Array.isArray(upcomingShifts) && upcomingShifts.length > 0 && (
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader className="p-3 sm:p-6">
-            <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
-              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-sky-400 flex-shrink-0" />
-              <span>Upcoming Shifts</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 p-3 sm:p-6 pt-0">
-            {upcomingShifts.map((shift) => (
-              <div
-                key={shift.id}
-                className="p-3 sm:p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:border-sky-500/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-white text-sm sm:text-base truncate">{shift.site_name}</h4>
-                    <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                      {new Date(shift.start_time).toLocaleString()} - 
-                      {new Date(shift.end_time).toLocaleTimeString()}
-                    </p>
+          {/* Upcoming Shifts */}
+          {upcomingShifts.length > 0 && (
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-white flex items-center gap-2 text-base">
+                  <Clock className="w-4 h-4 text-sky-400" />
+                  Upcoming Shifts
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-2">
+                {upcomingShifts.map(shift => (
+                  <div key={shift.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-700/50">
+                    <div>
+                      <p className="text-white text-sm font-semibold">{shift.site_name}</p>
+                      <p className="text-slate-400 text-xs mt-0.5">
+                        {new Date(shift.start_time).toLocaleDateString()} • {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="border-sky-500 text-sky-400 text-xs">{shift.status}</Badge>
                   </div>
-                  <Badge variant="outline" className="border-sky-500 text-sky-400 flex-shrink-0 text-xs sm:text-sm">
-                    {shift.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Chat Modal */}
+        {showChat && <GuardChat user={user} onClose={() => setShowChat(false)} />}
       </div>
-    </div>
+    </PullToRefresh>
   );
 }

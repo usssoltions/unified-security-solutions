@@ -1,32 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import {
-  Shield,
-  Radio,
-  Calendar,
-  AlertTriangle,
-  MapPin,
-  BarChart3,
-  Users,
-  Menu,
-  X,
-  LogOut,
-  Bell,
-  Package,
-  Sliders,
-  RefreshCw,
-  Sparkles,
-  Zap,
-  FileText,
-  Mic,
-  Clock,
-  ArrowLeft,
-  UserCircle,
-  Wrench,
-  QrCode,
-  MessageCircle
+  Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
+  Menu, X, LogOut, Bell, Package, Sliders, RefreshCw, Sparkles, Zap,
+  FileText, Mic, Clock, ArrowLeft, UserCircle, Wrench, QrCode, MessageCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,21 +19,13 @@ import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
 import BackgroundNotificationManager from "@/components/BackgroundNotificationManager";
 import ThemeProvider from "@/components/ThemeProvider";
-import { AnimatePresence, motion } from "framer-motion";
 import IncomingCallHandler from "@/components/IncomingCallHandler";
 
-// Tab state context for preserving navigation history
-const TabStateContext = React.createContext({
-  tabStates: {},
-  updateTabState: () => {},
-  navigateToTab: () => {}
-});
-
+const TabStateContext = React.createContext({ tabStates: {}, updateTabState: () => {}, navigateToTab: () => {} });
 export const useTabState = () => React.useContext(TabStateContext);
 
 export default function Layout({ children, currentPageName }) {
   const [tabStates, setTabStates] = React.useState({
-    // Initialize with root URLs for each tab
     guard: { url: createPageUrl("GuardShift"), root: createPageUrl("GuardShift") },
     incidents: { url: createPageUrl("GuardIncidents"), root: createPageUrl("GuardIncidents") },
     maintenance: { url: createPageUrl("GuardMaintenance"), root: createPageUrl("GuardMaintenance") },
@@ -64,6 +35,7 @@ export default function Layout({ children, currentPageName }) {
     scheduling: { url: createPageUrl("Scheduling"), root: createPageUrl("Scheduling") },
     sites: { url: createPageUrl("SiteManagement"), root: createPageUrl("SiteManagement") }
   });
+
   const location = useLocation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -77,22 +49,14 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     sessionStorage.setItem('guard_session_active', 'true');
     loadUser();
-    
-    // Wake lock
     let wakeLock = null;
     const requestWakeLock = async () => {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-        }
-      } catch (err) {
-        // Silent fail
+      if ('wakeLock' in navigator) {
+        try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
       }
     };
-    
     requestWakeLock();
     document.addEventListener('visibilitychange', requestWakeLock);
-    
     return () => {
       if (wakeLock) wakeLock.release();
       document.removeEventListener('visibilitychange', requestWakeLock);
@@ -101,27 +65,17 @@ export default function Layout({ children, currentPageName }) {
 
   useEffect(() => {
     if (user) {
-      // Delay initial load to avoid rate limiting on startup
       const initialDelay = setTimeout(loadNotificationCount, 5000);
       const interval = setInterval(loadNotificationCount, 90000);
-      return () => {
-        clearTimeout(initialDelay);
-        clearInterval(interval);
-      };
+      return () => { clearTimeout(initialDelay); clearInterval(interval); };
     }
   }, [user]);
 
-  // Keep-alive mechanism
   useEffect(() => {
     if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
       const keepAlive = setInterval(async () => {
-        try {
-          await base44.auth.me();
-        } catch (error) {
-          // Silent fail
-        }
+        try { await base44.auth.me(); } catch (e) {}
       }, 15 * 60 * 1000);
-      
       return () => clearInterval(keepAlive);
     }
   }, [user]);
@@ -131,65 +85,32 @@ export default function Layout({ children, currentPageName }) {
       const currentUser = await base44.auth.me();
       setUser(currentUser);
       setError(null);
-      setLoading(false);
     } catch (err) {
-      console.error("Failed to load user:", err);
-      // Only set error after multiple retries
-      if (retryCount >= 2) {
-        setError(err);
-      }
+      if (retryCount >= 2) setError(err);
+    } finally {
       setLoading(false);
     }
   };
 
   const loadNotificationCount = async () => {
+    if (!user) return;
     try {
-      const notifications = await base44.entities.Notification.filter({ 
-        recipient_id: user.id,
-        read: false 
-      });
+      const notifications = await base44.entities.Notification.filter({ recipient_id: user.id, read: false });
       setNotificationCount(notifications.length);
-    } catch (error) {
-      // Silent fail - non-critical functionality
-    }
+    } catch (e) {}
   };
 
   const handleLogout = async () => {
-    try {
-      // Clear all state including session marker
-      localStorage.clear();
-      sessionStorage.clear();
-      
-      // Logout and let Base44 handle redirect
-      await base44.auth.logout();
-    } catch (err) {
-      // Force clear and reload
-      localStorage.clear();
-      sessionStorage.clear();
-      window.location.reload();
-    }
-  };
-
-  const handleRetry = () => {
-    setRetryCount(prev => prev + 1);
+    localStorage.clear();
+    sessionStorage.clear();
+    await base44.auth.logout();
   };
 
   const updateTabState = React.useCallback((tabName, url) => {
-    setTabStates(prev => ({
-      ...prev,
-      [tabName]: {
-        ...prev[tabName],
-        url: url,
-        lastVisited: Date.now()
-      }
-    }));
+    setTabStates(prev => ({ ...prev, [tabName]: { ...prev[tabName], url, lastVisited: Date.now() } }));
   }, []);
 
-  // Track current URL for each tab
   React.useEffect(() => {
-    const currentPath = location.pathname;
-    
-    // Map paths to tabs
     const tabMapping = {
       [createPageUrl("GuardShift")]: "guard",
       [createPageUrl("GuardIncidents")]: "incidents",
@@ -200,32 +121,26 @@ export default function Layout({ children, currentPageName }) {
       [createPageUrl("Scheduling")]: "scheduling",
       [createPageUrl("SiteManagement")]: "sites"
     };
-
-    const tabName = tabMapping[currentPath];
-    if (tabName) {
-      updateTabState(tabName, currentPath);
-    }
+    const tabName = tabMapping[location.pathname];
+    if (tabName) updateTabState(tabName, location.pathname);
   }, [location.pathname, updateTabState]);
 
   const navigateToTab = React.useCallback((tabName) => {
     const tabState = tabStates[tabName];
     if (!tabState) return;
-
-    // If already on this tab, reset to root
     if (location.pathname === tabState.url && tabState.url !== tabState.root) {
       navigate(tabState.root);
     } else {
-      // Navigate to last saved URL for this tab
       navigate(tabState.url);
     }
   }, [tabStates, location.pathname, navigate]);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400 mx-auto mb-4" />
-          <p className="text-slate-400">Loading Security Guard System...</p>
+          <div className="w-16 h-16 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-400 text-sm">Loading SecureGuard...</p>
         </div>
       </div>
     );
@@ -233,26 +148,16 @@ export default function Layout({ children, currentPageName }) {
 
   if (error && !user && retryCount >= 2) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-        <div className="text-center max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6">
+        <div className="text-center max-w-sm">
           <Shield className="w-16 h-16 text-amber-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Unable to Load</h1>
-          <p className="text-slate-400 mb-6">
-            Having trouble loading your session. Please try refreshing the page.
-          </p>
-          <div className="flex gap-3 justify-center">
-            <Button 
-              onClick={() => window.location.reload()} 
-              className="bg-sky-500 hover:bg-sky-600"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Reload Page
+          <h1 className="text-2xl font-bold text-white mb-2">Connection Error</h1>
+          <p className="text-slate-400 mb-6 text-sm">Having trouble connecting. Please check your internet and try again.</p>
+          <div className="flex flex-col gap-3">
+            <Button onClick={() => window.location.reload()} className="bg-sky-500 hover:bg-sky-600">
+              <RefreshCw className="w-4 h-4 mr-2" /> Reload App
             </Button>
-            <Button 
-              onClick={() => base44.auth.redirectToLogin()}
-              variant="outline" 
-              className="border-slate-600 text-slate-300"
-            >
+            <Button onClick={() => base44.auth.redirectToLogin()} variant="outline" className="border-slate-600 text-slate-300">
               Log In Again
             </Button>
           </div>
@@ -263,13 +168,15 @@ export default function Layout({ children, currentPageName }) {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6">
         <div className="text-center">
-          <Shield className="w-16 h-16 text-sky-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Security Guard Management</h1>
-          <p className="text-slate-400 mb-6">Please log in to continue</p>
-          <Button onClick={() => base44.auth.redirectToLogin()} className="bg-sky-500 hover:bg-sky-600">
-            Log In
+          <div className="w-20 h-20 bg-gradient-to-br from-sky-400 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-sky-500/30">
+            <Shield className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">SecureGuard</h1>
+          <p className="text-slate-400 mb-8">Professional Security Management</p>
+          <Button onClick={() => base44.auth.redirectToLogin()} className="bg-sky-500 hover:bg-sky-600 h-12 px-8 text-base shadow-lg shadow-sky-500/30">
+            Sign In
           </Button>
         </div>
       </div>
@@ -278,7 +185,6 @@ export default function Layout({ children, currentPageName }) {
 
   const getNavigationItems = () => {
     const role = user.role_type;
-
     if (role === "guard") {
       return [
         { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield, isRoot: true },
@@ -289,14 +195,15 @@ export default function Layout({ children, currentPageName }) {
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
+        { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
-
     if (role === "dispatcher" || role === "admin") {
       return [
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
         { title: "Incident Queue", url: createPageUrl("AdminIncidents"), icon: AlertTriangle },
+        { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "PTT Recordings", url: createPageUrl("PTTRecordings"), icon: Radio },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
@@ -312,13 +219,10 @@ export default function Layout({ children, currentPageName }) {
         { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Stay Awake", url: createPageUrl("StayAwakeConfiguration"), icon: Zap },
-        { title: "Test Data Manager", url: createPageUrl("TestDataManager"), icon: RefreshCw },
-        { title: "OneSignal Test", url: createPageUrl("OneSignalTest"), icon: Bell },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
-
     if (role === "resident") {
       return [
         { title: "Home", url: createPageUrl("ResidentDashboard"), icon: Users, isRoot: true },
@@ -331,7 +235,6 @@ export default function Layout({ children, currentPageName }) {
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
-
     if (role === "estate_manager") {
       return [
         { title: "Dashboard", url: createPageUrl("EstateManagerDashboard"), icon: BarChart3, isRoot: true },
@@ -341,18 +244,15 @@ export default function Layout({ children, currentPageName }) {
         { title: "Levy Management", url: createPageUrl("EstateLevy"), icon: Sliders },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "Security", url: createPageUrl("ControlRoom"), icon: Shield },
-        { title: "Announcements", url: createPageUrl("EstateManagerDashboard"), icon: Bell },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
-
     if (role === "vendor") {
       return [
         { title: "My Portal", url: createPageUrl("VendorPortal"), icon: Package, isRoot: true },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
-
     if (role === "client") {
       return [
         { title: "Dashboard", url: createPageUrl("ClientDashboard"), icon: BarChart3, isRoot: true },
@@ -361,29 +261,23 @@ export default function Layout({ children, currentPageName }) {
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
-
     return [];
   };
 
   const navigationItems = getNavigationItems();
-  const isRootPage = navigationItems.some(
-    item => item.isRoot && location.pathname === item.url
-  );
+  const isRootPage = navigationItems.some(item => item.isRoot && location.pathname === item.url);
   const canGoBack = !isRootPage && window.history.length > 1;
 
-  // Mobile bottom nav configuration
   const getMobileNavItems = () => {
     const role = user.role_type;
-
     if (role === "guard") {
       return [
-        { title: "My Shift", tab: "guard", icon: Shield, color: "text-emerald-400" },
+        { title: "Shift", tab: "guard", icon: Shield, color: "text-emerald-400" },
         { title: "Incidents", tab: "incidents", icon: AlertTriangle, color: "text-rose-400" },
         { title: "Maintenance", tab: "maintenance", icon: Wrench, color: "text-amber-400" },
-        { title: "Scan QR", tab: "qr", icon: QrCode, color: "text-sky-400" }
+        { title: "QR Scan", tab: "qr", icon: QrCode, color: "text-sky-400" }
       ];
     }
-
     if (role === "dispatcher" || role === "admin") {
       return [
         { title: "Control", tab: "control", icon: Radio, color: "text-sky-400" },
@@ -392,12 +286,15 @@ export default function Layout({ children, currentPageName }) {
         { title: "Sites", tab: "sites", icon: MapPin, color: "text-amber-400" }
       ];
     }
-
-    // Resident and estate manager roles don't use the bottom tab system
     return [];
   };
 
   const mobileNavItems = getMobileNavItems();
+
+  const roleLabel = {
+    guard: "Security Guard", dispatcher: "Dispatcher", admin: "Administrator",
+    resident: "Resident", estate_manager: "Estate Manager", vendor: "Vendor", client: "Client"
+  }[user.role_type] || user.role_type;
 
   return (
     <TabStateContext.Provider value={{ tabStates, updateTabState, navigateToTab }}>
@@ -411,219 +308,202 @@ export default function Layout({ children, currentPageName }) {
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
           {user && <IncomingCallHandler user={user} />}
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 w-full max-w-full overflow-x-hidden">
-        <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50 w-full" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-          <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {/* Back button on mobile child screens, logo on root screens */}
-              {canGoBack ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => navigate(-1)}
-                  className="text-slate-300 hover:text-white lg:hidden"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-              ) : (
-                <Shield className="w-8 h-8 text-sky-400 lg:hidden" />
-              )}
 
-              {/* Desktop always shows logo and title */}
-              <Shield className="w-8 h-8 text-sky-400 hidden lg:block" />
-              <div className="hidden lg:block">
-                <h1 className="font-bold text-white text-lg">
-                  {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
-                </h1>
-                <p className="text-xs text-slate-400 capitalize">{user.role_type?.replace("_", " ")} Portal</p>
-              </div>
-              
-              {/* Mobile: show title only on root pages */}
-              {!canGoBack && (
-                <div className="lg:hidden">
-                  <h1 className="font-bold text-white text-lg">
-                    {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
-                  </h1>
-                  <p className="text-xs text-slate-400 capitalize">{user.role_type?.replace("_", " ")} Portal</p>
+          <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 w-full max-w-full overflow-x-hidden">
+            {/* Header */}
+            <header className="bg-slate-900/90 backdrop-blur-xl border-b border-slate-700/50 sticky top-0 z-50 w-full" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+              <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {canGoBack ? (
+                    <button onClick={() => navigate(-1)} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-800 text-slate-300 lg:hidden">
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+                  ) : (
+                    <div className="w-9 h-9 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-500/30 lg:hidden">
+                      <Shield className="w-5 h-5 text-white" />
+                    </div>
+                  )}
+
+                  <div className="w-9 h-9 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl hidden lg:flex items-center justify-center shadow-lg shadow-sky-500/30">
+                    <Shield className="w-5 h-5 text-white" />
+                  </div>
+                  
+                  {!canGoBack && (
+                    <div className="lg:hidden">
+                      <h1 className="font-bold text-white text-base leading-tight">
+                        {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
+                      </h1>
+                      <p className="text-xs text-slate-400">{roleLabel}</p>
+                    </div>
+                  )}
+                  <div className="hidden lg:block">
+                    <h1 className="font-bold text-white text-base leading-tight">
+                      {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
+                    </h1>
+                    <p className="text-xs text-slate-400">{roleLabel}</p>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div className="flex items-center gap-2 md:gap-3">
-              {/* Mobile Menu Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setMobileMenuOpen(true)}
-                className="lg:hidden text-slate-300 hover:text-white"
-              >
-                <Menu className="w-5 h-5" />
-              </Button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300">
+                    <Menu className="w-5 h-5" />
+                  </button>
 
-              {/* Current User Display - Mobile */}
-              <div className="md:hidden flex items-center gap-2 px-2 py-1 bg-slate-800/50 rounded-lg">
-                <div className="w-7 h-7 bg-sky-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-semibold text-xs">
-                    {user.full_name?.[0]?.toUpperCase() || "U"}
-                  </span>
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-medium text-white truncate max-w-[100px]">{user.full_name}</p>
-                  <p className="text-xs text-slate-400 capitalize">{user.role_type}</p>
-                </div>
-              </div>
+                  <button
+                    onClick={() => setShowNotifications(true)}
+                    className="relative w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {notificationCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                        {notificationCount > 9 ? '9+' : notificationCount}
+                      </span>
+                    )}
+                  </button>
 
-              <button 
-                className="relative text-slate-300 hover:text-white transition-colors p-2 rounded-lg hover:bg-slate-800"
-                onClick={() => setShowNotifications(true)}
-                aria-label="Notifications"
-              >
-                <Bell className="w-5 h-5" />
-                {notificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center bg-rose-500 text-white text-xs font-bold rounded-full">
-                    {notificationCount > 9 ? '9+' : notificationCount}
-                  </span>
-                )}
-              </button>
+                  <div className="hidden md:flex items-center gap-2 bg-slate-800/80 rounded-xl px-3 py-2">
+                    <div className="w-7 h-7 bg-gradient-to-br from-sky-400 to-blue-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-xs">{user.full_name?.[0]?.toUpperCase() || "U"}</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">{user.full_name}</p>
+                      <p className="text-xs text-slate-400">{user.badge_number || user.email}</p>
+                    </div>
+                  </div>
 
-              {/* Current User Display - Desktop */}
-              <div className="hidden md:flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-lg">
-                <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-semibold text-sm">
-                    {user.full_name?.[0]?.toUpperCase() || "U"}
-                  </span>
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-white">{user.full_name}</p>
-                  <p className="text-xs text-slate-400">{user.badge_number || user.email}</p>
+                  <button onClick={handleLogout} className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-400 transition-colors">
+                    <LogOut className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleLogout} className="text-slate-300">
-                <LogOut className="w-5 h-5" />
-              </Button>
-            </div>
-            </div>
             </header>
 
-        <div className="flex flex-col lg:flex-row w-full max-w-full">
-          <aside className="hidden lg:flex flex-col w-full lg:w-64 bg-slate-900/60 backdrop-blur-lg lg:border-r border-slate-700/50 min-h-screen flex-shrink-0 safe-area-bottom">
-            <nav className="flex-1 p-4 space-y-2">
-              {navigationItems.map((item) => (
-                <Link
-                  key={item.title}
-                  to={item.url}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                    location.pathname === item.url
-                      ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20"
-                      : "text-slate-300 hover:bg-slate-800"
-                  }`}
-                >
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.title}</span>
-                </Link>
-              ))}
-            </nav>
+            <div className="flex flex-col lg:flex-row w-full max-w-full">
+              {/* Desktop Sidebar */}
+              <aside className="hidden lg:flex flex-col w-64 bg-slate-900/60 backdrop-blur-lg border-r border-slate-700/50 min-h-screen shrink-0">
+                <div className="p-4 border-b border-slate-700/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center">
+                      <span className="text-white font-bold">{user.full_name?.[0]?.toUpperCase() || "U"}</span>
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold text-sm">{user.full_name}</p>
+                      <p className="text-slate-400 text-xs">{roleLabel}</p>
+                    </div>
+                  </div>
+                </div>
+                <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+                  {navigationItems.map((item) => (
+                    <Link
+                      key={item.title}
+                      to={item.url}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium ${
+                        location.pathname === item.url
+                          ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                          : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                      }`}
+                    >
+                      <item.icon className="w-4 h-4 shrink-0" />
+                      {item.title}
+                    </Link>
+                  ))}
+                </nav>
+                {user.role_type === "guard" && user.is_clocked_in && (
+                  <div className="p-4 border-t border-slate-700/50">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                      <span className="text-emerald-400 text-sm font-medium">On Duty</span>
+                    </div>
+                  </div>
+                )}
+              </aside>
 
-            {user.role_type === "guard" && user.is_clocked_in && (
-              <div className="p-4 border-t border-slate-700/50">
-                <div className="px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                  <div className="flex items-center gap-2 text-emerald-400">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-sm font-medium">On Duty</span>
+              <main className="flex-1 min-h-screen w-full max-w-full overflow-x-hidden">
+                <div className="pb-24 md:pb-6 w-full max-w-full">
+                  {children}
+                </div>
+              </main>
+            </div>
+
+            {showNotifications && (
+              <NotificationCenter user={user} onClose={() => { setShowNotifications(false); loadNotificationCount(); }} />
+            )}
+
+            {/* Mobile Drawer */}
+            {mobileMenuOpen && (
+              <div className="fixed inset-0 z-50 lg:hidden">
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
+                <div className="absolute top-0 left-0 bottom-0 w-72 bg-slate-900 border-r border-slate-700 flex flex-col">
+                  <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center">
+                        <span className="text-white font-bold">{user.full_name?.[0]?.toUpperCase() || "U"}</span>
+                      </div>
+                      <div>
+                        <p className="text-white font-semibold text-sm">{user.full_name}</p>
+                        <p className="text-slate-400 text-xs">{roleLabel}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setMobileMenuOpen(false)} className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-slate-400">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+                    {navigationItems.map((item) => (
+                      <Link
+                        key={item.title}
+                        to={item.url}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-medium ${
+                          location.pathname === item.url
+                            ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                            : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        {item.title}
+                      </Link>
+                    ))}
+                  </nav>
+                  <div className="p-4 border-t border-slate-700">
+                    <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-3 text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors text-sm font-medium">
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
                   </div>
                 </div>
               </div>
             )}
-          </aside>
 
-          <main className="flex-1 min-h-screen w-full max-w-full overflow-x-hidden pb-0 md:pb-0">
-            <div className="pb-24 md:pb-0 w-full max-w-full">
-              {children}
-            </div>
-          </main>
-          </div>
-
-        {showNotifications && (
-          <NotificationCenter
-            user={user}
-            onClose={() => {
-              setShowNotifications(false);
-              loadNotificationCount();
-            }}
-          />
-        )}
-
-        {/* Mobile Menu Drawer */}
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden">
-            <div 
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            <div className="absolute top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-slate-900 border-r border-slate-700 overflow-y-auto">
-              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Menu</h2>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="text-slate-400"
-                >
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
-              <nav className="p-4 space-y-2">
-                {navigationItems.map((item) => (
-                  <Link
-                    key={item.title}
-                    to={item.url}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                      location.pathname === item.url
-                        ? "bg-sky-500 text-white"
-                        : "text-slate-300 hover:bg-slate-800"
-                    }`}
-                  >
-                    <item.icon className="w-5 h-5" />
-                    <span className="font-medium">{item.title}</span>
-                  </Link>
-                ))}
+            {/* Mobile Bottom Navigation */}
+            {mobileNavItems.length > 0 && (
+              <nav
+                className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/98 backdrop-blur-xl border-t border-slate-700/50 z-50"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+              >
+                <div className="flex justify-around items-center h-16">
+                  {mobileNavItems.map((item) => {
+                    const Icon = item.icon;
+                    const tabState = tabStates[item.tab];
+                    const isActive = tabState && location.pathname === tabState.url;
+                    return (
+                      <button
+                        key={item.tab}
+                        onClick={() => navigateToTab(item.tab)}
+                        className={`flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-all ${isActive ? item.color : 'text-slate-500'}`}
+                      >
+                        <Icon className={`w-5 h-5 ${isActive ? 'scale-110' : ''} transition-transform`} />
+                        <span className="text-xs font-medium">{item.title}</span>
+                        {isActive && <div className={`w-1 h-1 rounded-full ${item.color.replace('text-', 'bg-')}`} />}
+                      </button>
+                    );
+                  })}
+                </div>
               </nav>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Mobile Bottom Navigation */}
-        {mobileNavItems.length > 0 && (
-          <nav 
-            className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-700/50 z-50" 
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-          >
-            <div className="flex justify-around items-center h-16">
-              {mobileNavItems.map((item) => {
-                const Icon = item.icon;
-                const tabState = tabStates[item.tab];
-                const isActive = tabState && location.pathname === tabState.url;
-                
-                return (
-                  <button
-                    key={item.tab}
-                    onClick={() => navigateToTab(item.tab)}
-                    className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
-                      isActive ? item.color : 'text-slate-400'
-                    }`}
-                  >
-                    <Icon className={`w-6 h-6 mb-1 ${isActive ? 'scale-110' : ''} transition-transform`} />
-                    <span className="text-xs font-medium">{item.title}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-        )}
-      </div>
-      </ErrorBoundary>
+        </ErrorBoundary>
       </ThemeProvider>
-      </TabStateContext.Provider>
-      );
-      }
+    </TabStateContext.Provider>
+  );
+}
