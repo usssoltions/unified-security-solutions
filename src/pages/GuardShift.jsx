@@ -70,19 +70,29 @@ export default function GuardShift() {
     setLoadingUser(false);
   };
 
+  const lastLocationUpdate = useRef(0);
+
   const startLocationTracking = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.watchPosition(
       async (position) => {
         const newLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
         setLocation(newLocation);
-        const currentUser = await base44.auth.me();
-        if (currentUser?.is_clocked_in) {
-          await base44.auth.updateMe({ last_location: { ...newLocation, timestamp: new Date().toISOString() } });
-        }
+        // Throttle API updates to once every 60 seconds max
+        const now = Date.now();
+        if (now - lastLocationUpdate.current < 60000) return;
+        lastLocationUpdate.current = now;
+        // Use the already-loaded user state instead of calling me() again
+        setUser(prev => {
+          if (prev?.is_clocked_in) {
+            base44.auth.updateMe({ last_location: { ...newLocation, timestamp: new Date().toISOString() } })
+              .catch(() => {});
+          }
+          return prev;
+        });
       },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
     );
   };
 
