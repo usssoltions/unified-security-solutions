@@ -29,6 +29,7 @@ import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
 import PanicButton from "../components/guard/PanicButton";
 import PatrolAssignmentAlert from "../components/guard/PatrolAssignmentAlert";
+import OfflineSyncManager from "../components/guard/OfflineSyncManager";
 import SystemSetup from "../components/SystemSetup";
 
 export default function GuardShift() {
@@ -281,6 +282,7 @@ export default function GuardShift() {
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 pb-28">
 
         {/* Background utilities */}
+        <OfflineSyncManager />
         <PatrolAssignmentAlert user={user} />
         <AutoReportGenerator user={user} shift={activeShift} />
         <LocationTracker user={user} shift={activeShift} enabled={!!activeShift && user.is_clocked_in} />

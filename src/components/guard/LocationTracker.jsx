@@ -1,81 +1,73 @@
 import { useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
+import { saveOffline, isOnline } from '@/lib/offlineDB';
 
-export default function LocationTracker({ user, activeShift }) {
+export default function LocationTracker({ user, shift, enabled }) {
   const watchIdRef = useRef(null);
-  const lastUpdateRef = useRef(null);
+  const lastUpdateRef = useRef(0);
 
   useEffect(() => {
-    if (!user || !activeShift || !('geolocation' in navigator)) {
-      return;
-    }
+    if (!enabled || !user || !shift || !('geolocation' in navigator)) return;
 
-    const startTracking = () => {
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      };
+    const handleSuccess = async (position) => {
+      const now = Date.now();
+      // Throttle to once per 60 seconds
+      if (now - lastUpdateRef.current < 60000) return;
+      lastUpdateRef.current = now;
 
-      const handleSuccess = async (position) => {
-        const now = Date.now();
-        
-        // Rate limit: only update every 10 seconds
-        if (lastUpdateRef.current && now - lastUpdateRef.current < 10000) {
-          return;
-        }
-
+      const getBattery = async () => {
         try {
-          await base44.entities.LocationTracking.create({
-            guard_id: user.id,
-            guard_name: user.full_name,
-            badge_number: user.badge_number,
-            shift_id: activeShift.id,
-            location: {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude
-            },
-            accuracy: position.coords.accuracy,
-            speed: position.coords.speed || 0,
-            heading: position.coords.heading || 0,
-            status: 'active',
-            battery_level: navigator.getBattery ? 
-              await navigator.getBattery().then(b => Math.round(b.level * 100)) : 
-              null,
-            timestamp: new Date().toISOString()
-          });
-
-          lastUpdateRef.current = now;
-          console.log('Location updated:', position.coords);
-        } catch (error) {
-          console.error('Failed to save location:', error);
-        }
+          if (navigator.getBattery) {
+            const b = await navigator.getBattery();
+            return Math.round(b.level * 100);
+          }
+        } catch {}
+        return null;
       };
 
-      const handleError = (error) => {
-        console.warn('Location error:', error.message);
+      const record = {
+        guard_id: user.id,
+        guard_name: user.full_name,
+        badge_number: user.badge_number,
+        shift_id: shift.id,
+        location: {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        },
+        accuracy: position.coords.accuracy,
+        speed: position.coords.speed || 0,
+        heading: position.coords.heading || 0,
+        status: 'active',
+        battery_level: await getBattery(),
+        timestamp: new Date().toISOString(),
       };
 
-      // Start watching position
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        handleSuccess,
-        handleError,
-        options
-      );
+      if (!isOnline()) {
+        await saveOffline('pending_location', record);
+        return;
+      }
 
-      console.log('Location tracking started for', user.full_name);
+      try {
+        await base44.entities.LocationTracking.create(record);
+      } catch (e) {
+        // Save locally on any failure (rate limit, network error, etc.)
+        await saveOffline('pending_location', record);
+      }
     };
 
-    startTracking();
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      handleSuccess,
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+    );
 
-    // Cleanup
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
-        console.log('Location tracking stopped');
+        watchIdRef.current = null;
       }
     };
-  }, [user, activeShift]);
+  }, [enabled, user, shift]);
 
-  return null; // This is a background component
+  return null;
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -326,7 +327,7 @@ export default function QRScanner() {
     setSubmitting(true);
 
     try {
-      await base44.entities.PatrolLog.create({
+      const patrolRecord = {
         guard_id: user.id,
         guard_name: user.full_name,
         shift_id: shift.id,
@@ -338,7 +339,19 @@ export default function QRScanner() {
         timestamp: scanTimestamp,
         verified: distanceFromCheckpoint !== null ? distanceFromCheckpoint <= 100 : true,
         notes: notes
-      });
+      };
+
+      if (!isOnline()) {
+        await saveOffline('pending_patrol', patrolRecord);
+        alert("✅ Checkpoint saved offline — will sync when connection is restored.");
+        setScannedData(null); setCheckpoint(null); setChecklistItems([]);
+        setNotes(""); setPhotos([]); setVideos([]); setSignature(null);
+        setScanTimestamp(null); setScanLocation(null);
+        setSubmitting(false);
+        return;
+      }
+
+      await base44.entities.PatrolLog.create(patrolRecord);
 
       if (checklistItems.length > 0) {
         await base44.entities.ChecklistCompletion.create({
@@ -385,7 +398,21 @@ export default function QRScanner() {
       setScanLocation(null);
       
     } catch (error) {
-      alert("Failed to submit checkpoint scan: " + error.message);
+      // If server failed, try saving locally
+      try {
+        await saveOffline('pending_patrol', {
+          guard_id: user.id, guard_name: user.full_name,
+          shift_id: shift.id, site_id: shift.site_id,
+          checkpoint_id: checkpoint?.id, checkpoint_name: checkpoint?.name,
+          location: scanLocation, timestamp: scanTimestamp, notes
+        });
+        alert("⚠️ Server unavailable — checkpoint saved offline and will sync automatically.");
+        setScannedData(null); setCheckpoint(null); setChecklistItems([]);
+        setNotes(""); setPhotos([]); setVideos([]); setSignature(null);
+        setScanTimestamp(null); setScanLocation(null);
+      } catch {
+        alert("Failed to submit checkpoint scan: " + error.message);
+      }
     } finally {
       setSubmitting(false);
     }
