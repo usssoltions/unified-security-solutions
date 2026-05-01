@@ -60,14 +60,19 @@ export default function GuardShift() {
     setLoadingUser(true);
     const currentUser = await base44.auth.me();
     setUser(currentUser);
-    if (currentUser.role_type === 'guard') {
-      const activeShifts = await base44.entities.Shift.filter({ guard_id: currentUser.id, status: "active" });
-      if (activeShifts.length === 0 && currentUser.is_clocked_in) {
-        await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
-        setUser({ ...currentUser, is_clocked_in: false, current_shift_id: null });
-      }
-    }
     setLoadingUser(false);
+    // Defer the shift-sync check by 5s to avoid startup rate limits
+    if (currentUser.role_type === 'guard' && currentUser.is_clocked_in) {
+      setTimeout(async () => {
+        try {
+          const activeShifts = await base44.entities.Shift.filter({ guard_id: currentUser.id, status: "active" });
+          if (activeShifts.length === 0) {
+            await base44.auth.updateMe({ is_clocked_in: false, current_shift_id: null });
+            setUser(prev => ({ ...prev, is_clocked_in: false, current_shift_id: null }));
+          }
+        } catch (e) {}
+      }, 5000);
+    }
   };
 
   const lastLocationUpdate = useRef(0);
