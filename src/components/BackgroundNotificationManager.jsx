@@ -19,9 +19,10 @@ export default function BackgroundNotificationManager({ user }) {
         }
       };
 
-      updateBadge();
-      const badgeInterval = setInterval(updateBadge, 10000);
-      return () => clearInterval(badgeInterval);
+      // Delay initial badge update to avoid startup rate limits
+      const initialTimeout = setTimeout(updateBadge, 15000);
+      const badgeInterval = setInterval(updateBadge, 120000);
+      return () => { clearTimeout(initialTimeout); clearInterval(badgeInterval); };
     }
   }, [user]);
 

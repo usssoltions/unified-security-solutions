@@ -193,10 +193,11 @@ export default function IncidentEscalationMonitor({ user }) {
       }
     };
 
-    checkEscalations();
-    const interval = setInterval(checkEscalations, 5 * 60 * 1000);
+    // Delay initial check by 30s to avoid startup rate limits
+    const initialTimeout = setTimeout(checkEscalations, 30000);
+    const interval = setInterval(checkEscalations, 10 * 60 * 1000); // every 10 min
 
-    return () => clearInterval(interval);
+    return () => { clearTimeout(initialTimeout); clearInterval(interval); };
   }, [user, lastCheck]);
 
   return null;

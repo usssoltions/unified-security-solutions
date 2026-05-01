@@ -31,7 +31,7 @@ export default function RealTimeAlertMonitor({ user }) {
       }, "-created_date", 50);
       return alerts;
     },
-    refetchInterval: 5000, // Check every 5 seconds
+    refetchInterval: 60000, // Check every 60 seconds — real-time handled by subscription
     initialData: []
   });
 
