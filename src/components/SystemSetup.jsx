@@ -24,28 +24,23 @@ export default function SystemSetup() {
   }, []);
 
   const handleEnableNotifications = async () => {
-    if ("Notification" in window) {
-      try {
-        const permission = await Notification.requestPermission();
-        setNotificationPermission(permission);
-        
-        if (permission === "granted") {
-          localStorage.setItem("systemSetupCompleted", "true");
-          setIsEnabled(false);
-          setTimeout(() => {
-            setIsDismissed(true);
-          }, 2000);
-        } else if (permission === "denied") {
-          // Mark as attempted even if denied to prevent repeated prompts
-          localStorage.setItem("systemSetupCompleted", "true");
-          localStorage.setItem("notificationsFailed", "true");
-        }
-      } catch (error) {
-        // Silently fail and mark as attempted
-        localStorage.setItem("systemSetupCompleted", "true");
+    if (!("Notification" in window)) {
+      // Not supported on this device — just dismiss
+      handleDismiss();
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      localStorage.setItem("systemSetupCompleted", "true");
+      if (permission !== "granted") {
         localStorage.setItem("notificationsFailed", "true");
-        setIsDismissed(true);
       }
+      setIsDismissed(true);
+    } catch (error) {
+      localStorage.setItem("systemSetupCompleted", "true");
+      localStorage.setItem("notificationsFailed", "true");
+      setIsDismissed(true);
     }
   };
 

@@ -28,46 +28,45 @@ export default function PermissionEnforcement() {
   const checkPermissions = async () => {
     const perms = {
       notifications: 'unknown',
-      batteryOptimization: 'unknown',
+      batteryOptimization: 'requires_manual',
       backgroundData: 'unknown',
-      autoLaunch: 'unknown'
+      autoLaunch: 'requires_manual'
     };
 
-    // Check notification permission
-    if ('Notification' in window) {
+    // Check notification permission — only if API is supported
+    if ('Notification' in window && typeof Notification.permission !== 'undefined') {
       perms.notifications = Notification.permission === 'granted' ? 'granted' : 'denied';
+    } else {
+      // Notifications not supported — treat as dismissed
+      localStorage.setItem('permissionEnforcementDismissed', 'true');
+      setPermissions(prev => ({ ...prev, dismissed: true }));
+      return;
     }
-
-    // Check if service worker is registered (proxy for background data)
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.getRegistration();
-      perms.backgroundData = registration ? 'granted' : 'denied';
-    }
-
-    // Battery optimization and auto-launch can't be checked via web APIs
-    // These need native app integration or user confirmation
-    perms.batteryOptimization = 'requires_manual';
-    perms.autoLaunch = 'requires_manual';
 
     setPermissions(perms);
   };
 
+  const handleDismiss = () => {
+    localStorage.setItem('permissionEnforcementDismissed', 'true');
+    setPermissions(prev => ({ ...prev, dismissed: true }));
+  };
+
   const requestNotifications = async () => {
+    if (!('Notification' in window)) {
+      // Not supported — just dismiss
+      handleDismiss();
+      return;
+    }
     try {
       const permission = await Notification.requestPermission();
-      setPermissions(prev => ({ ...prev, notifications: permission }));
-      
       if (permission === 'granted') {
-        // Success - close panel
         localStorage.setItem('permissionEnforcementDismissed', 'true');
-        setPermissions(prev => ({ ...prev, dismissed: true }));
-      } else if (permission === 'denied') {
-        // Mark as failed to prevent repeated prompts
+        setPermissions(prev => ({ ...prev, notifications: 'granted', dismissed: true }));
+      } else {
         localStorage.setItem('notificationsFailed', 'true');
         setPermissions(prev => ({ ...prev, dismissed: true }));
       }
     } catch (error) {
-      // Silently fail and dismiss
       localStorage.setItem('notificationsFailed', 'true');
       setPermissions(prev => ({ ...prev, dismissed: true }));
     }
@@ -106,10 +105,7 @@ export default function PermissionEnforcement() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => {
-                localStorage.setItem('permissionEnforcementDismissed', 'true');
-                setPermissions({ ...permissions, dismissed: true });
-              }}
+              onClick={handleDismiss}
               className="h-6 w-6 p-0 text-slate-400 hover:text-white"
             >
               <X className="w-4 h-4" />
