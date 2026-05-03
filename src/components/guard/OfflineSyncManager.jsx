@@ -9,6 +9,7 @@ const STORES = [
   { name: "pending_patrol",   entity: "PatrolLog" },
   { name: "pending_incident", entity: "Incident" },
   { name: "pending_maintenance", entity: "MaintenanceRequest" },
+  { name: "pending_handover", entity: "ShiftHandover" },
 ];
 
 export default function OfflineSyncManager() {
@@ -37,7 +38,7 @@ export default function OfflineSyncManager() {
       const records = await getAllPending(name);
       for (const record of records) {
         try {
-          const { offline_id, saved_at, ...data } = record;
+          const { offline_id, saved_at, _savedAt, ...data } = record;
           await base44.entities[entity].create(data);
           await deletePending(name, offline_id);
         } catch (e) {
@@ -76,7 +77,8 @@ export default function OfflineSyncManager() {
         const count = await countPending("pending_location") +
                        await countPending("pending_patrol") +
                        await countPending("pending_incident") +
-                       await countPending("pending_maintenance");
+                       await countPending("pending_maintenance") +
+                       await countPending("pending_handover");
         if (count > 0) syncAll();
       }, 5000);
     }

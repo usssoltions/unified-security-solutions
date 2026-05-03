@@ -4,8 +4,8 @@
  */
 
 const DB_NAME = "secureguard_offline";
-const DB_VERSION = 1;
-const STORES = ["pending_location", "pending_patrol", "pending_incident", "pending_maintenance"];
+const DB_VERSION = 2;
+const STORES = ["pending_location", "pending_patrol", "pending_incident", "pending_maintenance", "pending_handover"];
 
 function openDB() {
   return new Promise((resolve, reject) => {

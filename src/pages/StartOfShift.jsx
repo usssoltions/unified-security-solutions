@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -153,35 +154,47 @@ ${formData.additional_notes}
         media_attachments: formData.photos.map(url => ({ type: "photo", url }))
       };
 
-      const createdHandover = await base44.entities.ShiftHandover.create(handoverData);
+      // If offline or rate-limited, save locally and redirect
+      if (!isOnline()) {
+        await saveOffline('pending_handover', { ...handoverData, _savedAt: new Date().toISOString() });
+        await base44.auth.updateMe({ needs_start_of_shift_report: false }).catch(() => {});
+        alert("✅ Report saved offline — will sync when connection is restored.");
+        navigate(createPageUrl("GuardShift"));
+        return;
+      }
+
+      let createdHandover;
+      try {
+        createdHandover = await base44.entities.ShiftHandover.create(handoverData);
+      } catch (apiErr) {
+        // Rate-limited or network error — save offline
+        await saveOffline('pending_handover', { ...handoverData, _savedAt: new Date().toISOString() });
+        try { await base44.auth.updateMe({ needs_start_of_shift_report: false }); } catch {}
+        alert("✅ Server busy — report saved offline and will sync automatically.");
+        navigate(createPageUrl("GuardShift"));
+        return;
+      }
 
       // Update user - mark that start of shift report is completed
-      await base44.auth.updateMe({
-        needs_start_of_shift_report: false
-      });
-
-      // Send real-time notifications to all admins using backend function
-      const reportData = {
-        site_name: site?.name,
-        client_name: site?.client_name,
-        shift_post: formData.shift_post,
-        special_instructions: formData.special_instructions,
-        post_items_received: formData.post_items_received,
-        relieving_officer: formData.relieving_officer,
-        observations: formData.observations.filter(obs => obs.type || obs.comments),
-        additional_notes: formData.additional_notes,
-        signature: formData.signature,
-        handoverId: createdHandover.id
-      };
-
-      const mediaArray = formData.photos.map(url => ({ type: "photo", url }));
+      await base44.auth.updateMe({ needs_start_of_shift_report: false }).catch(() => {});
 
       // Attempt to send notification (requires backend subscription — skip if unavailable)
       try {
         await base44.functions.invoke('sendStartOfShiftNotification', {
-          reportData,
+          reportData: {
+            site_name: site?.name,
+            client_name: site?.client_name,
+            shift_post: formData.shift_post,
+            special_instructions: formData.special_instructions,
+            post_items_received: formData.post_items_received,
+            relieving_officer: formData.relieving_officer,
+            observations: formData.observations.filter(obs => obs.type || obs.comments),
+            additional_notes: formData.additional_notes,
+            signature: formData.signature,
+            handoverId: createdHandover.id
+          },
           location: currentLocation,
-          media: mediaArray
+          media: formData.photos.map(url => ({ type: "photo", url }))
         });
       } catch (notifError) {
         console.warn("Notification skipped:", notifError?.message);
