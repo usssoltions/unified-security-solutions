@@ -176,11 +176,16 @@ ${formData.additional_notes}
 
       const mediaArray = formData.photos.map(url => ({ type: "photo", url }));
 
-      await base44.functions.invoke('sendStartOfShiftNotification', {
-        reportData,
-        location: currentLocation,
-        media: mediaArray
-      });
+      // Attempt to send notification (requires backend subscription — skip if unavailable)
+      try {
+        await base44.functions.invoke('sendStartOfShiftNotification', {
+          reportData,
+          location: currentLocation,
+          media: mediaArray
+        });
+      } catch (notifError) {
+        console.warn("Notification skipped:", notifError?.message);
+      }
 
       // Redirect back to guard shift page
       navigate(createPageUrl("GuardShift"));
