@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Camera, Video, Mic, X, Loader2, Trash2 } from "lucide-react";
@@ -27,6 +27,17 @@ export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTAC
     setUploading(false);
   };
 
+  // Attach stream to video element reactively after it renders
+  const [liveStream, setLiveStream] = useState(null);
+  useEffect(() => {
+    if (videoPreviewRef.current && liveStream) {
+      videoPreviewRef.current.srcObject = liveStream;
+      videoPreviewRef.current.muted = true;
+      videoPreviewRef.current.playsInline = true;
+      videoPreviewRef.current.play().catch(() => {});
+    }
+  }, [liveStream, recording]);
+
   const startRecording = async (type) => {
     try {
       const constraints = type === 'video' 
@@ -34,17 +45,19 @@ export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTAC
         : { audio: true };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      if (type === 'video' && videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream;
-        videoPreviewRef.current.muted = true;
-        videoPreviewRef.current.playsInline = true;
-        videoPreviewRef.current.play().catch(e => console.log('Video play failed:', e));
-      }
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: type === 'video' ? 'video/webm' : 'audio/webm'
-      });
+      if (type === 'video') setLiveStream(stream);
+
+      // Pick best supported mimeType for the device
+      const videoMime = MediaRecorder.isTypeSupported('video/mp4')
+        ? 'video/mp4'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : '';
+      const audioMime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
+      const mimeType = type === 'video' ? videoMime : audioMime;
+
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -56,13 +69,13 @@ export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTAC
       };
 
       mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, {
-          type: type === 'video' ? 'video/webm' : 'audio/webm'
-        });
+        const finalMime = mimeType || (type === 'video' ? 'video/webm' : 'audio/webm');
+        const ext = finalMime.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(chunksRef.current, { type: finalMime });
         
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
-        
+        setLiveStream(null);
         if (videoPreviewRef.current) {
           videoPreviewRef.current.srcObject = null;
         }
@@ -70,7 +83,7 @@ export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTAC
         // Upload the recording
         setUploading(true);
         try {
-          const file = new File([blob], `${type}-${Date.now()}.webm`, {
+          const file = new File([blob], `${type}-${Date.now()}.${ext}`, {
             type: blob.type
           });
           

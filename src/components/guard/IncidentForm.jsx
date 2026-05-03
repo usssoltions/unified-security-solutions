@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -304,6 +304,16 @@ Officer Signature: Signed
     }
   };
 
+  // Attach stream to video element whenever videoPreview changes
+  React.useEffect(() => {
+    if (videoPreviewRef.current && videoPreview) {
+      videoPreviewRef.current.srcObject = videoPreview;
+      videoPreviewRef.current.muted = true;
+      videoPreviewRef.current.playsInline = true;
+      videoPreviewRef.current.play().catch(() => {});
+    }
+  }, [videoPreview]);
+
   const startVideoRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -312,21 +322,23 @@ Officer Signature: Signed
       });
 
       setVideoPreview(stream);
+      setVideoRecording(true);
 
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream;
-        videoPreviewRef.current.muted = true;
-        videoPreviewRef.current.playsInline = true;
-        await videoPreviewRef.current.play().catch(e => console.log('Video play failed:', e));
-      }
-
-      const recorder = new MediaRecorder(stream);
+      // Pick a supported mimeType (mp4 on iOS/Android, webm on desktop)
+      const mimeType = MediaRecorder.isTypeSupported('video/mp4')
+        ? 'video/mp4'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : '';
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       const chunks = [];
 
-      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
       recorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const file = new File([blob], `video-${Date.now()}.webm`, { type: 'video/webm' });
+        const finalType = mimeType || 'video/webm';
+        const ext = finalType.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(chunks, { type: finalType });
+        const file = new File([blob], `video-${Date.now()}.${ext}`, { type: finalType });
 
         try {
           const { file_url } = await base44.integrations.Core.UploadFile({ file });
@@ -341,11 +353,11 @@ Officer Signature: Signed
 
         stream.getTracks().forEach(track => track.stop());
         setVideoPreview(null);
+        setVideoRecording(false);
       };
 
       recorder.start();
       setMediaRecorder(recorder);
-      setVideoRecording(true);
 
       setTimeout(() => {
         if (recorder.state === 'recording') {
