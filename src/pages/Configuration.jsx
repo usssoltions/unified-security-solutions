@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReportSchedulingSettings from "../components/reports/ReportSchedulingSettings";
+import WhatsAppContactsConfig from "../components/configuration/WhatsAppContactsConfig";
 
 export default function Configuration() {
   // Incident Categories
@@ -212,7 +213,11 @@ export default function Configuration() {
 
       {/* Configuration Tabs */}
       <Tabs defaultValue="reports" className="space-y-6">
-        <TabsList className="bg-slate-800 border border-slate-700">
+        <TabsList className="bg-slate-800 border border-slate-700 flex-wrap">
+          <TabsTrigger value="whatsapp" className="data-[state=active]:bg-slate-700">
+            <Bell className="w-4 h-4 mr-2" />
+            WhatsApp
+          </TabsTrigger>
           <TabsTrigger value="reports" className="data-[state=active]:bg-slate-700">
             <Settings className="w-4 h-4 mr-2" />
             Reports
@@ -238,6 +243,11 @@ export default function Configuration() {
             Priorities
           </TabsTrigger>
         </TabsList>
+
+        {/* WhatsApp Contacts */}
+        <TabsContent value="whatsapp">
+          <WhatsAppContactsConfig />
+        </TabsContent>
 
         {/* Reports Settings */}
         <TabsContent value="reports">

@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Send, Loader2, AlertOctagon, MapPin } from "lucide-react";
+import WhatsAppNotifier from "@/components/WhatsAppNotifier";
+import { dispatchMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -77,6 +79,7 @@ function MapController({ center, zoom }) {
 }
 
 export default function DispatchAlarm({ onClose, onSuccess }) {
+  const [waMessage, setWaMessage] = useState(null);
   const [formData, setFormData] = useState({
     alarm_type: "burglary",
     priority: "high",
@@ -321,9 +324,26 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
       return alarm;
     },
-    onSuccess: () => {
+    onSuccess: (alarm, payload) => {
       queryClient.invalidateQueries(["alarmResponses"]);
-      onSuccess();
+      const assignedGuard = activeGuards.find(g => g.guard_id === payload.assigned_to);
+      const msg = dispatchMessage({
+        alarmType: payload.alarm_type,
+        address: payload.address,
+        guardName: assignedGuard?.guard_full_name || payload.assigned_to_name || "Responder",
+        clientName: payload.client_name,
+        lat: payload.location?.lat,
+        lng: payload.location?.lng,
+      });
+      // Also send WhatsApp directly to the guard's number if available
+      if (assignedGuard) {
+        base44.entities.User.get(assignedGuard.guard_id).then(guardUser => {
+          if (guardUser?.phone_number) {
+            window.open(buildWhatsAppLink(guardUser.phone_number, msg), "_blank");
+          }
+        }).catch(() => {});
+      }
+      setWaMessage(msg);
     }
   });
 
@@ -371,6 +391,16 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
     dispatchMutation.mutate(payload);
   };
+
+  if (waMessage) {
+    return (
+      <WhatsAppNotifier
+        message={waMessage}
+        title="🚨 Send Dispatch Alerts via WhatsApp"
+        onDone={() => { setWaMessage(null); onSuccess(); }}
+      />
+    );
+  }
 
   return (
     <div 

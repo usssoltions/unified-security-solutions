@@ -31,6 +31,7 @@ import PanicButton from "../components/guard/PanicButton";
 import PatrolAssignmentAlert from "../components/guard/PatrolAssignmentAlert";
 import OfflineSyncManager from "../components/guard/OfflineSyncManager";
 import SystemSetup from "../components/SystemSetup";
+import ShiftAcknowledgeModal from "../components/scheduling/ShiftAcknowledgeModal";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -45,6 +46,7 @@ export default function GuardShift() {
   const [showChat, setShowChat] = useState(false);
   const [showTraining, setShowTraining] = useState(false);
   const [showReports, setShowReports] = useState(false);
+  const [shiftToAck, setShiftToAck] = useState(null);
   const [showDailyReportModal, setShowDailyReportModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const lastStayAwakeCheck = useRef(null);
@@ -472,6 +474,15 @@ export default function GuardShift() {
 
         {/* Chat Modal */}
         {showChat && <GuardChat user={user} onClose={() => setShowChat(false)} />}
+
+        {/* Shift Acknowledgement Modal */}
+        {shiftToAck && (
+          <ShiftAcknowledgeModal
+            shift={shiftToAck}
+            user={user}
+            onClose={() => { setShiftToAck(null); queryClient.invalidateQueries(["upcomingShifts"]); }}
+          />
+        )}
       </div>
     </PullToRefresh>
   );

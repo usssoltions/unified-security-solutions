@@ -4,12 +4,15 @@ import { AlertTriangle, MapPin } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import WhatsAppNotifier from "@/components/WhatsAppNotifier";
+import { panicMessage } from "@/lib/whatsapp";
 
 export default function PanicButton({ shiftId, siteId }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
   const [location, setLocation] = useState(null);
+  const [waMessage, setWaMessage] = useState(null);
 
   const handlePanicPress = () => {
     // Get current location
@@ -70,9 +73,16 @@ export default function PanicButton({ shiftId, siteId }) {
         reported_at: new Date().toISOString()
       });
 
-      alert(`🚨 PANIC ALERT SENT! Dispatchers have been notified. Help is on the way!`);
       setShowConfirm(false);
       setNotes("");
+      const msg = panicMessage({
+        guardName: user.full_name,
+        siteName: user.site_name || siteId || "Unknown Site",
+        lat: location?.lat,
+        lng: location?.lng,
+        notes,
+      });
+      setWaMessage(msg);
     } catch (error) {
       // Even if DB fails, show a softer message
       alert("Alert sent. If you don't receive confirmation, CALL EMERGENCY SERVICES IMMEDIATELY!");
@@ -84,6 +94,13 @@ export default function PanicButton({ shiftId, siteId }) {
 
   return (
     <>
+      {waMessage && (
+        <WhatsAppNotifier
+          message={waMessage}
+          title="🚨 Send Panic Alerts via WhatsApp"
+          onDone={() => setWaMessage(null)}
+        />
+      )}
       <Button
         onClick={handlePanicPress}
         className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg shadow-red-500/50 py-3 sm:py-4 lg:py-5 text-xs sm:text-sm lg:text-base font-bold animate-pulse"

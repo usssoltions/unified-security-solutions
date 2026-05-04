@@ -1,4 +1,6 @@
 import React, { useState, useRef } from "react";
+import WhatsAppNotifier from "@/components/WhatsAppNotifier";
+import { maintenanceMessage } from "@/lib/whatsapp";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
   const [uploading, setUploading] = useState(false);
   const [videoPreview, setVideoPreview] = useState(null);
   const [recordedAudio, setRecordedAudio] = useState(null);
+  const [waMessage, setWaMessage] = useState(null);
   const videoPreviewRef = useRef(null);
   const queryClient = useQueryClient();
 
@@ -130,10 +133,15 @@ Officer Signature: Signed
 
       return maintenanceRequest;
     },
-    onSuccess: () => {
+    onSuccess: (req, data) => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceRequests'] });
-      alert("Maintenance request submitted successfully!");
-      onSuccess();
+      const msg = maintenanceMessage({
+        guardName: data.guard_name,
+        siteName: data.site_name,
+        maintenanceType: data.maintenance_type,
+        details: data.details,
+      });
+      setWaMessage(msg);
     },
     onError: (error, newRequest, context) => {
       if (context?.previous) {
@@ -342,6 +350,16 @@ Please provide:
       setAiAssisting(false);
     }
   };
+
+  if (waMessage) {
+    return (
+      <WhatsAppNotifier
+        message={waMessage}
+        title="Send Maintenance Alert via WhatsApp"
+        onDone={() => { setWaMessage(null); onSuccess(); }}
+      />
+    );
+  }
 
   if (showSignature) {
     return (

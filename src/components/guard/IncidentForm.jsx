@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
+import WhatsAppNotifier from "@/components/WhatsAppNotifier";
+import { incidentMessage } from "@/lib/whatsapp";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,7 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
   const [recordedAudio, setRecordedAudio] = useState(null);
   const [aiSuggestions, setAiSuggestions] = useState(null);
   const [similarIncidents, setSimilarIncidents] = useState([]);
+  const [waMessage, setWaMessage] = useState(null);
   const videoPreviewRef = useRef(null);
   const queryClient = useQueryClient();
 
@@ -204,9 +207,18 @@ Officer Signature: Signed
 
       return incident;
     },
-    onSuccess: () => {
+    onSuccess: (incident, data) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
-      onSuccess();
+      const msg = incidentMessage({
+        guardName: user.full_name,
+        siteName: shift?.site_name,
+        incidentType: data.incident_type,
+        summary: data.incident_summary,
+        reportNumber: data.incident_report_number,
+        lat: location?.lat,
+        lng: location?.lng,
+      });
+      setWaMessage(msg);
     },
     onError: (error, newIncident, context) => {
       // Rollback on error
@@ -488,6 +500,16 @@ Provide detailed analysis in JSON format:
     }
     createMutation.mutate(formData);
   };
+
+  if (waMessage) {
+    return (
+      <WhatsAppNotifier
+        message={waMessage}
+        title="Send Incident Alerts via WhatsApp"
+        onDone={() => { setWaMessage(null); onSuccess(); }}
+      />
+    );
+  }
 
   if (showSignature) {
     return (

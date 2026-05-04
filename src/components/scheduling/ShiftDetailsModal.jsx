@@ -8,8 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle, Share2, Mail, MessageSquare, Printer } from "lucide-react";
+import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle, Share2, Mail, MessageSquare, Printer, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { buildWhatsAppLink, shiftScheduleMessage } from "@/lib/whatsapp";
 
 export default function ShiftDetailsModal({ shift, onClose }) {
   const queryClient = useQueryClient();
@@ -132,8 +133,14 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
         });
         return 'email';
       } else if (method === 'whatsapp' && currentSelectedGuard.phone_number) {
-        const message = encodeURIComponent(shiftDetails);
-        window.open(`https://wa.me/${currentSelectedGuard.phone_number.replace(/\D/g, '')}?text=${message}`, '_blank');
+        const waMsg = shiftScheduleMessage({
+          guardName: shift.guard_name,
+          siteName: shift.site_name,
+          startTime: shift.start_time,
+          endTime: shift.end_time,
+          notes: shift.notes,
+        });
+        window.open(buildWhatsAppLink(currentSelectedGuard.phone_number, waMsg), '_blank');
         return 'whatsapp';
       } else if (method === 'print') {
         const printWindow = window.open('', '_blank');
@@ -481,6 +488,30 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
                 <div className="p-4 bg-slate-900/50 rounded-lg">
                   <p className="text-sm font-semibold text-slate-300 mb-2">Notes</p>
                   <p className="text-sm text-slate-400">{shift.notes}</p>
+                </div>
+              )}
+
+              {/* Guard Acknowledgement Status */}
+              {shift.guard_ack_status && (
+                <div className={`p-4 rounded-lg border ${
+                  shift.guard_ack_status === "accepted" ? "bg-emerald-500/10 border-emerald-500/30" :
+                  shift.guard_ack_status === "declined" ? "bg-rose-500/10 border-rose-500/30" :
+                  "bg-amber-500/10 border-amber-500/30"
+                }`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    {shift.guard_ack_status === "accepted" && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                    {shift.guard_ack_status === "declined" && <XCircle className="w-4 h-4 text-rose-400" />}
+                    {shift.guard_ack_status === "revision_requested" && <RefreshCw className="w-4 h-4 text-amber-400" />}
+                    <p className="text-sm font-semibold text-slate-200">
+                      Guard {shift.guard_ack_status.replace("_", " ")}
+                    </p>
+                    <span className="text-xs text-slate-500 ml-auto">
+                      {shift.guard_ack_at && new Date(shift.guard_ack_at).toLocaleString("en-ZA")}
+                    </span>
+                  </div>
+                  {shift.guard_ack_notes && (
+                    <p className="text-sm text-slate-400 mt-1">{shift.guard_ack_notes}</p>
+                  )}
                 </div>
               )}
             </>
