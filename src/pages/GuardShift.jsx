@@ -457,14 +457,31 @@ export default function GuardShift() {
               </CardHeader>
               <CardContent className="px-4 pb-4 space-y-2">
                 {upcomingShifts.map(shift => (
-                  <div key={shift.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-700/50">
-                    <div>
-                      <p className="text-white text-sm font-semibold">{shift.site_name}</p>
-                      <p className="text-slate-400 text-xs mt-0.5">
-                        {new Date(shift.start_time).toLocaleDateString()} • {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
+                  <div key={shift.id} className="p-3 bg-slate-900/50 rounded-xl border border-slate-700/50 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-semibold truncate">{shift.site_name}</p>
+                        <p className="text-slate-400 text-xs mt-0.5">
+                          {new Date(shift.start_time).toLocaleDateString()} • {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      {shift.guard_ack_status ? (
+                        <Badge className={
+                          shift.guard_ack_status === "accepted" ? "bg-emerald-600 shrink-0 text-xs" :
+                          shift.guard_ack_status === "declined" ? "bg-rose-600 shrink-0 text-xs" :
+                          "bg-amber-600 shrink-0 text-xs"
+                        }>
+                          {shift.guard_ack_status === "revision_requested" ? "Revision Req." : shift.guard_ack_status}
+                        </Badge>
+                      ) : (
+                        <button
+                          onClick={() => setShiftToAck(shift)}
+                          className="shrink-0 text-xs bg-sky-600 hover:bg-sky-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-semibold transition-all"
+                        >
+                          Respond
+                        </button>
+                      )}
                     </div>
-                    <Badge variant="outline" className="border-sky-500 text-sky-400 text-xs">{shift.status}</Badge>
                   </div>
                 ))}
               </CardContent>

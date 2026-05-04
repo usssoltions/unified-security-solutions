@@ -1,0 +1,116 @@
+{
+  "name": "Shift",
+  "type": "object",
+  "properties": {
+    "guard_id": {
+      "type": "string",
+      "description": "User ID of assigned guard"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "open",
+        "accepted",
+        "active",
+        "completed",
+        "missed",
+        "cancelled"
+      ],
+      "default": "scheduled"
+    },
+    "guard_ack_status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "declined",
+        "revision_requested"
+      ],
+      "description": "Guard's acknowledgement response to the shift"
+    },
+    "guard_ack_signature": {
+      "type": "string",
+      "description": "Base64 signature from guard"
+    },
+    "guard_ack_note": {
+      "type": "string",
+      "description": "Note from guard (e.g. revision reason)"
+    },
+    "guard_ack_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "clock_in": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": {
+              "type": "number"
+            },
+            "lng": {
+              "type": "number"
+            }
+          }
+        },
+        "verified": {
+          "type": "boolean"
+        }
+      }
+    },
+    "clock_out": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": {
+              "type": "number"
+            },
+            "lng": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    },
+    "is_overtime": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "site_id",
+    "start_time",
+    "end_time"
+  ]
+}
