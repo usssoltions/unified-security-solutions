@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Loader2, Send, Shield, Camera } from "lucide-react";
 import SignaturePad from "../components/guard/SignaturePad";
+import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 
 export default function StartOfShift() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export default function StartOfShift() {
   const [submitting, setSubmitting] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [waMessage, setWaMessage] = useState(null);
   const [formData, setFormData] = useState({
     shift_post: "",
     special_instructions: "",
@@ -178,24 +180,45 @@ ${formData.additional_notes}
       // Update user - mark that start of shift report is completed
       await base44.auth.updateMe({ needs_start_of_shift_report: false }).catch(() => {});
 
-      // Attempt to send notification (requires backend subscription — skip if unavailable)
+      // Notify admins via in-app notification + email (no backend function needed)
       try {
-        await base44.functions.invoke('sendStartOfShiftNotification', {
-          reportData: {
-            site_name: site?.name,
-            client_name: site?.client_name,
-            shift_post: formData.shift_post,
-            special_instructions: formData.special_instructions,
-            post_items_received: formData.post_items_received,
-            relieving_officer: formData.relieving_officer,
-            observations: formData.observations.filter(obs => obs.type || obs.comments),
-            additional_notes: formData.additional_notes,
-            signature: formData.signature,
-            handoverId: createdHandover.id
-          },
-          location: currentLocation,
-          media: formData.photos.map(url => ({ type: "photo", url }))
-        });
+        const allUsers = await base44.entities.User.list();
+        const admins = allUsers.filter(u =>
+          ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
+        );
+        const notifTitle = `🛡️ Start of Shift — ${user.full_name} @ ${site?.name || shift?.site_name}`;
+        const notifMessage = `Guard ${user.full_name} has clocked in and submitted their start-of-shift report. Post: ${formData.shift_post || "N/A"}. Site: ${site?.name || "Unknown"}.`;
+
+        for (const admin of admins) {
+          await base44.entities.Notification.create({
+            recipient_id: admin.id,
+            recipient_name: admin.full_name,
+            type: "shift_reminder",
+            priority: "medium",
+            title: notifTitle,
+            message: notifMessage,
+            read: false,
+            related_entity: "shift_handover",
+            related_id: createdHandover?.id || null,
+          }).catch(() => {});
+
+          if (admin.email) {
+            await base44.integrations.Core.SendEmail({
+              to: admin.email,
+              subject: notifTitle,
+              body: `${notifMessage}\n\nPost: ${formData.shift_post}\nSpecial Instructions: ${formData.special_instructions}\nPost Items: ${formData.post_items_received}\nRelieving Officer: ${formData.relieving_officer}\nAdditional Notes: ${formData.additional_notes}\n${currentLocation ? `GPS: ${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}` : ""}`,
+            }).catch(() => {});
+          }
+        }
+
+        // Show WhatsApp notifier before redirecting
+        const { startOfShiftMessage, buildAdminLinks } = await import("@/lib/whatsapp");
+        const waMsg = startOfShiftMessage({ guardName: user.full_name, siteName: site?.name || shift?.site_name, shiftPost: formData.shift_post });
+        const waLinks = buildAdminLinks(waMsg);
+        if (waLinks.length > 0) {
+          setWaMessage(waMsg);
+          return; // onDone will navigate
+        }
       } catch (notifError) {
         console.warn("Notification skipped:", notifError?.message);
       }
@@ -209,6 +232,16 @@ ${formData.additional_notes}
       setSubmitting(false);
     }
   };
+
+  if (waMessage) {
+    return (
+      <WhatsAppNotifier
+        message={waMessage}
+        title="🛡️ Send Start-of-Shift Alerts via WhatsApp"
+        onDone={() => { setWaMessage(null); navigate(createPageUrl("GuardShift")); }}
+      />
+    );
+  }
 
   if (loading) {
     return (

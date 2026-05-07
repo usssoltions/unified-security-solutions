@@ -1,0 +1,32 @@
+{
+  "name": "WhatsAppContact",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Contact name / role"
+    },
+    "number": {
+      "type": "string",
+      "description": "WhatsApp number, e.g. +27831234567"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "supervisor",
+        "management",
+        "dispatcher"
+      ],
+      "default": "admin"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "number"
+  ]
+}

@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Send, Loader2, AlertOctagon, MapPin } from "lucide-react";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
-import { dispatchMessage, buildWhatsAppLink } from "@/lib/whatsapp";
+import { dispatchMessage, guardAlarmDispatchMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -80,6 +80,7 @@ function MapController({ center, zoom }) {
 
 export default function DispatchAlarm({ onClose, onSuccess }) {
   const [waMessage, setWaMessage] = useState(null);
+  const [guardWaLink, setGuardWaLink] = useState(null); // {name, link}
   const [formData, setFormData] = useState({
     alarm_type: "burglary",
     priority: "high",
@@ -260,31 +261,6 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
     mutationFn: async (alarmPayload) => {
       const currentUser = await base44.auth.me();
 
-      // Send loud notification to assigned responder
-      if (alarmPayload.assigned_to) {
-        try {
-          await base44.functions.invoke('sendComprehensiveNotification', {
-            recipientIds: [alarmPayload.assigned_to],
-            type: 'alarm_dispatch',
-            title: `🚨 URGENT: Alarm Response Assigned`,
-            message: `You have been assigned to respond to a ${alarmPayload.alarm_type.replace(/_/g, ' ')} alarm at ${alarmPayload.address}. Acknowledge immediately!`,
-            priority: 'critical',
-            relatedEntity: 'alarm',
-            relatedId: 'pending',
-            metadata: {
-              alarm_type: alarmPayload.alarm_type,
-              address: alarmPayload.address,
-              client: alarmPayload.client_name || 'N/A',
-              lat: alarmPayload.location.lat,
-              lng: alarmPayload.location.lng
-            },
-            sendEmail: true
-          });
-        } catch (notifyError) {
-          console.error('Failed to send alarm notification:', notifyError);
-        }
-      }
-
       const alarm = await base44.entities.AlarmResponse.create({
         ...alarmPayload,
         dispatched_by: currentUser.id,
@@ -293,41 +269,67 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         status: "dispatched"
       });
 
-      if ((alarmPayload.priority === 'critical' || alarmPayload.priority === 'high') && alarmPayload.assigned_to) {
-        try {
-          await base44.functions.invoke('sendPushNotification', {
-            user_ids: [alarmPayload.assigned_to],
-            title: 'Emergency Alarm Response',
-            body: `${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()} at ${alarmPayload.address}`,
-            priority: alarmPayload.priority,
-            data: {
-              type: 'alarm',
-              id: alarm.id,
-              alarm_type: alarmPayload.alarm_type
-            }
-          });
-        } catch (error) {
-          console.error('Failed to send push notification:', error);
-        }
-      }
+      // In-app alert for the guard
+      if (alarmPayload.assigned_to) {
+        await base44.entities.Alert.create({
+          type: "assignment",
+          priority: alarmPayload.priority,
+          title: "🚨 Alarm Response Assigned",
+          message: `You have been dispatched to respond to ${alarmPayload.alarm_type.replace(/_/g, ' ')} at ${alarmPayload.address}. ${alarmPayload.client_name ? `Client: ${alarmPayload.client_name}` : ''}`,
+          guard_id: alarmPayload.assigned_to,
+          guard_name: alarmPayload.assigned_to_name,
+          status: "active",
+          metadata: { alarm_id: alarm.id, address: alarmPayload.address }
+        }).catch(() => {});
 
-      await base44.entities.Alert.create({
-        type: "assignment",
-        priority: alarmPayload.priority,
-        title: "Alarm Response Assigned",
-        message: `You have been dispatched to respond to ${alarmPayload.alarm_type.replace(/_/g, ' ')} at ${alarmPayload.address}. ${alarmPayload.client_name ? `Client: ${alarmPayload.client_name}` : ''}`,
-        guard_id: alarmPayload.assigned_to,
-        guard_name: alarmPayload.assigned_to_name,
-        status: "active",
-        metadata: { alarm_id: alarm.id, address: alarmPayload.address }
-      });
+        // In-app notification
+        await base44.entities.Notification.create({
+          recipient_id: alarmPayload.assigned_to,
+          recipient_name: alarmPayload.assigned_to_name,
+          type: "alarm_dispatch",
+          priority: "critical",
+          title: `🚨 URGENT: Alarm Response — ${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()}`,
+          message: `You are dispatched to ${alarmPayload.address}. Open the app to acknowledge and get directions.`,
+          read: false,
+          related_entity: "alarm_response",
+          related_id: alarm.id,
+        }).catch(() => {});
+
+        // Email guard
+        try {
+          const guardUser = await base44.entities.User.get(alarmPayload.assigned_to);
+          if (guardUser?.email) {
+            const guardMsg = guardAlarmDispatchMessage({
+              alarmType: alarmPayload.alarm_type,
+              address: alarmPayload.address,
+              clientName: alarmPayload.client_name,
+              lat: alarmPayload.location?.lat,
+              lng: alarmPayload.location?.lng,
+            });
+            await base44.integrations.Core.SendEmail({
+              to: guardUser.email,
+              subject: `🚨 ALARM RESPONSE ASSIGNED — ${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()}`,
+              body: guardMsg,
+            }).catch(() => {});
+
+            // Build guard's personal WA link
+            const guardPhone = guardUser.whatsapp || guardUser.phone;
+            if (guardPhone) {
+              setGuardWaLink({
+                name: guardUser.full_name,
+                link: buildWhatsAppLink(guardPhone, guardMsg),
+              });
+            }
+          }
+        } catch (_) {}
+      }
 
       return alarm;
     },
     onSuccess: (alarm, payload) => {
       queryClient.invalidateQueries(["alarmResponses"]);
       const assignedGuard = activeGuards.find(g => g.guard_id === payload.assigned_to);
-      const msg = dispatchMessage({
+      const adminMsg = dispatchMessage({
         alarmType: payload.alarm_type,
         address: payload.address,
         guardName: assignedGuard?.guard_full_name || payload.assigned_to_name || "Responder",
@@ -335,15 +337,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
         lat: payload.location?.lat,
         lng: payload.location?.lng,
       });
-      // Also send WhatsApp directly to the guard's number if available
-      if (assignedGuard) {
-        base44.entities.User.get(assignedGuard.guard_id).then(guardUser => {
-          if (guardUser?.phone_number) {
-            window.open(buildWhatsAppLink(guardUser.phone_number, msg), "_blank");
-          }
-        }).catch(() => {});
-      }
-      setWaMessage(msg);
+      setWaMessage(adminMsg);
     }
   });
 
@@ -394,11 +388,34 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
   if (waMessage) {
     return (
-      <WhatsAppNotifier
-        message={waMessage}
-        title="🚨 Send Dispatch Alerts via WhatsApp"
-        onDone={() => { setWaMessage(null); onSuccess(); }}
-      />
+      <div className="fixed inset-0 bg-black/70 z-[100] flex items-end justify-center p-4">
+        <div className="w-full max-w-md space-y-3">
+          {/* Guard direct WA link — top priority */}
+          {guardWaLink && (
+            <div className="bg-rose-900/80 border border-rose-500/50 rounded-2xl p-4 shadow-2xl">
+              <p className="text-rose-300 text-xs font-bold uppercase mb-2">⚡ Send to Responder Directly</p>
+              <a
+                href={guardWaLink.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl px-4 py-3 font-semibold transition-all"
+              >
+                <span className="text-2xl">📲</span>
+                <div>
+                  <p className="text-sm font-bold">WhatsApp {guardWaLink.name}</p>
+                  <p className="text-xs opacity-80">Tap to open — includes map link & app link</p>
+                </div>
+              </a>
+            </div>
+          )}
+          {/* Admin contacts */}
+          <WhatsAppNotifier
+            message={waMessage}
+            title="🚨 Send Dispatch Alerts — Admins"
+            onDone={() => { setWaMessage(null); setGuardWaLink(null); onSuccess(); }}
+          />
+        </div>
+      </div>
     );
   }
 

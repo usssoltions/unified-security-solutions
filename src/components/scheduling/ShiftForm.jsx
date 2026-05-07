@@ -5,8 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { X, Loader2, Calendar, Users } from "lucide-react";
+import { X, Loader2, Calendar, Users, MessageCircle, CheckCircle2 } from "lucide-react";
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { notifyGuardShift } from "./ShiftNotifier";
+import { buildAdminLinks, loadWhatsAppContacts, shiftScheduleMessage } from "@/lib/whatsapp";
+import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 
 // Helper function to format ISO date strings for datetime-local input
 const formatDateTimeForInput = (isoString) => {
@@ -57,6 +60,8 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
   });
   
   const [selectedGuards, setSelectedGuards] = useState([]);
+  const [guardWaLinks, setGuardWaLinks] = useState([]); // [{name, number, link}]
+  const [showGuardWa, setShowGuardWa] = useState(false);
   const queryClient = useQueryClient();
 
   const createShiftMutation = useMutation({
@@ -92,32 +97,18 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
       if (shift) {
         // Update existing shift (single guard)
         const updated = await base44.entities.Shift.update(shift.id, shiftsData);
-        
-        // Send email and in-app notification if guard was assigned/changed
+
         if (shiftsData.guard_id && shiftsData.guard_id !== shift.guard_id) {
-          try {
-            const guard = guards.find(g => g.id === shiftsData.guard_id);
-            await base44.functions.invoke('sendShiftNotification', {
-              shiftId: updated.id,
-              guardId: shiftsData.guard_id,
-              guardEmail: guard?.email,
-              guardName: shiftsData.guard_name,
-              siteName: shiftsData.site_name,
-              startTime: shiftsData.start_time,
-              endTime: shiftsData.end_time,
-              notificationType: 'updated'
-            });
-          } catch (error) {
-            console.error('Failed to send shift notification:', error);
-          }
+          const guard = guards.find(g => g.id === shiftsData.guard_id);
+          if (guard) await notifyGuardShift(updated, guard, "updated");
         }
-        
+
         return updated;
       } else {
         // Create shifts for multiple guards
         const site = sites.find(s => s.id === shiftsData.site_id);
         const createdShifts = [];
-        
+
         for (const guardId of shiftsData.guard_ids) {
           const guard = guards.find(g => g.id === guardId);
           const shiftData = {
@@ -127,35 +118,31 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
             site_name: site?.name || "",
             start_time: shiftsData.start_time,
             end_time: shiftsData.end_time,
-            status: shiftsData.status
+            status: shiftsData.status,
           };
-          
+
           const created = await base44.entities.Shift.create(shiftData);
-          createdShifts.push(created);
-          
-          // Send notification to each guard
-          try {
-            await base44.functions.invoke('sendShiftNotification', {
-              shiftId: created.id,
-              guardId: guardId,
-              guardEmail: guard?.email,
-              guardName: guard?.full_name,
-              siteName: site?.name,
-              startTime: shiftsData.start_time,
-              endTime: shiftsData.end_time,
-              notificationType: 'assigned'
-            });
-          } catch (error) {
-            console.error('Failed to send shift notification:', error);
-          }
+          createdShifts.push({ created, guard });
+
+          if (guard) await notifyGuardShift(created, guard, "assigned");
         }
-        
+
         return createdShifts;
       }
     },
-    onSuccess: () => {
+    onSuccess: (result, shiftsData) => {
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
-      onSuccess();
+
+      // Build guard WhatsApp links from session storage
+      const pending = JSON.parse(sessionStorage.getItem("pending_guard_wa") || "[]");
+      sessionStorage.removeItem("pending_guard_wa");
+
+      if (pending.length > 0) {
+        setGuardWaLinks(pending);
+        setShowGuardWa(true);
+      } else {
+        onSuccess();
+      }
     },
     onError: (error, newShift, context) => {
       if (context?.previousShifts) {
@@ -212,6 +199,41 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
         : [...prev, guardId]
     );
   };
+
+  if (showGuardWa) {
+    return (
+      <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-[100] p-4">
+        <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-5 w-full max-w-md shadow-2xl">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 bg-emerald-600 rounded-full flex items-center justify-center shrink-0">
+              <MessageCircle className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-white font-bold text-base">Send Shift to Guards via WhatsApp</h2>
+              <p className="text-slate-400 text-xs">Tap each guard to open WhatsApp with their shift details</p>
+            </div>
+          </div>
+          <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
+            {guardWaLinks.map((g, i) => (
+              <a key={i} href={g.link} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-between px-4 py-3 bg-slate-800 border border-emerald-500/30 hover:border-emerald-400 rounded-xl transition-all"
+              >
+                <div>
+                  <p className="text-white font-semibold text-sm">{g.name}</p>
+                  <p className="text-slate-400 text-xs">{g.number}</p>
+                </div>
+                <MessageCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+              </a>
+            ))}
+          </div>
+          <Button onClick={onSuccess} className="w-full bg-sky-600 hover:bg-sky-700">
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+            Done
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">

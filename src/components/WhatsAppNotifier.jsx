@@ -9,14 +9,27 @@
  *  onDone   – callback when user dismisses
  *  title    – optional header text
  */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { buildAdminLinks } from "@/lib/whatsapp";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, MessageCircle, X } from "lucide-react";
 
 export default function WhatsAppNotifier({ message, onDone, title = "Send WhatsApp Alerts" }) {
-  const links = buildAdminLinks(message);
+  const [links, setLinks] = useState(buildAdminLinks(message));
   const [sent, setSent] = useState({});
+
+  // Refresh from DB on mount to pick up latest contacts
+  useEffect(() => {
+    import("@/lib/whatsapp").then(({ loadWhatsAppContacts, buildWhatsAppLink }) => {
+      loadWhatsAppContacts().then(contacts => {
+        setLinks(contacts.filter(c => c.number).map(c => ({
+          name: c.name,
+          number: c.number,
+          link: buildWhatsAppLink(c.number, message),
+        })));
+      });
+    });
+  }, [message]);
 
   const handleSend = (link, number) => {
     window.open(link, "_blank");
