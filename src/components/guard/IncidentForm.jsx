@@ -164,45 +164,38 @@ Officer Signature: Signed
         media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
       });
 
-      // Send immediate notifications via backend with location
+      // Notify admins via in-app notifications + email
       try {
-        await base44.functions.invoke('notifyAdminsIncident', {
-          incidentId: incident.id,
-          guardName: user.full_name,
-          incidentType: data.incident_type,
-          siteName: shift?.site_name || 'Unknown Site',
-          incidentTime: data.date_time_of_incident,
-          location: location
-        });
-      } catch (error) {
-        console.error('Failed to send incident notification:', error);
-      }
+        const allUsers = await base44.entities.User.list();
+        const admins = allUsers.filter(u =>
+          ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
+        );
+        const notifTitle = `🚨 Incident: ${data.incident_type} — ${user.full_name} @ ${shift?.site_name || 'Unknown Site'}`;
+        const notifMsg = `${data.incident_summary || 'No summary provided.'}\nLocation: ${data.incident_location}\n${location ? `GPS: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : ''}`;
 
-      // Invoke serverless function to handle emails and notifications
-      try {
-        await base44.functions.invoke('processIncidentReport', {
-          incidentId: incident.id,
-          incidentReportNumber: data.incident_report_number,
-          incidentType: data.incident_type,
-          siteName: shift?.site_name || 'N/A',
-          guardFullName: user.full_name,
-          incidentDateTime: data.date_time_of_incident,
-          incidentLocation: data.incident_location,
-          incidentSummary: data.incident_summary,
-          incidentDetails: data.who_what_when_details,
-          victimNames: data.victim_names,
-          suspectNames: data.suspect_names,
-          witnessNames: data.witness_names,
-          officerActions: data.officer_actions,
-          policeCalled: data.police_called,
-          policeNamesBadges: data.police_names_badges,
-          mediaCount: data.media.length,
-          voiceNotesCount: data.voice_notes.length,
-          gpsLocation: location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : 'Not available',
-          actionUrl: createPageUrl('Reports') // Assuming 'Reports' is the page name for incidents
-        });
-      } catch (error) {
-        console.error('Failed to invoke processIncidentReport function:', error);
+        for (const admin of admins) {
+          base44.entities.Notification.create({
+            recipient_id: admin.id,
+            recipient_name: admin.full_name,
+            type: "incident_assigned",
+            priority: "high",
+            title: notifTitle,
+            message: notifMsg,
+            read: false,
+            related_entity: "incident",
+            related_id: incident.id,
+          }).catch(() => {});
+
+          if (admin.email) {
+            base44.integrations.Core.SendEmail({
+              to: admin.email,
+              subject: notifTitle,
+              body: `Incident Report #${data.incident_report_number}\n\nType: ${data.incident_type}\nSite: ${shift?.site_name}\nGuard: ${user.full_name}\nTime: ${new Date(data.date_time_of_incident).toLocaleString()}\nLocation: ${data.incident_location}\n\nSummary:\n${data.incident_summary}\n\nDetails:\n${data.who_what_when_details}\n\nOfficer Actions:\n${data.officer_actions}\n\nPolice Called: ${data.police_called}${data.police_names_badges ? `\nPolice: ${data.police_names_badges}` : ''}\n\nMedia: ${data.media.length} file(s), ${data.voice_notes.length} voice note(s)\n${location ? `\nGPS: ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : ''}`,
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Admin notification failed:', e);
       }
 
       return incident;
@@ -218,6 +211,7 @@ Officer Signature: Signed
         lat: location?.lat,
         lng: location?.lng,
       });
+      // Always show WhatsApp notifier after successful submission
       setWaMessage(msg);
     },
     onError: (error, newIncident, context) => {

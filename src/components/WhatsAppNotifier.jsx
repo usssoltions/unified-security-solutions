@@ -38,7 +38,7 @@ export default function WhatsAppNotifier({ message, onDone, title = "Send WhatsA
 
   if (links.length === 0) {
     return (
-      <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-[100] p-4">
+      <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-[200] p-4">
         <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-white font-bold text-lg">{title}</h2>
@@ -61,7 +61,7 @@ export default function WhatsAppNotifier({ message, onDone, title = "Send WhatsA
   const allSent = links.every((l) => sent[l.number]);
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-[100] p-4">
+    <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-[200] p-4">
       <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-5 w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
