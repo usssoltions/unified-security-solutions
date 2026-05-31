@@ -34,9 +34,14 @@ export default function IncidentEscalationMonitor({ user }) {
 
           const reportedAt = new Date(incident.reported_at);
           const minutesSinceReport = (now - reportedAt) / (1000 * 60);
-          const shouldEscalate = 
-            !incident.escalated && (
-              incident.priority === 'critical' || 
+          // Require at least 5 minutes before escalating even critical/high incidents
+          // to avoid immediately escalating freshly reported incidents
+          const minMinutesBeforeEscalation = incident.priority === 'critical' ? 5 : 10;
+          const shouldEscalate =
+            !incident.escalated &&
+            minutesSinceReport >= minMinutesBeforeEscalation &&
+            (
+              incident.priority === 'critical' ||
               incident.priority === 'high' ||
               minutesSinceReport > ESCALATION_THRESHOLD_MINUTES
             );
@@ -125,14 +130,24 @@ export default function IncidentEscalationMonitor({ user }) {
       try {
         const activeShifts = await base44.entities.Shift.filter({ status: 'active' });
         if (!Array.isArray(activeShifts)) return;
-        
+
+        // Filter shifts at the same site first — avoid per-shift User.get() calls
+        const sameSiteShifts = activeShifts.filter(
+          s => s.guard_id !== incident.guard_id && s.site_id === incident.site_id
+        );
+        if (sameSiteShifts.length === 0) return;
+
+        // Fetch all guards in one batch instead of one-by-one
+        const guardIds = [...new Set(sameSiteShifts.map(s => s.guard_id))];
+        const allUsers = await base44.entities.User.list();
+        const guardsMap = Object.fromEntries(
+          (Array.isArray(allUsers) ? allUsers : []).map(u => [u.id, u])
+        );
+
         const availableGuards = [];
-
-        for (const shift of activeShifts) {
-          if (shift.guard_id === incident.guard_id) continue;
-
-          const user = await base44.entities.User.get(shift.guard_id);
-          if (user?.current_workload < 2 && shift.site_id === incident.site_id) {
+        for (const shift of sameSiteShifts) {
+          const user = guardsMap[shift.guard_id];
+          if (user && (user.current_workload || 0) < 2) {
             availableGuards.push({
               guard_id: user.id,
               guard_name: user.full_name,
