@@ -1,117 +1,98 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+/**
+ * monitorHighPriorityIncidents
+ * 
+ * NOW triggered as an entity automation (on Incident create/update),
+ * NOT on a schedule. This eliminates all polling credit costs.
+ * 
+ * Only fires when incident priority === 'critical' and notification hasn't been sent yet.
+ */
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const body = await req.json();
 
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    // Entity automation payload: { event, data, old_data }
+    const incident = body.data;
+    if (!incident) {
+      return Response.json({ skipped: true, reason: 'No incident data' });
     }
 
-    const now = new Date();
-    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    // Only act on critical priority incidents that haven't been notified yet
+    if (incident.priority !== 'critical') {
+      return Response.json({ skipped: true, reason: 'Not critical priority' });
+    }
 
-    // Get recent high priority incidents that are not resolved
-    const incidents = await base44.asServiceRole.entities.Incident.filter({
-      priority: "critical"
-    });
+    if (incident.notification_sent === true) {
+      return Response.json({ skipped: true, reason: 'Notification already sent' });
+    }
 
-    const unresolvedIncidents = incidents.filter(incident => {
-      const reportedAt = new Date(incident.reported_at);
-      const isRecent = reportedAt >= fiveMinutesAgo;
-      const isUnresolved = incident.status !== "resolved" && incident.status !== "closed";
-      return isRecent && isUnresolved;
-    });
+    // Get all admins and dispatchers in one query
+    const allUsers = await base44.asServiceRole.entities.User.list();
+    const recipients = allUsers.filter(u =>
+      u.role_type === 'admin' || u.role_type === 'dispatcher'
+    );
 
-    const alertsCreated = [];
+    if (recipients.length === 0) {
+      return Response.json({ skipped: true, reason: 'No admins/dispatchers found' });
+    }
 
-    for (const incident of unresolvedIncidents) {
-      // Check if critical alert already exists
-      const existingAlerts = await base44.asServiceRole.entities.Alert.filter({
-        type: "critical_incident",
-        metadata: { incident_id: incident.id },
-        status: "active"
-      });
+    const subject = `🚨 CRITICAL INCIDENT - ${(incident.category || '').toUpperCase()} at ${incident.site_name}`;
+    const emailBody = `CRITICAL INCIDENT ALERT
 
-      if (existingAlerts.length === 0) {
-        const alert = await base44.asServiceRole.entities.Alert.create({
-          type: "panic",
-          priority: "critical",
-          title: "🚨 Critical Incident Reported",
-          message: `${incident.category.toUpperCase()}: ${incident.title} at ${incident.site_name}. Guard: ${incident.guard_name}`,
-          guard_id: incident.guard_id,
-          guard_name: incident.guard_name,
-          site_id: incident.site_id,
-          location: incident.location,
-          status: "active",
-          metadata: {
-            incident_id: incident.id,
-            category: incident.category,
-            priority: incident.priority
-          }
-        });
-
-        // Send immediate notifications to all dispatchers and admins
-        const responders = await base44.asServiceRole.entities.User.list();
-        const adminAndDispatch = responders.filter(u => 
-          u.role_type === "admin" || u.role_type === "dispatcher"
-        );
-
-        for (const responder of adminAndDispatch) {
-          try {
-            // Send email
-            await base44.asServiceRole.integrations.Core.SendEmail({
-              to: responder.email,
-              subject: `🚨 CRITICAL INCIDENT - ${incident.category.toUpperCase()}`,
-              body: `
-CRITICAL INCIDENT ALERT
-
-Type: ${incident.category.toUpperCase()}
+Type: ${(incident.category || '').toUpperCase()}
 Title: ${incident.title}
 Description: ${incident.description || 'No description provided'}
 
 Guard: ${incident.guard_name}
 Site: ${incident.site_name}
 Location: ${incident.location ? `${incident.location.lat}, ${incident.location.lng}` : 'Not available'}
-Reported: ${new Date(incident.reported_at).toLocaleString()}
-
+Reported: ${new Date(incident.reported_at || incident.created_date).toLocaleString('en-ZA')}
 Status: ${incident.status}
 
-IMMEDIATE ACTION REQUIRED - Log in to the system to respond.
-              `
-            });
+IMMEDIATE ACTION REQUIRED — Log in to respond.`;
 
-            // Create in-app notification
-            await base44.asServiceRole.entities.Notification.create({
-              recipient_id: responder.id,
-              recipient_name: responder.full_name,
-              type: "incident_critical",
-              priority: "critical",
-              title: "Critical Incident Alert",
-              message: `${incident.category}: ${incident.title} at ${incident.site_name}`,
-              related_entity: "incident",
-              related_id: incident.id,
-              sent_via: ["in_app", "email"]
-            });
-          } catch (notifError) {
-            console.error("Failed to send notification:", notifError);
-          }
-        }
+    // Send all notifications in parallel — one batch, not per-admin loops
+    const notifPromises = recipients.map(admin =>
+      base44.asServiceRole.entities.Notification.create({
+        recipient_id: admin.id,
+        recipient_name: admin.full_name,
+        type: 'incident_critical',
+        priority: 'critical',
+        title: `🚨 Critical Incident: ${incident.title}`,
+        message: `${incident.category}: ${incident.title} at ${incident.site_name} — ${incident.guard_name}`,
+        read: false,
+        related_entity: 'incident',
+        related_id: incident.id,
+        sent_via: ['in_app', 'email'],
+      }).catch(() => {})
+    );
 
-        alertsCreated.push(alert);
-      }
-    }
+    const emailPromises = recipients
+      .filter(u => u.email)
+      .map(admin =>
+        base44.asServiceRole.integrations.Core.SendEmail({
+          to: admin.email,
+          subject,
+          body: emailBody,
+        }).catch(() => {})
+      );
+
+    await Promise.all([...notifPromises, ...emailPromises]);
+
+    // Mark notification as sent to prevent duplicates
+    await base44.asServiceRole.entities.Incident.update(incident.id, {
+      notification_sent: true,
+    });
 
     return Response.json({
       success: true,
-      incidentsChecked: unresolvedIncidents.length,
-      alertsCreated: alertsCreated.length,
-      alerts: alertsCreated
+      notified: recipients.length,
     });
 
   } catch (error) {
-    console.error("Error monitoring incidents:", error);
+    console.error('monitorHighPriorityIncidents error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
