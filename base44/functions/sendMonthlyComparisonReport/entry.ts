@@ -121,16 +121,32 @@ Deno.serve(async (req) => {
         : `✅ All incidents resolved.`,
     ].join('\n');
 
-    // Get recipients
-    const allUsers = await base44.asServiceRole.entities.User.filter({});
-    const recipients = allUsers.filter(u => 
-      u.role_type === 'admin' || 
+    // Get recipients — app users + custom WhatsApp contacts with email
+    const [allUsers, waContacts] = await Promise.all([
+      base44.asServiceRole.entities.User.filter({}),
+      base44.asServiceRole.entities.WhatsAppContact.filter({ active: true }),
+    ]);
+
+    const recipients = allUsers.filter(u =>
+      u.role_type === 'admin' ||
       u.role_type === 'management' ||
       u.role_type === 'supervisor'
     );
 
+    const customEmailContacts = waContacts
+      .filter(c => c.email && c.email.includes('@'))
+      .map(c => ({ email: c.email, full_name: c.name }));
+
+    const allEmailSet = new Set(recipients.map(r => r.email));
+    const extraRecipients = customEmailContacts.filter(c => !allEmailSet.has(c.email));
+    const allRecipients = [...recipients, ...extraRecipients];
+
+    // WhatsApp summary for WA-only contacts
+    const waSummary = `📊 *MONTHLY REPORT — ${currentMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}*\n\n${aiAnalysis}\n\n📱 Full report sent to your email.`;
+    const waNumber = (raw) => { let d = String(raw).replace(/\D/g, ''); if (d.startsWith('0')) d = '27' + d.slice(1); return d; };
+
     // Send email report
-    const emailPromises = recipients.map(recipient =>
+    const emailPromises = allRecipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
         from_name: 'SecureGuard Monthly Analytics',
         to: recipient.email,
@@ -308,9 +324,27 @@ Deno.serve(async (req) => {
 
     await Promise.all(emailPromises);
 
-    return Response.json({ 
-      success: true, 
-      reportsSent: recipients.length,
+    // WA-only contacts — send tap-to-send links to first admin
+    const waOnlyContacts = waContacts.filter(c => c.number && (!c.email || !c.email.includes('@')));
+    if (waOnlyContacts.length > 0 && recipients.length > 0) {
+      const waLinks = waOnlyContacts.map(c =>
+        `• ${c.name} (${c.number}): https://wa.me/${waNumber(c.number)}?text=${encodeURIComponent(waSummary)}`
+      ).join('\n');
+      const firstAdmin = recipients[0];
+      if (firstAdmin?.email) {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: 'SecureGuard Monthly Analytics',
+          to: firstAdmin.email,
+          subject: `📲 WhatsApp Monthly Report Links — ${currentMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}`,
+          body: `Tap the links below to send the monthly comparison report to WhatsApp-only contacts:\n\n${waLinks}`,
+        }).catch(() => {});
+      }
+    }
+
+    return Response.json({
+      success: true,
+      reportsSent: allRecipients.length,
+      waContactsNotified: waContacts.length,
       period: `${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
     });
   } catch (error) {

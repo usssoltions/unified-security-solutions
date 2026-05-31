@@ -65,17 +65,43 @@ Deno.serve(async (req) => {
       criticalIncidents.length > 0 ? `⚠️ Critical items require follow-up: ${criticalIncidents.map(i => i.title).join(', ')}.` : '✅ No critical incidents reported.',
     ].join('\n');
 
-    // Get all admins and supervisors
-    const allUsers = await base44.asServiceRole.entities.User.filter({});
-    const recipients = allUsers.filter(u => 
-      u.role_type === 'admin' || 
-      u.role_type === 'dispatcher' || 
+    // Get all admins/supervisors AND custom WhatsApp contacts with email
+    const [allUsers, waContacts] = await Promise.all([
+      base44.asServiceRole.entities.User.filter({}),
+      base44.asServiceRole.entities.WhatsAppContact.filter({ active: true }),
+    ]);
+
+    const recipients = allUsers.filter(u =>
+      u.role_type === 'admin' ||
+      u.role_type === 'dispatcher' ||
       u.role_type === 'supervisor' ||
       u.role_type === 'management'
     );
 
+    // Custom contacts with an email field get the report too
+    const customEmailContacts = waContacts
+      .filter(c => c.email && c.email.includes('@'))
+      .map(c => ({ email: c.email, full_name: c.name }));
+
+    // Merge, deduplicate by email
+    const allEmailSet = new Set(recipients.map(r => r.email));
+    const extraRecipients = customEmailContacts.filter(c => !allEmailSet.has(c.email));
+    const allRecipients = [...recipients, ...extraRecipients];
+
+    // Build WhatsApp summary text for custom WA contacts
+    const waSummary = `📊 *DAILY ACTIVITY REPORT — ${yesterday.toLocaleDateString('en-ZA')}*\n\n${aiSummary}\n\n📱 Full report sent to your email.`;
+    const waNumber = (raw) => {
+      let d = String(raw).replace(/\D/g, '');
+      if (d.startsWith('0')) d = '27' + d.slice(1);
+      return d;
+    };
+
+    // Send WhatsApp deep-link via email to custom contacts who have a number
+    // (Deep links are opened by guards/admins; we embed the link in an email notification)
+    const waLinkContacts = waContacts.filter(c => c.number);
+
     // Send email report to each recipient
-    const emailPromises = recipients.map(recipient =>
+    const emailPromises = allRecipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
         from_name: 'SecureGuard System',
         to: recipient.email,
@@ -162,9 +188,29 @@ Deno.serve(async (req) => {
 
     await Promise.all(emailPromises);
 
-    return Response.json({ 
-      success: true, 
-      reportsSent: recipients.length,
+    // Also send a WhatsApp notification email to custom WA contact numbers
+    // that don't have an email — embed the wa.me link so admins can forward/share
+    const waOnlyContacts = waContacts.filter(c => c.number && (!c.email || !c.email.includes('@')));
+    if (waOnlyContacts.length > 0 && recipients.length > 0) {
+      const waLinks = waOnlyContacts.map(c =>
+        `• ${c.name} (${c.number}): https://wa.me/${waNumber(c.number)}?text=${encodeURIComponent(waSummary)}`
+      ).join('\n');
+      // Notify first admin about WA-only contacts so they can tap & send
+      const firstAdmin = recipients[0];
+      if (firstAdmin?.email) {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: 'SecureGuard System',
+          to: firstAdmin.email,
+          subject: `📲 WhatsApp Daily Report Links — ${yesterday.toLocaleDateString()}`,
+          body: `Tap the links below to send the daily report to WhatsApp-only contacts:\n\n${waLinks}`,
+        }).catch(() => {});
+      }
+    }
+
+    return Response.json({
+      success: true,
+      reportsSent: allRecipients.length,
+      waContactsNotified: waContacts.length,
       date: yesterday.toLocaleDateString()
     });
   } catch (error) {
