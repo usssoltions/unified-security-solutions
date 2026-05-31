@@ -352,7 +352,8 @@ Deno.serve(async (req) => {
         aiAnalysis
       );
       const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
-      const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file: blob });
+      const pdfFile = new File([blob], `monthly_comparison_report_${currentMonthStart.toISOString().split('T')[0]}.pdf`, { type: 'application/pdf' });
+      const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file: pdfFile });
       pdfDownloadUrl = uploadResult.file_url;
     } catch (pdfErr) {
       console.error('PDF generation failed:', pdfErr.message);
