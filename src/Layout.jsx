@@ -215,6 +215,8 @@ export default function Layout({ children, currentPageName }) {
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
         { title: "Patrol Dashboard", url: createPageUrl("PatrolDashboard"), icon: Shield },
         { title: "Patrol Analytics", url: createPageUrl("PatrolAnalytics"), icon: BarChart3 },
+        { title: "Site Map", url: createPageUrl("SiteMapDashboard"), icon: MapPin },
+        { title: "Payroll", url: createPageUrl("PayrollSummary"), icon: BarChart3 },
         { title: "Data Hub", url: createPageUrl("DataHub"), icon: FileText },
         { title: "Reports", url: createPageUrl("Reports"), icon: FileText },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },

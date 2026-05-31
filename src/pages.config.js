@@ -103,6 +103,8 @@ import PatrolDashboard from './pages/PatrolDashboard';
 import GuardPatrol from './pages/GuardPatrol';
 import DataHub from './pages/DataHub';
 import PatrolAnalytics from './pages/PatrolAnalytics';
+import PayrollSummary from './pages/PayrollSummary';
+import SiteMapDashboard from './pages/SiteMapDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -163,6 +165,8 @@ export const PAGES = {
     "GuardPatrol": GuardPatrol,
     "DataHub": DataHub,
     "PatrolAnalytics": PatrolAnalytics,
+    "PayrollSummary": PayrollSummary,
+    "SiteMapDashboard": SiteMapDashboard,
 }
 
 export const pagesConfig = {
