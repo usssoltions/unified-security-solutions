@@ -1,0 +1,172 @@
+{
+  "name": "Site",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Site name"
+    },
+    "address": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "geofence_radius": {
+      "type": "number",
+      "description": "Meters for geofencing",
+      "default": 100
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qr_code": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "risk_level": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "default": "medium"
+          },
+          "description": {
+            "type": "string"
+          },
+          "photo_url": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number"
+              },
+              "lng": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "default": []
+    },
+    "patrol_config": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "schedules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "start_time": {
+                "type": "string",
+                "description": "HH:MM"
+              },
+              "end_time": {
+                "type": "string",
+                "description": "HH:MM"
+              },
+              "frequency_minutes": {
+                "type": "number",
+                "description": "Interval in minutes"
+              },
+              "days": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "description": "0=Sun..6=Sat, empty=all"
+              }
+            }
+          },
+          "default": []
+        },
+        "duration_target_minutes": {
+          "type": "number",
+          "default": 30
+        },
+        "random_route": {
+          "type": "boolean",
+          "default": true
+        },
+        "ai_route_optimization": {
+          "type": "boolean",
+          "default": true
+        },
+        "required_checkpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "alert_before_minutes": {
+          "type": "number",
+          "default": 10
+        },
+        "escalation_after_minutes": {
+          "type": "number",
+          "default": 15
+        },
+        "supervisor_escalation": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "checklist_templates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Template IDs"
+    }
+  },
+  "required": [
+    "name",
+    "address",
+    "client_name"
+  ]
+}

@@ -1,0 +1,150 @@
+{
+  "name": "PatrolPlan",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Patrol plan name"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "scheduled_patrol_id": {
+      "type": "string",
+      "description": "Link to ScheduledPatrol"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Guard ID"
+    },
+    "assigned_to_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "completed",
+        "cancelled",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "route_checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "checkpoint_id": {
+            "type": "string"
+          },
+          "checkpoint_name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "risk_level": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "completed": {
+            "type": "boolean",
+            "default": false
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "guard_feedback": {
+            "type": "string"
+          },
+          "gps_verified": {
+            "type": "boolean"
+          }
+        }
+      },
+      "default": []
+    },
+    "ai_generated": {
+      "type": "boolean",
+      "default": false
+    },
+    "ai_recommendations": {
+      "type": "string"
+    },
+    "high_risk_areas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "estimated_duration_minutes": {
+      "type": "number"
+    },
+    "actual_duration_minutes": {
+      "type": "number"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "created_by_name": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "guard_notes": {
+      "type": "string"
+    },
+    "linked_incidents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "completion_score": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "name",
+    "site_id",
+    "assigned_to"
+  ]
+}

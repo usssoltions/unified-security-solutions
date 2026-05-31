@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import CheckpointQRGenerator from "./CheckpointQRGenerator";
+import PatrolSiteConfig from "@/components/patrol/PatrolSiteConfig";
 
 export default function SiteForm({ site, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -22,7 +23,8 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     location: site?.location || { lat: 0, lng: 0 },
     geofence_radius: site?.geofence_radius || 100,
     status: site?.status || "active",
-    checkpoints: site?.checkpoints || []
+    checkpoints: site?.checkpoints || [],
+    patrol_config: site?.patrol_config || { enabled: false, schedules: [] }
   });
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -501,6 +503,12 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                 </p>
               )}
             </div>
+
+            {/* Patrol Config */}
+            <PatrolSiteConfig
+              patrolConfig={formData.patrol_config}
+              onChange={(patrol_config) => updateFormData({ patrol_config })}
+            />
 
             <div className="flex gap-3 pt-4 border-t border-slate-700">
               <Button

@@ -99,6 +99,10 @@ import StayAwakeConfiguration from './pages/StayAwakeConfiguration';
 import SystemSetup from './pages/SystemSetup';
 import TestDataManager from './pages/TestDataManager';
 import UserManagement from './pages/UserManagement';
+import PatrolDashboard from './pages/PatrolDashboard';
+import GuardPatrol from './pages/GuardPatrol';
+import DataHub from './pages/DataHub';
+import PatrolAnalytics from './pages/PatrolAnalytics';
 import __Layout from './Layout.jsx';
 
 
@@ -155,6 +159,10 @@ export const PAGES = {
     "SystemSetup": SystemSetup,
     "TestDataManager": TestDataManager,
     "UserManagement": UserManagement,
+    "PatrolDashboard": PatrolDashboard,
+    "GuardPatrol": GuardPatrol,
+    "DataHub": DataHub,
+    "PatrolAnalytics": PatrolAnalytics,
 }
 
 export const pagesConfig = {

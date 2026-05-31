@@ -195,6 +195,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
+        { title: "AI Patrol", url: createPageUrl("GuardPatrol"), icon: Shield },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
@@ -212,6 +213,9 @@ export default function Layout({ children, currentPageName }) {
         { title: "Scheduling", url: createPageUrl("Scheduling"), icon: Calendar },
         { title: "Clock In/Out", url: createPageUrl("ClockInOutReports"), icon: Clock },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin },
+        { title: "Patrol Dashboard", url: createPageUrl("PatrolDashboard"), icon: Shield },
+        { title: "Patrol Analytics", url: createPageUrl("PatrolAnalytics"), icon: BarChart3 },
+        { title: "Data Hub", url: createPageUrl("DataHub"), icon: FileText },
         { title: "Reports", url: createPageUrl("Reports"), icon: FileText },
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
         { title: "Guard Activity", url: createPageUrl("GuardActivity"), icon: Users },
