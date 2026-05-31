@@ -1,8 +1,129 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
 const BRAND_SECONDARY = '#1a1a1a';
+
+async function generateDailyPDF(date, stats, incidents, maintenance) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = 210;
+  const margin = 18;
+  const contentW = pageW - margin * 2;
+
+  // Header background
+  doc.setFillColor(196, 30, 58);
+  doc.rect(0, 0, pageW, 45, 'F');
+
+  // Title
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DAILY ACTIVITY REPORT', pageW / 2, 20, { align: 'center' });
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(date, pageW / 2, 32, { align: 'center' });
+  doc.setFontSize(10);
+  doc.text('Unified Security Solutions', pageW / 2, 40, { align: 'center' });
+
+  let y = 58;
+
+  // Summary Stats grid
+  doc.setTextColor(26, 26, 26);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Summary Statistics', margin, y);
+  y += 6;
+
+  const statBoxes = [
+    { label: 'Incidents', value: stats.incidents, color: [196, 30, 58] },
+    { label: 'Maintenance', value: stats.maintenance, color: [14, 165, 233] },
+    { label: 'Patrol Stops', value: stats.patrols, color: [16, 185, 129] },
+    { label: 'Shifts', value: stats.shifts, color: [245, 158, 11] },
+  ];
+  const boxW = contentW / 4 - 3;
+  statBoxes.forEach((box, i) => {
+    const bx = margin + i * (boxW + 4);
+    doc.setFillColor(248, 249, 250);
+    doc.roundedRect(bx, y, boxW, 22, 3, 3, 'F');
+    doc.setFillColor(...box.color);
+    doc.rect(bx, y, 3, 22, 'F');
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(box.label, bx + 6, y + 8);
+    doc.setTextColor(26, 26, 26);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text(String(box.value), bx + 6, y + 18);
+  });
+  y += 30;
+
+  // AI Summary
+  doc.setFillColor(240, 249, 255);
+  doc.roundedRect(margin, y, contentW, 2, 1, 1, 'F');
+  doc.setTextColor(26, 26, 26);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Operational Summary', margin, y + 8);
+  y += 12;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(71, 85, 105);
+  const summaryLines = doc.splitTextToSize(stats.summary, contentW);
+  doc.text(summaryLines, margin, y);
+  y += summaryLines.length * 5 + 8;
+
+  // Critical Incidents
+  const critical = incidents.filter(i => i.priority === 'critical' || i.priority === 'high');
+  if (critical.length > 0) {
+    doc.setFillColor(255, 245, 245);
+    doc.roundedRect(margin, y, contentW, 8 + critical.length * 16, 3, 3, 'F');
+    doc.setFillColor(196, 30, 58);
+    doc.rect(margin, y, 3, 8 + critical.length * 16, 'F');
+    doc.setTextColor(26, 26, 26);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('⚠ Critical / High Priority Incidents', margin + 6, y + 7);
+    y += 12;
+    critical.forEach(inc => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(196, 30, 58);
+      doc.text(`• ${inc.title}`, margin + 6, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.setFontSize(9);
+      doc.text(`Site: ${inc.site_name || 'N/A'}  |  Status: ${inc.status}  |  Priority: ${inc.priority}`, margin + 10, y + 5);
+      y += 14;
+    });
+    y += 4;
+  }
+
+  // Pending items
+  doc.setFillColor(240, 253, 244);
+  doc.roundedRect(margin, y, contentW, 24, 3, 3, 'F');
+  doc.setTextColor(22, 101, 52);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Pending Items', margin + 4, y + 8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Open Incidents: ${stats.openIncidents}`, margin + 4, y + 16);
+  doc.text(`Pending Maintenance: ${stats.pendingMaintenance}`, margin + 60, y + 16);
+  y += 30;
+
+  // Footer
+  doc.setFillColor(26, 26, 26);
+  doc.rect(0, 285, pageW, 12, 'F');
+  doc.setTextColor(148, 163, 184);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Automated Daily Report — Unified Security Solutions', pageW / 2, 292, { align: 'center' });
+
+  return doc.output('arraybuffer');
+}
 
 Deno.serve(async (req) => {
   try {
@@ -100,6 +221,38 @@ Deno.serve(async (req) => {
     // (Deep links are opened by guards/admins; we embed the link in an email notification)
     const waLinkContacts = waContacts.filter(c => c.number);
 
+    // Generate and upload the PDF
+    let pdfDownloadUrl = null;
+    try {
+      const pdfBuffer = await generateDailyPDF(
+        yesterday.toLocaleDateString('en-ZA'),
+        {
+          incidents: yesterdayIncidents.length,
+          maintenance: yesterdayMaintenance.length,
+          patrols: yesterdayPatrols.length,
+          shifts: yesterdayShifts.length,
+          openIncidents: openIncidents.length,
+          pendingMaintenance: yesterdayMaintenance.filter(m => m.status !== 'completed').length,
+          summary: aiSummary,
+        },
+        yesterdayIncidents,
+        yesterdayMaintenance
+      );
+      const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
+      const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file: blob });
+      pdfDownloadUrl = uploadResult.file_url;
+    } catch (pdfErr) {
+      console.error('PDF generation failed:', pdfErr.message);
+    }
+
+    const pdfButtonHtml = pdfDownloadUrl
+      ? `<div style="text-align:center; margin: 20px 0;">
+           <a href="${pdfDownloadUrl}" target="_blank" style="display:inline-block; background:${BRAND_COLOR}; color:white; padding:14px 32px; border-radius:8px; font-size:15px; font-weight:bold; text-decoration:none;">
+             📄 Download PDF Report
+           </a>
+         </div>`
+      : '';
+
     // Send email report to each recipient
     const emailPromises = allRecipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
@@ -171,6 +324,8 @@ Deno.serve(async (req) => {
           <li>Pending Maintenance: <strong>${yesterdayMaintenance.filter(m => m.status !== 'completed').length}</strong></li>
         </ul>
       </div>
+
+      ${pdfButtonHtml}
     </div>
 
     <div style="background: ${BRAND_SECONDARY}; padding: 25px; text-align: center;">
