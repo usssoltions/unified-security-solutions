@@ -51,29 +51,19 @@ Deno.serve(async (req) => {
       return date >= yesterday && date <= endOfYesterday;
     });
 
-    // Generate summary using AI
-    const summaryPrompt = `Generate a professional daily activity summary report for ${yesterday.toLocaleDateString()}:
+    // Build plain text summary without using LLM credits
+    const criticalIncidents = yesterdayIncidents.filter(i => i.priority === 'critical' || i.priority === 'high');
+    const openIncidents = yesterdayIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed');
+    const pendingMaintenance = yesterdayMaintenance.filter(m => m.status !== 'completed');
 
-Incidents: ${yesterdayIncidents.length}
-${yesterdayIncidents.map(i => `- ${i.title} at ${i.site_name} (Priority: ${i.priority})`).join('\n')}
-
-Maintenance Requests: ${yesterdayMaintenance.length}
-${yesterdayMaintenance.map(m => `- ${m.title} at ${m.site_name} (Urgency: ${m.urgency})`).join('\n')}
-
-Patrol Stops: ${yesterdayPatrols.length}
-${yesterdayPatrols.map(p => `- ${p.checkpoint_name} by ${p.guard_name}`).join('\n')}
-
-Shifts Completed: ${yesterdayShifts.length}
-${yesterdayShifts.map(s => `- ${s.guard_name} at ${s.site_name}`).join('\n')}
-
-Alerts: ${yesterdayAlerts.length}
-${yesterdayAlerts.map(a => `- ${a.type}: ${a.title}`).join('\n')}
-
-Provide a concise executive summary with key insights and recommendations.`;
-
-    const aiSummary = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: summaryPrompt
-    });
+    const aiSummary = [
+      `Daily summary for ${yesterday.toLocaleDateString()}:`,
+      `• ${yesterdayIncidents.length} incident(s) reported — ${criticalIncidents.length} critical/high priority, ${openIncidents.length} still open.`,
+      `• ${yesterdayMaintenance.length} maintenance request(s) — ${pendingMaintenance.length} still pending.`,
+      `• ${yesterdayPatrols.length} patrol stop(s) logged.`,
+      `• ${yesterdayShifts.length} shift(s) active, ${yesterdayAlerts.length} alert(s) triggered.`,
+      criticalIncidents.length > 0 ? `⚠️ Critical items require follow-up: ${criticalIncidents.map(i => i.title).join(', ')}.` : '✅ No critical incidents reported.',
+    ].join('\n');
 
     // Get all admins and supervisors
     const allUsers = await base44.asServiceRole.entities.User.filter({});
