@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
@@ -11,293 +11,220 @@ Deno.serve(async (req) => {
 
     const { reportType, frequency, sites, emailRecipients } = await req.json();
 
-    // Calculate date range based on frequency
     const now = new Date();
-    let startDate, endDate = now;
-    
+    let startDate;
     if (frequency === 'daily') {
       startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     } else if (frequency === 'weekly') {
       startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    } else if (frequency === 'monthly') {
+    } else {
       startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Fetch all relevant data
-    const incidents = await base44.asServiceRole.entities.Incident.list();
-    const maintenance = await base44.asServiceRole.entities.MaintenanceRequest.list();
-    const shifts = await base44.asServiceRole.entities.Shift.list();
-    const guards = await base44.asServiceRole.entities.User.list();
-    const sitesList = await base44.asServiceRole.entities.Site.list();
+    const [incidents, maintenance, shifts, guards, sitesList] = await Promise.all([
+      base44.asServiceRole.entities.Incident.list(),
+      base44.asServiceRole.entities.MaintenanceRequest.list(),
+      base44.asServiceRole.entities.Shift.list(),
+      base44.asServiceRole.entities.User.list(),
+      base44.asServiceRole.entities.Site.list(),
+    ]);
 
-    // Filter by date and sites
-    const filterByDateAndSites = (items, dateField) => {
-      return items.filter(item => {
-        const itemDate = new Date(item[dateField] || item.created_date);
-        const dateMatch = itemDate >= startDate && itemDate <= endDate;
+    const filterByDateAndSites = (items, dateField) =>
+      items.filter(item => {
+        const d = new Date(item[dateField] || item.created_date);
+        const dateMatch = d >= startDate && d <= now;
         const siteMatch = !sites || sites.length === 0 || sites.includes(item.site_id);
         return dateMatch && siteMatch;
       });
-    };
 
     const filteredIncidents = filterByDateAndSites(incidents, 'reported_at');
     const filteredMaintenance = filterByDateAndSites(maintenance, 'reported_at');
     const filteredShifts = filterByDateAndSites(shifts, 'start_time');
 
-    // Build AI prompt based on report type
-    let prompt = '';
     let reportTitle = '';
+    let reportContent = '';
+
+    const periodLabel = `${startDate.toLocaleDateString()} – ${now.toLocaleDateString()}`;
 
     if (reportType === 'weekly_summary' || reportType === 'daily_activity') {
       reportTitle = `${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Security Summary Report`;
-      prompt = `Generate a comprehensive ${frequency} security summary report based on the following data:
+      const criticalCount = filteredIncidents.filter(i => i.priority === 'critical').length;
+      const openCount = filteredIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length;
+      const pendingMaint = filteredMaintenance.filter(m => m.status !== 'completed').length;
+      const completedShifts = filteredShifts.filter(s => s.status === 'completed').length;
+      const categoryBreakdown = Object.entries(
+        filteredIncidents.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {})
+      ).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(', ');
 
-INCIDENTS (${filteredIncidents.length} total):
-${filteredIncidents.map((inc, idx) => `
-${idx + 1}. ${inc.title}
-   Priority: ${inc.priority}
-   Category: ${inc.category}
-   Site: ${inc.site_name}
-   Status: ${inc.status}
-   Date: ${inc.reported_at || inc.created_date}
-   Guard: ${inc.guard_name}
-`).join('\n')}
+      reportContent = [
+        `${reportTitle}`,
+        `Period: ${periodLabel}`,
+        ``,
+        `OVERVIEW`,
+        `• ${filteredIncidents.length} incident(s) reported — ${criticalCount} critical, ${openCount} still open.`,
+        `• ${filteredMaintenance.length} maintenance request(s) — ${pendingMaint} pending.`,
+        `• ${filteredShifts.length} shift(s), ${completedShifts} completed.`,
+        ``,
+        `INCIDENT CATEGORIES`,
+        categoryBreakdown || 'No incidents in this period.',
+        ``,
+        `TOP INCIDENTS`,
+        ...filteredIncidents.filter(i => i.priority === 'critical' || i.priority === 'high').slice(0, 5).map(i =>
+          `• [${i.priority?.toUpperCase()}] ${i.title} — ${i.site_name || 'N/A'} (${i.status})`
+        ),
+        ``,
+        criticalCount > 0 ? `⚠️ ${criticalCount} critical incident(s) require immediate review.` : `✅ No critical incidents this period.`,
+        openCount > 0 ? `⚠️ ${openCount} incident(s) still unresolved.` : `✅ All incidents resolved.`,
+      ].join('\n');
 
-MAINTENANCE REQUESTS (${filteredMaintenance.length} total):
-${filteredMaintenance.map((m, idx) => `
-${idx + 1}. ${m.title}
-   Urgency: ${m.urgency}
-   Category: ${m.category}
-   Site: ${m.site_name}
-   Status: ${m.status}
-   Date: ${m.reported_at || m.created_date}
-`).join('\n')}
-
-SHIFTS (${filteredShifts.length} total):
-${filteredShifts.filter((_, idx) => idx < 20).map(s => `
-- Guard: ${s.guard_name}, Site: ${s.site_name}, Status: ${s.status}
-`).join('\n')}
-
-Provide a professional executive summary including:
-1. Overview of key metrics and statistics
-2. Critical incidents and their outcomes
-3. Maintenance issues and resolution status
-4. Guard activity summary
-5. Trends and patterns identified
-6. Recommendations for improvement
-7. Areas of concern requiring immediate attention`;
-
-    } else if (reportType === 'monthly_performance') {
-      reportTitle = 'Monthly Guard Performance Review';
+    } else if (reportType === 'monthly_performance' || reportType === 'guard_performance') {
+      reportTitle = reportType === 'monthly_performance' ? 'Monthly Guard Performance Review' : 'Guard Performance Metrics Report';
       const guardsList = guards.filter(g => g.role_type === 'guard');
-      
-      prompt = `Generate a detailed monthly guard performance review:
+      const lines = [`${reportTitle}`, `Period: ${periodLabel}`, ``];
 
-GUARDS (${guardsList.length} total):
-${guardsList.map(g => {
-  const guardShifts = filteredShifts.filter(s => s.guard_id === g.id);
-  const guardIncidents = filteredIncidents.filter(i => i.guard_id === g.id);
-  return `
-${g.full_name} (${g.badge_number || 'N/A'}):
-- Shifts: ${guardShifts.length} (${guardShifts.filter(s => s.status === 'completed').length} completed)
-- Incidents Reported: ${guardIncidents.length}
-- Late Clock-ins: ${guardShifts.filter(s => {
-    if (!s.clock_in?.timestamp || !s.start_time) return false;
-    const diff = new Date(s.clock_in.timestamp) - new Date(s.start_time);
-    return diff > 15 * 60 * 1000;
-  }).length}
-`;
-}).join('\n')}
+      guardsList.forEach(g => {
+        const gShifts = filteredShifts.filter(s => s.guard_id === g.id);
+        const completed = gShifts.filter(s => s.status === 'completed').length;
+        const missed = gShifts.filter(s => s.status === 'missed').length;
+        const late = gShifts.filter(s => {
+          if (!s.clock_in?.timestamp || !s.start_time) return false;
+          return new Date(s.clock_in.timestamp) - new Date(s.start_time) > 15 * 60 * 1000;
+        }).length;
+        const gIncidents = filteredIncidents.filter(i => i.guard_id === g.id);
+        const completionRate = gShifts.length > 0 ? ((completed / gShifts.length) * 100).toFixed(0) : 'N/A';
+        lines.push(`${g.full_name}`);
+        lines.push(`  Shifts: ${gShifts.length} total, ${completed} completed, ${missed} missed`);
+        lines.push(`  Late clock-ins: ${late} | Incidents reported: ${gIncidents.length}`);
+        lines.push(`  Completion rate: ${completionRate}%`);
+        lines.push(``);
+      });
 
-Provide:
-1. Top performers and recognition
-2. Performance improvement areas
-3. Training recommendations
-4. Attendance and punctuality analysis
-5. Incident response effectiveness
-6. Overall team performance rating`;
+      lines.push(guardsList.filter(g => {
+        const gShifts = filteredShifts.filter(s => s.guard_id === g.id);
+        const late = gShifts.filter(s => s.clock_in?.timestamp && new Date(s.clock_in.timestamp) - new Date(s.start_time) > 15 * 60 * 1000).length;
+        return late > 2;
+      }).length > 0 ? `⚠️ Multiple late arrivals detected — review punctuality policies.` : `✅ Punctuality within acceptable range.`);
+      reportContent = lines.join('\n');
 
     } else if (reportType === 'maintenance_summary') {
       reportTitle = `${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Maintenance Summary`;
-      prompt = `Generate a maintenance summary report:
+      const completed = filteredMaintenance.filter(m => m.status === 'completed').length;
+      const pending = filteredMaintenance.filter(m => m.status !== 'completed').length;
+      const byCategory = Object.entries(
+        filteredMaintenance.reduce((acc, m) => { acc[m.category] = (acc[m.category] || 0) + 1; return acc; }, {})
+      ).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  • ${k.replace(/_/g, ' ')}: ${v}`).join('\n');
 
-MAINTENANCE REQUESTS (${filteredMaintenance.length} total):
-${filteredMaintenance.map((m, idx) => `
-${idx + 1}. ${m.title}
-   Category: ${m.category}
-   Urgency: ${m.urgency}
-   Status: ${m.status}
-   Site: ${m.site_name}
-   Reported: ${m.reported_at || m.created_date}
-   ${m.completed_at ? `Completed: ${m.completed_at}` : 'Pending'}
-`).join('\n')}
-
-Analyze and provide:
-1. Maintenance completion rate
-2. Average response time
-3. Most common issues by category
-4. Sites requiring most attention
-5. Preventive maintenance recommendations
-6. Budget impact assessment`;
-
-    } else if (reportType === 'guard_performance') {
-      reportTitle = 'Guard Performance Metrics Report';
-      const guardsList = guards.filter(g => g.role_type === 'guard');
-      
-      prompt = `Generate detailed guard performance metrics:
-
-${guardsList.map(g => {
-  const guardShifts = filteredShifts.filter(s => s.guard_id === g.id);
-  const completedShifts = guardShifts.filter(s => s.status === 'completed');
-  const guardIncidents = filteredIncidents.filter(i => i.guard_id === g.id);
-  
-  return `
-${g.full_name}:
-- Total Shifts: ${guardShifts.length}
-- Completed: ${completedShifts.length}
-- Missed: ${guardShifts.filter(s => s.status === 'missed').length}
-- Incidents Handled: ${guardIncidents.length}
-- Response Quality: ${guardIncidents.filter(i => i.status === 'resolved').length} resolved
-`;
-}).join('\n')}
-
-Provide metrics analysis including:
-1. Individual performance scores
-2. Reliability metrics
-3. Incident handling effectiveness
-4. Areas for improvement per guard
-5. Training needs identification`;
+      reportContent = [
+        `${reportTitle}`,
+        `Period: ${periodLabel}`,
+        ``,
+        `SUMMARY`,
+        `• Total requests: ${filteredMaintenance.length}`,
+        `• Completed: ${completed}`,
+        `• Pending: ${pending}`,
+        `• Completion rate: ${filteredMaintenance.length > 0 ? ((completed / filteredMaintenance.length) * 100).toFixed(0) : 0}%`,
+        ``,
+        `BY CATEGORY`,
+        byCategory || '  No maintenance requests.',
+        ``,
+        `URGENT PENDING`,
+        ...filteredMaintenance.filter(m => (m.urgency === 'critical' || m.urgency === 'high') && m.status !== 'completed').slice(0, 5)
+          .map(m => `  • [${m.urgency?.toUpperCase()}] ${m.title} — ${m.site_name || 'N/A'}`),
+        pending > 0 ? `\n⚠️ ${pending} request(s) pending — schedule resolution.` : `\n✅ All requests completed.`,
+      ].join('\n');
 
     } else if (reportType === 'incident_trends') {
       reportTitle = 'Incident Trends Analysis';
-      prompt = `Analyze incident trends and patterns:
+      const byCategory = Object.entries(
+        filteredIncidents.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {})
+      ).sort((a, b) => b[1] - a[1]);
+      const byPriority = Object.entries(
+        filteredIncidents.reduce((acc, i) => { acc[i.priority] = (acc[i.priority] || 0) + 1; return acc; }, {})
+      ).sort((a, b) => b[1] - a[1]);
+      const bySite = Object.entries(
+        filteredIncidents.reduce((acc, i) => { acc[i.site_name || 'Unknown'] = (acc[i.site_name || 'Unknown'] || 0) + 1; return acc; }, {})
+      ).sort((a, b) => b[1] - a[1]);
 
-INCIDENTS BY CATEGORY:
-${Object.entries(
-  filteredIncidents.reduce((acc, inc) => {
-    acc[inc.category] = (acc[inc.category] || 0) + 1;
-    return acc;
-  }, {})
-).map(([cat, count]) => `- ${cat}: ${count}`).join('\n')}
-
-INCIDENTS BY PRIORITY:
-${Object.entries(
-  filteredIncidents.reduce((acc, inc) => {
-    acc[inc.priority] = (acc[inc.priority] || 0) + 1;
-    return acc;
-  }, {})
-).map(([pri, count]) => `- ${pri}: ${count}`).join('\n')}
-
-INCIDENTS BY SITE:
-${Object.entries(
-  filteredIncidents.reduce((acc, inc) => {
-    acc[inc.site_name] = (acc[inc.site_name] || 0) + 1;
-    return acc;
-  }, {})
-).map(([site, count]) => `- ${site}: ${count}`).join('\n')}
-
-Analyze and provide:
-1. Emerging patterns and trends
-2. High-risk locations and times
-3. Correlation analysis
-4. Predictive insights
-5. Resource allocation recommendations
-6. Risk mitigation strategies`;
+      reportContent = [
+        `${reportTitle}`,
+        `Period: ${periodLabel}`,
+        ``,
+        `BY CATEGORY`,
+        ...byCategory.map(([k, v]) => `  • ${k.replace(/_/g, ' ')}: ${v}`),
+        ``,
+        `BY PRIORITY`,
+        ...byPriority.map(([k, v]) => `  • ${k}: ${v}`),
+        ``,
+        `BY SITE (Top 5)`,
+        ...bySite.slice(0, 5).map(([k, v]) => `  • ${k}: ${v}`),
+        ``,
+        bySite[0] ? `⚠️ Highest activity: ${bySite[0][0]} (${bySite[0][1]} incidents) — review security posture.` : `✅ Activity distributed evenly.`,
+      ].join('\n');
     }
 
-    // Generate AI report
-    const aiReport = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: prompt,
-      add_context_from_internet: false
-    });
-
-    // Store the generated report
+    // Store report
     const reportRecord = await base44.asServiceRole.entities.GeneratedReport.create({
       title: reportTitle,
       report_type: reportType,
-      content: aiReport,
+      content: reportContent,
       report_date: now.toISOString().split('T')[0],
-      summary: aiReport.substring(0, 500) + '...',
+      summary: reportContent.substring(0, 500),
       statistics: {
         incidents_count: filteredIncidents.length,
         maintenance_count: filteredMaintenance.length,
         shifts_count: filteredShifts.length,
-        critical_incidents: filteredIncidents.filter(i => i.priority === 'critical').length
-      }
+        critical_incidents: filteredIncidents.filter(i => i.priority === 'critical').length,
+      },
     });
 
     // Send email to recipients
     if (emailRecipients && emailRecipients.length > 0) {
-      for (const email of emailRecipients) {
-        try {
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: email,
-            subject: `${reportTitle} - ${now.toLocaleDateString()}`,
-            body: `
+      await Promise.all(emailRecipients.map(email =>
+        base44.asServiceRole.integrations.Core.SendEmail({
+          to: email,
+          subject: `${reportTitle} — ${now.toLocaleDateString()}`,
+          body: `
 <html>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-  <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
-    <h1 style="color: #0ea5e9; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px;">
-      ${reportTitle}
-    </h1>
-    <p style="color: #666; font-size: 14px;">
-      Generated on: ${now.toLocaleString()}
-    </p>
-    
-    <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
-      <h2 style="color: #334155; margin-top: 0;">Summary Statistics</h2>
-      <ul style="list-style: none; padding: 0;">
-        <li style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">
-          <strong>Total Incidents:</strong> ${filteredIncidents.length}
-        </li>
-        <li style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">
-          <strong>Maintenance Requests:</strong> ${filteredMaintenance.length}
-        </li>
-        <li style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">
-          <strong>Shifts Logged:</strong> ${filteredShifts.length}
-        </li>
-        <li style="padding: 8px 0;">
-          <strong>Critical Incidents:</strong> ${filteredIncidents.filter(i => i.priority === 'critical').length}
-        </li>
-      </ul>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f8fafc;">
+  <div style="max-width: 700px; margin: 0 auto;">
+    <div style="background: linear-gradient(135deg, #C41E3A 0%, #1a1a1a 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+      <h1 style="color: white; margin: 0; font-size: 22px;">${reportTitle}</h1>
+      <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">${periodLabel}</p>
     </div>
-
-    <div style="background: white; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; margin: 20px 0;">
-      <h2 style="color: #334155; margin-top: 0;">AI-Generated Analysis</h2>
-      <div style="white-space: pre-wrap; font-size: 14px;">
-${aiReport}
+    <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e2e8f0;">
+      <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #C41E3A;">
+        <h2 style="color: #1a1a1a; margin: 0 0 8px; font-size: 16px;">Summary Statistics</h2>
+        <ul style="list-style: none; padding: 0; margin: 0; color: #475569; font-size: 14px;">
+          <li style="padding: 4px 0;">Total Incidents: <strong>${filteredIncidents.length}</strong></li>
+          <li style="padding: 4px 0;">Maintenance Requests: <strong>${filteredMaintenance.length}</strong></li>
+          <li style="padding: 4px 0;">Shifts Logged: <strong>${filteredShifts.length}</strong></li>
+          <li style="padding: 4px 0;">Critical Incidents: <strong>${filteredIncidents.filter(i => i.priority === 'critical').length}</strong></li>
+        </ul>
       </div>
+      <div style="margin-top: 20px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h2 style="color: #1a1a1a; margin: 0 0 12px; font-size: 16px;">Report Details</h2>
+        <pre style="white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 13px; color: #334155; line-height: 1.7; margin: 0;">${reportContent}</pre>
+      </div>
+      <p style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+        Automated report — Unified Security Solutions
+      </p>
     </div>
-
-    <p style="color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-      This is an automated report generated by the SecureGuard AI system.
-    </p>
   </div>
 </body>
-</html>
-            `
-          });
-        } catch (emailError) {
-          console.error(`Failed to send email to ${email}:`, emailError);
-        }
-      }
+</html>`
+        }).catch(e => console.error('Email failed:', e))
+      ));
     }
 
     return Response.json({
       success: true,
       reportId: reportRecord.id,
       emailsSent: emailRecipients?.length || 0,
-      summary: {
-        incidents: filteredIncidents.length,
-        maintenance: filteredMaintenance.length,
-        shifts: filteredShifts.length
-      }
+      summary: { incidents: filteredIncidents.length, maintenance: filteredMaintenance.length, shifts: filteredShifts.length },
     });
 
   } catch (error) {
     console.error('Report generation error:', error);
-    return Response.json({ 
-      error: error.message || 'Failed to generate report' 
-    }, { status: 500 });
+    return Response.json({ error: error.message || 'Failed to generate report' }, { status: 500 });
   }
 });
