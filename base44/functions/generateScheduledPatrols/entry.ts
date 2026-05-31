@@ -174,15 +174,13 @@ Deno.serve(async (req) => {
     );
 
     for (const patrol of dueAlerts) {
-      await base44.asServiceRole.entities.Notification.create({
-        recipient_id: patrol.guard_id,
-        recipient_name: patrol.guard_name,
-        type: 'shift_reminder',
+      // Real device push + in-app alert via sendPushNotification
+      await base44.asServiceRole.functions.invoke('sendPushNotification', {
+        user_ids: [patrol.guard_id],
+        title: '🛡️ Patrol Due in 10 Minutes',
+        body: `Your patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString()}.`,
         priority: 'high',
-        title: `🛡️ Patrol Due in 10 Minutes`,
-        message: `Your patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString()}.`,
-        read: false,
-        sent_via: ['in_app'],
+        data: { type: 'patrol_due', patrol_id: patrol.id, site_name: patrol.site_name },
       }).catch(() => {});
 
       await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, {
