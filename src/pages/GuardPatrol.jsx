@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -121,34 +122,43 @@ export default function GuardPatrol() {
     const idx = checkpoints.findIndex(c => c.checkpoint_id === checkpointId);
     if (idx === -1) { setStatusMsg("Unknown checkpoint QR."); return; }
 
-    // GPS validation (within 100m of checkpoint location)
-    let gpsVerified = false;
-    if (gps) {
-      // Store scan
-      await base44.entities.PatrolLog.create({
-        guard_id: user.id,
-        guard_name: user.full_name,
-        shift_id: activePatrol.shift_id,
-        site_id: activePatrol.site_id,
-        checkpoint_id: checkpointId,
-        checkpoint_name: checkpoints[idx].checkpoint_name,
-        qr_code: checkpointId,
-        location: gps,
-        timestamp: new Date().toISOString(),
-        verified: gpsVerified,
-        notes: `Patrol #${activePatrol.patrol_number}`,
-      });
+    const gpsVerified = false;
+    const patrolLogData = {
+      guard_id: user.id,
+      guard_name: user.full_name,
+      shift_id: activePatrol.shift_id,
+      site_id: activePatrol.site_id,
+      checkpoint_id: checkpointId,
+      checkpoint_name: checkpoints[idx].checkpoint_name,
+      qr_code: checkpointId,
+      location: gps,
+      timestamp: new Date().toISOString(),
+      verified: gpsVerified,
+      notes: `Patrol #${activePatrol.patrol_number}`,
+    };
+
+    // Save patrol log — queue offline if no connection
+    if (isOnline()) {
+      await base44.entities.PatrolLog.create(patrolLogData).catch(() =>
+        saveOffline("pending_patrol", patrolLogData)
+      );
+    } else {
+      await saveOffline("pending_patrol", patrolLogData);
+      setStatusMsg("📶 Offline — checkpoint saved locally, will sync when connected.");
     }
 
     checkpoints[idx] = { ...checkpoints[idx], completed: true, completed_at: new Date().toISOString(), gps_verified: gpsVerified };
     const completed = checkpoints.filter(c => c.completed).length;
     const total = checkpoints.length;
 
-    await base44.entities.ScheduledPatrol.update(activePatrol.id, {
-      route_checkpoints: checkpoints,
-      checkpoints_completed: completed,
-      checkpoints_total: total,
-    });
+    // Update patrol record — best effort when online, skip silently if offline
+    if (isOnline()) {
+      await base44.entities.ScheduledPatrol.update(activePatrol.id, {
+        route_checkpoints: checkpoints,
+        checkpoints_completed: completed,
+        checkpoints_total: total,
+      }).catch(() => {});
+    }
 
     setActivePatrol(prev => ({ ...prev, route_checkpoints: checkpoints }));
 
