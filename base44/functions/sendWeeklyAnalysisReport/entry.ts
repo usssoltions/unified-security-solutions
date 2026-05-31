@@ -61,38 +61,32 @@ Deno.serve(async (req) => {
       };
     }).sort((a, b) => b.incidents - a.incidents);
 
-    // Generate AI analysis
-    const analysisPrompt = `Generate a comprehensive weekly security analysis report for ${weekAgo.toLocaleDateString()} to ${today.toLocaleDateString()}:
+    // Build analysis from data without LLM credits
+    const criticalCount = weekIncidents.filter(i => i.priority === 'critical').length;
+    const openIncidents = weekIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length;
+    const pendingMaintenance = weekMaintenance.filter(m => m.status !== 'completed').length;
+    const categoryBreakdown = Object.entries(weekIncidents.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {}))
+      .map(([cat, count]) => `${cat}: ${count}`).join(', ');
+    const topSite = siteAnalysis[0];
 
-OVERALL STATISTICS:
-- Total Incidents: ${weekIncidents.length}
-- Critical Incidents: ${weekIncidents.filter(i => i.priority === 'critical').length}
-- Maintenance Requests: ${weekMaintenance.length}
-- Patrol Stops: ${weekPatrols.length}
-- Shifts Completed: ${weekShifts.length}
-- System Alerts: ${weekAlerts.length}
-
-SITE ANALYSIS (Top 5 by incidents):
-${siteAnalysis.slice(0, 5).map(s => 
-  `${s.name}: ${s.incidents} incidents (${s.criticalIncidents} critical), ${s.maintenance} maintenance, ${s.patrols} patrols`
-).join('\n')}
-
-INCIDENT TRENDS:
-${Object.entries(weekIncidents.reduce((acc, i) => {
-  acc[i.category] = (acc[i.category] || 0) + 1;
-  return acc;
-}, {})).map(([cat, count]) => `- ${cat}: ${count}`).join('\n')}
-
-Provide:
-1. Executive Summary
-2. Key Trends & Patterns
-3. High-Risk Areas
-4. Recommendations for improvement
-5. Predicted issues for next week`;
-
-    const aiAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: analysisPrompt
-    });
+    const aiAnalysis = [
+      `Weekly Security Analysis: ${weekAgo.toLocaleDateString()} – ${today.toLocaleDateString()}`,
+      ``,
+      `OVERVIEW`,
+      `• ${weekIncidents.length} incident(s) reported — ${criticalCount} critical, ${openIncidents} still open.`,
+      `• ${weekMaintenance.length} maintenance request(s) — ${pendingMaintenance} pending resolution.`,
+      `• ${weekPatrols.length} patrol stop(s) completed across all sites.`,
+      `• ${weekShifts.length} shift(s) worked, ${weekAlerts.length} system alert(s) triggered.`,
+      ``,
+      `INCIDENT CATEGORIES`,
+      categoryBreakdown || 'No incidents this week.',
+      ``,
+      `SITE ACTIVITY (Top 5 by incidents)`,
+      ...siteAnalysis.slice(0, 5).map(s => `• ${s.name}: ${s.incidents} incidents (${s.criticalIncidents} critical), ${s.maintenance} maintenance, ${s.patrols} patrols`),
+      ``,
+      topSite && topSite.incidents > 0 ? `⚠️ Highest activity site: ${topSite.name} — review security posture.` : `✅ No single site showing elevated activity.`,
+      openIncidents > 0 ? `⚠️ ${openIncidents} unresolved incident(s) require follow-up.` : `✅ All incidents resolved.`,
+    ].join('\n');
 
     // Get all admins and management
     const allUsers = await base44.asServiceRole.entities.User.filter({});
@@ -156,8 +150,8 @@ Provide:
   `).join('')}
 </table>
 
-<h3>AI Analysis & Recommendations</h3>
-<div style="white-space: pre-wrap; font-family: Arial;">${aiAnalysis}</div>
+<h3>Weekly Analysis & Insights</h3>
+<div style="white-space: pre-wrap; font-family: Arial, monospace; font-size: 14px; line-height: 1.7;">${aiAnalysis}</div>
 
 <p><em>This is an automated weekly analysis from SecureGuard Analytics System</em></p>
         `

@@ -95,49 +95,31 @@ Deno.serve(async (req) => {
       };
     }).sort((a, b) => b.currentIncidents - a.currentIncidents);
 
-    // Generate AI analysis
-    const analysisPrompt = `Generate a comprehensive monthly comparison report for ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}:
+    // Build month-over-month analysis without LLM credits
+    const currentCritical = currentIncidents.filter(i => i.priority === 'critical').length;
+    const prevCritical = prevIncidents.filter(i => i.priority === 'critical').length;
+    const incidentTrend = incidentChange > 0 ? `▲ up ${incidentChange}% — monitor closely` : incidentChange < 0 ? `▼ down ${Math.abs(incidentChange)}% — improving` : 'no change';
+    const maintenanceTrend = maintenanceChange > 0 ? `▲ up ${maintenanceChange}%` : maintenanceChange < 0 ? `▼ down ${Math.abs(maintenanceChange)}%` : 'no change';
 
-CURRENT MONTH (${currentMonthStart.toLocaleDateString('en-US', { month: 'long' })}):
-- Incidents: ${currentIncidents.length} (Critical: ${currentIncidents.filter(i => i.priority === 'critical').length})
-- Maintenance: ${currentMaintenance.length}
-- Patrol Stops: ${currentPatrols.length}
-- Shifts: ${currentShifts.length}
-- Alerts: ${currentAlerts.length}
-
-PREVIOUS MONTH (${prevMonthStart.toLocaleDateString('en-US', { month: 'long' })}):
-- Incidents: ${prevIncidents.length} (Critical: ${prevIncidents.filter(i => i.priority === 'critical').length})
-- Maintenance: ${prevMaintenance.length}
-- Patrol Stops: ${prevPatrols.length}
-- Shifts: ${prevShifts.length}
-- Alerts: ${prevAlerts.length}
-
-PERCENTAGE CHANGES:
-- Incidents: ${incidentChange}%
-- Maintenance: ${maintenanceChange}%
-- Patrols: ${patrolChange}%
-- Shifts: ${shiftChange}%
-
-TOP 5 SITES COMPARISON:
-${siteComparison.slice(0, 5).map(s => 
-  `${s.name}: Incidents ${s.currentIncidents} vs ${s.prevIncidents} (${s.incidentChange}%), Maintenance ${s.currentMaintenance} vs ${s.prevMaintenance} (${s.maintenanceChange}%)`
-).join('\n')}
-
-INCIDENT CATEGORY TRENDS:
-Current: ${Object.entries(currentIncidents.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {})).map(([cat, count]) => `${cat}: ${count}`).join(', ')}
-Previous: ${Object.entries(prevIncidents.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {})).map(([cat, count]) => `${cat}: ${count}`).join(', ')}
-
-Provide:
-1. Executive Summary with key month-over-month changes
-2. Performance Analysis (improvements and concerns)
-3. Trend Insights (what's getting better, what's getting worse)
-4. Site-Specific Observations
-5. Actionable Recommendations for next month
-6. Risk Assessment and Predictions`;
-
-    const aiAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: analysisPrompt
-    });
+    const aiAnalysis = [
+      `MONTH-OVER-MONTH SUMMARY`,
+      `Incidents: ${currentIncidents.length} vs ${prevIncidents.length} last month (${incidentTrend})`,
+      `Critical incidents: ${currentCritical} vs ${prevCritical} last month`,
+      `Maintenance requests: ${currentMaintenance.length} vs ${prevMaintenance.length} (${maintenanceTrend})`,
+      `Patrol stops: ${currentPatrols.length} vs ${prevPatrols.length}`,
+      `Shifts worked: ${currentShifts.length} vs ${prevShifts.length}`,
+      `Alerts triggered: ${currentAlerts.length} vs ${prevAlerts.length}`,
+      ``,
+      `SITE OBSERVATIONS`,
+      ...siteComparison.slice(0, 5).map(s =>
+        `• ${s.name}: ${s.currentIncidents} incidents this month vs ${s.prevIncidents} last month (${s.incidentChange > 0 ? '▲' : s.incidentChange < 0 ? '▼' : '●'} ${Math.abs(s.incidentChange)}%)`
+      ),
+      ``,
+      currentCritical > prevCritical ? `⚠️ Critical incidents increased — immediate review recommended.` : `✅ Critical incident count stable or improved.`,
+      currentIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length > 0
+        ? `⚠️ ${currentIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length} incident(s) still unresolved from this month.`
+        : `✅ All incidents resolved.`,
+    ].join('\n');
 
     // Get recipients
     const allUsers = await base44.asServiceRole.entities.User.filter({});
@@ -307,8 +289,8 @@ Provide:
       </div>
 
       <div class="insights">
-        <h3>🤖 AI Analysis & Recommendations</h3>
-        <p style="white-space: pre-wrap;">${aiAnalysis}</p>
+        <h3>📋 Month-over-Month Analysis</h3>
+        <p style="white-space: pre-wrap; font-size: 14px; line-height: 1.7;">${aiAnalysis}</p>
       </div>
     </div>
 
