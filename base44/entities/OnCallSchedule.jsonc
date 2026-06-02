@@ -1,0 +1,101 @@
+{
+  "name": "OnCallSchedule",
+  "type": "object",
+  "properties": {
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "specialty": {
+      "type": "string",
+      "enum": [
+        "armed_response",
+        "k9_unit",
+        "medical_response",
+        "fire_response",
+        "technical_support",
+        "supervisor",
+        "general"
+      ],
+      "default": "general"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "priority_level": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "description": "1=highest priority, 5=backup"
+    },
+    "coverage_area": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Site IDs covered"
+    },
+    "contact_number": {
+      "type": "string"
+    },
+    "backup_guard_id": {
+      "type": "string"
+    },
+    "backup_guard_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "active",
+        "responded",
+        "completed",
+        "unavailable"
+      ],
+      "default": "scheduled"
+    },
+    "response_time_minutes": {
+      "type": "number",
+      "description": "Expected response time"
+    },
+    "actual_responses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "alarm_id": {
+            "type": "string"
+          },
+          "responded_at": {
+            "type": "string"
+          },
+          "completed_at": {
+            "type": "string"
+          },
+          "response_time": {
+            "type": "number"
+          }
+        }
+      },
+      "default": []
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "guard_id",
+    "specialty",
+    "start_time",
+    "end_time"
+  ]
+}

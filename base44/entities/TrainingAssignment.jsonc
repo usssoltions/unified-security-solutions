@@ -1,0 +1,84 @@
+{
+  "name": "TrainingAssignment",
+  "type": "object",
+  "properties": {
+    "training_module_id": {
+      "type": "string"
+    },
+    "training_title": {
+      "type": "string"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Guard user ID"
+    },
+    "assigned_to_name": {
+      "type": "string"
+    },
+    "assigned_by": {
+      "type": "string"
+    },
+    "assigned_by_name": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why this training was assigned"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "urgent"
+      ],
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "quiz_answers": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "score": {
+      "type": "number"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "feedback": {
+      "type": "string"
+    },
+    "time_spent_minutes": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "training_module_id",
+    "assigned_to",
+    "assigned_by"
+  ]
+}

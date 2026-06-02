@@ -1,0 +1,79 @@
+{
+  "name": "ReportTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "template_type": {
+      "type": "string",
+      "enum": [
+        "shift_end",
+        "daily",
+        "weekly",
+        "incident_summary",
+        "custom"
+      ],
+      "default": "shift_end"
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "include_data": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "patrols",
+                "incidents",
+                "maintenance",
+                "trainings",
+                "alerts",
+                "checkpoints",
+                "stay_awake"
+              ]
+            }
+          },
+          "ai_summary": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "auto_generate": {
+      "type": "boolean",
+      "default": true
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Email addresses for auto-send"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "name",
+    "template_type"
+  ]
+}

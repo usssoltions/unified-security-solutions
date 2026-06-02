@@ -1,0 +1,68 @@
+{
+  "name": "LocationTracking",
+  "type": "object",
+  "properties": {
+    "guard_id": {
+      "type": "string",
+      "description": "User ID of the guard"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "badge_number": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "lat",
+        "lng"
+      ]
+    },
+    "accuracy": {
+      "type": "number",
+      "description": "Location accuracy in meters"
+    },
+    "speed": {
+      "type": "number",
+      "description": "Speed in m/s"
+    },
+    "heading": {
+      "type": "number",
+      "description": "Direction of movement in degrees"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "idle",
+        "offline"
+      ],
+      "default": "active"
+    },
+    "battery_level": {
+      "type": "number",
+      "description": "Device battery percentage"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "guard_id",
+    "location",
+    "timestamp"
+  ]
+}

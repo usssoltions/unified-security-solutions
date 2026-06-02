@@ -1,0 +1,84 @@
+{
+  "name": "CallHistory",
+  "type": "object",
+  "properties": {
+    "call_id": {
+      "type": "string",
+      "description": "Unique call identifier"
+    },
+    "caller_id": {
+      "type": "string",
+      "description": "User ID who initiated the call"
+    },
+    "caller_name": {
+      "type": "string"
+    },
+    "receiver_id": {
+      "type": "string",
+      "description": "User ID who received the call"
+    },
+    "receiver_name": {
+      "type": "string"
+    },
+    "call_type": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "group"
+      ],
+      "default": "direct"
+    },
+    "participants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "user_name": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "For group calls"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "missed",
+        "declined",
+        "failed"
+      ],
+      "default": "completed"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "recording_url": {
+      "type": "string",
+      "description": "URL to the call recording"
+    },
+    "has_recording": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this call has a recording"
+    }
+  },
+  "required": [
+    "call_id",
+    "caller_id",
+    "caller_name",
+    "call_type"
+  ]
+}

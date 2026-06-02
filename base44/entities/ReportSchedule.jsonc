@@ -1,0 +1,72 @@
+{
+  "name": "ReportSchedule",
+  "type": "object",
+  "properties": {
+    "report_type": {
+      "type": "string",
+      "enum": [
+        "incident_maintenance_summary",
+        "guard_performance",
+        "site_activity",
+        "comprehensive_monthly"
+      ],
+      "description": "Type of report to generate"
+    },
+    "frequency": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly",
+        "real-time"
+      ],
+      "default": "monthly"
+    },
+    "schedule_day": {
+      "type": "number",
+      "description": "Day of month for monthly reports (1-31)"
+    },
+    "schedule_time": {
+      "type": "string",
+      "description": "Time to send report (HH:MM format)"
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "custom"
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "include_admins": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "last_sent_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "report_type",
+    "frequency"
+  ]
+}

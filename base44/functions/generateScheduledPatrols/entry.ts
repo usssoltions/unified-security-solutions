@@ -129,6 +129,10 @@ Deno.serve(async (req) => {
     let markedOverdue = 0;
     let markedMissed  = 0;
 
+    // Fetch supervisors ONCE outside the loop (not per-patrol)
+    const allUsers = await base44.asServiceRole.entities.User.list();
+    const supervisors = allUsers.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type)).slice(0, 3);
+
     for (const patrol of todayPatrols) {
       if (patrol.status !== 'upcoming' && patrol.status !== 'due') continue;
       const minsLate = (now - new Date(patrol.scheduled_start)) / 60000;
@@ -136,12 +140,10 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'missed' });
         markedMissed++;
 
-        // Notify supervisor
-        if (patrol.guard_name) {
-          const admins = await base44.asServiceRole.entities.User.filter({});
-          const supervisors = admins.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type));
-          for (const sup of supervisors.slice(0, 3)) {
-            await base44.asServiceRole.entities.Notification.create({
+        // Notify supervisors in parallel (no per-patrol User fetch)
+        if (patrol.guard_name && supervisors.length > 0) {
+          await Promise.all(supervisors.map(sup =>
+            base44.asServiceRole.entities.Notification.create({
               recipient_id: sup.id,
               recipient_name: sup.full_name,
               type: 'system',
@@ -152,8 +154,8 @@ Deno.serve(async (req) => {
               related_entity: 'ScheduledPatrol',
               related_id: patrol.id,
               sent_via: ['in_app'],
-            }).catch(() => {});
-          }
+            }).catch(() => {})
+          ));
         }
       } else if (minsLate > overdueThreshold) {
         await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'overdue' });

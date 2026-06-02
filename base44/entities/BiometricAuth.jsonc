@@ -1,0 +1,52 @@
+{
+  "name": "BiometricAuth",
+  "type": "object",
+  "properties": {
+    "guard_id": {
+      "type": "string"
+    },
+    "auth_type": {
+      "type": "string",
+      "enum": [
+        "fingerprint",
+        "face",
+        "pin"
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "clock_in",
+        "clock_out",
+        "stay_awake",
+        "checklist",
+        "incident_report"
+      ]
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "device_info": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "guard_id",
+    "auth_type",
+    "action",
+    "success",
+    "timestamp"
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "name": "TrainingModule",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "safety",
+        "incident_response",
+        "patrol_procedures",
+        "equipment",
+        "emergency",
+        "customer_service",
+        "compliance",
+        "general"
+      ],
+      "default": "general"
+    },
+    "content": {
+      "type": "string",
+      "description": "Training content/instructions"
+    },
+    "quiz_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "correct_answer": {
+            "type": "number",
+            "description": "Index of correct option"
+          }
+        }
+      }
+    },
+    "duration_minutes": {
+      "type": "number",
+      "default": 10
+    },
+    "passing_score": {
+      "type": "number",
+      "default": 80,
+      "description": "Minimum percentage to pass"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "created_by_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "title",
+    "content"
+  ]
+}

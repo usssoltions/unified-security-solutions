@@ -1,0 +1,95 @@
+{
+  "name": "PTTChannel",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Channel name"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "group"
+      ],
+      "default": "direct",
+      "description": "Channel type - direct for 1-on-1, group for multiple users"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "user_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "notifications_enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "description": "Channel members"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "created_by_name": {
+      "type": "string"
+    },
+    "last_message_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether channel is archived"
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When channel was archived"
+    },
+    "archived_by": {
+      "type": "string",
+      "description": "User ID who archived the channel"
+    },
+    "receive_system_alerts": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this channel receives system alerts"
+    },
+    "alert_priority_filter": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "normal",
+          "urgent",
+          "emergency"
+        ]
+      },
+      "default": [
+        "urgent",
+        "emergency"
+      ],
+      "description": "Which priority levels to receive"
+    }
+  },
+  "required": [
+    "name",
+    "type",
+    "members"
+  ]
+}

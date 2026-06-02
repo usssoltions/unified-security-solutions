@@ -1,0 +1,111 @@
+{
+  "name": "Asset",
+  "type": "object",
+  "properties": {
+    "asset_name": {
+      "type": "string",
+      "description": "Name of the asset"
+    },
+    "asset_number": {
+      "type": "string",
+      "description": "Unique asset identifier"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "vehicle",
+        "equipment",
+        "electronics",
+        "furniture",
+        "tools",
+        "safety_gear",
+        "other"
+      ]
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Site where asset is located"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "maintenance",
+        "retired",
+        "lost"
+      ],
+      "default": "active"
+    },
+    "purchase_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "purchase_cost": {
+      "type": "number"
+    },
+    "current_value": {
+      "type": "number"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Guard ID if assigned"
+    },
+    "assigned_to_name": {
+      "type": "string"
+    },
+    "last_service_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "next_service_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "service_interval_days": {
+      "type": "number",
+      "description": "Days between services"
+    },
+    "warranty_expiry": {
+      "type": "string",
+      "format": "date"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "service_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "description": {
+            "type": "string"
+          },
+          "cost": {
+            "type": "number"
+          },
+          "performed_by": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "asset_name",
+    "asset_number",
+    "category"
+  ]
+}

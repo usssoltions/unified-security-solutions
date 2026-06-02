@@ -1,0 +1,223 @@
+{
+  "name": "NotificationPreference",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "incident_assigned": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "push": {
+          "type": "boolean",
+          "default": true
+        },
+        "email": {
+          "type": "boolean",
+          "default": false
+        },
+        "sms": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "enabled": true,
+        "push": true,
+        "email": false,
+        "sms": false
+      }
+    },
+    "maintenance_assigned": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "push": {
+          "type": "boolean",
+          "default": true
+        },
+        "email": {
+          "type": "boolean",
+          "default": false
+        },
+        "sms": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "enabled": true,
+        "push": true,
+        "email": false,
+        "sms": false
+      }
+    },
+    "incident_critical": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "push": {
+          "type": "boolean",
+          "default": true
+        },
+        "email": {
+          "type": "boolean",
+          "default": true
+        },
+        "sms": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "enabled": true,
+        "push": true,
+        "email": true,
+        "sms": false
+      }
+    },
+    "status_change": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "push": {
+          "type": "boolean",
+          "default": false
+        },
+        "email": {
+          "type": "boolean",
+          "default": false
+        },
+        "sms": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "enabled": true,
+        "push": false,
+        "email": false,
+        "sms": false
+      }
+    },
+    "alarm_dispatch": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "push": {
+          "type": "boolean",
+          "default": true
+        },
+        "email": {
+          "type": "boolean",
+          "default": false
+        },
+        "sms": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "default": {
+        "enabled": true,
+        "push": true,
+        "email": false,
+        "sms": true
+      }
+    },
+    "shift_reminder": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "push": {
+          "type": "boolean",
+          "default": true
+        },
+        "email": {
+          "type": "boolean",
+          "default": false
+        },
+        "sms": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "enabled": true,
+        "push": true,
+        "email": false,
+        "sms": false
+      }
+    },
+    "training_assigned": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "push": {
+          "type": "boolean",
+          "default": true
+        },
+        "email": {
+          "type": "boolean",
+          "default": true
+        },
+        "sms": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "default": {
+        "enabled": true,
+        "push": true,
+        "email": true,
+        "sms": false
+      }
+    },
+    "quiet_hours": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "start": {
+          "type": "string",
+          "default": "22:00"
+        },
+        "end": {
+          "type": "string",
+          "default": "07:00"
+        }
+      },
+      "default": {
+        "enabled": false,
+        "start": "22:00",
+        "end": "07:00"
+      }
+    }
+  },
+  "required": [
+    "user_id"
+  ]
+}

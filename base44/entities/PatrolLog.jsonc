@@ -1,0 +1,54 @@
+{
+  "name": "PatrolLog",
+  "type": "object",
+  "properties": {
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string"
+    },
+    "checkpoint_name": {
+      "type": "string"
+    },
+    "qr_code": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verified": {
+      "type": "boolean",
+      "description": "Whether location matches checkpoint"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "guard_id",
+    "shift_id",
+    "checkpoint_id"
+  ]
+}

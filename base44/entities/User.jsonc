@@ -73,5 +73,14 @@
       },
       "default": []
     }
-  }
+  },
+  "required": [
+    "badge_number",
+    "phone",
+    "whatsapp",
+    "unit_number",
+    "profile_photo",
+    "push_token",
+    "last_seen"
+  ]
 }

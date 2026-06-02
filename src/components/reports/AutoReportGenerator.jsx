@@ -1,11 +1,17 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 
 export default function AutoReportGenerator({ user, shift }) {
+  // Track which shift IDs we've already generated a report for — prevents duplicate LLM calls
+  const generatedForShift = useRef(new Set());
+
   useEffect(() => {
     if (!user || !shift) return;
 
     const generateShiftEndReport = async () => {
+      // Hard deduplication: only ever generate once per shift per session
+      if (generatedForShift.current.has(shift.id)) return;
+      generatedForShift.current.add(shift.id);
       try {
         const templates = await base44.entities.ReportTemplate.filter({
           template_type: "shift_end",
@@ -202,6 +208,8 @@ ${aiReport.ai_insights}
 
     // Check if shift is ending soon (within 30 minutes)
     const checkShiftEnd = () => {
+      // Skip entirely if already generated for this shift
+      if (generatedForShift.current.has(shift.id)) return;
       if (shift.status === "active") {
         const endTime = new Date(shift.end_time);
         const now = new Date();
@@ -217,7 +225,7 @@ ${aiReport.ai_insights}
     const interval = setInterval(checkShiftEnd, 5 * 60 * 1000); // Check every 5 minutes
 
     return () => clearInterval(interval);
-  }, [user, shift]);
+  }, [user?.id, shift?.id]);
 
   return null; // This component doesn't render anything
 }

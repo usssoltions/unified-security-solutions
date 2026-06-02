@@ -1,0 +1,102 @@
+{
+  "name": "ChecklistCompletion",
+  "type": "object",
+  "properties": {
+    "template_id": {
+      "type": "string"
+    },
+    "template_name": {
+      "type": "string"
+    },
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string"
+    },
+    "qr_code_scanned": {
+      "type": "string"
+    },
+    "completed_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item_id": {
+            "type": "string"
+          },
+          "checked": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "string"
+          },
+          "photo_url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "data_url": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "digital",
+            "pin",
+            "biometric"
+          ]
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "incomplete",
+        "skipped"
+      ],
+      "default": "incomplete"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "template_id",
+    "guard_id",
+    "shift_id"
+  ]
+}

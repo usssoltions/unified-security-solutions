@@ -1,0 +1,100 @@
+{
+  "name": "ShiftSwapRequest",
+  "type": "object",
+  "properties": {
+    "requesting_guard_id": {
+      "type": "string",
+      "description": "Guard who wants to swap their shift"
+    },
+    "requesting_guard_name": {
+      "type": "string"
+    },
+    "target_guard_id": {
+      "type": "string",
+      "description": "Guard being asked to swap"
+    },
+    "target_guard_name": {
+      "type": "string"
+    },
+    "original_shift_id": {
+      "type": "string",
+      "description": "Shift the requester wants to swap away"
+    },
+    "original_shift_details": {
+      "type": "object",
+      "properties": {
+        "site_name": {
+          "type": "string"
+        },
+        "start_time": {
+          "type": "string"
+        },
+        "end_time": {
+          "type": "string"
+        }
+      }
+    },
+    "offered_shift_id": {
+      "type": "string",
+      "description": "Optional: shift offered in exchange"
+    },
+    "offered_shift_details": {
+      "type": "object",
+      "properties": {
+        "site_name": {
+          "type": "string"
+        },
+        "start_time": {
+          "type": "string"
+        },
+        "end_time": {
+          "type": "string"
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why the swap is needed"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved_by_target",
+        "approved_by_admin",
+        "rejected",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "target_response": {
+      "type": "string",
+      "description": "Target guard's response message"
+    },
+    "target_responded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "admin_notes": {
+      "type": "string"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "Admin who approved"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "requesting_guard_id",
+    "target_guard_id",
+    "original_shift_id",
+    "reason"
+  ]
+}

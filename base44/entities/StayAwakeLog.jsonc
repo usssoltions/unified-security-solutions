@@ -1,0 +1,59 @@
+{
+  "name": "StayAwakeLog",
+  "type": "object",
+  "properties": {
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "alert_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "response_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "response_method": {
+      "type": "string",
+      "enum": [
+        "button",
+        "pin",
+        "biometric"
+      ]
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "acknowledged",
+        "missed"
+      ],
+      "default": "sent"
+    },
+    "response_time_seconds": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "guard_id",
+    "shift_id",
+    "alert_time"
+  ]
+}

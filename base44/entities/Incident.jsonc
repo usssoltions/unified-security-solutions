@@ -1,0 +1,149 @@
+{
+  "name": "Incident",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "fire",
+        "theft",
+        "vandalism",
+        "medical",
+        "trespassing",
+        "suspicious_activity",
+        "equipment_failure",
+        "safety_hazard",
+        "other"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "reported",
+        "assigned",
+        "in_progress",
+        "resolved",
+        "closed"
+      ],
+      "default": "reported"
+    },
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "media": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "video",
+              "audio"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Guard ID if reassigned"
+    },
+    "dispatcher_notes": {
+      "type": "string"
+    },
+    "resolution_notes": {
+      "type": "string"
+    },
+    "reported_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "escalated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether incident has been escalated"
+    },
+    "escalation_reason": {
+      "type": "string",
+      "enum": [
+        "priority",
+        "timeout",
+        "manual"
+      ],
+      "description": "Reason for escalation"
+    },
+    "escalated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When incident was escalated"
+    },
+    "reassigned": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether incident was reassigned"
+    },
+    "reassignment_reason": {
+      "type": "string",
+      "description": "Reason for reassignment"
+    },
+    "notification_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether initial notification was sent to admins"
+    }
+  },
+  "required": [
+    "title",
+    "category",
+    "guard_id",
+    "site_id"
+  ]
+}

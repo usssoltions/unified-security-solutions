@@ -1,0 +1,88 @@
+{
+  "name": "CustomReport",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "data_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "count",
+              "sum",
+              "average",
+              "min",
+              "max"
+            ]
+          },
+          "field": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "grouping": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "chart_type": {
+      "type": "string",
+      "enum": [
+        "table",
+        "bar",
+        "line",
+        "pie",
+        "area"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "name",
+    "data_sources"
+  ]
+}

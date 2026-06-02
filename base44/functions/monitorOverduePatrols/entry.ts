@@ -59,17 +59,15 @@ Deno.serve(async (req) => {
               }
             });
 
-            // Send email to supervisors
+            // Send email to supervisors (parallel, not sequential loop)
             const supervisors = await base44.asServiceRole.entities.User.filter({ 
               role_type: "dispatcher" 
             });
-
-            for (const supervisor of supervisors) {
-              try {
-                await base44.asServiceRole.integrations.Core.SendEmail({
-                  to: supervisor.email,
-                  subject: "🚨 Critical: Overdue Patrol Alert",
-                  body: `
+            await Promise.all(supervisors.filter(s => s.email).map(supervisor =>
+              base44.asServiceRole.integrations.Core.SendEmail({
+                to: supervisor.email,
+                subject: "🚨 Critical: Overdue Patrol Alert",
+                body: `
 Patrol: ${patrol.name}
 Guard: ${patrol.assigned_to_name}
 Site: ${patrol.site_name}
@@ -78,12 +76,9 @@ Expected End: ${expectedEndTime.toLocaleString()}
 Progress: ${completedCheckpoints}/${totalCheckpoints} checkpoints completed
 
 The patrol is now ${Math.floor((now - overdueTime) / 60000)} minutes overdue. Please investigate.
-                  `
-                });
-              } catch (emailError) {
-                console.error("Failed to send email:", emailError);
-              }
-            }
+                `
+              }).catch(emailError => console.error("Failed to send email:", emailError))
+            ));
 
             alertsCreated.push(alert);
           }

@@ -1,0 +1,173 @@
+{
+  "name": "AlarmResponse",
+  "type": "object",
+  "properties": {
+    "alarm_type": {
+      "type": "string",
+      "enum": [
+        "burglary",
+        "panic",
+        "medical",
+        "fire",
+        "armed_robbery",
+        "suspicious_activity",
+        "false_alarm",
+        "general"
+      ],
+      "description": "Type of alarm/incident"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "high"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "dispatched",
+        "acknowledged",
+        "en_route",
+        "arrived",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "dispatched"
+    },
+    "address": {
+      "type": "string",
+      "description": "Full address of incident"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "lat",
+        "lng"
+      ]
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "client_phone": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "dispatched_by": {
+      "type": "string",
+      "description": "Dispatcher ID"
+    },
+    "dispatched_by_name": {
+      "type": "string"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Responder guard ID"
+    },
+    "assigned_to_name": {
+      "type": "string"
+    },
+    "dispatched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "en_route_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "arrived_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "response_time_minutes": {
+      "type": "number",
+      "description": "Time from dispatch to arrival"
+    },
+    "responder_location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Last known location of responder"
+    },
+    "distance_to_scene_km": {
+      "type": "number"
+    },
+    "completion_report": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "actions_taken": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "string"
+        },
+        "police_called": {
+          "type": "boolean"
+        },
+        "police_case_number": {
+          "type": "string"
+        },
+        "photos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "videos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signature": {
+          "type": "string"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "alarm_type",
+    "address",
+    "location",
+    "dispatched_by",
+    "assigned_to"
+  ]
+}

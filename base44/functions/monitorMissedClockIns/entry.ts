@@ -48,27 +48,22 @@ Deno.serve(async (req) => {
           status: "active"
         });
 
-        // Send email notification to admins
+        // Send email notification to admins (parallel, not sequential loop)
         const admins = await base44.asServiceRole.entities.User.filter({ role: "admin" });
-        
-        for (const admin of admins) {
-          try {
-            await base44.asServiceRole.integrations.Core.SendEmail({
-              to: admin.email,
-              subject: "🚨 Critical: Missed Clock-In Alert",
-              body: `
+        await Promise.all(admins.filter(a => a.email).map(admin =>
+          base44.asServiceRole.integrations.Core.SendEmail({
+            to: admin.email,
+            subject: "🚨 Critical: Missed Clock-In Alert",
+            body: `
 Guard: ${shift.guard_name || 'Unknown'}
 Site: ${shift.site_name}
 Scheduled Start: ${new Date(shift.start_time).toLocaleString()}
 Status: No clock-in detected after 15 minutes
 
 Please investigate immediately.
-              `
-            });
-          } catch (emailError) {
-            console.error("Failed to send email:", emailError);
-          }
-        }
+            `
+          }).catch(emailError => console.error("Failed to send email:", emailError))
+        ));
 
         alertsCreated.push(alert);
       }

@@ -1,0 +1,182 @@
+{
+  "name": "ShiftHandover",
+  "type": "object",
+  "properties": {
+    "shift_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "outgoing_guard_id": {
+      "type": "string"
+    },
+    "outgoing_guard_name": {
+      "type": "string"
+    },
+    "incoming_guard_id": {
+      "type": "string"
+    },
+    "incoming_guard_name": {
+      "type": "string"
+    },
+    "handover_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "site_status": {
+      "type": "object",
+      "properties": {
+        "all_secure": {
+          "type": "boolean",
+          "default": true
+        },
+        "gates_locked": {
+          "type": "boolean"
+        },
+        "alarms_armed": {
+          "type": "boolean"
+        },
+        "lights_functional": {
+          "type": "boolean"
+        },
+        "cameras_operational": {
+          "type": "boolean"
+        },
+        "perimeter_secure": {
+          "type": "boolean"
+        }
+      }
+    },
+    "incidents_during_shift": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "incident_id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "maintenance_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "visitors_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "key_activities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "outstanding_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "due_by": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "weather_conditions": {
+      "type": "string"
+    },
+    "special_instructions": {
+      "type": "string"
+    },
+    "incoming_guard_signature": {
+      "type": "string"
+    },
+    "outgoing_guard_signature": {
+      "type": "string"
+    },
+    "signed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "media_attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "shift_id",
+    "site_id",
+    "outgoing_guard_id",
+    "handover_time"
+  ]
+}

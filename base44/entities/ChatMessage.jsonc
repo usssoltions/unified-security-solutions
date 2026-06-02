@@ -1,0 +1,83 @@
+{
+  "name": "ChatMessage",
+  "type": "object",
+  "properties": {
+    "sender_id": {
+      "type": "string",
+      "description": "User ID of sender"
+    },
+    "sender_name": {
+      "type": "string"
+    },
+    "sender_role": {
+      "type": "string"
+    },
+    "recipient_id": {
+      "type": "string",
+      "description": "User ID of recipient, null for broadcasts"
+    },
+    "recipient_name": {
+      "type": "string"
+    },
+    "is_broadcast": {
+      "type": "boolean",
+      "default": false
+    },
+    "broadcast_to": {
+      "type": "string",
+      "enum": [
+        "all_guards",
+        "site_team",
+        "specific_user"
+      ],
+      "default": "specific_user"
+    },
+    "site_id": {
+      "type": "string",
+      "description": "For site-specific broadcasts"
+    },
+    "message": {
+      "type": "string"
+    },
+    "message_type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "voice",
+        "alert"
+      ],
+      "default": "text"
+    },
+    "voice_url": {
+      "type": "string",
+      "description": "URL for voice messages"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "urgent",
+        "emergency"
+      ],
+      "default": "normal"
+    },
+    "read_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User IDs who have read the message"
+    },
+    "related_incident_id": {
+      "type": "string"
+    },
+    "related_alarm_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "sender_id",
+    "sender_name",
+    "message"
+  ]
+}

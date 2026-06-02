@@ -1,0 +1,73 @@
+{
+  "name": "PTTMessage",
+  "type": "object",
+  "properties": {
+    "channel_id": {
+      "type": "string",
+      "description": "PTT channel ID"
+    },
+    "sender_id": {
+      "type": "string"
+    },
+    "sender_name": {
+      "type": "string"
+    },
+    "sender_role": {
+      "type": "string"
+    },
+    "audio_url": {
+      "type": "string",
+      "description": "URL to voice message"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Audio duration"
+    },
+    "listened_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User IDs who have listened",
+      "default": []
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "urgent",
+        "emergency"
+      ],
+      "default": "normal"
+    },
+    "is_system_alert": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is a system-generated alert"
+    },
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "panic",
+        "incident",
+        "maintenance",
+        "alarm",
+        "general"
+      ],
+      "description": "Type of system alert"
+    },
+    "alert_text": {
+      "type": "string",
+      "description": "Text content for system alerts"
+    },
+    "related_entity_id": {
+      "type": "string",
+      "description": "ID of related incident/alarm/etc"
+    }
+  },
+  "required": [
+    "channel_id",
+    "sender_id",
+    "sender_name"
+  ]
+}

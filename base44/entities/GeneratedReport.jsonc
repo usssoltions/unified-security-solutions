@@ -1,0 +1,81 @@
+{
+  "name": "GeneratedReport",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "report_type": {
+      "type": "string",
+      "enum": [
+        "shift_end",
+        "daily",
+        "weekly",
+        "incident_summary",
+        "custom"
+      ]
+    },
+    "template_id": {
+      "type": "string"
+    },
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "report_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "content": {
+      "type": "string",
+      "description": "Full AI-generated report content"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "statistics": {
+      "type": "object",
+      "properties": {
+        "patrols_completed": {
+          "type": "number"
+        },
+        "incidents_reported": {
+          "type": "number"
+        },
+        "trainings_completed": {
+          "type": "number"
+        },
+        "checkpoints_scanned": {
+          "type": "number"
+        },
+        "alerts_responded": {
+          "type": "number"
+        }
+      }
+    },
+    "ai_insights": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "title",
+    "report_type",
+    "guard_id",
+    "content"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "name": "Notification",
+  "type": "object",
+  "properties": {
+    "recipient_id": {
+      "type": "string",
+      "description": "User ID of recipient"
+    },
+    "recipient_name": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "incident_assigned",
+        "maintenance_assigned",
+        "incident_critical",
+        "incident_completed",
+        "maintenance_completed",
+        "status_change",
+        "alarm_dispatch",
+        "shift_reminder",
+        "training_assigned",
+        "system"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "default": "medium"
+    },
+    "title": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "read": {
+      "type": "boolean",
+      "default": false
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "related_entity": {
+      "type": "string",
+      "description": "Entity type (incident, maintenance, etc)"
+    },
+    "related_id": {
+      "type": "string",
+      "description": "ID of related entity"
+    },
+    "action_url": {
+      "type": "string",
+      "description": "Deep link to action"
+    },
+    "sent_via": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "push",
+          "email",
+          "sms",
+          "in_app"
+        ]
+      },
+      "default": [
+        "in_app"
+      ]
+    }
+  },
+  "required": [
+    "recipient_id",
+    "type",
+    "title",
+    "message"
+  ]
+}

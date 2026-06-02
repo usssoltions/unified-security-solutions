@@ -1,0 +1,108 @@
+{
+  "name": "NotificationDelivery",
+  "type": "object",
+  "properties": {
+    "notification_id": {
+      "type": "string",
+      "description": "Unique notification identifier"
+    },
+    "recipient_id": {
+      "type": "string"
+    },
+    "recipient_name": {
+      "type": "string"
+    },
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "CALL",
+        "PTT",
+        "PANIC",
+        "INCIDENT",
+        "MAINTENANCE",
+        "SHIFT",
+        "ATTENDANCE",
+        "SYSTEM"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "push",
+              "email",
+              "whatsapp",
+              "sms"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sent",
+              "delivered",
+              "opened",
+              "failed"
+            ]
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delivered_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "opened_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "message": {
+      "type": "string"
+    },
+    "related_entity": {
+      "type": "string"
+    },
+    "related_id": {
+      "type": "string"
+    },
+    "acknowledged": {
+      "type": "boolean",
+      "default": false
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acknowledged_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "notification_id",
+    "recipient_id",
+    "notification_type",
+    "message"
+  ]
+}

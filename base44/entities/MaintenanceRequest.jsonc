@@ -1,0 +1,111 @@
+{
+  "name": "MaintenanceRequest",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "lighting",
+        "locks",
+        "fencing",
+        "gate",
+        "alarm_system",
+        "camera",
+        "plumbing",
+        "electrical",
+        "structural",
+        "other"
+      ]
+    },
+    "urgency": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "reported",
+        "assigned",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "reported"
+    },
+    "guard_id": {
+      "type": "string"
+    },
+    "guard_name": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "media": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "video",
+              "audio"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Maintenance team member"
+    },
+    "completion_notes": {
+      "type": "string"
+    },
+    "reported_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "title",
+    "category",
+    "guard_id",
+    "site_id"
+  ]
+}

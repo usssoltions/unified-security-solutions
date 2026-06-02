@@ -1,0 +1,88 @@
+{
+  "name": "Assignment",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "incident",
+        "patrol",
+        "maintenance",
+        "special_task"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Guard ID"
+    },
+    "assigned_by": {
+      "type": "string",
+      "description": "Dispatcher ID"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "declined",
+        "in_progress",
+        "completed"
+      ],
+      "default": "pending"
+    },
+    "related_id": {
+      "type": "string",
+      "description": "ID of related incident/maintenance/etc"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "type",
+    "title",
+    "assigned_to",
+    "assigned_by"
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "name": "ChecklistTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string",
+      "description": "Link to specific checkpoint"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "checkbox",
+              "text",
+              "photo"
+            ],
+            "default": "checkbox"
+          }
+        }
+      }
+    },
+    "requires_signature": {
+      "type": "boolean",
+      "default": true
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "name",
+    "items"
+  ]
+}
