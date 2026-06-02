@@ -1,56 +1,63 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    
-    // Get shifts starting in the next 2-3 hours
+
     const now = new Date();
     const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     const threeHoursFromNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
 
-    // Fetch all scheduled shifts
-    const shifts = await base44.asServiceRole.entities.Shift.filter({
-      status: 'scheduled'
-    });
+    // Only fetch scheduled shifts (not all shifts)
+    const shifts = await base44.asServiceRole.entities.Shift.filter({ status: 'scheduled' });
 
-    // Filter shifts starting in 2-3 hours that haven't been reminded
+    // Only shifts starting in 2-3 hours with a guard assigned
     const upcomingShifts = shifts.filter(shift => {
+      if (!shift.guard_id) return false;
       const startTime = new Date(shift.start_time);
       return startTime >= twoHoursFromNow && startTime <= threeHoursFromNow;
     });
 
-    // Get all users to match guards
-    const allUsers = await base44.asServiceRole.entities.User.filter({});
+    // Exit early if no shifts due — zero integration calls
+    if (upcomingShifts.length === 0) {
+      return Response.json({ success: true, remindersSent: 0, reason: 'No upcoming shifts in window' });
+    }
 
-    // Send reminders
+    // Fetch only the guards we actually need
+    const guardIds = [...new Set(upcomingShifts.map(s => s.guard_id))];
+    const allUsers = await base44.asServiceRole.entities.User.list();
+    const guardMap = Object.fromEntries(allUsers.filter(u => guardIds.includes(u.id)).map(u => [u.id, u]));
+
+    // Send email reminders only (no WhatsApp integration calls)
     const reminderPromises = upcomingShifts.map(async (shift) => {
-      const guard = allUsers.find(u => u.id === shift.guard_id);
-      if (!guard) return null;
+      const guard = guardMap[shift.guard_id];
+      if (!guard?.email) return null;
 
-      return base44.asServiceRole.functions.invoke('sendShiftNotification', {
-        shiftId: shift.id,
-        guardId: shift.guard_id,
-        guardEmail: guard.email,
-        guardName: shift.guard_name,
-        siteName: shift.site_name,
-        startTime: shift.start_time,
-        endTime: shift.end_time,
-        notificationType: 'reminder'
-      });
+      return base44.asServiceRole.integrations.Core.SendEmail({
+        from_name: 'SecureGuard',
+        to: guard.email,
+        subject: `⏰ Shift Reminder — ${shift.site_name}`,
+        body: `
+Hi ${shift.guard_name || guard.full_name},
+
+This is a reminder that your shift starts in approximately 2 hours.
+
+Site: ${shift.site_name}
+Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}
+End:   ${new Date(shift.end_time).toLocaleString('en-ZA')}
+
+Please ensure you arrive on time and clock in via the SecureGuard app.
+
+– SecureGuard System
+        `.trim()
+      }).catch(err => console.error(`Reminder failed for ${guard.email}:`, err.message));
     });
 
     await Promise.all(reminderPromises.filter(Boolean));
 
-    return Response.json({ 
-      success: true, 
-      remindersSent: upcomingShifts.length
-    });
+    return Response.json({ success: true, remindersSent: upcomingShifts.length });
   } catch (error) {
     console.error('Error sending shift reminders:', error);
-    return Response.json({ 
-      success: false, 
-      error: error.message 
-    }, { status: 500 });
+    return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 });

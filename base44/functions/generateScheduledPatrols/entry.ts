@@ -1,10 +1,10 @@
 /**
  * generateScheduledPatrols
- * 
- * Generates ScheduledPatrol records for all sites that have patrol_config.enabled = true.
- * Should be triggered by a scheduled automation (e.g. daily at 00:30 or every hour).
- * 
- * Also handles marking overdue/missed patrols and sending patrol-due alerts.
+ *
+ * Generates ScheduledPatrol records for active sites with patrol_config.enabled = true.
+ * Also marks overdue/missed patrols and sends 10-min pre-patrol alerts.
+ *
+ * OPTIMIZED: Exits immediately if no active shifts exist — zero extra calls on idle days.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
@@ -25,24 +25,32 @@ Deno.serve(async (req) => {
 
     const now = new Date();
     const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-    // 1. Fetch all active sites with patrol config enabled
+    // 0. GATE CHECK — if no active or scheduled shifts today, do nothing
+    const allShifts = await base44.asServiceRole.entities.Shift.filter({});
+    const todayShifts = allShifts.filter(s => {
+      const d = new Date(s.start_time);
+      return d >= todayStart && d <= todayEnd && ['scheduled', 'active', 'accepted'].includes(s.status);
+    });
+
+    if (todayShifts.length === 0) {
+      return Response.json({ success: true, skipped: true, reason: 'No active shifts today', patrolsCreated: 0 });
+    }
+
+    // 1. Fetch only active sites with patrol config enabled
     const sites = await base44.asServiceRole.entities.Site.filter({ status: 'active' });
     const patrolSites = sites.filter(s => s.patrol_config?.enabled && s.patrol_config?.schedules?.length > 0);
 
-    // 2. Fetch existing scheduled patrols for today
-    const existingToday = await base44.asServiceRole.entities.ScheduledPatrol.filter({});
-    const todayPatrols = existingToday.filter(p => {
+    if (patrolSites.length === 0) {
+      return Response.json({ success: true, skipped: true, reason: 'No patrol-enabled sites', patrolsCreated: 0 });
+    }
+
+    // 2. Fetch existing scheduled patrols for today only
+    const existingAll = await base44.asServiceRole.entities.ScheduledPatrol.filter({});
+    const todayPatrols = existingAll.filter(p => {
       const d = new Date(p.scheduled_start);
       return d >= todayStart && d <= todayEnd;
-    });
-
-    // 3. Fetch active shifts to assign guards
-    const activeShifts = await base44.asServiceRole.entities.Shift.filter({});
-    const todayShifts = activeShifts.filter(s => {
-      const d = new Date(s.start_time);
-      return d >= todayStart && d <= todayEnd && ['scheduled', 'active', 'accepted'].includes(s.status);
     });
 
     const created = [];
@@ -50,34 +58,29 @@ Deno.serve(async (req) => {
 
     for (const site of patrolSites) {
       const cfg = site.patrol_config;
-      
-      // Find guard assigned to this site today
       const siteShift = todayShifts.find(s => s.site_id === site.id);
+
+      // Only generate patrols if there's a guard assigned to this site today
+      if (!siteShift) continue;
 
       for (const schedule of cfg.schedules) {
         const startMins = timeToMins(schedule.start_time || '06:00');
-        const endMins   = timeToMins(schedule.end_time   || '18:00');
-        const freqMins  = schedule.frequency_minutes || 60;
-
-        // Calculate all patrol times for this schedule today
-        const dayStart = new Date(todayStart);
-        dayStart.setHours(0, startMins, 0, 0);
+        const endMins = timeToMins(schedule.end_time || '18:00');
+        const freqMins = schedule.frequency_minutes || 60;
 
         let patrolMins = startMins;
-        let patrolNum  = 1;
+        let patrolNum = 1;
 
         while (patrolMins <= endMins) {
           const scheduledStart = new Date(todayStart);
           scheduledStart.setMinutes(scheduledStart.getMinutes() + patrolMins);
-          
-          // Skip if already exists (by site + approximate time)
+
           const alreadyExists = todayPatrols.some(p =>
             p.site_id === site.id &&
             Math.abs(new Date(p.scheduled_start) - scheduledStart) < 5 * 60 * 1000
           );
 
           if (!alreadyExists) {
-            // Generate AI random route (shuffle checkpoints by risk)
             const checkpoints = (site.checkpoints || []).map(cp => ({
               checkpoint_id: cp.id,
               checkpoint_name: cp.name,
@@ -87,7 +90,6 @@ Deno.serve(async (req) => {
               order: 0,
             }));
 
-            // AI route: sort by risk desc + randomisation
             const riskOrder = { critical: 4, high: 3, medium: 2, low: 1 };
             const shuffled = cfg.ai_route_optimization
               ? checkpoints.sort((a, b) =>
@@ -99,9 +101,9 @@ Deno.serve(async (req) => {
             const patrol = await base44.asServiceRole.entities.ScheduledPatrol.create({
               site_id: site.id,
               site_name: site.name,
-              guard_id: siteShift?.guard_id || null,
-              guard_name: siteShift?.guard_name || null,
-              shift_id: siteShift?.id || null,
+              guard_id: siteShift.guard_id,
+              guard_name: siteShift.guard_name,
+              shift_id: siteShift.id,
               scheduled_start: scheduledStart.toISOString(),
               scheduled_end: addMinutes(scheduledStart, cfg.duration_target_minutes || 30).toISOString(),
               status: scheduledStart <= now ? 'due' : 'upcoming',
@@ -114,7 +116,7 @@ Deno.serve(async (req) => {
 
             created.push(patrol.id);
           } else {
-            skipped.push(`${site.name} @ ${schedule.start_time} +${patrolMins - startMins}m`);
+            skipped.push(`${site.name} +${patrolMins - startMins}m`);
           }
 
           patrolMins += freqMins;
@@ -123,24 +125,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Mark overdue / missed patrols
-    const overdueThreshold = 15; // minutes past scheduled start
-    const missedThreshold  = 60;
+    // 3. Mark overdue / missed patrols — only on today's patrols
+    const overdueThreshold = 15;
+    const missedThreshold = 60;
     let markedOverdue = 0;
-    let markedMissed  = 0;
+    let markedMissed = 0;
 
-    // Fetch supervisors ONCE outside the loop (not per-patrol)
+    // Fetch supervisors once for all missed patrol notifications
     const allUsers = await base44.asServiceRole.entities.User.list();
     const supervisors = allUsers.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type)).slice(0, 3);
 
     for (const patrol of todayPatrols) {
       if (patrol.status !== 'upcoming' && patrol.status !== 'due') continue;
       const minsLate = (now - new Date(patrol.scheduled_start)) / 60000;
+
       if (minsLate > missedThreshold) {
         await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'missed' });
         markedMissed++;
 
-        // Notify supervisors in parallel (no per-patrol User fetch)
         if (patrol.guard_name && supervisors.length > 0) {
           await Promise.all(supervisors.map(sup =>
             base44.asServiceRole.entities.Notification.create({
@@ -149,7 +151,7 @@ Deno.serve(async (req) => {
               type: 'system',
               priority: 'high',
               title: `⚠️ Missed Patrol — ${patrol.site_name}`,
-              message: `${patrol.guard_name} missed patrol #${patrol.patrol_number} at ${patrol.site_name} scheduled for ${new Date(patrol.scheduled_start).toLocaleTimeString()}.`,
+              message: `${patrol.guard_name} missed patrol #${patrol.patrol_number} at ${patrol.site_name}.`,
               read: false,
               related_entity: 'ScheduledPatrol',
               related_id: patrol.id,
@@ -165,7 +167,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Send patrol-due alerts to guards (within next 10 mins)
+    // 4. Send 10-min pre-patrol alerts (in-app only, no email/push integration call)
     const alertWindowEnd = new Date(now.getTime() + 10 * 60 * 1000);
     const dueAlerts = todayPatrols.filter(p =>
       p.status === 'upcoming' &&
@@ -176,13 +178,17 @@ Deno.serve(async (req) => {
     );
 
     for (const patrol of dueAlerts) {
-      // Real device push + in-app alert via sendPushNotification
-      await base44.asServiceRole.functions.invoke('sendPushNotification', {
-        user_ids: [patrol.guard_id],
-        title: '🛡️ Patrol Due in 10 Minutes',
-        body: `Your patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString()}.`,
+      // In-app notification only — no push integration credit used
+      await base44.asServiceRole.entities.Notification.create({
+        recipient_id: patrol.guard_id,
+        type: 'patrol_due',
         priority: 'high',
-        data: { type: 'patrol_due', patrol_id: patrol.id, site_name: patrol.site_name },
+        title: '🛡️ Patrol Due in 10 Minutes',
+        message: `Patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString('en-ZA')}.`,
+        read: false,
+        related_entity: 'ScheduledPatrol',
+        related_id: patrol.id,
+        sent_via: ['in_app'],
       }).catch(() => {});
 
       await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, {

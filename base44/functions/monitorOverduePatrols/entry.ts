@@ -1,100 +1,81 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
-    }
 
     const now = new Date();
 
-    // Get active patrol plans
-    const patrols = await base44.asServiceRole.entities.PatrolPlan.filter({
-      status: "active"
-    });
+    // Only check patrols that are currently ACTIVE (status=active) — not all patrols
+    const activePatrols = await base44.asServiceRole.entities.PatrolPlan.filter({ status: 'active' });
 
-    const alertsCreated = [];
+    // Exit early — zero integration calls if no active patrols
+    if (activePatrols.length === 0) {
+      return Response.json({ success: true, patrolsChecked: 0, alertsCreated: 0 });
+    }
+
+    // Only process patrols that have actually started
+    const startedPatrols = activePatrols.filter(p => p.started_at);
+    if (startedPatrols.length === 0) {
+      return Response.json({ success: true, patrolsChecked: 0, alertsCreated: 0 });
+    }
+
     const OVERDUE_THRESHOLD_MINUTES = 30;
+    const alertsCreated = [];
 
-    for (const patrol of patrols) {
-      if (!patrol.started_at) continue;
+    // Fetch supervisors once outside the loop
+    const allUsers = await base44.asServiceRole.entities.User.list();
+    const supervisors = allUsers.filter(u => u.role_type === 'dispatcher' || u.role_type === 'admin');
 
+    for (const patrol of startedPatrols) {
       const startTime = new Date(patrol.started_at);
       const estimatedDuration = patrol.estimated_duration_minutes || 60;
       const expectedEndTime = new Date(startTime.getTime() + estimatedDuration * 60 * 1000);
       const overdueTime = new Date(expectedEndTime.getTime() + OVERDUE_THRESHOLD_MINUTES * 60 * 1000);
 
-      // Check if patrol is overdue
-      if (now > overdueTime) {
-        // Check incomplete checkpoints
-        const totalCheckpoints = patrol.route_checkpoints?.length || 0;
-        const completedCheckpoints = patrol.route_checkpoints?.filter(cp => cp.completed).length || 0;
+      if (now <= overdueTime) continue;
 
-        if (completedCheckpoints < totalCheckpoints) {
-          // Check if alert already exists
-          const existingAlerts = await base44.asServiceRole.entities.Alert.filter({
-            type: "patrol_overdue",
-            metadata: { patrol_id: patrol.id },
-            status: "active"
-          });
+      const totalCheckpoints = patrol.route_checkpoints?.length || 0;
+      const completedCheckpoints = patrol.route_checkpoints?.filter(cp => cp.completed).length || 0;
 
-          if (existingAlerts.length === 0) {
-            const alert = await base44.asServiceRole.entities.Alert.create({
-              type: "system",
-              priority: "critical",
-              title: "⏰ Overdue Patrol Route",
-              message: `${patrol.assigned_to_name} patrol at ${patrol.site_name} is overdue. ${completedCheckpoints}/${totalCheckpoints} checkpoints completed.`,
-              guard_id: patrol.assigned_to,
-              guard_name: patrol.assigned_to_name,
-              site_id: patrol.site_id,
-              status: "active",
-              metadata: {
-                patrol_id: patrol.id,
-                checkpoints_completed: completedCheckpoints,
-                total_checkpoints: totalCheckpoints,
-                expected_end: expectedEndTime.toISOString()
-              }
-            });
+      if (completedCheckpoints >= totalCheckpoints) continue;
 
-            // Send email to supervisors (parallel, not sequential loop)
-            const supervisors = await base44.asServiceRole.entities.User.filter({ 
-              role_type: "dispatcher" 
-            });
-            await Promise.all(supervisors.filter(s => s.email).map(supervisor =>
-              base44.asServiceRole.integrations.Core.SendEmail({
-                to: supervisor.email,
-                subject: "🚨 Critical: Overdue Patrol Alert",
-                body: `
-Patrol: ${patrol.name}
-Guard: ${patrol.assigned_to_name}
-Site: ${patrol.site_name}
-Started: ${startTime.toLocaleString()}
-Expected End: ${expectedEndTime.toLocaleString()}
-Progress: ${completedCheckpoints}/${totalCheckpoints} checkpoints completed
+      // Check if alert already exists — prevents duplicate on repeat runs
+      const existingAlerts = await base44.asServiceRole.entities.Alert.filter({
+        type: 'patrol_overdue',
+        status: 'active'
+      });
+      const alreadyAlerted = existingAlerts.some(a => a.metadata?.patrol_id === patrol.id);
+      if (alreadyAlerted) continue;
 
-The patrol is now ${Math.floor((now - overdueTime) / 60000)} minutes overdue. Please investigate.
-                `
-              }).catch(emailError => console.error("Failed to send email:", emailError))
-            ));
+      await base44.asServiceRole.entities.Alert.create({
+        type: 'patrol_overdue',
+        priority: 'critical',
+        title: '⏰ Overdue Patrol Route',
+        message: `${patrol.assigned_to_name} patrol at ${patrol.site_name} is overdue. ${completedCheckpoints}/${totalCheckpoints} checkpoints completed.`,
+        guard_id: patrol.assigned_to,
+        guard_name: patrol.assigned_to_name,
+        site_id: patrol.site_id,
+        status: 'active',
+        metadata: { patrol_id: patrol.id, checkpoints_completed: completedCheckpoints, total_checkpoints: totalCheckpoints }
+      });
 
-            alertsCreated.push(alert);
-          }
-        }
-      }
+      // Email supervisors in parallel
+      await Promise.all(supervisors.filter(s => s.email).map(sup =>
+        base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: 'SecureGuard Alerts',
+          to: sup.email,
+          subject: '🚨 Overdue Patrol Alert',
+          body: `Patrol: ${patrol.name}\nGuard: ${patrol.assigned_to_name}\nSite: ${patrol.site_name}\nProgress: ${completedCheckpoints}/${totalCheckpoints} checkpoints\n\nPatrol is ${Math.floor((now - overdueTime) / 60000)} minutes overdue.`
+        }).catch(err => console.error('Email failed:', err.message))
+      ));
+
+      alertsCreated.push(patrol.id);
     }
 
-    return Response.json({
-      success: true,
-      patrolsChecked: patrols.length,
-      alertsCreated: alertsCreated.length,
-      alerts: alertsCreated
-    });
-
+    return Response.json({ success: true, patrolsChecked: startedPatrols.length, alertsCreated: alertsCreated.length });
   } catch (error) {
-    console.error("Error monitoring patrols:", error);
+    console.error('monitorOverduePatrols error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
