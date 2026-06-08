@@ -65,31 +65,16 @@ export default function ShiftAcknowledgeModal({ shift, user, onClose }) {
         guard_ack_signature: sig,
       });
 
-      // Notify admins in-app
-      const allUsers = await base44.entities.User.list();
-      const admins = allUsers.filter((u) =>
-        ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
-      );
-      for (const admin of admins) {
-        await base44.entities.Notification.create({
-          recipient_id: admin.id,
-          recipient_name: admin.full_name,
-          type: "shift_reminder",
-          priority: status === "declined" ? "high" : "medium",
-          title: `Shift ${status.replace("_", " ")} — ${user.full_name}`,
-          message: `${user.full_name} has ${status.replace("_", " ")} their shift at ${shift.site_name} on ${new Date(shift.start_time).toLocaleDateString("en-ZA")}.${notes ? ` Note: ${notes}` : ""}`,
-          read: false,
-          related_entity: "shift",
-          related_id: shift.id,
-        });
-      }
-
-      // Send email if possible
+      // Notify admins via backend function (guards can't list users directly)
       try {
-        await base44.integrations.Core.SendEmail({
-          to: admins.map((a) => a.email).filter(Boolean).join(","),
-          subject: `Shift ${status.replace("_", " ")} — ${user.full_name} @ ${shift.site_name}`,
-          body: `${user.full_name} has ${status.replace("_", " ")} their shift.\n\nSite: ${shift.site_name}\nDate: ${new Date(shift.start_time).toLocaleString("en-ZA")}\n${notes ? `Message: ${notes}` : ""}`,
+        await base44.functions.invoke("sendShiftNotification", {
+          type: "ack",
+          shiftId: shift.id,
+          siteName: shift.site_name,
+          startTime: shift.start_time,
+          guardName: user.full_name,
+          status,
+          notes,
         });
       } catch (_) {}
 

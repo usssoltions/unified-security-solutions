@@ -3,7 +3,42 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { shiftId, guardId, guardEmail, guardName, siteName, startTime, endTime, notificationType } = await req.json();
+    const body = await req.json();
+    const { shiftId, guardId, guardEmail, guardName, siteName, startTime, endTime, notificationType, type, status, notes } = body;
+
+    // Handle shift acknowledgement notification to admins
+    if (type === "ack") {
+      const statusLabel = (status || "").replace(/_/g, " ");
+      const allUsers = await base44.asServiceRole.entities.User.list();
+      const admins = allUsers.filter(u =>
+        ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
+      );
+      for (const admin of admins) {
+        await base44.asServiceRole.entities.Notification.create({
+          recipient_id: admin.id,
+          recipient_name: admin.full_name,
+          type: "shift_reminder",
+          priority: status === "declined" ? "high" : "medium",
+          title: `Shift ${statusLabel} — ${guardName}`,
+          message: `${guardName} has ${statusLabel} their shift at ${siteName} on ${new Date(startTime).toLocaleDateString("en-ZA")}.${notes ? ` Note: ${notes}` : ""}`,
+          read: false,
+          related_entity: "shift",
+          related_id: shiftId,
+        });
+      }
+      try {
+        const adminEmails = admins.map(a => a.email).filter(Boolean).join(",");
+        if (adminEmails) {
+          await base44.asServiceRole.integrations.Core.SendEmail({
+            from_name: "SecureGuard Scheduling",
+            to: adminEmails,
+            subject: `Shift ${statusLabel} — ${guardName} @ ${siteName}`,
+            body: `${guardName} has ${statusLabel} their shift.\n\nSite: ${siteName}\nDate: ${new Date(startTime).toLocaleString("en-ZA")}\n${notes ? `Note: ${notes}` : ""}`,
+          });
+        }
+      } catch (_) {}
+      return Response.json({ success: true });
+    }
 
     let emailSubject, emailBody;
 
