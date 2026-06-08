@@ -15,8 +15,12 @@ Deno.serve(async (req) => {
       u.role_type === 'dispatcher'
     );
     
+    const googleMapsUrl = location?.lat && location?.lng
+      ? `https://www.google.com/maps?q=${location.lat},${location.lng}`
+      : null;
+
     const title = '🚨 PANIC ALERT - IMMEDIATE ACTION REQUIRED';
-    const message = `${guardName} has triggered a PANIC BUTTON at ${siteName || 'Unknown Location'}. Location: ${location?.lat}, ${location?.lng}. RESPOND IMMEDIATELY.`;
+    const message = `${guardName} has triggered a PANIC BUTTON at ${siteName || 'Unknown Location'}. ${googleMapsUrl ? `Location: ${googleMapsUrl}` : ''} RESPOND IMMEDIATELY.`;
     
     // Create alert in database
     await base44.asServiceRole.entities.Alert.create({
@@ -73,7 +77,7 @@ Deno.serve(async (req) => {
                 <p><strong>Guard:</strong> ${guardName}</p>
                 <p><strong>Site:</strong> ${siteName || 'Unknown'}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-                <p><strong>Location:</strong> ${location?.lat}, ${location?.lng}</p>
+                <p><strong>Location:</strong> ${googleMapsUrl ? `<a href="${googleMapsUrl}" style="color:#dc2626;font-weight:bold;">📍 Open in Google Maps (${location.lat.toFixed(6)}, ${location.lng.toFixed(6)})</a>` : 'Unknown'}</p>
                 <p><strong>Status:</strong> ACTIVE - Requires immediate response</p>
                 <br>
                 <p style="color: #dc2626; font-weight: bold;">This is an emergency situation. Please respond immediately.</p>
