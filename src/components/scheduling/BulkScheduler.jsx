@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { X, Loader2, Users } from "lucide-react";
+import { X, Loader2, Users, MessageCircle } from "lucide-react";
+import { notifyGuardShift } from "./ShiftNotifier";
 
 export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -26,6 +27,8 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
   });
   const [selectedGuards, setSelectedGuards] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingWhatsApp, setPendingWhatsApp] = useState([]);
+  const [waIndex, setWaIndex] = useState(0);
 
   const handleSubmit = async () => {
     if (!formData.site_id || !formData.start_date || !formData.end_date) {
@@ -86,7 +89,35 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
         }
       }
 
-      await base44.entities.Shift.bulkCreate(shifts);
+      const createdShifts = await base44.entities.Shift.bulkCreate(shifts);
+
+      // Send email + in-app notifications for all guard-assigned shifts
+      if (selectedGuards.length > 0) {
+        const waLinks = [];
+        for (const shift of createdShifts) {
+          if (!shift.guard_id) continue;
+          const guard = guards.find(g => g.id === shift.guard_id);
+          if (!guard) continue;
+          await notifyGuardShift(shift, guard, "assigned");
+          // Collect pending WA links from sessionStorage
+        }
+        // Read pending WA links set by notifyGuardShift
+        const pending = JSON.parse(sessionStorage.getItem("pending_guard_wa") || "[]");
+        // Deduplicate by guard number — just one prompt per guard
+        const seen = new Set();
+        const deduped = pending.filter(p => {
+          if (seen.has(p.number)) return false;
+          seen.add(p.number);
+          return true;
+        });
+        sessionStorage.removeItem("pending_guard_wa");
+        if (deduped.length > 0) {
+          setPendingWhatsApp(deduped);
+          setWaIndex(0);
+          return; // Don't call onSuccess yet — wait until WA prompts are done
+        }
+      }
+
       onSuccess();
     } catch (error) {
       alert("Failed to create shifts");
@@ -94,6 +125,61 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
       setSubmitting(false);
     }
   };
+
+  const handleWaSend = (link) => {
+    window.open(link, "_blank");
+    const next = waIndex + 1;
+    if (next < pendingWhatsApp.length) {
+      setWaIndex(next);
+    } else {
+      setPendingWhatsApp([]);
+      onSuccess();
+    }
+  };
+
+  const handleWaSkip = () => {
+    const next = waIndex + 1;
+    if (next < pendingWhatsApp.length) {
+      setWaIndex(next);
+    } else {
+      setPendingWhatsApp([]);
+      onSuccess();
+    }
+  };
+
+  // WhatsApp prompt screen
+  if (pendingWhatsApp.length > 0) {
+    const current = pendingWhatsApp[waIndex];
+    return (
+      <div className="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-sm bg-slate-800 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <MessageCircle className="w-5 h-5 text-green-400" />
+              Notify Guard via WhatsApp
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-slate-300 text-sm">
+              Send shift schedule to <strong className="text-white">{current.name}</strong> ({current.number})?
+            </p>
+            <p className="text-slate-500 text-xs">
+              {waIndex + 1} of {pendingWhatsApp.length} guard{pendingWhatsApp.length > 1 ? "s" : ""}
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={handleWaSkip} className="flex-1 border-slate-600 text-slate-300">
+                Skip
+              </Button>
+              <Button onClick={() => handleWaSend(current.link)} className="flex-1 bg-green-600 hover:bg-green-700">
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Send WhatsApp
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-slate-900/95 z-50 overflow-y-auto">
