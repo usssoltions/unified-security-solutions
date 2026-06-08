@@ -122,12 +122,16 @@ export default function GuardShift() {
     queryKey: ["upcomingShifts", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "scheduled" }, "start_time", 3);
-      return shifts || [];
+      // Fetch both scheduled shifts (need acknowledgement) and look ahead 7 days
+      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "scheduled" }, "start_time", 10);
+      // Filter to only future / today shifts
+      const now = new Date();
+      const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      return (shifts || []).filter(s => new Date(s.start_time) <= weekAhead);
     },
     enabled: !!user && !shiftsLoading,
-    refetchInterval: 120000,
-    staleTime: 100000,
+    refetchInterval: 60000,
+    staleTime: 50000,
     refetchOnWindowFocus: false
   });
 
@@ -199,6 +203,14 @@ export default function GuardShift() {
   useEffect(() => {
     if (user?.needs_daily_report && activeShift && user.is_clocked_in) setShowDailyReportModal(true);
   }, [user, activeShift]);
+
+  // Auto-popup acknowledgement modal for unacknowledged upcoming shifts
+  useEffect(() => {
+    if (!shiftToAck && upcomingShifts.length > 0) {
+      const unacked = upcomingShifts.find(s => !s.guard_ack_status && s.status === "scheduled");
+      if (unacked) setShiftToAck(unacked);
+    }
+  }, [upcomingShifts]);
 
   useEffect(() => {
     if (user && !user.is_clocked_in && user.role_type === 'guard') {
@@ -453,32 +465,53 @@ export default function GuardShift() {
                 <CardTitle className="text-white flex items-center gap-2 text-base">
                   <Clock className="w-4 h-4 text-sky-400" />
                   Upcoming Shifts
+                  {upcomingShifts.filter(s => !s.guard_ack_status).length > 0 && (
+                    <Badge className="bg-amber-500 ml-auto text-xs">
+                      {upcomingShifts.filter(s => !s.guard_ack_status).length} pending
+                    </Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4 space-y-2">
                 {upcomingShifts.map(shift => (
-                  <div key={shift.id} className="p-3 bg-slate-900/50 rounded-xl border border-slate-700/50 space-y-2">
+                  <div key={shift.id} className={`p-3 rounded-xl border space-y-2 ${
+                    !shift.guard_ack_status
+                      ? "bg-amber-500/10 border-amber-500/40"
+                      : "bg-slate-900/50 border-slate-700/50"
+                  }`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm font-semibold truncate">{shift.site_name}</p>
                         <p className="text-slate-400 text-xs mt-0.5">
-                          {new Date(shift.start_time).toLocaleDateString()} • {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(shift.start_time).toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "short" })}
+                          {" · "}
+                          {new Date(shift.start_time).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}
+                          {" – "}
+                          {new Date(shift.end_time).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
                       {shift.guard_ack_status ? (
-                        <Badge className={
-                          shift.guard_ack_status === "accepted" ? "bg-emerald-600 shrink-0 text-xs" :
-                          shift.guard_ack_status === "declined" ? "bg-rose-600 shrink-0 text-xs" :
-                          "bg-amber-600 shrink-0 text-xs"
-                        }>
-                          {shift.guard_ack_status === "revision_requested" ? "Revision Req." : shift.guard_ack_status}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge className={
+                            shift.guard_ack_status === "accepted" ? "bg-emerald-600 text-xs" :
+                            shift.guard_ack_status === "declined" ? "bg-rose-600 text-xs" :
+                            "bg-amber-600 text-xs"
+                          }>
+                            {shift.guard_ack_status === "revision_requested" ? "Revision" : shift.guard_ack_status}
+                          </Badge>
+                          <button
+                            onClick={() => setShiftToAck(shift)}
+                            className="text-xs text-sky-400 underline"
+                          >
+                            Change
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => setShiftToAck(shift)}
-                          className="shrink-0 text-xs bg-sky-600 hover:bg-sky-700 active:scale-95 text-white px-3 py-1.5 rounded-lg font-semibold transition-all"
+                          className="shrink-0 text-xs bg-amber-500 hover:bg-amber-600 active:scale-95 text-white px-3 py-1.5 rounded-lg font-semibold transition-all animate-pulse"
                         >
-                          Respond
+                          Respond!
                         </button>
                       )}
                     </div>

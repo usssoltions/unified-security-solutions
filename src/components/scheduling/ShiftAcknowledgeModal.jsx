@@ -60,7 +60,7 @@ export default function ShiftAcknowledgeModal({ shift, user, onClose }) {
       // Update shift acknowledgement on the Shift entity
       await base44.entities.Shift.update(shift.id, {
         guard_ack_status: status,
-        guard_ack_notes: notes,
+        guard_ack_note: notes,
         guard_ack_at: new Date().toISOString(),
         guard_ack_signature: sig,
       });
