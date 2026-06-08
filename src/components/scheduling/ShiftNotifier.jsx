@@ -25,7 +25,7 @@ export async function notifyGuardShift(shift, guard, type = "assigned") {
   });
 
   // 1. Open WhatsApp for guard (requires dispatcher to tap)
-  const guardPhone = guard.whatsapp || guard.phone;
+  const guardPhone = guard.whatsapp || guard.phone || guard.phone_number;
   if (guardPhone) {
     const link = buildWhatsAppLink(guardPhone, msg);
     if (link) {
