@@ -10,14 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle, Share2, Mail, MessageSquare, Printer, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { buildWhatsAppLink, shiftScheduleMessage } from "@/lib/whatsapp";
-import { MessageCircle } from "lucide-react";
+import { buildWhatsAppLink, guardShiftAssignedMessage, shiftScheduleMessage } from "@/lib/whatsapp";
+import { MessageCircle, Send } from "lucide-react";
 
 export default function ShiftDetailsModal({ shift, onClose }) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [pendingDeleteWa, setPendingDeleteWa] = useState(null);
+  const [resendDone, setResendDone] = useState(false);
   const [formData, setFormData] = useState({
     guard_id: shift.guard_id || "",
     site_id: shift.site_id || "",
@@ -315,6 +316,30 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
               )}
               {!isEditing && (shift.status === "scheduled" || shift.status === "open") && (
                 <>
+                  {/* Re-send notification button — only if guard assigned and not yet acknowledged */}
+                  {shift.guard_id && !shift.guard_ack_status && selectedGuard && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      title="Re-send shift notification to guard"
+                      onClick={() => {
+                        const phone = selectedGuard.phone_number || selectedGuard.phone || selectedGuard.whatsapp;
+                        if (!phone) { alert("Guard has no phone number on file."); return; }
+                        const msg = guardShiftAssignedMessage({
+                          guardName: shift.guard_name,
+                          siteName: shift.site_name,
+                          startTime: shift.start_time,
+                          endTime: shift.end_time,
+                          notes: shift.notes,
+                        });
+                        const link = buildWhatsAppLink(phone, msg);
+                        if (link) { window.open(link, "_blank"); setResendDone(true); }
+                      }}
+                      className={`border-green-600 ${resendDone ? "text-green-400" : "text-green-500"} hover:bg-green-500/10`}
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="icon"

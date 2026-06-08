@@ -188,6 +188,7 @@ export default function Layout({ children, currentPageName }) {
     if (role === "guard") {
       return [
         { title: "My Shift", url: createPageUrl("GuardShift"), icon: Shield, isRoot: true },
+        { title: "My Schedule", url: createPageUrl("GuardMyShifts"), icon: Calendar },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
