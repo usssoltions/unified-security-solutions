@@ -11,11 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle, Share2, Mail, MessageSquare, Printer, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { buildWhatsAppLink, shiftScheduleMessage } from "@/lib/whatsapp";
+import { MessageCircle } from "lucide-react";
 
 export default function ShiftDetailsModal({ shift, onClose }) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [pendingDeleteWa, setPendingDeleteWa] = useState(null);
   const [formData, setFormData] = useState({
     guard_id: shift.guard_id || "",
     site_id: shift.site_id || "",
@@ -85,24 +87,36 @@ export default function ShiftDetailsModal({ shift, onClose }) {
 
   const deleteShiftMutation = useMutation({
     mutationFn: async () => {
-      // Notify guard before deleting
+      // In-app notification to guard
       if (shift.guard_id) {
-        await base44.entities.Alert.create({
+        await base44.entities.Notification.create({
+          recipient_id: shift.guard_id,
+          recipient_name: shift.guard_name,
           type: "shift_reminder",
           priority: "high",
           title: "❌ Shift Cancelled",
-          message: `Your shift at ${shift.site_name} on ${new Date(shift.start_time).toLocaleString()} has been cancelled.`,
-          guard_id: shift.guard_id,
-          guard_name: shift.guard_name,
-          status: "active"
-        });
+          message: `Your shift at ${shift.site_name} on ${new Date(shift.start_time).toLocaleDateString("en-ZA")} has been cancelled.`,
+          read: false,
+          related_entity: "shift",
+          related_id: shift.id,
+        }).catch(() => {});
       }
-      
       await base44.entities.Shift.delete(shift.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["shiftHistory"]);
+      // If guard has a phone, prompt WhatsApp before closing
+      const guard = guards.find(g => g.id === shift.guard_id);
+      const phone = guard?.phone_number || guard?.phone || guard?.whatsapp;
+      if (guard && phone) {
+        const msg = `❌ SHIFT CANCELLED\n\nDear ${shift.guard_name},\n\nYour shift at *${shift.site_name}* on ${new Date(shift.start_time).toLocaleDateString("en-ZA")} (${new Date(shift.start_time).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })} – ${new Date(shift.end_time).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}) has been *cancelled*.\n\nPlease contact your supervisor for more information.`;
+        const link = buildWhatsAppLink(phone, msg);
+        if (link) {
+          setPendingDeleteWa({ name: shift.guard_name, link });
+          return;
+        }
+      }
       onClose();
     }
   });
@@ -200,6 +214,39 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
   };
 
   const selectedGuard = guards.find(g => g.id === shift.guard_id);
+
+  // WhatsApp cancellation prompt
+  if (pendingDeleteWa) {
+    return (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <Card className="w-full max-w-sm bg-slate-800 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <MessageCircle className="w-5 h-5 text-green-400" />
+              Notify Guard via WhatsApp
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-slate-300 text-sm">
+              Shift deleted. Send cancellation WhatsApp to <strong className="text-white">{pendingDeleteWa.name}</strong>?
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={onClose} className="flex-1 border-slate-600 text-slate-300">
+                Skip
+              </Button>
+              <Button
+                onClick={() => { window.open(pendingDeleteWa.link, "_blank"); onClose(); }}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Send WhatsApp
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
