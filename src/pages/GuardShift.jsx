@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, Clock, MapPin, QrCode, AlertCircle, CheckCircle2,
   Wrench, ChevronRight, MessageCircle, GraduationCap, FileText,
-  Zap, Activity, Bell, Navigation, Star, TrendingUp, Cpu
+  Zap, Activity, Bell, Navigation, Star, TrendingUp, Cpu, Calendar
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
@@ -122,12 +122,11 @@ export default function GuardShift() {
     queryKey: ["upcomingShifts", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      // Fetch both scheduled shifts (need acknowledgement) and look ahead 7 days
-      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "scheduled" }, "start_time", 10);
-      // Filter to only future / today shifts
+      // Fetch all scheduled shifts for this guard (upcoming, no date limit)
+      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "scheduled" }, "start_time", 20);
+      // Only show future shifts (start_time >= now)
       const now = new Date();
-      const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      return (shifts || []).filter(s => new Date(s.start_time) <= weekAhead);
+      return (shifts || []).filter(s => new Date(s.start_time) >= now);
     },
     enabled: !!user && !shiftsLoading,
     refetchInterval: 60000,
@@ -443,7 +442,7 @@ export default function GuardShift() {
             {[
               { icon: GraduationCap, label: "Training", color: "from-purple-600 to-purple-700", action: () => setShowTraining(true), badge: null },
               { icon: FileText, label: "Reports", color: "from-sky-600 to-sky-700", action: () => setShowReports(true), badge: null },
-              { icon: MapPin, label: "Access Log", color: "from-emerald-600 to-emerald-700", action: () => navigate(createPageUrl("AccessControl")), badge: null },
+              { icon: Calendar, label: "My Schedule", color: "from-sky-500 to-sky-700", action: () => navigate(createPageUrl("GuardMyShifts")), badge: upcomingShifts.filter(s => !s.guard_ack_status).length || null },
             ].map(({ icon: Icon, label, color, action, badge }) => (
               <button key={label} onClick={action} className={`bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all shadow-lg relative`}>
                 <Icon className="w-6 h-6 text-white mx-auto mb-1.5" />
