@@ -23,9 +23,13 @@ Deno.serve(async (req) => {
     const OVERDUE_THRESHOLD_MINUTES = 30;
     const alertsCreated = [];
 
-    // Fetch supervisors once outside the loop
-    const allUsers = await base44.asServiceRole.entities.User.list();
+    // Fetch supervisors + existing overdue alerts in parallel (no N+1)
+    const [allUsers, existingOverdueAlerts] = await Promise.all([
+      base44.asServiceRole.entities.User.list(),
+      base44.asServiceRole.entities.Alert.filter({ type: 'patrol_overdue', status: 'active' })
+    ]);
     const supervisors = allUsers.filter(u => u.role_type === 'dispatcher' || u.role_type === 'admin');
+    const alertedPatrolIds = new Set(existingOverdueAlerts.map(a => a.metadata?.patrol_id).filter(Boolean));
 
     for (const patrol of startedPatrols) {
       const startTime = new Date(patrol.started_at);
@@ -40,13 +44,8 @@ Deno.serve(async (req) => {
 
       if (completedCheckpoints >= totalCheckpoints) continue;
 
-      // Check if alert already exists — prevents duplicate on repeat runs
-      const existingAlerts = await base44.asServiceRole.entities.Alert.filter({
-        type: 'patrol_overdue',
-        status: 'active'
-      });
-      const alreadyAlerted = existingAlerts.some(a => a.metadata?.patrol_id === patrol.id);
-      if (alreadyAlerted) continue;
+      // Skip if already alerted — no per-patrol query needed
+      if (alertedPatrolIds.has(patrol.id)) continue;
 
       await base44.asServiceRole.entities.Alert.create({
         type: 'patrol_overdue',

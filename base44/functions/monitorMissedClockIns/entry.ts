@@ -23,20 +23,19 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, missedShifts: 0, alertsCreated: 0 });
     }
 
-    // Fetch admins once for all missed shifts
-    const allUsers = await base44.asServiceRole.entities.User.list();
+    // Fetch admins + existing alerts in parallel (single batch — no N+1)
+    const [allUsers, existingMissedAlerts] = await Promise.all([
+      base44.asServiceRole.entities.User.list(),
+      base44.asServiceRole.entities.Alert.filter({ type: 'missed_checkin', status: 'active' })
+    ]);
     const admins = allUsers.filter(u => u.role_type === 'admin' || u.role_type === 'dispatcher');
+    const alertedShiftIds = new Set(existingMissedAlerts.map(a => a.shift_id).filter(Boolean));
 
     const alertsCreated = [];
 
     for (const shift of missedShifts) {
-      // Check if alert already exists — prevents duplicate emails on repeat runs
-      const existingAlerts = await base44.asServiceRole.entities.Alert.filter({
-        type: 'missed_checkin',
-        shift_id: shift.id,
-        status: 'active'
-      });
-      if (existingAlerts.length > 0) continue;
+      // Skip if already alerted — no per-shift query needed
+      if (alertedShiftIds.has(shift.id)) continue;
 
       // Create alert record
       const alert = await base44.asServiceRole.entities.Alert.create({
