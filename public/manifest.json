@@ -1,10 +1,10 @@
 {
-  "name": "SecureGuard",
-  "short_name": "SecureGuard",
-  "description": "Professional Security Management Platform",
+  "name": "Unified Security Solutions",
+  "short_name": "USS Guard",
+  "description": "Professional Security Management Platform by Unified Security Solutions",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
+  "background_color": "#000000",
   "theme_color": "#0f172a",
   "orientation": "any",
   "scope": "/",
@@ -12,33 +12,29 @@
   "categories": ["security", "utilities"],
   "icons": [
     {
-      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/043b33b67_generated_image.png",
+      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/043b33b67_generated_image.png",
+      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/043b33b67_generated_image.png",
+      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/043b33b67_generated_image.png",
+      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
   ],
-  "prefer_related_applications": false,
-  "handle_links": "preferred",
-  "launch_handler": {
-    "client_mode": "focus-existing"
-  }
+  "prefer_related_applications": false
 }
