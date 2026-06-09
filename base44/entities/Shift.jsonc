@@ -36,6 +36,11 @@
       ],
       "default": "scheduled"
     },
+    "reminder_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the 2-hour reminder email has been sent \u2014 prevents duplicate reminders"
+    },
     "guard_ack_status": {
       "type": "string",
       "enum": [

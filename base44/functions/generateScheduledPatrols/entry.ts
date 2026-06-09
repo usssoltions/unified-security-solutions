@@ -27,18 +27,7 @@ Deno.serve(async (req) => {
     const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-    // 0. GATE CHECK — if no active or scheduled shifts today, do nothing
-    const allShifts = await base44.asServiceRole.entities.Shift.filter({});
-    const todayShifts = allShifts.filter(s => {
-      const d = new Date(s.start_time);
-      return d >= todayStart && d <= todayEnd && ['scheduled', 'active', 'accepted'].includes(s.status);
-    });
-
-    if (todayShifts.length === 0) {
-      return Response.json({ success: true, skipped: true, reason: 'No active shifts today', patrolsCreated: 0 });
-    }
-
-    // 1. Fetch only active sites with patrol config enabled
+    // 0a. Fetch patrol-enabled sites first — exit immediately if none
     const sites = await base44.asServiceRole.entities.Site.filter({ status: 'active' });
     const patrolSites = sites.filter(s => s.patrol_config?.enabled && s.patrol_config?.schedules?.length > 0);
 
@@ -46,9 +35,23 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: 'No patrol-enabled sites', patrolsCreated: 0 });
     }
 
-    // 2. Fetch existing scheduled patrols for today only
-    const existingAll = await base44.asServiceRole.entities.ScheduledPatrol.filter({});
-    const todayPatrols = existingAll.filter(p => {
+    // 0b. GATE CHECK — only fetch shifts for patrol-enabled sites today
+    const patrolSiteIds = new Set(patrolSites.map(s => s.id));
+    const allShifts = await base44.asServiceRole.entities.Shift.filter({});
+    const todayShifts = allShifts.filter(s => {
+      const d = new Date(s.start_time);
+      return d >= todayStart && d <= todayEnd &&
+        ['scheduled', 'active', 'accepted'].includes(s.status) &&
+        patrolSiteIds.has(s.site_id);
+    });
+
+    if (todayShifts.length === 0) {
+      return Response.json({ success: true, skipped: true, reason: 'No active shifts on patrol sites today', patrolsCreated: 0 });
+    }
+
+    // 1. Fetch existing scheduled patrols for TODAY only (paginated to avoid loading all history)
+    const todayPatrolsRaw = await base44.asServiceRole.entities.ScheduledPatrol.list('-scheduled_start', 500);
+    const todayPatrols = todayPatrolsRaw.filter(p => {
       const d = new Date(p.scheduled_start);
       return d >= todayStart && d <= todayEnd;
     });

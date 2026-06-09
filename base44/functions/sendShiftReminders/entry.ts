@@ -8,12 +8,15 @@ Deno.serve(async (req) => {
     const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     const threeHoursFromNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
 
-    // Only fetch scheduled shifts (not all shifts)
+    // Only fetch scheduled/accepted shifts that haven't had a reminder sent yet
     const shifts = await base44.asServiceRole.entities.Shift.filter({ status: 'scheduled' });
+    const acceptedShifts = await base44.asServiceRole.entities.Shift.filter({ status: 'accepted' });
+    const allCandidates = [...shifts, ...acceptedShifts];
 
-    // Only shifts starting in 2-3 hours with a guard assigned
-    const upcomingShifts = shifts.filter(shift => {
+    // Only shifts starting in 2-3 hours, with a guard, and reminder NOT already sent
+    const upcomingShifts = allCandidates.filter(shift => {
       if (!shift.guard_id) return false;
+      if (shift.reminder_sent) return false; // skip if already reminded
       const startTime = new Date(shift.start_time);
       return startTime >= twoHoursFromNow && startTime <= threeHoursFromNow;
     });
@@ -28,12 +31,12 @@ Deno.serve(async (req) => {
     const allUsers = await base44.asServiceRole.entities.User.list();
     const guardMap = Object.fromEntries(allUsers.filter(u => guardIds.includes(u.id)).map(u => [u.id, u]));
 
-    // Send email reminders only (no WhatsApp integration calls)
+    // Send email + mark shift so it never gets reminded again
     const reminderPromises = upcomingShifts.map(async (shift) => {
       const guard = guardMap[shift.guard_id];
       if (!guard?.email) return null;
 
-      return base44.asServiceRole.integrations.Core.SendEmail({
+      await base44.asServiceRole.integrations.Core.SendEmail({
         from_name: 'SecureGuard',
         to: guard.email,
         subject: `⏰ Shift Reminder — ${shift.site_name}`,
@@ -51,6 +54,10 @@ Please ensure you arrive on time and clock in via the SecureGuard app.
 – SecureGuard System
         `.trim()
       }).catch(err => console.error(`Reminder failed for ${guard.email}:`, err.message));
+
+      // Mark shift so this reminder is never sent again
+      await base44.asServiceRole.entities.Shift.update(shift.id, { reminder_sent: true })
+        .catch(() => {});
     });
 
     await Promise.all(reminderPromises.filter(Boolean));
