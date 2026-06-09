@@ -1,37 +1,38 @@
 import { useEffect } from 'react';
 
+/**
+ * Service Worker Registration
+ * - Registers SW once, handles updates silently
+ * - Requests notification permission on mount
+ */
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      // Register service worker
-      navigator.serviceWorker.register('/sw.js')
-        .then(registration => {
-          console.log('Service Worker registered:', registration);
-          
-          // Request notification permission
-          if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-              console.log('Notification permission:', permission);
-            });
-          }
-          
-          // Request wake lock permission for keeping app active
-          if ('wakeLock' in navigator) {
-            document.addEventListener('visibilitychange', async () => {
-              if (document.visibilityState === 'visible') {
-                try {
-                  const wakeLock = await navigator.wakeLock.request('screen');
-                  console.log('Wake lock acquired');
-                } catch (err) {
-                  console.log('Wake lock error:', err);
-                }
-              }
-            });
-          }
-        })
-        .catch(error => {
-          console.error('Service Worker registration failed:', error);
+    if (!('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .then(registration => {
+        // Check for updates every 30 minutes
+        setInterval(() => registration.update(), 30 * 60 * 1000);
+
+        // When a new SW is waiting, activate it immediately
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
         });
+      })
+      .catch(() => {
+        // SW not critical — app works without it
+      });
+
+    // Request notification permission as early as possible
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
     }
   }, []);
 

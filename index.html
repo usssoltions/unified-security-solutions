@@ -3,8 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="https://base44.com/logo_v2.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Base44 APP</title>
+
+    <!-- Responsive viewport — prevents iOS zoom on input focus -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- PWA / Standalone mode — keeps app alive like a native app -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SecureGuard" />
+
+    <!-- Theme color — matches app dark background -->
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- Prevent caching stale assets -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+
+    <!-- Prevent phone number / address detection interfering with UI -->
+    <meta name="format-detection" content="telephone=no, address=no, email=no" />
+
+    <!-- Keep connections alive — critical for WebSocket / real-time push -->
+    <meta http-equiv="x-dns-prefetch-control" content="on" />
+
+    <!-- Preconnect to OneSignal CDN for faster SW load -->
+    <link rel="preconnect" href="https://cdn.onesignal.com" />
+    <link rel="dns-prefetch" href="https://cdn.onesignal.com" />
+    <link rel="dns-prefetch" href="https://onesignal.com" />
+
+    <title>SecureGuard</title>
   </head>
   <body>
     <div id="root"></div>

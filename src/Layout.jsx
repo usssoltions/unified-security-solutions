@@ -71,13 +71,13 @@ export default function Layout({ children, currentPageName }) {
     }
   }, [user]);
 
+  // Keep session alive for ALL roles — ping every 10 min
   useEffect(() => {
-    if (user && ['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
-      const keepAlive = setInterval(async () => {
-        try { await base44.auth.me(); } catch (e) {}
-      }, 15 * 60 * 1000);
-      return () => clearInterval(keepAlive);
-    }
+    if (!user) return;
+    const keepAlive = setInterval(async () => {
+      try { await base44.auth.me(); } catch (_) {}
+    }, 10 * 60 * 1000);
+    return () => clearInterval(keepAlive);
   }, [user]);
 
   const loadUser = async () => {

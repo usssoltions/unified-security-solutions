@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function RealTimeAlertMonitor({ user }) {
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
-  const [soundPlayed, setSoundPlayed] = useState(new Set());
+  const soundPlayedRef = useRef(new Set()); // Use ref — not state — so subscription never remounts
   const queryClient = useQueryClient();
 
   // Fetch active critical alerts
@@ -35,27 +35,23 @@ export default function RealTimeAlertMonitor({ user }) {
     initialData: []
   });
 
-  // Subscribe to real-time alert updates
+  // Subscribe to real-time alert updates — stable deps, no subscription leak
   useEffect(() => {
     const unsubscribe = base44.entities.Alert.subscribe((event) => {
       if (event.type === "create" && event.data?.priority === "critical") {
         queryClient.invalidateQueries(["criticalAlerts"]);
-        
-        // Only play sound once per alert
-        if (!soundPlayed.has(event.data.id)) {
+
+        // Only play sound once per alert (ref — doesn't trigger re-subscribe)
+        if (!soundPlayedRef.current.has(event.data.id)) {
+          soundPlayedRef.current.add(event.data.id);
           playAlertSound();
-          setSoundPlayed(prev => new Set(prev).add(event.data.id));
-          
-          // Vibrate if supported
-          if (navigator.vibrate) {
-            navigator.vibrate([200, 100, 200]);
-          }
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
         }
       }
     });
 
     return unsubscribe;
-  }, [queryClient, soundPlayed]);
+  }, [queryClient]); // stable — no more remounting on every sound state change
 
   const playAlertSound = () => {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
