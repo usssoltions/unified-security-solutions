@@ -16,6 +16,18 @@ export default function ServiceWorkerRegistration() {
 
     if (!('serviceWorker' in navigator)) return;
 
+    // In dev mode: unregister all service workers and clear caches to prevent
+    // stale SW from serving broken/conflicting JS chunks (causes React hook errors)
+    if (import.meta.env.DEV) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister());
+      });
+      if ('caches' in window) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+      }
+      return;
+    }
+
     let registration = null;
 
     navigator.serviceWorker

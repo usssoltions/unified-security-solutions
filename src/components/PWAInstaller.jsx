@@ -15,21 +15,16 @@ export default function PWAInstaller() {
   const [pushSupported, setPushSupported] = useState(false);
 
   useEffect(() => {
-    // Register service worker
-    if ('serviceWorker' in navigator) {
+    // Register service worker (production only — in dev, skip to avoid caching stale JS chunks)
+    if ('serviceWorker' in navigator && !import.meta.env.DEV) {
       navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
         .then((registration) => {
-          console.log('Service Worker registered:', registration);
           setServiceWorkerReady(true);
-          
-          // Check for updates periodically
-          setInterval(() => {
-            registration.update();
-          }, 60000); // Check every minute
+          setInterval(() => { registration.update(); }, 60000);
         })
-        .catch((error) => {
-          console.error('Service Worker registration failed:', error);
-        });
+        .catch(() => {});
+    } else {
+      setServiceWorkerReady(true);
     }
 
     // Check push notification support
