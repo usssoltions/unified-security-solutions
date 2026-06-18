@@ -40,29 +40,29 @@
     <link rel="apple-touch-icon" href="https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png" />
   </head>
   <body>
-    <!-- Force-clear stale service worker caches before React loads.
+    <!-- Force-clear ALL service workers and caches before React loads.
          This prevents cached broken JS chunks from causing React hook errors. -->
     <script>
       (function() {
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations().then(function(regs) {
-            regs.forEach(function(reg) {
-              // Only unregister workers NOT pointing at /sw.js (stale/old workers)
-              var swUrl = reg.active && reg.active.scriptURL || '';
-              if (!swUrl.endsWith('/sw.js')) {
-                reg.unregister();
-              }
+        var CACHE_VERSION = 'v4';
+        var cleared = sessionStorage.getItem('cache_cleared_v2');
+        
+        if (cleared !== CACHE_VERSION) {
+          sessionStorage.setItem('cache_cleared_v2', CACHE_VERSION);
+          
+          // Unregister ALL service workers (including /sw.js) to fully reset
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              regs.forEach(function(reg) { reg.unregister(); });
             });
-          });
-        }
-        // Clear all caches once per app version to bust stale chunks
-        var CACHE_VERSION = 'v3';
-        var cleared = sessionStorage.getItem('cache_cleared');
-        if (cleared !== CACHE_VERSION && 'caches' in window) {
-          sessionStorage.setItem('cache_cleared', CACHE_VERSION);
-          caches.keys().then(function(keys) {
-            keys.forEach(function(k) { caches.delete(k); });
-          });
+          }
+          
+          // Clear all caches unconditionally
+          if ('caches' in window) {
+            caches.keys().then(function(keys) {
+              keys.forEach(function(k) { caches.delete(k); });
+            });
+          }
         }
       })();
     </script>
