@@ -15,52 +15,12 @@ export default function Contacts() {
   const [currentUser, setCurrentUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCall, setActiveCall] = useState(null);
-  const [incomingCall, setIncomingCall] = useState(null);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [isGroupCallMode, setIsGroupCallMode] = useState(false);
   const navigate = useNavigate();
-  const ringtoneRef = React.useRef(null);
 
   useEffect(() => {
     loadUser();
-
-    // Listen for incoming call events from service worker
-    const handleIncomingCallEvent = (event) => {
-      console.log('📞 Incoming call event received:', event.detail);
-      const { callId, callerName, autoAnswer } = event.detail;
-      
-      setIncomingCall({
-        callId: callId,
-        caller: {
-          full_name: callerName,
-          badge_number: callerName
-        },
-        autoAnswer: autoAnswer
-      });
-    };
-
-    // Listen for service worker messages
-    const handleServiceWorkerMessage = (event) => {
-      if (event.data && event.data.type === 'incoming-call') {
-        console.log('📞 SW message received:', event.data);
-        setIncomingCall({
-          callId: event.data.callId,
-          caller: {
-            full_name: event.data.callerName,
-            badge_number: event.data.callerName
-          },
-          autoAnswer: event.data.autoAnswer
-        });
-      }
-    };
-
-    window.addEventListener('incoming-call', handleIncomingCallEvent);
-    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
-    
-    return () => {
-      window.removeEventListener('incoming-call', handleIncomingCallEvent);
-      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
-    };
   }, []);
 
   const loadUser = async () => {
@@ -103,91 +63,13 @@ export default function Contacts() {
     cacheTime: 60000
   });
 
-  // Initialize ringtone
-  useEffect(() => {
-    ringtoneRef.current = new Audio();
-    ringtoneRef.current.loop = true;
-    return () => {
-      if (ringtoneRef.current) {
-        ringtoneRef.current.pause();
-        ringtoneRef.current = null;
-      }
-    };
-  }, []);
 
 
 
-  // Poll for incoming calls - CRITICAL FOR RECEIVING CALLS
-  useEffect(() => {
-    if (!currentUser) return;
 
-    console.log('👂 Started listening for incoming calls...');
 
-    const checkIncomingCalls = setInterval(async () => {
-      try {
-        const notifications = await base44.entities.Notification.filter({
-          recipient_id: currentUser.id,
-          related_entity: 'voice_call',
-          read: false
-        });
 
-        if (notifications.length > 0) {
-          console.log('📞 INCOMING CALL DETECTED!', notifications[0]);
-          const callNotification = notifications[0];
-          const callerName = callNotification.message.replace(' is calling you', '');
-          
-          setIncomingCall({
-            callId: callNotification.related_id,
-            caller: { 
-              id: callNotification.related_id.split('_')[2],
-              full_name: callerName,
-              badge_number: callerName
-            }
-          });
-          
-          await base44.entities.Notification.update(callNotification.id, { read: true }).catch(() => {});
-        }
-      } catch (error) {
-        // Silent fail - non-critical background polling
-      }
-    }, 2000); // Check every 2 seconds (reduced frequency)
 
-    return () => clearInterval(checkIncomingCalls);
-  }, [currentUser]);
-
-  // Handle incoming call from push notification (when app was closed)
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const incomingCallId = urlParams.get('incoming_call');
-    
-    if (incomingCallId && currentUser) {
-      // Fetch call details from notifications
-      base44.entities.Notification.filter({
-        recipient_id: currentUser.id,
-        related_id: incomingCallId,
-        related_entity: 'voice_call'
-      }).then(notifications => {
-        if (notifications.length > 0) {
-          const callNotification = notifications[0];
-          const callerName = callNotification.message.replace(' is calling you', '');
-          
-          setIncomingCall({
-            callId: incomingCallId,
-            caller: {
-              id: incomingCallId.split('_')[2],
-              full_name: callerName,
-              badge_number: callerName
-            }
-          });
-          
-          // Clear URL parameter
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }
-      }).catch(() => {
-        // Silent fail - couldn't fetch call details
-      });
-    }
-  }, [currentUser]);
 
   const filteredUsers = allUsers
     .filter(u => u.id !== currentUser?.id)
@@ -430,13 +312,6 @@ export default function Contacts() {
         />
       )}
 
-      {incomingCall && (
-        <RealtimeVoiceCall
-          targetUser={incomingCall.caller}
-          incomingCallId={incomingCall.callId}
-          onClose={() => setIncomingCall(null)}
-        />
-      )}
     </div>
   );
 }

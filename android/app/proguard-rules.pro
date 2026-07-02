@@ -2,4 +2,4 @@
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
--keep class com.ussguard.app.** { *; }
+-keep class co.za.unifiedsecuritysolutions.ussguard.** { *; }
