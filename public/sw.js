@@ -1,182 +1,180 @@
 /**
  * SecureGuard Service Worker
- * Handles:
- *  - Push notifications (background + foreground)
- *  - Notification click routing
- *  - Background sync
- *  - App keep-alive via periodic sync
- *  - Cache-first for app shell, network-first for API
- *  - Immediate activation (no waiting)
+ * - App shell precaching for offline support
+ * - Runtime caching: network-first for API, cache-first for static assets
+ * - Push notification handling
+ * - Background sync for notifications
  */
 
-const SW_VERSION = 'secureguard-sw-v3';
-const APP_SHELL_CACHE = `${SW_VERSION}-shell`;
+const APP_SHELL_CACHE = 'secureguard-shell-v1';
+const RUNTIME_CACHE = 'secureguard-runtime-v1';
 
-// Assets to pre-cache for offline shell
-const PRECACHE_URLS = ['/', '/index.html'];
+const APP_SHELL_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/offline.html'
+];
 
-// ── Install: pre-cache app shell ─────────────────────────────────────────────
+// ─── Install: precache app shell ─────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(APP_SHELL_CACHE).then(cache => cache.addAll(PRECACHE_URLS))
+    caches.open(APP_SHELL_CACHE)
+      .then((cache) => cache.addAll(APP_SHELL_ASSETS).catch(() => {}))
+      .then(() => self.skipWaiting())
   );
-  // Take control immediately — do not wait for old SW to die
-  self.skipWaiting();
 });
 
-// ── Activate: claim all clients, purge old caches ────────────────────────────
+// ─── Activate: clean old caches ──────────────────────────────
 self.addEventListener('activate', (event) => {
+  const validCaches = [APP_SHELL_CACHE, RUNTIME_CACHE];
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== APP_SHELL_CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((k) => !validCaches.includes(k)).map((k) => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// ── Skip waiting message from app ────────────────────────────────────────────
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-  if (event.data?.type === 'SYNC_NOTIFICATIONS') {
-    // Broadcast to all open windows to re-fetch notifications
-    self.clients.matchAll({ type: 'window' }).then(clients => {
-      clients.forEach(client => client.postMessage({ type: 'SYNC_NOTIFICATIONS' }));
-    });
-  }
-});
-
-// ── Fetch: network-first for API, cache-first for shell assets ───────────────
+// ─── Fetch: routing strategy ─────────────────────────────────
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const { request } = event;
+  if (request.method !== 'GET') return;
 
-  // Skip non-GET, chrome-extension, and OneSignal requests
-  if (event.request.method !== 'GET') return;
-  if (url.protocol === 'chrome-extension:') return;
-  if (url.hostname.includes('onesignal')) return;
+  const url = new URL(request.url);
 
-  // API / real-time: always network — never cache
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/functions/')) {
-    return; // Let browser handle natively
+  // Skip cross-origin API/backend requests (Base44 SDK, OneSignal, etc.)
+  if (url.origin !== self.location.origin) return;
+
+  // Skip API calls and realtime endpoints
+  if (url.pathname.startsWith('/api/') || url.pathname.includes('/v1/')) return;
+
+  // Network-first for navigation requests (HTML pages)
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(APP_SHELL_CACHE).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/index.html')))
+    );
+    return;
   }
 
-  // App shell: cache-first with network fallback
+  // Cache-first for static assets (JS, CSS, images, fonts)
   event.respondWith(
-    caches.match(event.request).then(cached => {
+    caches.match(request).then((cached) => {
       if (cached) return cached;
-      return fetch(event.request).then(response => {
-        if (!response || response.status !== 200 || response.type !== 'basic') return response;
-        const clone = response.clone();
-        caches.open(APP_SHELL_CACHE).then(cache => cache.put(event.request, clone));
+      return fetch(request).then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const copy = response.clone();
+          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
+        }
         return response;
-      }).catch(() => {
-        // If both cache and network fail, return cached index.html for SPA routing
-        if (url.pathname.startsWith('/')) return caches.match('/index.html');
-      });
+      }).catch(() => cached);
     })
   );
 });
 
-// ── Push: show notification from server push ──────────────────────────────────
+// ─── Message handler (skip waiting / sync notifications) ────
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  if (event.data && event.data.type === 'SYNC_NOTIFICATIONS') {
+    self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
+      clients.forEach((client) => client.postMessage({ type: 'SYNC_NOTIFICATIONS' }));
+    });
+  }
+});
+
+// ─── Push notifications ──────────────────────────────────────
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
-    payload = event.data?.json() || {};
-  } catch (_) {
-    payload = { title: 'SecureGuard Alert', body: event.data?.text() || 'You have a new notification.' };
+    payload = event.data ? event.data.json() : {};
+  } catch (e) {
+    payload = { title: 'SecureGuard', body: event.data ? event.data.text() : 'New alert' };
   }
 
-  const title = payload.title || payload.headings?.en || 'SecureGuard';
-  const body = payload.body || payload.contents?.en || '';
-  const data = payload.data || {};
-  const isPanic = data.type === 'panic';
-  const isCall = data.type === 'call';
+  const title = payload.title || 'SecureGuard Alert';
+  const isPanic = payload.type === 'panic' || payload.priority === 'critical';
+  const isCall = payload.type === 'call';
 
   const options = {
-    body,
-    icon: '/icon-192.png',
-    badge: '/icon-72.png',
-    tag: data.tag || `secureguard-${Date.now()}`,
-    // renotify: replace existing tag notification but still trigger sound/vibrate
+    body: payload.body || payload.message || 'You have a new notification',
+    icon: payload.icon || 'https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png',
+    badge: 'https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png',
+    vibrate: isPanic ? [200, 100, 200, 100, 200, 100, 400] : isCall ? [100, 50, 100] : [100],
+    requireInteraction: isPanic || isCall,
+    tag: payload.tag || payload.type || 'secureguard',
     renotify: true,
-    // requireInteraction: notification stays until user acts (critical/panic/call only)
-    requireInteraction: isPanic || isCall || data.priority === 'critical',
-    silent: false,
-    vibrate: isPanic || isCall ? [500, 200, 500, 200, 500] : [200, 100, 200],
-    data: { ...data, url: data.url || '/' },
-    actions: isPanic
-      ? [{ action: 'view', title: '🚨 Open Control Room' }]
-      : isCall
-        ? [{ action: 'answer', title: '📞 Answer' }, { action: 'decline', title: '❌ Decline' }]
-        : [{ action: 'view', title: 'View' }]
+    data: {
+      url: payload.url || payload.action_url || '/',
+      type: payload.type || 'default',
+      id: payload.id || ''
+    }
   };
+
+  if (payload.image) options.image = payload.image;
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// ── Notification click: focus or open correct page ───────────────────────────
+// ─── Notification click ──────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
 
-  const data = event.notification.data || {};
-  let targetUrl = '/';
-
-  if (event.action === 'answer' && data.callId) {
-    const caller = encodeURIComponent(data.callerName || 'Unknown');
-    targetUrl = `/?call_id=${data.callId}&caller_name=${caller}&auto_answer=true`;
-  } else if (data.type === 'panic' || event.action === 'view' && data.type === 'panic') {
-    targetUrl = '/ControlRoom';
-  } else if (data.type === 'call' && data.callId) {
-    const caller = encodeURIComponent(data.callerName || 'Unknown');
-    targetUrl = `/?call_id=${data.callId}&caller_name=${caller}&auto_answer=false`;
-  } else if (data.url) {
-    targetUrl = data.url;
+  // Handle action buttons
+  if (event.action === 'accept' || event.action === 'view') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) {
+          if (client.url.includes(self.location.origin)) {
+            client.postMessage({ type: 'NOTIFICATION_CLICK', url: targetUrl });
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow(targetUrl);
+      })
+    );
+    return;
   }
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
-      // If app is already open, focus it and navigate
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if (client.url.includes(self.location.origin)) {
-          client.focus();
-          client.navigate(targetUrl);
-          return;
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.postMessage({ type: 'NOTIFICATION_CLICK', url: targetUrl });
+          return client.focus();
         }
       }
-      // Otherwise open a new window
       return self.clients.openWindow(targetUrl);
     })
   );
 });
 
-// ── Notification close: track dismissals ─────────────────────────────────────
-self.addEventListener('notificationclose', (event) => {
-  // Future: could send analytics or update a "dismissed" flag
-});
-
-// ── Background Sync: replay queued notification fetches ──────────────────────
+// ─── Background sync ─────────────────────────────────────────
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-notifications') {
     event.waitUntil(
-      self.clients.matchAll({ type: 'window' }).then(clients => {
-        clients.forEach(client => client.postMessage({ type: 'SYNC_NOTIFICATIONS' }));
+      self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: 'SYNC_NOTIFICATIONS' }));
       })
     );
   }
 });
 
-// ── Periodic Background Sync: keep app data fresh ────────────────────────────
+// ─── Periodic sync ───────────────────────────────────────────
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'check-alerts') {
     event.waitUntil(
-      self.clients.matchAll({ type: 'window' }).then(clients => {
-        if (clients.length > 0) {
-          // App is open — tell it to re-fetch
-          clients.forEach(c => c.postMessage({ type: 'SYNC_NOTIFICATIONS' }));
-        } else {
-          // App is fully closed — show a silent "check-in" notification if needed
-          // (no-op: OneSignal handles background push when app is fully closed)
-        }
+      self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: 'SYNC_NOTIFICATIONS' }));
       })
     );
   }
