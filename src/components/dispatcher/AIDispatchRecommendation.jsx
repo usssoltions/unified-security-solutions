@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,12 +8,6 @@ import { Sparkles, User, MapPin, Loader2, TrendingUp, Shield, Award } from "luci
 export default function AIDispatchRecommendation({ incident, onSelectGuard, selectedGuard }) {
   const [recommendations, setRecommendations] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
-
-  useEffect(() => {
-    if (incident?.location && incident?.alarm_type) {
-      analyzeDispatch();
-    }
-  }, [incident?.location, incident?.alarm_type]);
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const lat1Num = parseFloat(lat1);
@@ -164,7 +158,22 @@ Consider: proximity, workload balance, skills match, performance history`;
   }
 
   if (!recommendations || recommendations.error) {
-    return null;
+    return (
+      <Card className="bg-purple-500/10 border-purple-500/30">
+        <CardContent className="p-6 text-center">
+          <Sparkles className="w-8 h-8 text-purple-400 mx-auto mb-3" />
+          <p className="text-purple-400 font-medium mb-1">AI Dispatch Recommendations</p>
+          <p className="text-sm text-slate-400 mb-4">Get AI-powered guard recommendations based on proximity, workload, and skills.</p>
+          <Button
+            onClick={analyzeDispatch}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            Analyze Dispatch Options
+          </Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

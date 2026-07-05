@@ -22,10 +22,6 @@ export default function AIIncidentAnalysis({ incident, onClose }) {
     initialData: []
   });
 
-  useEffect(() => {
-    analyzeIncident();
-  }, [incident]);
-
   const analyzeIncident = async () => {
     setLoading(true);
     try {
@@ -176,6 +172,18 @@ Provide a detailed analysis including:
               <div className="text-center py-12">
                 <Loader2 className="w-12 h-12 mx-auto animate-spin text-purple-400 mb-4" />
                 <p className="text-slate-400">AI analyzing incident details...</p>
+              </div>
+            ) : !analysis ? (
+              <div className="text-center py-12">
+                <Sparkles className="w-12 h-12 mx-auto text-purple-400 mb-4" />
+                <p className="text-slate-400 mb-4">Generate a comprehensive AI analysis of this incident including severity assessment, recommended actions, and resource requirements.</p>
+                <Button
+                  onClick={analyzeIncident}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Generate AI Analysis
+                </Button>
               </div>
             ) : analysis ? (
               <>
