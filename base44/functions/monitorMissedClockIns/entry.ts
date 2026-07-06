@@ -4,6 +4,13 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Check if this automation is enabled
+    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
+    const settings = settingsRecs?.[0];
+    if (!settings?.monitor_missed_clockins) {
+      return Response.json({ success: true, skipped: true, reason: 'Automation disabled' });
+    }
+
     const now = new Date();
     const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);

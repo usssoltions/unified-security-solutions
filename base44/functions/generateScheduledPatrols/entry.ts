@@ -23,6 +23,13 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Check if this automation is enabled
+    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
+    const settings = settingsRecs?.[0];
+    if (!settings?.generate_scheduled_patrols) {
+      return Response.json({ success: true, skipped: true, reason: 'Automation disabled' });
+    }
+
     const now = new Date();
     const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);

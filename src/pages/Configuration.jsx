@@ -17,6 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReportSchedulingSettings from "../components/reports/ReportSchedulingSettings";
 import WhatsAppContactsConfig from "../components/configuration/WhatsAppContactsConfig";
+import AutomationToggles from "../components/configuration/AutomationToggles";
 
 export default function Configuration() {
   // Incident Categories
@@ -251,7 +252,10 @@ export default function Configuration() {
 
         {/* Reports Settings */}
         <TabsContent value="reports">
-          <ReportSchedulingSettings />
+          <div className="space-y-6">
+            <AutomationToggles />
+            <ReportSchedulingSettings />
+          </div>
         </TabsContent>
 
         {/* Incident Categories */}

@@ -5,6 +5,13 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     // NOTE: This is a scheduled function — no user auth needed, use service role only
 
+    // Check if this automation is enabled
+    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
+    const settings = settingsRecs?.[0];
+    if (!settings?.monitor_low_battery) {
+      return Response.json({ success: true, skipped: true, reason: 'Automation disabled' });
+    }
+
     const now = new Date();
     const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
 

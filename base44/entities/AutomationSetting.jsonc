@@ -1,0 +1,31 @@
+{
+  "name": "AutomationSetting",
+  "type": "object",
+  "properties": {
+    "monitor_overdue_patrols": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable overdue patrol monitoring automation"
+    },
+    "monitor_missed_clockins": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable missed clock-in monitoring automation"
+    },
+    "monitor_low_battery": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable low battery monitoring automation"
+    },
+    "generate_scheduled_patrols": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable automatic scheduled patrol generation"
+    },
+    "send_shift_reminders": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable shift reminder emails (sent once per shift, 2 hours before start)"
+    }
+  }
+}
