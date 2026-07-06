@@ -111,8 +111,8 @@ export default function AutomationToggles() {
           Automation Monitoring
         </CardTitle>
         <p className="text-sm text-slate-400">
-          Enable or disable background automation monitors. All are disabled by default to conserve resources.
-          Toggle on only when needed.
+          Enable or disable background monitoring. All monitors run inside a single combined check every 2 hours —
+          only enabled monitors execute, minimizing credit usage. All are disabled by default.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -149,7 +149,7 @@ export default function AutomationToggles() {
         <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
           <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-300">
-            Changes take effect on the next scheduled run of each automation. Shift reminders are sent at most once per shift.
+            Changes take effect on the next 2-hour combined monitoring cycle. Shift reminders are sent at most once per shift.
           </p>
         </div>
       </CardContent>
