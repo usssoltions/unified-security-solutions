@@ -18,7 +18,7 @@ Messaging (FCM) credentials.
 4. **Link Firebase to OneSignal**: In your OneSignal dashboard →
    Settings → Platforms → Google Android → enter your Firebase
    Server Key and Sender ID.
-5. The OneSignal App ID (`efd5b25f-e103-4aca-bc00-2b010194fdb9`) is
+5. The OneSignal App ID (`526d4393-9f50-4f8e-8379-05ec176dc62d`) is
    already hardcoded in `USSGuardApplication.java`.
 
 > Without `google-services.json`, the Gradle build will fail with a

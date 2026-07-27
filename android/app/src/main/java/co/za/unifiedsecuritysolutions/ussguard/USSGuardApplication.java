@@ -31,7 +31,7 @@ import java.net.URLEncoder;
  */
 public class USSGuardApplication extends Application {
     private static final String TAG = "USSGuard";
-    private static final String ONESIGNAL_APP_ID = "efd5b25f-e103-4aca-bc00-2b010194fdb9";
+    private static final String ONESIGNAL_APP_ID = "526d4393-9f50-4f8e-8379-05ec176dc62d";
     private static final String APP_URL = "https://guard-track-pro-26cedab8.base44.app";
 
     /** Set by the notification click handler; consumed by MainActivity.onResume() */
