@@ -1,8 +1,12 @@
 package co.za.unifiedsecuritysolutions.ussguard;
 
 import android.app.Application;
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
 import android.os.Build;
 import android.util.Log;
 
@@ -72,13 +76,29 @@ public class USSGuardApplication extends Application {
             OneSignal.initWithContext(this);
             OneSignal.setAppId(ONESIGNAL_APP_ID);
 
-            // Show notifications even when app is in foreground
+            // Intercept notifications — show full-screen UI for calls
             OneSignal.getNotifications().addForegroundWillDisplayHandler(
                 new INotificationWillDisplayHandler() {
                     @Override
                     public void onNotificationWillDisplay(INotificationWillDisplayEvent event) {
-                        event.getNotification().show();
-                        Log.d(TAG, "📨 Notification displayed (foreground)");
+                        INotification notification = event.getNotification();
+                        JSONObject data = notification.getAdditionalData();
+
+                        if (data != null && "call".equals(data.optString("type"))) {
+                            // It's a call notification — show full-screen call UI
+                            String callId = data.optString("callId");
+                            String callerName = data.optString("callerName");
+                            String callerAvatar = data.optString("callerAvatar", "");
+                            boolean isGroupCall = data.optBoolean("isGroupCall", false);
+
+                            showFullScreenCallNotification(callId, callerName, callerAvatar, isGroupCall);
+
+                            // Don't call event.getNotification().show() — we've posted our own
+                        } else {
+                            // Non-call notification — show normally
+                            event.getNotification().show();
+                            Log.d(TAG, "📨 Notification displayed (foreground)");
+                        }
                     }
                 }
             );
@@ -109,6 +129,59 @@ public class USSGuardApplication extends Application {
             Log.d(TAG, "✅ OneSignal initialized — native push ready");
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to initialize OneSignal", e);
+        }
+    }
+
+    /**
+     * Posts a full-screen call notification that launches IncomingCallActivity.
+     * On locked screen / background: the system shows the full-screen activity.
+     * On foreground: shows as a heads-up notification (Android standard behavior).
+     */
+    private void showFullScreenCallNotification(String callId, String callerName,
+                                                 String callerAvatar, boolean isGroupCall) {
+        try {
+            Intent callIntent = new Intent(this, IncomingCallActivity.class);
+            callIntent.putExtra("callId", callId);
+            callIntent.putExtra("callerName", callerName);
+            callIntent.putExtra("callerAvatar", callerAvatar);
+            callIntent.putExtra("isGroupCall", isGroupCall);
+            callIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+            int pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                pendingIntentFlags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+
+            PendingIntent fullScreenIntent = PendingIntent.getActivity(
+                this, callId.hashCode(), callIntent, pendingIntentFlags
+            );
+
+            Notification.Builder builder = new Notification.Builder(this, "calls")
+                .setSmallIcon(android.R.drawable.sym_call_incoming)
+                .setContentTitle("Incoming Call")
+                .setContentText(callerName != null ? callerName : "Unknown Caller")
+                .setPriority(Notification.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_CALL)
+                .setContentIntent(fullScreenIntent)
+                .setFullScreenIntent(fullScreenIntent, true)
+                .setOngoing(true)
+                .setTimeoutAfter(45000);
+
+            // Use CallStyle on Android 12+ for the native call look
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Notification.CallStyle callStyle = new Notification.CallStyle()
+                    .setIsIncoming(true)
+                    .setCaller(callerName != null ? callerName : "Unknown");
+                builder.setStyle(callStyle);
+            }
+
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            nm.notify(callId.hashCode(), builder.build());
+
+            Log.d(TAG, "📞 Full-screen call notification posted — callId: " + callId
+                + ", caller: " + callerName);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to post full-screen call notification", e);
         }
     }
 

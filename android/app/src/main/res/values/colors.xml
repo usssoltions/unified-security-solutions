@@ -4,4 +4,8 @@
     <color name="primary">#0ea5e9</color>
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
+    <color name="call_screen_bg">#0f172a</color>
+    <color name="call_subtitle">#94A3B8</color>
+    <color name="call_accept">#22C55E</color>
+    <color name="call_decline">#EF4444</color>
 </resources>

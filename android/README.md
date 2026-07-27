@@ -37,6 +37,17 @@ Messaging (FCM) credentials.
   WebView service worker. Works when app is minimized or fully closed.
 - **High-priority call notification channel** — sound + vibration + public
   visibility on lock screen
+- **Full-screen incoming call UI** — native `IncomingCallActivity` with caller
+  name, initials avatar, Accept (green) and Decline (red) buttons
+- **Continuous ringtone** — device ringtone loops until answered, declined, or
+  auto-dismissed after 45 seconds
+- **Screen wake on lock screen** — activity uses `showWhenLocked` +
+  `turnScreenOn` + `SCREEN_BRIGHT_WAKE_LOCK` to wake the device and display
+  the call UI over the lock screen
+- **Android CallStyle** — uses `Notification.CallStyle` on Android 12+ for the
+  native call notification look
+- **Full-screen intent** — uses `setFullScreenIntent()` so the call screen
+  appears immediately when the device is locked or the app is in background
 - **Global incoming-call handler** — mounted at the app root (outside Routes),
   active on EVERY page after login. Survives navigation. Only cleaned up on logout.
 - **Notification click → incoming call screen** — tapping a call notification

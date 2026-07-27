@@ -246,6 +246,7 @@ export default function RealtimeVoiceCall({
           await base44.functions.invoke('sendCallPushNotification', {
             recipientId: participant.id,
             callerName,
+            callerAvatar: currentUser?.profile_photo || '',
             callId: callId.current,
             isGroupCall: isGroupCall
           });

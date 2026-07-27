@@ -4,7 +4,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
-    const { recipientId, callerName, callId, isGroupCall } = await req.json();
+    const { recipientId, callerName, callId, isGroupCall, callerAvatar } = await req.json();
 
     console.log(`[sendCallPushNotification] Sending push — callId: ${callId}, caller: ${callerName}, recipient: ${recipientId}`);
 
@@ -70,6 +70,7 @@ Deno.serve(async (req) => {
           type: 'call',
           callId: callId,
           callerName: callerName,
+          callerAvatar: callerAvatar || '',
           isGroupCall: isGroupCall
         }
       })

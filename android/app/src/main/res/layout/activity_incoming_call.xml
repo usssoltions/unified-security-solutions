@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/call_screen_bg"
+    android:gravity="center">
+
+    <!-- Top spacer -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Avatar -->
+    <LinearLayout
+        android:layout_width="140dp"
+        android:layout_height="140dp"
+        android:background="@drawable/call_avatar_bg"
+        android:gravity="center"
+        android:layout_marginBottom="28dp">
+
+        <TextView
+            android:id="@+id/tvInitials"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/white"
+            android:textSize="56sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Caller Name -->
+    <TextView
+        android:id="@+id/tvCallerName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/white"
+        android:textSize="30sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="6dp" />
+
+    <TextView
+        android:id="@+id/tvSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Incoming Call..."
+        android:textColor="@color/call_subtitle"
+        android:textSize="16sp" />
+
+    <!-- Bottom spacer -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginBottom="64dp">
+
+        <!-- Decline -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginEnd="72dp">
+
+            <ImageButton
+                android:id="@+id/btnDecline"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:background="@drawable/call_decline_bg"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:scaleType="centerInside"
+                android:tint="@color/white"
+                android:padding="20dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Decline"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:layout_marginTop="10dp" />
+        </LinearLayout>
+
+        <!-- Accept -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnAccept"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:background="@drawable/call_accept_bg"
+                android:src="@android:drawable/ic_menu_call"
+                android:scaleType="centerInside"
+                android:tint="@color/white"
+                android:padding="20dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Accept"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:layout_marginTop="10dp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
