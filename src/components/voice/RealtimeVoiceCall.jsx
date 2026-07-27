@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Users, Video, VideoOff, Loader2 } from "lucide-react";
@@ -17,7 +18,7 @@ export default function RealtimeVoiceCall({
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [connectedParticipants, setConnectedParticipants] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
+  const { user: currentUser } = useAuth();
   const [reconnecting, setReconnecting] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const callStartTime = useRef(null);
@@ -50,7 +51,7 @@ export default function RealtimeVoiceCall({
   const callParticipants = isGroupCall ? participants : [targetUser];
 
   useEffect(() => {
-    loadCurrentUser();
+    console.log('[RealtimeVoiceCall] Mounted — incomingCallId:', incomingCallId, 'targetUser:', targetUser?.full_name, 'currentUser:', currentUser?.full_name);
     if (incomingCallId) {
       // For incoming calls, start ringing immediately
       setTimeout(() => startRingtone(), 100);
@@ -66,14 +67,7 @@ export default function RealtimeVoiceCall({
     return () => cleanup();
   }, []);
 
-  const loadCurrentUser = async () => {
-    try {
-      const user = await base44.auth.me();
-      setCurrentUser(user);
-    } catch (error) {
-      console.error('Failed to load user:', error);
-    }
-  };
+
 
   useEffect(() => {
     if (callStatus === 'connected' && !callStartTime.current) {
@@ -233,31 +227,36 @@ export default function RealtimeVoiceCall({
       callId.current = initData.callId;
       console.log('✓ Call initiated with ID:', callId.current);
 
+      const callerName = currentUser?.full_name || 'Unknown';
+      console.log('[RealtimeVoiceCall] Sending notifications — callId:', callId.current, 'caller:', callerName);
+
       // Send both in-app and push notifications
       const notificationPromises = callParticipants.map(async (participant) => {
         try {
           // In-app notification
           await base44.functions.invoke('sendCallNotification', {
             targetUserId: participant.id,
-            callerName: currentUser?.full_name || 'Unknown',
+            callerName,
             callId: callId.current,
             callType: isGroupCall ? 'group' : 'direct'
           });
+          console.log('[RealtimeVoiceCall] ✅ In-app notification sent to:', participant.full_name);
           
           // OneSignal push notification
           await base44.functions.invoke('sendCallPushNotification', {
             recipientId: participant.id,
-            callerName: currentUser?.full_name || 'Unknown',
+            callerName,
             callId: callId.current,
             isGroupCall: isGroupCall
           });
+          console.log('[RealtimeVoiceCall] ✅ Push notification sent to:', participant.full_name);
         } catch (err) {
-          console.error('Failed to notify:', err);
+          console.error('[RealtimeVoiceCall] ❌ Failed to notify:', err);
         }
       });
       
       await Promise.all(notificationPromises);
-      console.log('✓ Call notifications sent');
+      console.log('[RealtimeVoiceCall] ✓ All call notifications sent');
 
       startPolling();
       console.log('✓ Polling started, waiting for answer...');

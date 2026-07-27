@@ -4,14 +4,15 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.GeolocationPermissions;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -34,6 +35,7 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String TAG = "USSGuard";
     private static final String APP_URL = "https://guard-track-pro-26cedab8.base44.app";
     private static final int PERMISSION_REQUEST_CODE = 1001;
 
@@ -76,6 +78,9 @@ public class MainActivity extends AppCompatActivity {
 
         webView = findViewById(R.id.webview);
 
+        // ── JavaScript Interface — exposes native OneSignal to WebView ──
+        webView.addJavascriptInterface(new USSBridge(), "AndroidBridge");
+
         // ── WebView Settings ─────────────────────────────────────
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -101,13 +106,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                // Keep app URLs and Google login inside WebView
                 if (url.contains("guard-track-pro-26cedab8.base44.app")
                     || url.contains("base44.app")
                     || url.contains("accounts.google.com")) {
                     return false;
                 }
-                // External links open in system browser
                 startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                 return true;
             }
@@ -115,13 +118,13 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                // Force viewport for proper mobile rendering
                 view.evaluateJavascript(
                     "(function(){" +
                     "  var m=document.querySelector('meta[name=viewport]');" +
                     "  if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}" +
                     "  m.content='width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover';" +
                     "})();", null);
+                Log.d(TAG, "Page loaded: " + url);
             }
         });
 
@@ -152,7 +155,6 @@ public class MainActivity extends AppCompatActivity {
                 callback.invoke(origin, true, false);
             }
 
-            // File upload — <input type="file"> support
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (filePathCallback != null) {
@@ -195,13 +197,35 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ── Request runtime permissions (including POST_NOTIFICATIONS) ──
+        // ── Request runtime permissions ──────────────────────────
         requestRuntimePermissions();
+
+        Log.d(TAG, "MainActivity created — WebView ready");
+    }
+
+    /**
+     * JavaScript Bridge — exposes native OneSignal functionality to the WebView.
+     * The web app checks window.AndroidBridge.isNativeApp() to detect native mode.
+     */
+    private class USSBridge {
+        @JavascriptInterface
+        public boolean isNativeApp() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public String getOneSignalPlayerId() {
+            return USSGuardApplication.getOneSignalPlayerId();
+        }
+
+        @JavascriptInterface
+        public void setExternalId(String userId) {
+            USSGuardApplication.setExternalId(userId);
+        }
     }
 
     /**
      * Requests camera, microphone, location, and notification permissions.
-     * POST_NOTIFICATIONS is requested on Android 13+ (API 33+) on first launch.
      */
     private void requestRuntimePermissions() {
         List<String> perms = new ArrayList<>();
@@ -217,7 +241,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // POST_NOTIFICATIONS — Android 13+ (API 33+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -276,7 +299,19 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (webView != null) webView.onResume();
+        if (webView != null) {
+            webView.onResume();
+
+            // Check for pending call URL from notification click
+            if (USSGuardApplication.pendingCallUrl != null) {
+                final String url = USSGuardApplication.pendingCallUrl;
+                USSGuardApplication.pendingCallUrl = null;
+                webView.post(() -> {
+                    Log.d(TAG, "📞 Loading pending call URL: " + url);
+                    webView.loadUrl(url);
+                });
+            }
+        }
     }
 
     @Override

@@ -2,6 +2,28 @@
 
 A full native Android WebView app wrapping the USS Guard web platform.
 
+## ⚠️ Prerequisites: Firebase + OneSignal Setup
+
+The app uses the **OneSignal Android SDK** for native push notifications (calls,
+alerts) when the app is minimized or closed. This requires Firebase Cloud
+Messaging (FCM) credentials.
+
+### One-Time Setup
+
+1. **Create a Firebase project**: https://console.firebase.google.com/
+2. **Add an Android app** in Firebase Console with package name:
+   `co.za.unifiedsecuritysolutions.ussguard`
+3. **Download `google-services.json`** and place it in:
+   `android/app/google-services.json`
+4. **Link Firebase to OneSignal**: In your OneSignal dashboard →
+   Settings → Platforms → Google Android → enter your Firebase
+   Server Key and Sender ID.
+5. The OneSignal App ID (`efd5b25f-e103-4aca-bc00-2b010194fdb9`) is
+   already hardcoded in `USSGuardApplication.java`.
+
+> Without `google-services.json`, the Gradle build will fail with a
+> clear error from the `google-services` plugin.
+
 ## What it does
 
 - Loads `https://guard-track-pro-26cedab8.base44.app` in a **native Android WebView** (not TWA, not Custom Tab, not browser redirect)
@@ -11,12 +33,15 @@ A full native Android WebView app wrapping the USS Guard web platform.
 - **Microphone/audio** — for voice calls and PTT radio
 - **File upload** — `<input type="file">` works natively via `onShowFileChooser`
 - **POST_NOTIFICATIONS** — requested on first launch (Android 13+)
-- **Global incoming-call handler** — call listener runs at the app root, active on
-  every page after login. Survives navigation across Dashboard, Contacts, Reports,
-  Shifts, Sites, etc. Only cleaned up on logout.
-- **Push notification fallback** — when the app is minimized/backgrounded, OneSignal
-  push notifications are delivered via the service worker. Tapping the notification
-  brings the app to the foreground and triggers the incoming-call modal.
+- **Native OneSignal SDK** — push notifications delivered via FCM, not the
+  WebView service worker. Works when app is minimized or fully closed.
+- **High-priority call notification channel** — sound + vibration + public
+  visibility on lock screen
+- **Global incoming-call handler** — mounted at the app root (outside Routes),
+  active on EVERY page after login. Survives navigation. Only cleaned up on logout.
+- **Notification click → incoming call screen** — tapping a call notification
+  opens USS Guard and passes `call_id` + `caller_name` to the WebView, triggering
+  the incoming call modal.
 - **Back button** navigates WebView history
 - App name: **USS Guard**
 - Package ID: `co.za.unifiedsecuritysolutions.ussguard`

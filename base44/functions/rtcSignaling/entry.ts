@@ -37,17 +37,10 @@ Deno.serve(async (req) => {
                     timestamp: new Date().toISOString()
                 });
 
-                // Create notification for target user
-                await base44.asServiceRole.entities.Notification.create({
-                    recipient_id: targetUserId,
-                    type: 'system',
-                    priority: 'high',
-                    title: 'Incoming Voice Call',
-                    message: `${user.full_name} is calling you`,
-                    related_entity: 'voice_call',
-                    related_id: newCallId,
-                    action_url: `/voice-call/${newCallId}`
-                });
+                console.log(`[rtcSignaling] Call initiated: ${newCallId} from ${user.id} to ${targetUserId}`);
+
+                // NOTE: Notification creation is handled by sendCallNotification function
+                // to avoid duplicate notifications. Do NOT create a notification here.
 
                 return Response.json({ 
                     success: true, 

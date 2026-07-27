@@ -15,7 +15,32 @@ export default function OneSignalSetup() {
     if (initialised.current) return;
     initialised.current = true;
 
-    // Load OneSignal v16 SDK
+    // ── Check if running inside native Android WebView ──────────
+    // The native app uses the OneSignal Android SDK for push delivery.
+    // We skip the web SDK and sync the external user ID instead.
+    if (window.AndroidBridge && window.AndroidBridge.isNativeApp && window.AndroidBridge.isNativeApp()) {
+      console.log('[OneSignalSetup] 📱 Native Android app detected — using native OneSignal SDK');
+      console.log('[OneSignalSetup] Skipping web SDK init (native SDK handles push)');
+
+      // Set external ID so backend can send to all devices via include_external_user_ids
+      const syncExternalId = async () => {
+        try {
+          const user = await base44.auth.me();
+          if (user?.id) {
+            window.AndroidBridge.setExternalId(user.id);
+            console.log('[OneSignalSetup] ✅ Native external ID set:', user.id);
+          }
+        } catch (e) {
+          console.warn('[OneSignalSetup] Could not sync external ID yet, retrying...', e);
+          setTimeout(syncExternalId, 3000);
+        }
+      };
+      syncExternalId();
+      return; // Skip web SDK init
+    }
+
+    // ── Web SDK path (browser / PWA) ────────────────────────────
+    console.log('[OneSignalSetup] Web mode — loading OneSignal v16 SDK');
     const script = document.createElement('script');
     script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
     script.defer = true;
@@ -52,6 +77,15 @@ export default function OneSignalSetup() {
 
         // Persist subscription and save player ID
         await OneSignal.Notifications.requestPermission();
+
+        // Set external user ID so backend can send to all devices
+        const currentUser = await base44.auth.me();
+        if (currentUser?.id) {
+          try {
+            await OneSignal.login(currentUser.id);
+            console.log('[OneSignalSetup] ✅ Web external ID set:', currentUser.id);
+          } catch (_) {}
+        }
 
         const playerId = await OneSignal.User.PushSubscription.id;
         if (playerId) {

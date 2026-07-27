@@ -6,6 +6,8 @@ Deno.serve(async (req) => {
     
     const { recipientId, callerName, callId, isGroupCall } = await req.json();
 
+    console.log(`[sendCallPushNotification] Sending push — callId: ${callId}, caller: ${callerName}, recipient: ${recipientId}`);
+
     if (!recipientId || !callerName) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -15,23 +17,16 @@ Deno.serve(async (req) => {
     const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
 
     if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
-      console.warn('OneSignal not configured');
+      console.warn('[sendCallPushNotification] OneSignal not configured');
       return Response.json({ 
         success: false, 
         message: 'OneSignal not configured' 
       });
     }
 
-    const recipient = await base44.asServiceRole.entities.User.get(recipientId);
-    
-    if (!recipient || !recipient.onesignal_player_id) {
-      return Response.json({ 
-        success: false, 
-        message: 'Recipient not subscribed to push' 
-      });
-    }
-
-    // Send high-priority push notification
+    // Use include_external_user_ids so the push reaches ALL of the recipient's
+    // devices (Android native SDK + web SDK) without needing to track player IDs.
+    // The app sets the external ID via OneSignal.login(userId) on both platforms.
     const response = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
@@ -40,7 +35,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
-        include_player_ids: [recipient.onesignal_player_id],
+        include_external_user_ids: [recipientId],
         headings: { en: "📞 Incoming Call" },
         contents: { 
           en: isGroupCall 
@@ -81,6 +76,7 @@ Deno.serve(async (req) => {
     });
 
     const result = await response.json();
+    console.log(`[sendCallPushNotification] ✅ OneSignal response:`, JSON.stringify(result));
 
     return Response.json({ 
       success: true,
