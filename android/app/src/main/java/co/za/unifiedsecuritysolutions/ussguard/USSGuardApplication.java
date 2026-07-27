@@ -12,6 +12,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 import com.onesignal.OneSignal;
+import com.onesignal.notifications.IDisplayableNotification;
 import com.onesignal.notifications.INotification;
 import com.onesignal.notifications.INotificationClickEvent;
 import com.onesignal.notifications.INotificationClickListener;
@@ -80,7 +81,7 @@ public class USSGuardApplication extends Application {
                     @Override
                     public void onWillDisplay(INotificationWillDisplayEvent event) {
                         try {
-                            INotification notification = event.getNotification();
+                            IDisplayableNotification notification = event.getNotification();
                             JSONObject data = notification.getAdditionalData();
 
                             if (data != null && "call".equals(data.optString("type"))) {
