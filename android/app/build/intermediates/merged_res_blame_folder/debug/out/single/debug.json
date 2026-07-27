@@ -1,0 +1,78 @@
+[
+    {
+        "merged": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/xml_network_security_config.xml.flat",
+        "source": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-main-7:/xml/network_security_config.xml"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-xxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-mdpi/ic_launcher.png"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-xxxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/drawable_call_accept_bg.xml.flat",
+        "source": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-main-7:/drawable/call_accept_bg.xml"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/layout_activity_incoming_call.xml.flat",
+        "source": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-main-7:/layout/activity_incoming_call.xml"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-xxxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-xhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-xxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-mdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-hdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/drawable_call_decline_bg.xml.flat",
+        "source": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-main-7:/drawable/call_decline_bg.xml"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-xhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/layout_activity_main.xml.flat",
+        "source": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-main-7:/layout/activity_main.xml"
+    },
+    {
+        "merged": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/drawable_call_avatar_bg.xml.flat",
+        "source": "/root/.gradle/daemon/8.5/co.za.unifiedsecuritysolutions.ussguard.app-main-7:/drawable/call_avatar_bg.xml"
+    },
+    {
+        "merged": "co.za.unifiedsecuritysolutions.ussguard.app-merged_res-5:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "co.za.unifiedsecuritysolutions.ussguard.app-main-7:/mipmap-hdpi/ic_launcher.png"
+    }
+]

@@ -1,7 +1,6 @@
 package co.za.unifiedsecuritysolutions.ussguard;
 
 import android.app.Application;
-import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -10,24 +9,22 @@ import android.content.Intent;
 import android.os.Build;
 import android.util.Log;
 
+import androidx.core.app.NotificationCompat;
+
 import com.onesignal.OneSignal;
 import com.onesignal.notifications.INotification;
 import com.onesignal.notifications.INotificationClickEvent;
-import com.onesignal.notifications.INotificationClickHandler;
+import com.onesignal.notifications.INotificationClickListener;
+import com.onesignal.notifications.INotificationLifecycleListener;
 import com.onesignal.notifications.INotificationWillDisplayEvent;
-import com.onesignal.notifications.INotificationWillDisplayHandler;
 
 import org.json.JSONObject;
 
 import java.net.URLEncoder;
 
 /**
- * USS Guard Application — initializes native OneSignal Android SDK for
+ * USS Guard Application — initializes native OneSignal Android SDK v5 for
  * reliable push notification delivery when the app is minimized or closed.
- *
- * This replaces reliance on the OneSignal Web SDK / browser service worker
- * inside the WebView, which does not work reliably when the WebView is
- * suspended or the app process is killed.
  */
 public class USSGuardApplication extends Application {
     private static final String TAG = "USSGuard";
@@ -62,50 +59,58 @@ public class USSGuardApplication extends Application {
             channel.enableLights(true);
             channel.setLightColor(0xFF10B981);
             getSystemService(NotificationManager.class).createNotificationChannel(channel);
-            Log.d(TAG, "✅ Call notification channel created (IMPORTANCE_HIGH)");
+            Log.d(TAG, "Call notification channel created (IMPORTANCE_HIGH)");
         }
     }
 
     /**
-     * Initializes OneSignal Android SDK for native push delivery.
-     * - Shows notifications even when app is in foreground
-     * - Handles notification clicks to open the incoming call screen
+     * Initializes OneSignal Android SDK v5 for native push delivery.
+     * - Uses the v5 init API: OneSignal.initWithContext(context, appId)
+     * - Uses INotificationLifecycleListener for foreground notification handling
+     * - Uses INotificationClickListener for notification click handling
      */
     private void initOneSignal() {
         try {
-            OneSignal.initWithContext(this);
-            OneSignal.setAppId(ONESIGNAL_APP_ID);
+            // OneSignal v5 initialization — single call with app ID
+            OneSignal.initWithContext(this, ONESIGNAL_APP_ID);
 
-            // Intercept notifications — show full-screen UI for calls
-            OneSignal.getNotifications().addForegroundWillDisplayHandler(
-                new INotificationWillDisplayHandler() {
+            // v5 foreground lifecycle listener — intercept notifications to show full-screen call UI
+            OneSignal.getNotifications().addForegroundLifecycleListener(
+                new INotificationLifecycleListener() {
                     @Override
-                    public void onNotificationWillDisplay(INotificationWillDisplayEvent event) {
-                        INotification notification = event.getNotification();
-                        JSONObject data = notification.getAdditionalData();
+                    public void onWillDisplay(INotificationWillDisplayEvent event) {
+                        try {
+                            INotification notification = event.getNotification();
+                            JSONObject data = notification.getAdditionalData();
 
-                        if (data != null && "call".equals(data.optString("type"))) {
-                            // It's a call notification — show full-screen call UI
-                            String callId = data.optString("callId");
-                            String callerName = data.optString("callerName");
-                            String callerAvatar = data.optString("callerAvatar", "");
-                            boolean isGroupCall = data.optBoolean("isGroupCall", false);
+                            if (data != null && "call".equals(data.optString("type"))) {
+                                // Call notification — show our own full-screen call UI
+                                String callId = data.optString("callId");
+                                String callerName = data.optString("callerName");
+                                String callerAvatar = data.optString("callerAvatar", "");
+                                boolean isGroupCall = data.optBoolean("isGroupCall", false);
 
-                            showFullScreenCallNotification(callId, callerName, callerAvatar, isGroupCall);
+                                showFullScreenCallNotification(callId, callerName, callerAvatar, isGroupCall);
 
-                            // Don't call event.getNotification().show() — we've posted our own
-                        } else {
-                            // Non-call notification — show normally
-                            event.getNotification().show();
-                            Log.d(TAG, "📨 Notification displayed (foreground)");
+                                // Prevent OneSignal from showing its default notification
+                                event.preventDefault();
+                            } else {
+                                // Non-call notification — display normally via v5 API
+                                notification.display();
+                                Log.d(TAG, "Notification displayed (foreground)");
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error in foreground lifecycle listener", e);
+                            // Fallback: display the notification
+                            try { event.getNotification().display(); } catch (Exception ignored) {}
                         }
                     }
                 }
             );
 
-            // Handle notification clicks — extract call data and open call screen
-            OneSignal.getNotifications().addClickHandler(
-                new INotificationClickHandler() {
+            // v5 click listener — extract call data and open call screen
+            OneSignal.getNotifications().addClickListener(
+                new INotificationClickListener() {
                     @Override
                     public void onClick(INotificationClickEvent event) {
                         try {
@@ -117,7 +122,7 @@ public class USSGuardApplication extends Application {
                                 String url = APP_URL + "/?call_id=" + callId +
                                     "&caller_name=" + URLEncoder.encode(callerName, "UTF-8");
                                 pendingCallUrl = url;
-                                Log.d(TAG, "📞 Call notification clicked — pending URL: " + url);
+                                Log.d(TAG, "Call notification clicked — pending URL: " + url);
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error handling notification click", e);
@@ -126,16 +131,20 @@ public class USSGuardApplication extends Application {
                 }
             );
 
-            Log.d(TAG, "✅ OneSignal initialized — native push ready");
+            Log.d(TAG, "OneSignal v5 initialized — native push ready");
         } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to initialize OneSignal", e);
+            Log.e(TAG, "Failed to initialize OneSignal", e);
         }
     }
 
     /**
-     * Posts a full-screen call notification that launches IncomingCallActivity.
-     * On locked screen / background: the system shows the full-screen activity.
-     * On foreground: shows as a heads-up notification (Android standard behavior).
+     * Posts a high-priority notification with a full-screen intent that
+     * launches IncomingCallActivity.
+     *
+     * On locked screen / background (Android < 14): the system shows the
+     * full-screen activity immediately.
+     * On Android 14+: requires USE_FULL_SCREEN_INTENT permission; falls back
+     * to heads-up notification if not granted.
      */
     private void showFullScreenCallNotification(String callId, String callerName,
                                                  String callerAvatar, boolean isGroupCall) {
@@ -147,60 +156,61 @@ public class USSGuardApplication extends Application {
             callIntent.putExtra("isGroupCall", isGroupCall);
             callIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            int pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                pendingIntentFlags |= PendingIntent.FLAG_IMMUTABLE;
-            }
+            // FLAG_IMMUTABLE is required on API 31+ and available since API 23
+            int pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
 
             PendingIntent fullScreenIntent = PendingIntent.getActivity(
                 this, callId.hashCode(), callIntent, pendingIntentFlags
             );
 
-            Notification.Builder builder = new Notification.Builder(this, "calls")
+            // Use NotificationCompat for cross-API compatibility
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "calls")
                 .setSmallIcon(android.R.drawable.sym_call_incoming)
                 .setContentTitle("Incoming Call")
                 .setContentText(callerName != null ? callerName : "Unknown Caller")
-                .setPriority(Notification.PRIORITY_MAX)
-                .setCategory(Notification.CATEGORY_CALL)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setContentIntent(fullScreenIntent)
                 .setFullScreenIntent(fullScreenIntent, true)
                 .setOngoing(true)
-                .setTimeoutAfter(45000);
-
-            // Use CallStyle on Android 12+ for the native call look
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Notification.CallStyle callStyle = new Notification.CallStyle()
-                    .setIsIncoming(true)
-                    .setCaller(callerName != null ? callerName : "Unknown");
-                builder.setStyle(callStyle);
-            }
+                .setTimeoutAfter(45000)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
 
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+            // On Android 14+ check if full-screen intent is permitted
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                if (!nm.canUseFullScreenIntent()) {
+                    Log.w(TAG, "Full-screen intent not permitted on Android 14+ — " +
+                        "user must grant permission in Settings");
+                }
+            }
+
             nm.notify(callId.hashCode(), builder.build());
 
-            Log.d(TAG, "📞 Full-screen call notification posted — callId: " + callId
+            Log.d(TAG, "Call notification posted — callId: " + callId
                 + ", caller: " + callerName);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to post full-screen call notification", e);
+            Log.e(TAG, "Failed to post call notification", e);
         }
     }
 
     /**
      * Sets the OneSignal external user ID so the backend can send pushes
-     * to all of the user's devices (Android + web) via include_external_user_ids.
+     * to all of the user's devices via include_external_user_ids.
      * Called from the JavaScript bridge when the web app authenticates.
      */
     public static void setExternalId(String userId) {
         try {
             OneSignal.login(userId);
-            Log.d(TAG, "✅ OneSignal external ID set: " + userId);
+            Log.d(TAG, "OneSignal external ID set: " + userId);
         } catch (Exception e) {
             Log.e(TAG, "Failed to set external ID", e);
         }
     }
 
     /**
-     * Returns the OneSignal player/subscription ID for the current device.
+     * Returns the OneSignal subscription ID for the current device.
      */
     public static String getOneSignalPlayerId() {
         try {

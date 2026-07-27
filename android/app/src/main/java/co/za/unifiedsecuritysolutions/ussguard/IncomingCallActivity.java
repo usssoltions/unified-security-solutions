@@ -142,7 +142,7 @@ public class IncomingCallActivity extends Activity {
         try {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             wakeLock = pm.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRED_CAUSED_WAKEUP,
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK,
                 "USSGuard:IncomingCall"
             );
             wakeLock.acquire(CALL_TIMEOUT_MS);

@@ -19,7 +19,7 @@ Messaging (FCM) credentials.
    Settings → Platforms → Google Android → enter your Firebase
    Server Key and Sender ID.
 5. The OneSignal App ID (`526d4393-9f50-4f8e-8379-05ec176dc62d`) is
-   already hardcoded in `USSGuardApplication.java`.
+   initialized in `USSGuardApplication.java` via `OneSignal.initWithContext()`.
 
 > Without `google-services.json`, the Gradle build will fail with a
 > clear error from the `google-services` plugin.
@@ -44,10 +44,11 @@ Messaging (FCM) credentials.
 - **Screen wake on lock screen** — activity uses `showWhenLocked` +
   `turnScreenOn` + `SCREEN_BRIGHT_WAKE_LOCK` to wake the device and display
   the call UI over the lock screen
-- **Android CallStyle** — uses `Notification.CallStyle` on Android 12+ for the
-  native call notification look
+- **High-priority call notification** — uses `NotificationCompat` with
+  `PRIORITY_MAX`, `CATEGORY_CALL`, and `VISIBILITY_PUBLIC` for the call alert
 - **Full-screen intent** — uses `setFullScreenIntent()` so the call screen
   appears immediately when the device is locked or the app is in background
+  (Android 14+ requires `USE_FULL_SCREEN_INTENT` permission in Settings)
 - **Global incoming-call handler** — mounted at the app root (outside Routes),
   active on EVERY page after login. Survives navigation. Only cleaned up on logout.
 - **Notification click → incoming call screen** — tapping a call notification
@@ -62,7 +63,7 @@ Messaging (FCM) credentials.
 ## Prerequisites
 
 1. **Android Studio** (Hedgehog 2023.1.1+) — https://developer.android.com/studio
-2. **Java JDK 11+** (bundled with Android Studio)
+2. **Java JDK 17+** (bundled with Android Studio)
 
 ---
 
@@ -153,6 +154,6 @@ private static final String APP_URL = "https://guard-track-pro-26cedab8.base44.a
 
 - The WebView handles `getUserMedia()` natively via `WebChromeClient.onPermissionRequest()`
 - File uploads (`<input type="file">`) work via `onShowFileChooser` with multi-file support
-- Push notifications are delivered through OneSignal's web SDK running inside the WebView
+- Push notifications are delivered through the **OneSignal Android SDK v5** (native FCM), not the WebView
 - WebView state is saved/restored on rotation and app restart
 - External links (non-base44.app) open in the system browser
