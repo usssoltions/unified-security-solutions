@@ -1,6 +1,6 @@
 # USS Guard — Android APK Build Guide
 
-A full native Android WebView app wrapping the SecureGuard web platform.
+A full native Android WebView app wrapping the USS Guard web platform.
 
 ## What it does
 
@@ -11,6 +11,12 @@ A full native Android WebView app wrapping the SecureGuard web platform.
 - **Microphone/audio** — for voice calls and PTT radio
 - **File upload** — `<input type="file">` works natively via `onShowFileChooser`
 - **POST_NOTIFICATIONS** — requested on first launch (Android 13+)
+- **Global incoming-call handler** — call listener runs at the app root, active on
+  every page after login. Survives navigation across Dashboard, Contacts, Reports,
+  Shifts, Sites, etc. Only cleaned up on logout.
+- **Push notification fallback** — when the app is minimized/backgrounded, OneSignal
+  push notifications are delivered via the service worker. Tapping the notification
+  brings the app to the foreground and triggers the incoming-call modal.
 - **Back button** navigates WebView history
 - App name: **USS Guard**
 - Package ID: `co.za.unifiedsecuritysolutions.ussguard`

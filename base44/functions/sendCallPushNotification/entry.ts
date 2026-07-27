@@ -69,8 +69,8 @@ Deno.serve(async (req) => {
           title: "📞 Incoming Call",
           subtitle: isGroupCall ? "Group Call" : "Direct Call"
         },
-        url: `${Deno.env.get('BASE44_APP_URL') || 'https://app.base44.ai'}?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
-        web_url: `${Deno.env.get('BASE44_APP_URL') || 'https://app.base44.ai'}?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
+        url: `https://guard-track-pro-26cedab8.base44.app/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
+        web_url: `https://guard-track-pro-26cedab8.base44.app/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
         data: {
           type: 'call',
           callId: callId,

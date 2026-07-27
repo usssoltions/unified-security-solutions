@@ -19,7 +19,7 @@ import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
 import BackgroundNotificationManager from "@/components/BackgroundNotificationManager";
 import ThemeProvider from "@/components/ThemeProvider";
-import IncomingCallHandler from "@/components/IncomingCallHandler";
+
 
 const TabStateContext = React.createContext({ tabStates: {}, updateTabState: () => {}, navigateToTab: () => {} });
 export const useTabState = () => React.useContext(TabStateContext);
@@ -314,7 +314,7 @@ export default function Layout({ children, currentPageName }) {
           {user && <PermissionEnforcement />}
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
-          {user && <IncomingCallHandler user={user} />}
+
 
           <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 w-full max-w-full overflow-x-hidden">
             {/* Header */}

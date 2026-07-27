@@ -14,9 +14,21 @@ android {
         versionName "1.1.0"
     }
 
+    signingConfigs {
+        release {
+            // Replace with your keystore path and credentials
+            // storeFile file("ussguard.jks")
+            // storePassword "your-keystore-password"
+            // keyAlias "ussguard"
+            // keyPassword "your-key-password"
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled true
+            // Uncomment when keystore is configured:
+            // signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

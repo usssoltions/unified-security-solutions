@@ -100,21 +100,30 @@ self.addEventListener('push', (event) => {
     payload = { title: 'SecureGuard', body: event.data ? event.data.text() : 'New alert' };
   }
 
-  const title = payload.title || 'SecureGuard Alert';
+  const title = payload.title || (payload.headings ? payload.headings.en : 'USS Guard Alert');
+  const body = payload.body || payload.message || (payload.contents ? payload.contents.en : 'You have a new notification');
   const isPanic = payload.type === 'panic' || payload.priority === 'critical';
   const isCall = payload.type === 'call';
 
+  // Build call URL for notification click-through
+  let callUrl = payload.url || payload.action_url || '/';
+  if (isCall && payload.callId && !callUrl.includes('call_id')) {
+    callUrl = `/?call_id=${payload.callId}&caller_name=${encodeURIComponent(payload.callerName || 'Incoming')}`;
+  }
+
   const options = {
-    body: payload.body || payload.message || 'You have a new notification',
+    body: body,
     icon: payload.icon || 'https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png',
     badge: 'https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png',
-    vibrate: isPanic ? [200, 100, 200, 100, 200, 100, 400] : isCall ? [100, 50, 100] : [100],
+    vibrate: isPanic ? [200, 100, 200, 100, 200, 100, 400] : isCall ? [500, 200, 500, 200, 500] : [100],
     requireInteraction: isPanic || isCall,
-    tag: payload.tag || payload.type || 'secureguard',
+    tag: payload.tag || payload.type || 'ussguard',
     renotify: true,
     data: {
-      url: payload.url || payload.action_url || '/',
+      url: callUrl,
       type: payload.type || 'default',
+      callId: payload.callId || '',
+      callerName: payload.callerName || '',
       id: payload.id || ''
     }
   };
