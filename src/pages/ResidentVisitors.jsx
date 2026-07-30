@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, X, Clock, CheckCircle2, XCircle, Car, Phone } from "lucide-react";
+import { UserPlus, X, Clock, CheckCircle2, XCircle, Car, Phone, ScanLine } from "lucide-react";
+import BarkoderScanner from "@/components/barkoder/BarkoderScanner";
 
 export default function ResidentVisitors() {
   const [user, setUser] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showBarkoder, setShowBarkoder] = useState(false);
   const [form, setForm] = useState({ visitor_name: "", visitor_phone: "", vehicle_registration: "", visit_type: "pre_registered", valid_from: "", valid_until: "", notes: "" });
   const qc = useQueryClient();
 
@@ -65,6 +67,15 @@ export default function ResidentVisitors() {
               <Input placeholder="Visitor full name *" value={form.visitor_name} onChange={e => setForm({ ...form, visitor_name: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Input placeholder="Visitor phone number" value={form.visitor_phone} onChange={e => setForm({ ...form, visitor_phone: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Input placeholder="Vehicle registration (optional)" value={form.vehicle_registration} onChange={e => setForm({ ...form, vehicle_registration: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
+              {/* Phase 1 test only — isolated, removable barKoder scanner button */}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full border-dashed border-sky-600 text-sky-300 hover:bg-sky-500/10"
+                onClick={() => setShowBarkoder(true)}
+              >
+                <ScanLine className="w-4 h-4 mr-2" /> Test barKoder Driver's Licence Scanner
+              </Button>
               <Select value={form.visit_type} onValueChange={v => setForm({ ...form, visit_type: v })}>
                 <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
                   <SelectValue placeholder="Visit type" />
@@ -136,6 +147,13 @@ export default function ResidentVisitors() {
           </div>
         )}
       </div>
+
+      {showBarkoder && (
+        <BarkoderScanner
+          onClose={() => setShowBarkoder(false)}
+          onAccept={() => setShowBarkoder(false)}
+        />
+      )}
     </div>
   );
 }
