@@ -1,0 +1,76 @@
+{
+  "name": "VehicleLicenceDisc",
+  "type": "object",
+  "description": "South African vehicle licence disc scanned via the document scanner. Mapper-ready; tested later.",
+  "properties": {
+    "registration_number": {
+      "type": "string"
+    },
+    "vin": {
+      "type": "string",
+      "description": "Vehicle Identification Number / chassis"
+    },
+    "engine_number": {
+      "type": "string"
+    },
+    "licence_number": {
+      "type": "string"
+    },
+    "make": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "colour": {
+      "type": "string"
+    },
+    "expiry_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "province": {
+      "type": "string"
+    },
+    "raw_scan_json": {
+      "type": "string",
+      "description": "Complete raw barKoder formattedJSON"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "Disc photo if available"
+    },
+    "scan_document_type": {
+      "type": "string"
+    },
+    "scan_barcode_type": {
+      "type": "string"
+    },
+    "scan_sdk_version": {
+      "type": "string"
+    },
+    "scan_parser_used": {
+      "type": "string"
+    },
+    "scan_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scanned_by_id": {
+      "type": "string"
+    },
+    "scanned_by_name": {
+      "type": "string"
+    },
+    "related_visitor_id": {
+      "type": "string",
+      "description": "Visitor record this disc was scanned for, if any"
+    }
+  },
+  "required": [
+    "registration_number"
+  ]
+}

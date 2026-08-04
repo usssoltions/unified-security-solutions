@@ -15,12 +15,59 @@
       "type": "string"
     },
     "visitor_id_number": {
-      "type": "string"
+      "type": "string",
+      "description": "SA ID number (from licence or manual)"
     },
     "visitor_phone": {
       "type": "string"
     },
     "vehicle_registration": {
+      "type": "string"
+    },
+    "surname": {
+      "type": "string"
+    },
+    "first_names": {
+      "type": "string"
+    },
+    "initials": {
+      "type": "string"
+    },
+    "driver_licence_number": {
+      "type": "string"
+    },
+    "date_of_birth": {
+      "type": "string",
+      "format": "date"
+    },
+    "gender": {
+      "type": "string"
+    },
+    "nationality": {
+      "type": "string"
+    },
+    "country": {
+      "type": "string"
+    },
+    "issue_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "expiry_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "vehicle_classes": {
+      "type": "string",
+      "description": "Comma-separated vehicle class / code list"
+    },
+    "restrictions": {
+      "type": "string"
+    },
+    "prdp": {
+      "type": "string"
+    },
+    "licence_status": {
       "type": "string"
     },
     "visit_type": {
@@ -61,24 +108,39 @@
     },
     "id_scan_url": {
       "type": "string",
-      "description": "URL of the scanned ID / driver's licence photograph"
+      "description": "Scanned ID / driver's licence photograph (file URL)"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "Person/visitor photo"
+    },
+    "scan_thumbnail_url": {
+      "type": "string",
+      "description": "Generated thumbnail of the scanned photo"
     },
     "scan_document_type": {
       "type": "string",
-      "enum": [
-        "drivers_licence",
-        "sa_id",
-        "vehicle_disc",
-        "qr"
-      ],
-      "description": "Type of document scanned to populate this visitor"
+      "description": "Resolved scan profile id"
+    },
+    "scan_barcode_type": {
+      "type": "string"
+    },
+    "scan_sdk_version": {
+      "type": "string"
+    },
+    "scan_parser_used": {
+      "type": "string"
+    },
+    "scan_profile": {
+      "type": "string"
+    },
+    "scan_timestamp": {
+      "type": "string",
+      "format": "date-time"
     },
     "scan_raw_json": {
       "type": "string",
-      "description": "Complete raw barKoder formattedJSON preserved for diagnostics"
-    },
-    "photo_url": {
-      "type": "string"
+      "description": "Complete raw barKoder formattedJSON preserved verbatim"
     },
     "notes": {
       "type": "string"

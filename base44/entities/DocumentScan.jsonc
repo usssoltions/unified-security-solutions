@@ -1,0 +1,103 @@
+{
+  "name": "DocumentScan",
+  "type": "object",
+  "description": "Central audit trail + scan history for every document scan across USS Guard. One record per accepted/failed scan.",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "App user who performed the scan"
+    },
+    "user_name": {
+      "type": "string"
+    },
+    "guard_id": {
+      "type": "string",
+      "description": "Badge number if a guard"
+    },
+    "estate_name": {
+      "type": "string"
+    },
+    "device": {
+      "type": "string",
+      "description": "User agent / device descriptor"
+    },
+    "gps_lat": {
+      "type": "number"
+    },
+    "gps_lng": {
+      "type": "number"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "drivers_licence",
+        "vehicle_disc",
+        "sa_id",
+        "passport_mr",
+        "qr",
+        "generic_barcode",
+        "unknown"
+      ],
+      "description": "Resolved document profile"
+    },
+    "barcode_type": {
+      "type": "string",
+      "description": "e.g. PDF417, QR, DataMatrix, Aztec, Code128"
+    },
+    "success": {
+      "type": "boolean",
+      "default": false
+    },
+    "failure_reason": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "number",
+      "default": 0
+    },
+    "sdk_version": {
+      "type": "string",
+      "description": "Scanner engine version"
+    },
+    "parser_used": {
+      "type": "string",
+      "description": "SADL / QR / BARCODE / MRZ"
+    },
+    "profile": {
+      "type": "string",
+      "description": "Scan profile id used"
+    },
+    "raw_json": {
+      "type": "string",
+      "description": "Complete raw formattedJSON preserved verbatim"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "Extracted document/person photo (file URL)"
+    },
+    "mapped_summary": {
+      "type": "string",
+      "description": "Short human-readable summary of mapped fields"
+    },
+    "related_id": {
+      "type": "string",
+      "description": "Entity record this scan produced/updated (e.g. Visitor id)"
+    },
+    "related_entity": {
+      "type": "string",
+      "description": "e.g. Visitor, VehicleLicenceDisc"
+    },
+    "caller_page": {
+      "type": "string",
+      "description": "Which page/module invoked the scanner"
+    }
+  },
+  "required": [
+    "document_type",
+    "time"
+  ]
+}

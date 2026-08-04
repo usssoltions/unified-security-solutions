@@ -1,0 +1,45 @@
+/**
+ * USS Guard — QR Processing Pipeline (Phase 3)
+ *
+ * Generic QR decoder. The document scanner returns the raw QR payload;
+ * this module classifies it into a qrType and normalises the data so each
+ * page can decide how to process it.
+ *
+ * Returns: { qrType, payload, data, timestamp, caller }
+ */
+export function processQR(payload, caller) {
+  const timestamp = new Date().toISOString();
+  let qrType = "unknown";
+  let data = payload;
+
+  if (payload && typeof payload === "string") {
+    // Try structured JSON first
+    try {
+      const obj = JSON.parse(payload);
+      if (obj && typeof obj === "object") {
+        qrType =
+          obj.type || obj.qr_type || obj.kind ||
+          (obj.visitor_id ? "visitor" :
+           obj.resident_id ? "resident" :
+           obj.contractor_id ? "contractor" :
+           obj.staff_id ? "staff" :
+           obj.tracking || obj.courier_id ? "courier" :
+           obj.delivery_id ? "delivery" :
+           obj.access_id || obj.gate ? "access" : "unknown");
+        data = obj;
+        return { qrType, payload, data, timestamp, caller: caller || null };
+      }
+    } catch (_) { /* not JSON — fall through to prefix detection */ }
+
+    const lower = payload.toLowerCase();
+    const prefixes = [
+      ["resident", "resident"], ["visitor", "visitor"], ["contractor", "contractor"],
+      ["staff", "staff"], ["courier", "courier"], ["delivery", "delivery"], ["access", "access"],
+    ];
+    for (const [p, t] of prefixes) {
+      if (lower.startsWith(p)) { qrType = t; break; }
+    }
+  }
+
+  return { qrType, payload, data, timestamp, caller: caller || null };
+}

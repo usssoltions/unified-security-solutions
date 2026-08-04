@@ -1,0 +1,387 @@
+/**
+ * USS Guard — Document Scanner Service (Phase 3)
+ *
+ * The single, central document-scanning engine for the whole platform.
+ * One SDK instance, one camera, reusable across every module.
+ *
+ * Capabilities:
+ *  - Lazy init + per-profile decoder/formatting configuration
+ *  - Automatic document detection (auto profile enables all decoders,
+ *    resolveDocument() routes to the correct processing profile)
+ *  - Full SADL (SA Driver's Licence) field mapping
+ *  - Vehicle licence disc + Smart ID + Passport MRZ mappers (prepared)
+ *  - Generic QR + generic 1D/2D barcode pipelines
+ *  - SADL driver photograph extraction
+ *  - Verbatim raw JSON preserved for every scan
+ *
+ * Adding a new document type = add an entry to SCAN_PROFILES (+ a mapper
+ * branch in extractMappedFields if needed). No component changes.
+ *
+ * Privacy: the licence key is never logged, surfaced in errors, or shown.
+ */
+import { processQR } from "@/lib/qrProcessor";
+
+export const SDK_VERSION = "barkoder-wasm@1.5.0";
+
+const DEBUG_LOG = [];
+let barkoderInstance = null;
+let barkoderSDKStatic = null;
+let initPromise = null;
+let currentProfileId = null;
+
+/* ------------------------------------------------------------------ */
+/* Debug log (sanitized — no personal data, no key)                    */
+/* ------------------------------------------------------------------ */
+function logDebug(event, meta = {}) {
+  DEBUG_LOG.push({ event, ...meta, ts: new Date().toISOString() });
+}
+export function getDebugLog() { return DEBUG_LOG.slice(); }
+export function clearDebugLog() { DEBUG_LOG.length = 0; }
+
+/* ------------------------------------------------------------------ */
+/* Scan profiles — the single registry of document types               */
+/* ------------------------------------------------------------------ */
+export const SCAN_PROFILES = {
+  auto: {
+    id: "auto", label: "Auto Detect",
+    decoders: ["PDF417", "QR", "DataMatrix", "Aztec", "Code128", "Code93", "Code39"],
+    formatting: null, supportsPhoto: false, mapper: "auto",
+    status: "active", instruction: "Align the document / barcode inside the frame",
+  },
+  drivers_licence: {
+    id: "drivers_licence", label: "Driver's Licence",
+    decoders: ["PDF417"], formatting: "SADL", supportsPhoto: true, mapper: "sadl",
+    status: "active", instruction: "Align the PDF417 barcode on the back of the licence inside the frame",
+  },
+  vehicle_disc: {
+    id: "vehicle_disc", label: "Vehicle Licence Disc",
+    decoders: ["PDF417"], formatting: null, supportsPhoto: false, mapper: "vehicle_disc",
+    status: "active", instruction: "Align the barcode on the vehicle licence disc inside the frame",
+  },
+  sa_id: {
+    id: "sa_id", label: "SA Smart ID Card",
+    decoders: ["PDF417"], formatting: "SADL", supportsPhoto: true, mapper: "sadl",
+    status: "planned", instruction: "Align the barcode on the smart ID card inside the frame",
+  },
+  passport_mr: {
+    id: "passport_mr", label: "Passport (MRZ)",
+    decoders: ["PDF417"], formatting: null, supportsPhoto: false, mapper: "mrz",
+    status: "planned", instruction: "Align the MRZ at the bottom of the passport inside the frame",
+  },
+  qr: {
+    id: "qr", label: "QR Code",
+    decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr",
+    status: "active", instruction: "Align the QR code inside the frame",
+  },
+  resident_qr: { id: "resident_qr", label: "Resident QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "resident", status: "active", instruction: "Align the resident QR code inside the frame" },
+  visitor_qr: { id: "visitor_qr", label: "Visitor QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "visitor", status: "active", instruction: "Align the visitor QR code inside the frame" },
+  contractor_qr: { id: "contractor_qr", label: "Contractor QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "contractor", status: "active", instruction: "Align the contractor QR code inside the frame" },
+  staff_qr: { id: "staff_qr", label: "Staff QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "staff", status: "active", instruction: "Align the staff QR code inside the frame" },
+  courier_qr: { id: "courier_qr", label: "Courier QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "courier", status: "active", instruction: "Align the courier QR code inside the frame" },
+  delivery_qr: { id: "delivery_qr", label: "Delivery QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "delivery", status: "active", instruction: "Align the delivery QR code inside the frame" },
+  access_qr: { id: "access_qr", label: "Access QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "access", status: "active", instruction: "Align the access QR code inside the frame" },
+  asset_barcode: { id: "asset_barcode", label: "Asset Barcode", decoders: ["Code128", "Code39", "DataMatrix"], formatting: null, supportsPhoto: false, mapper: "generic_barcode", status: "active", instruction: "Align the asset barcode inside the frame" },
+  parcel_barcode: { id: "parcel_barcode", label: "Parcel Barcode", decoders: ["Code128", "Code39"], formatting: null, supportsPhoto: false, mapper: "generic_barcode", status: "active", instruction: "Align the parcel barcode inside the frame" },
+  vin_barcode: { id: "vin_barcode", label: "VIN Barcode", decoders: ["Code39", "Code128", "DataMatrix"], formatting: null, supportsPhoto: false, mapper: "generic_barcode", status: "active", instruction: "Align the VIN barcode inside the frame" },
+};
+
+export function getProfile(profileId) {
+  return SCAN_PROFILES[profileId] || SCAN_PROFILES.auto;
+}
+
+/* ------------------------------------------------------------------ */
+/* Licence handling                                                    */
+/* ------------------------------------------------------------------ */
+export function getLicenseKey() {
+  const raw = import.meta.env?.VITE_BARKODER_LICENSE_KEY;
+  if (typeof raw !== "string" || raw.trim().length === 0) return null;
+  return raw.trim();
+}
+export function isLicenseConfigured() { return getLicenseKey() !== null; }
+
+/* ------------------------------------------------------------------ */
+/* Error classification                                                */
+/* ------------------------------------------------------------------ */
+function classifyInitError(err) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  if (msg.includes("license") || msg.includes("licence") || msg.includes("key"))
+    return { type: "license_error", message: "barKoder licence is invalid, expired, or not authorised for this domain." };
+  if (msg.includes("wasm") || msg.includes("webassembly"))
+    return { type: "wasm_error", message: "Failed to load the barKoder WebAssembly engine." };
+  return { type: "init_error", message: "barKoder scanner failed to initialize." };
+}
+
+/* ------------------------------------------------------------------ */
+/* Initialization (once per session)                                   */
+/* ------------------------------------------------------------------ */
+export async function initializeBarkoder() {
+  if (barkoderInstance) return barkoderInstance;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    const key = getLicenseKey();
+    if (!key) throw { type: "license_missing", message: "barKoder licence key is not configured. Set VITE_BARKODER_LICENSE_KEY before using the scanner." };
+    if (typeof window !== "undefined" && !window.isSecureContext)
+      throw { type: "insecure_context", message: "A secure HTTPS context is required for camera access and WASM streaming." };
+
+    let SDK;
+    try { SDK = (await import("barkoder-wasm")).default; barkoderSDKStatic = SDK; }
+    catch (e) { logDebug("wasm_load_error"); throw { type: "wasm_error", message: "Failed to load the barKoder WebAssembly asset." }; }
+
+    let Barkoder;
+    try { Barkoder = await SDK.initialize(key); }
+    catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); throw classifyInitError(e); }
+
+    Barkoder.setCameraResolution(Barkoder.constants.CameraResolution.FHD);
+    Barkoder.setDecodingSpeed(Barkoder.constants.DecodingSpeed.Normal);
+    Barkoder.setContinuous(false);
+    Barkoder.setFlashEnabled(true);
+    Barkoder.setZoomEnabled(false);
+    Barkoder.setCloseEnabled(false);
+    Barkoder.setCameraPickerEnabled(false);
+
+    barkoderInstance = Barkoder;
+    logDebug("sdk_initialized");
+    logDebug("wasm_loaded");
+    return Barkoder;
+  })();
+
+  return initPromise;
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-profile configuration                                           */
+/* ------------------------------------------------------------------ */
+export async function configureForProfile(profileId) {
+  const bk = await initializeBarkoder();
+  const profile = getProfile(profileId);
+  if (profile.status !== "active") return { profile, supported: false };
+
+  const D = bk.constants.Decoders;
+  const decoderArgs = (profile.decoders || []).map((n) => D[n]).filter((v) => v !== undefined && v !== null);
+  try { if (decoderArgs.length) bk.setEnabledDecoders(...decoderArgs); } catch (_) { /* some versions take an array */ }
+
+  try {
+    if (profile.formatting === "SADL") bk.setFormatting(bk.constants.Formatting.SADL);
+  } catch (_) { logDebug("formatting_unavailable", { formatting: profile.formatting }); }
+
+  try {
+    if (profile.mapper === "sadl") {
+      const setter = bk.setCustomOption || barkoderSDKStatic?.setCustomOption;
+      if (typeof setter === "function") setter.call(bk, "SADL_decode_ID", 1);
+    }
+  } catch (_) { /* optional */ }
+
+  currentProfileId = profileId;
+  logDebug("profile_configured", { profile: profileId });
+  return { profile, supported: true };
+}
+
+export function getCurrentProfileId() { return currentProfileId; }
+
+/* ------------------------------------------------------------------ */
+/* Camera helpers                                                      */
+/* ------------------------------------------------------------------ */
+export async function getCameras() { const bk = await initializeBarkoder(); return (await bk.getCameras()) || []; }
+export async function setCameraId(id) { const bk = await initializeBarkoder(); bk.setCameraId(id); }
+
+/* ------------------------------------------------------------------ */
+/* Scanning                                                            */
+/* ------------------------------------------------------------------ */
+export function startScanner(callback) {
+  if (!barkoderInstance) throw { type: "not_initialized", message: "Scanner is not initialized." };
+  barkoderInstance.startScanner(callback);
+}
+export function stopScanner() { if (barkoderInstance) { try { barkoderInstance.stopScanner(); } catch (_) {} } }
+export function toggleFlash() { if (barkoderInstance) { try { barkoderInstance.changeFlashState(); } catch (_) {} } }
+
+/* ------------------------------------------------------------------ */
+/* Result parsing                                                      */
+/* ------------------------------------------------------------------ */
+export function parseResult(rawResult) {
+  const single = (rawResult?.results && rawResult.results.length > 0) ? rawResult.results[0] : rawResult;
+  const barcodeType = single?.barcodeTypeName || rawResult?.barcodeTypeName || "Unknown";
+  const textualData = single?.textualData ?? rawResult?.textualData ?? "";
+  const timestamp = new Date().toISOString();
+
+  let formattedJSON = null;
+  let malformedJSON = false;
+  if (textualData) {
+    try {
+      const obj = JSON.parse(textualData);
+      if (obj && typeof obj === "object") formattedJSON = obj;
+    } catch (_) { formattedJSON = null; malformedJSON = !!textualData; }
+  }
+
+  return {
+    barcodeType, textualData, formattedJSON,
+    binaryDataPresent: !!(single?.binaryData || rawResult?.binaryData),
+    timestamp, parsed: !!formattedJSON, malformedJSON,
+    rawResultKeys: rawResult ? Object.keys(rawResult) : []
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Field flattening + matching                                         */
+/* ------------------------------------------------------------------ */
+function flattenFields(formattedJSON) {
+  if (!formattedJSON || typeof formattedJSON !== "object") return {};
+  if (Array.isArray(formattedJSON.Fields)) {
+    const out = {};
+    formattedJSON.Fields.forEach((f) => {
+      const k = f?.Field ?? f?.Name ?? f?.name;
+      const v = f?.Value ?? f?.value;
+      if (k) out[String(k)] = v;
+    });
+    return out;
+  }
+  return { ...formattedJSON };
+}
+
+function pickField(flat, ...needles) {
+  const keys = Object.keys(flat);
+  for (const n of needles) {
+    const key = keys.find((k) => k.toLowerCase().includes(n));
+    if (key !== undefined && flat[key] != null && flat[key] !== "") return String(flat[key]);
+  }
+  return "";
+}
+
+function looksLikeSADL(flat) {
+  const keys = Object.keys(flat).map((k) => k.toLowerCase());
+  return keys.some((k) => /surname|forename|id number|date of birth|driver licence|licence number/.test(k));
+}
+
+/* ------------------------------------------------------------------ */
+/* Mappers — parsed JSON → entity fields                               */
+/* ------------------------------------------------------------------ */
+export function extractMappedFields(formattedJSON, profileId) {
+  const profile = getProfile(profileId);
+  if (!formattedJSON) return null;
+  const flat = flattenFields(formattedJSON);
+
+  if (profile.mapper === "sadl") {
+    const surname = pickField(flat, "surname");
+    const firstNames = pickField(flat, "forename", "first name", "first names", "given name", "names");
+    const initials = pickField(flat, "initials");
+    const idNumber = pickField(flat, "id number", "identity number", "id_number", "idnumber", "id no", "sa id");
+    const name = [firstNames, surname].filter(Boolean).join(" ").trim() || surname || firstNames;
+    return {
+      visitor_name: name,
+      visitor_id_number: idNumber,
+      surname, first_names: firstNames, initials,
+      driver_licence_number: pickField(flat, "licence number", "license number", "licence no", "license no", "dl no", "driver licence"),
+      date_of_birth: pickField(flat, "date of birth", "birth", "dob"),
+      gender: pickField(flat, "sex", "gender"),
+      nationality: pickField(flat, "nationality"),
+      country: pickField(flat, "country"),
+      issue_date: pickField(flat, "issue date", "date of issue"),
+      expiry_date: pickField(flat, "expiry date", "date of expiry", "expiry"),
+      vehicle_classes: pickField(flat, "vehicle class", "vehicle classes", "class", "code", "categories"),
+      restrictions: pickField(flat, "restriction"),
+      prdp: pickField(flat, "prdp"),
+      licence_status: pickField(flat, "licence status", "status"),
+      _raw: flat,
+    };
+  }
+
+  if (profile.mapper === "vehicle_disc") {
+    return {
+      registration_number: pickField(flat, "registration", "reg no", "number plate", "licence number"),
+      vin: pickField(flat, "vin", "chassis"),
+      engine_number: pickField(flat, "engine number", "engine no"),
+      licence_number: pickField(flat, "licence number", "license number", "disc number"),
+      make: pickField(flat, "make"),
+      model: pickField(flat, "model"),
+      colour: pickField(flat, "colour", "color"),
+      expiry_date: pickField(flat, "expiry", "expiry date"),
+      owner: pickField(flat, "owner", "title holder"),
+      province: pickField(flat, "province"),
+      _raw: flat,
+    };
+  }
+
+  if (profile.mapper === "mrz") {
+    return { _mrz_raw: pickField(flat, "mrz") || JSON.stringify(formattedJSON), _raw: flat };
+  }
+
+  if (profile.mapper === "qr") {
+    return { _qr_payload: typeof formattedJSON === "string" ? formattedJSON : (formattedJSON?.textualData || JSON.stringify(formattedJSON)), _raw: flat };
+  }
+
+  if (profile.mapper === "generic_barcode") {
+    return { barcode_value: typeof formattedJSON === "string" ? formattedJSON : JSON.stringify(formattedJSON), _raw: flat };
+  }
+
+  return { _raw: flat };
+}
+
+/* ------------------------------------------------------------------ */
+/* Automatic document detection                                        */
+/* ------------------------------------------------------------------ */
+const QR_SUBTYPES = ["resident_qr", "visitor_qr", "contractor_qr", "staff_qr", "courier_qr", "delivery_qr", "access_qr"];
+
+export function resolveDocument(rawResult, caller) {
+  const parsed = parseResult(rawResult);
+  const flat = parsed.formattedJSON ? flattenFields(parsed.formattedJSON) : {};
+  const bt = (parsed.barcodeType || "").toLowerCase();
+
+  let profileId;
+  let parserUsed = "BARCODE";
+
+  if (parsed.formattedJSON && looksLikeSADL(flat)) {
+    profileId = "drivers_licence";
+    parserUsed = "SADL";
+  } else if (bt === "pdf417") {
+    profileId = "vehicle_disc";
+    parserUsed = "PDF417";
+  } else if (bt === "qr") {
+    profileId = "qr";
+    parserUsed = "QR";
+  } else if (["datamatrix", "aztec", "code128", "code39", "code93", "codabar", "ean13", "ean8", "upca", "upce"].includes(bt)) {
+    profileId = "generic_barcode";
+    parserUsed = "BARCODE";
+  } else {
+    profileId = "generic_barcode";
+    parserUsed = "BARCODE";
+  }
+
+  const profile = getProfile(profileId);
+  const mappedFields = parsed.formattedJSON ? extractMappedFields(parsed.formattedJSON, profileId) : null;
+
+  let qrInfo = null;
+  if (profileId === "qr" && parsed.textualData) {
+    qrInfo = processQR(parsed.textualData, caller);
+  }
+
+  return { parsed, profileId, profile, mappedFields, parserUsed, qrInfo };
+}
+
+/* ------------------------------------------------------------------ */
+/* SADL photograph extraction                                          */
+/* ------------------------------------------------------------------ */
+export async function getSadlPhoto(textualData) {
+  if (!textualData) return null;
+  const bk = await initializeBarkoder();
+  try {
+    const imageData = await bk.getSADLImage(textualData);
+    if (!imageData) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    canvas.getContext("2d").putImageData(imageData, 0, 0);
+    return canvas.toDataURL("image/png");
+  } catch (_) { return null; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Cleanup                                                             */
+/* ------------------------------------------------------------------ */
+export function resetInstance() {
+  stopScanner();
+  barkoderInstance = null;
+  initPromise = null;
+  currentProfileId = null;
+}
+
+export { logDebug };
