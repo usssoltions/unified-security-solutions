@@ -6,14 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, X, Clock, CheckCircle2, XCircle, Car, Phone, ScanLine } from "lucide-react";
+import { UserPlus, X, Clock, CheckCircle2, XCircle, Car, Phone, ScanLine, IdCard } from "lucide-react";
 import BarkoderScanner from "@/components/barkoder/BarkoderScanner";
+
+async function dataUrlToFile(dataUrl, filename) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/png" });
+}
 
 export default function ResidentVisitors() {
   const [user, setUser] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showBarkoder, setShowBarkoder] = useState(false);
-  const [form, setForm] = useState({ visitor_name: "", visitor_phone: "", vehicle_registration: "", visit_type: "pre_registered", valid_from: "", valid_until: "", notes: "" });
+  const [scanPayload, setScanPayload] = useState(null); // { photoDataUrl, rawJson, documentType, mappedFields }
+  const [form, setForm] = useState({ visitor_name: "", visitor_id_number: "", visitor_phone: "", vehicle_registration: "", visit_type: "pre_registered", valid_from: "", valid_until: "", notes: "" });
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
@@ -26,6 +33,14 @@ export default function ResidentVisitors() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
+      let id_scan_url = null;
+      if (scanPayload?.photoDataUrl) {
+        try {
+          const file = await dataUrlToFile(scanPayload.photoDataUrl, `visitor_${Date.now()}.png`);
+          const up = await base44.integrations.Core.UploadFile({ file });
+          id_scan_url = up?.file_url || null;
+        } catch (_) { /* photo upload failed — still create the record */ }
+      }
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       return await base44.entities.Visitor.create({
         ...data,
@@ -33,15 +48,34 @@ export default function ResidentVisitors() {
         resident_name: user.full_name,
         unit_number: user.unit_number,
         otp_code: otp,
-        status: "approved"
+        status: "approved",
+        id_scan_url,
+        scan_document_type: scanPayload?.documentType || "",
+        scan_raw_json: scanPayload?.rawJson || ""
       });
     },
     onSuccess: () => {
       qc.invalidateQueries(["my_visitors"]);
       setShowForm(false);
-      setForm({ visitor_name: "", visitor_phone: "", vehicle_registration: "", visit_type: "pre_registered", valid_from: "", valid_until: "", notes: "" });
+      setScanPayload(null);
+      setForm({ visitor_name: "", visitor_id_number: "", visitor_phone: "", vehicle_registration: "", visit_type: "pre_registered", valid_from: "", valid_until: "", notes: "" });
     }
   });
+
+  const handleScanAccept = ({ result, photoUrl, mappedFields, profile }) => {
+    const raw = result?.formattedJSON
+      ? JSON.stringify(result.formattedJSON, null, 2)
+      : (result?.textualData || "");
+    setScanPayload({ photoDataUrl: photoUrl, rawJson: raw, documentType: profile?.id, mappedFields });
+    setForm((f) => ({
+      ...f,
+      visitor_name: mappedFields?.visitor_name || f.visitor_name,
+      visitor_id_number: mappedFields?.visitor_id_number || f.visitor_id_number,
+      vehicle_registration: mappedFields?.vehicle_registration || f.vehicle_registration
+    }));
+    setShowBarkoder(false);
+    setShowForm(true);
+  };
 
   const statusColors = { pending: "bg-amber-600", approved: "bg-emerald-600", denied: "bg-rose-600", entered: "bg-sky-600", exited: "bg-slate-600", expired: "bg-slate-500" };
 
@@ -64,18 +98,41 @@ export default function ResidentVisitors() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
+              {/* Scan Document — permanent */}
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  className="w-full bg-sky-600 hover:bg-sky-700"
+                  onClick={() => setShowBarkoder(true)}
+                >
+                  <ScanLine className="w-4 h-4 mr-2" /> Scan Document
+                </Button>
+                {scanPayload && (
+                  <div className="flex items-center gap-3 p-2 rounded-lg bg-sky-500/10 border border-sky-500/30">
+                    {scanPayload.photoDataUrl ? (
+                      <img src={scanPayload.photoDataUrl} alt="Scanned" className="w-10 h-12 object-cover rounded border border-slate-600" style={{ imageRendering: "pixelated" }} />
+                    ) : (
+                      <div className="w-10 h-12 rounded bg-slate-800 border border-slate-600 flex items-center justify-center">
+                        <IdCard className="w-5 h-5 text-slate-500" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sky-300 text-xs font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Document scanned
+                      </p>
+                      <p className="text-slate-400 text-xs capitalize">{scanPayload.documentType?.replace("_", " ")}</p>
+                    </div>
+                    <button onClick={() => setScanPayload(null)} className="text-slate-400 hover:text-rose-400">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <Input placeholder="Visitor full name *" value={form.visitor_name} onChange={e => setForm({ ...form, visitor_name: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
+              <Input placeholder="ID / licence number" value={form.visitor_id_number} onChange={e => setForm({ ...form, visitor_id_number: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Input placeholder="Visitor phone number" value={form.visitor_phone} onChange={e => setForm({ ...form, visitor_phone: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Input placeholder="Vehicle registration (optional)" value={form.vehicle_registration} onChange={e => setForm({ ...form, vehicle_registration: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
-              {/* Phase 1 test only — isolated, removable barKoder scanner button */}
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full border-dashed border-sky-600 text-sky-300 hover:bg-sky-500/10"
-                onClick={() => setShowBarkoder(true)}
-              >
-                <ScanLine className="w-4 h-4 mr-2" /> Test barKoder Driver's Licence Scanner
-              </Button>
               <Select value={form.visit_type} onValueChange={v => setForm({ ...form, visit_type: v })}>
                 <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
                   <SelectValue placeholder="Visit type" />
@@ -126,8 +183,12 @@ export default function ResidentVisitors() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-white font-semibold">{v.visitor_name}</p>
                         <Badge className={statusColors[v.status]}>{v.status}</Badge>
+                        {v.id_scan_url && (
+                          <img src={v.id_scan_url} alt="ID" className="w-6 h-8 object-cover rounded border border-slate-600" style={{ imageRendering: "pixelated" }} />
+                        )}
                       </div>
                       <div className="space-y-1 text-sm text-slate-400">
+                        {v.visitor_id_number && <p className="flex items-center gap-1"><IdCard className="w-3 h-3" /> {v.visitor_id_number}</p>}
                         {v.visitor_phone && <p className="flex items-center gap-1"><Phone className="w-3 h-3" /> {v.visitor_phone}</p>}
                         {v.vehicle_registration && <p className="flex items-center gap-1"><Car className="w-3 h-3" /> {v.vehicle_registration}</p>}
                         {v.valid_from && <p className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(v.valid_from).toLocaleDateString()} – {v.valid_until ? new Date(v.valid_until).toLocaleDateString() : "Open"}</p>}
@@ -150,8 +211,9 @@ export default function ResidentVisitors() {
 
       {showBarkoder && (
         <BarkoderScanner
+          documentType="drivers_licence"
           onClose={() => setShowBarkoder(false)}
-          onAccept={() => setShowBarkoder(false)}
+          onAccept={handleScanAccept}
         />
       )}
     </div>

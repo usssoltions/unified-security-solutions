@@ -60,7 +60,22 @@
       "type": "string"
     },
     "id_scan_url": {
-      "type": "string"
+      "type": "string",
+      "description": "URL of the scanned ID / driver's licence photograph"
+    },
+    "scan_document_type": {
+      "type": "string",
+      "enum": [
+        "drivers_licence",
+        "sa_id",
+        "vehicle_disc",
+        "qr"
+      ],
+      "description": "Type of document scanned to populate this visitor"
+    },
+    "scan_raw_json": {
+      "type": "string",
+      "description": "Complete raw barKoder formattedJSON preserved for diagnostics"
     },
     "photo_url": {
       "type": "string"
