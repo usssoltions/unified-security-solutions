@@ -173,8 +173,10 @@ export async function initializeBarkoder() {
       let hasSIMD = false;
       try { hasSIMD = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11])); }
       catch (_) { hasSIMD = false; }
-      Barkoder = await SDK.initialize(key, { wasmPath: hasSIMD ? wasmSimdUrl : wasmNoSimdUrl });
-      console.log("[barKoder] sdk_initialized (license OK)", { simd: hasSIMD });
+      // useMainThreadOnly avoids pthreads/workers, which require COOP/COEP
+      // cross-origin isolation headers that the WebView/preview lacks.
+      Barkoder = await SDK.initialize(key, { wasmPath: hasSIMD ? wasmSimdUrl : wasmNoSimdUrl, useMainThreadOnly: true });
+      console.log("[barKoder] sdk_initialized (license OK)", { simd: hasSIMD, mainThread: true });
     }
     catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
