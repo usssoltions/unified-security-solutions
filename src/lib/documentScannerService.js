@@ -45,7 +45,7 @@ export const SCAN_PROFILES = {
   auto: {
     id: "auto", label: "Auto Detect",
     decoders: ["PDF417", "QR", "DataMatrix", "Aztec", "Code128", "Code93", "Code39"],
-    formatting: null, supportsPhoto: false, mapper: "auto",
+    formatting: "Automatic", supportsPhoto: false, mapper: "auto",
     status: "active", instruction: "Align the document / barcode inside the frame",
   },
   drivers_licence: {
@@ -196,7 +196,16 @@ export async function configureForProfile(profileId) {
   try { if (decoderArgs.length) bk.setEnabledDecoders(...decoderArgs); } catch (_) { /* some versions take an array */ }
 
   try {
-    if (profile.formatting === "SADL") bk.setFormatting(bk.constants.Formatting.SADL);
+    if (profile.formatting) {
+      const fmt = bk.constants.Formatting[profile.formatting];
+      if (fmt !== undefined && fmt !== null) bk.setFormatting(fmt);
+      console.log("[barKoder] setFormatting", profile.formatting, "=>", fmt);
+      logDebug("formatting_set", { formatting: profile.formatting, value: fmt });
+    } else {
+      bk.setFormatting(bk.constants.Formatting.Disabled);
+      console.log("[barKoder] setFormatting Disabled");
+      logDebug("formatting_set", { formatting: "Disabled" });
+    }
   } catch (_) { logDebug("formatting_unavailable", { formatting: profile.formatting }); }
 
   try {
@@ -237,22 +246,35 @@ export function parseResult(rawResult) {
   const single = (rawResult?.results && rawResult.results.length > 0) ? rawResult.results[0] : rawResult;
   const barcodeType = single?.barcodeTypeName || rawResult?.barcodeTypeName || "Unknown";
   const textualData = single?.textualData ?? rawResult?.textualData ?? "";
+  // The barKoder SDK exposes structured (SADL/AAMVA/GS1) data as a JSON STRING
+  // in `formattedJSON` (see BKResult in barkoder-umd.d.ts). textualData is the
+  // raw barcode payload and is NOT JSON for SADL — so we must read formattedJSON
+  // first, not parse textualData.
+  const formattedJSONStr = single?.formattedJSON ?? rawResult?.formattedJSON ?? null;
+  const formattedText = single?.formattedText ?? rawResult?.formattedText ?? null;
   const timestamp = new Date().toISOString();
 
   let formattedJSON = null;
   let malformedJSON = false;
-  if (textualData) {
+  if (typeof formattedJSONStr === "string" && formattedJSONStr.length > 0) {
+    try {
+      const obj = JSON.parse(formattedJSONStr);
+      if (obj && typeof obj === "object") formattedJSON = obj;
+    } catch (_) { /* formattedJSON not JSON; fall through to textualData */ }
+  }
+  if (!formattedJSON && textualData) {
     try {
       const obj = JSON.parse(textualData);
       if (obj && typeof obj === "object") formattedJSON = obj;
-    } catch (_) { formattedJSON = null; malformedJSON = !!textualData; }
+    } catch (_) { malformedJSON = !!textualData; }
   }
 
   return {
-    barcodeType, textualData, formattedJSON,
+    barcodeType, textualData, formattedJSON, formattedText,
     binaryDataPresent: !!(single?.binaryData || rawResult?.binaryData),
     timestamp, parsed: !!formattedJSON, malformedJSON,
-    rawResultKeys: rawResult ? Object.keys(rawResult) : []
+    rawResultKeys: rawResult ? Object.keys(rawResult) : [],
+    formattedJSONSource: typeof formattedJSONStr === "string" ? "sdk" : (formattedJSON ? "textual" : "none"),
   };
 }
 

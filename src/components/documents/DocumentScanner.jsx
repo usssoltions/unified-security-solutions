@@ -117,6 +117,10 @@ export default function DocumentScanner({
     try {
       await scanner.configureForProfile(documentType);
       scanner.startScanner((raw) => {
+        console.log("[barKoder] RAW DECODE RESULT (unmodified):", raw);
+        console.log("[barKoder] result keys:", raw ? Object.keys(raw) : [],
+          "| formattedJSON?", !!(raw?.formattedJSON || (raw?.results?.[0]?.formattedJSON)),
+          "| textualData len:", (raw?.textualData || raw?.results?.[0]?.textualData || "").length);
         if (processingRef.current) return;
         if (!raw || raw.error) return;
         if (raw.resultsCount === 0) return;
