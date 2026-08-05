@@ -1,0 +1,42 @@
+{
+  "name": "Destination",
+  "type": "object",
+  "description": "A place a visitor/contractor can be heading to inside the estate (unit, company, clubhouse, etc.).",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Destination name / label"
+    },
+    "contact_person": {
+      "type": "string"
+    },
+    "telephone": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "unit": {
+      "type": "string"
+    },
+    "resident_id": {
+      "type": "string"
+    },
+    "company": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

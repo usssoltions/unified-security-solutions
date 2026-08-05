@@ -44,7 +44,7 @@ export function clearDebugLog() { DEBUG_LOG.length = 0; }
 export const SCAN_PROFILES = {
   auto: {
     id: "auto", label: "Auto Detect",
-    decoders: ["PDF417", "QR", "DataMatrix", "Aztec", "Code128", "Code93", "Code39"],
+    decoders: ["PDF417", "QR", "Datamatrix", "Aztec", "Code128", "Code93", "Code39"],
     formatting: "Automatic", supportsPhoto: false, mapper: "auto",
     status: "active", instruction: "Align the document / barcode inside the frame",
   },
@@ -55,13 +55,13 @@ export const SCAN_PROFILES = {
   },
   vehicle_disc: {
     id: "vehicle_disc", label: "Vehicle Licence Disc",
-    decoders: ["PDF417"], formatting: null, supportsPhoto: false, mapper: "vehicle_disc",
+    decoders: ["PDF417"], formatting: "Automatic", supportsPhoto: false, mapper: "vehicle_disc",
     status: "active", instruction: "Align the barcode on the vehicle licence disc inside the frame",
   },
   sa_id: {
-    id: "sa_id", label: "SA Smart ID Card",
-    decoders: ["PDF417"], formatting: "SADL", supportsPhoto: true, mapper: "sadl",
-    status: "planned", instruction: "Align the barcode on the smart ID card inside the frame",
+    id: "sa_id", label: "SA ID Card / Book",
+    decoders: ["PDF417", "Code39"], formatting: "Automatic", supportsPhoto: false, mapper: "sa_id",
+    status: "active", instruction: "Align the PDF417 barcode on the SA ID card inside the frame",
   },
   passport_mr: {
     id: "passport_mr", label: "Passport (MRZ)",
@@ -228,6 +228,31 @@ export function getCurrentProfileId() { return currentProfileId; }
 export async function getCameras() { const bk = await initializeBarkoder(); return (await bk.getCameras()) || []; }
 export async function setCameraId(id) { const bk = await initializeBarkoder(); bk.setCameraId(id); }
 
+/**
+ * Picks the primary rear camera, hiding duplicate telephoto/macro back cameras
+ * that some Android devices (e.g. Cubot King Kong ES) expose as "camera 0/1/2".
+ * Prefers a remembered choice, then the back camera with the lowest index
+ * (typically the primary wide rear module).
+ */
+export function pickPrimaryRearCamera(cameras) {
+  if (!cameras || cameras.length === 0) return null;
+  const isBack = (c) => /back|rear|environment/i.test(c.label || "") || /back|rear|environment/i.test(c.facingMode || "");
+  const back = cameras.filter(isBack);
+  const pool = back.length ? back : cameras;
+  try {
+    const remembered = localStorage.getItem("barkoder_camera_id");
+    if (remembered) {
+      const m = pool.find((c) => String(c.id || c.deviceId) === remembered);
+      if (m) return m;
+    }
+  } catch (_) {}
+  const idxOf = (c) => {
+    const m = /camera\s*(\d+)/i.exec(c.label || "");
+    return m ? parseInt(m[1], 10) : 9999;
+  };
+  return pool.slice().sort((a, b) => idxOf(a) - idxOf(b))[0];
+}
+
 /* ------------------------------------------------------------------ */
 /* Scanning                                                            */
 /* ------------------------------------------------------------------ */
@@ -363,6 +388,25 @@ export function extractMappedFields(formattedJSON, profileId) {
     };
   }
 
+  if (profile.mapper === "sa_id") {
+    const surname = pickField(flat, "surname");
+    const firstNames = pickField(flat, "names", "first names", "forename", "given name", "first name", "full names");
+    const idNumber = pickField(flat, "id number", "identity number", "idnumber", "id no", "sa id");
+    const name = [firstNames, surname].filter(Boolean).join(" ").trim() || surname || firstNames;
+    return {
+      visitor_name: name,
+      visitor_id_number: idNumber,
+      surname,
+      first_names: firstNames,
+      date_of_birth: pickField(flat, "date of birth", "birth", "dob"),
+      gender: pickField(flat, "sex", "gender"),
+      nationality: pickField(flat, "nationality"),
+      country: pickField(flat, "country", "country of birth", "country of issue"),
+      initials: pickField(flat, "initials"),
+      _raw: flat,
+    };
+  }
+
   if (profile.mapper === "mrz") {
     return { _mrz_raw: pickField(flat, "mrz") || JSON.stringify(formattedJSON), _raw: flat };
   }
@@ -383,30 +427,45 @@ export function extractMappedFields(formattedJSON, profileId) {
 /* ------------------------------------------------------------------ */
 const QR_SUBTYPES = ["resident_qr", "visitor_qr", "contractor_qr", "staff_qr", "courier_qr", "delivery_qr", "access_qr"];
 
-export function resolveDocument(rawResult, caller) {
+export function resolveDocument(rawResult, caller, hintProfileId) {
   const parsed = parseResult(rawResult);
-  console.log("[barKoder] resolveDocument", { barcodeType: parsed.barcodeType, hasJSON: !!parsed.formattedJSON, textLen: (parsed.textualData || "").length });
+  console.log("[barKoder] resolveDocument", { barcodeType: parsed.barcodeType, hasJSON: !!parsed.formattedJSON, textLen: (parsed.textualData || "").length, hint: hintProfileId });
   const flat = parsed.formattedJSON ? flattenFields(parsed.formattedJSON) : {};
   const bt = (parsed.barcodeType || "").toLowerCase();
+  const keys = Object.keys(flat).map((k) => k.toLowerCase());
+  const has = (re) => keys.some((k) => re.test(k));
+
+  const isLicence = has(/driver licence|driver license|licence number|license number|vehicle class|prdp|restriction/);
+  const isVehicle = has(/registration|reg no|\bvin\b|chassis|engine number|engine no|\bmake\b|\bmodel\b|disc number|licence disc/);
+  const isSAID = has(/id number|identity number|idnumber|id no/) && has(/surname|names|forename|first name/);
 
   let profileId;
-  let parserUsed = "BARCODE";
+  let parserUsed = null;
 
-  if (parsed.formattedJSON && looksLikeSADL(flat)) {
-    profileId = "drivers_licence";
-    parserUsed = "SADL";
-  } else if (bt === "pdf417") {
-    profileId = "vehicle_disc";
-    parserUsed = "PDF417";
-  } else if (bt === "qr") {
-    profileId = "qr";
-    parserUsed = "QR";
-  } else if (["datamatrix", "aztec", "code128", "code39", "code93", "codabar", "ean13", "ean8", "upca", "upce"].includes(bt)) {
-    profileId = "generic_barcode";
-    parserUsed = "BARCODE";
+  if (hintProfileId && hintProfileId !== "auto" && getProfile(hintProfileId).status === "active") {
+    profileId = hintProfileId;
+  } else if (parsed.formattedJSON && isLicence) {
+    profileId = "drivers_licence"; parserUsed = "SADL";
+  } else if (parsed.formattedJSON && isVehicle) {
+    profileId = "vehicle_disc"; parserUsed = "PDF417";
+  } else if (parsed.formattedJSON && isSAID) {
+    profileId = "sa_id"; parserUsed = "SAID";
+  } else if (bt === "pdf417" || bt === "pdf417micro") {
+    profileId = "vehicle_disc"; parserUsed = "PDF417";
+  } else if (bt === "qr" || bt === "qrmicro") {
+    profileId = "qr"; parserUsed = "QR";
+  } else if (["datamatrix", "aztec", "azteccompact", "code128", "code39", "code93", "codabar", "ean13", "ean8", "upca", "upce"].includes(bt)) {
+    profileId = "generic_barcode"; parserUsed = "BARCODE";
   } else {
-    profileId = "generic_barcode";
-    parserUsed = "BARCODE";
+    profileId = "generic_barcode"; parserUsed = "BARCODE";
+  }
+
+  if (!parserUsed) {
+    if (profileId === "drivers_licence") parserUsed = "SADL";
+    else if (profileId === "vehicle_disc") parserUsed = "PDF417";
+    else if (profileId === "sa_id") parserUsed = "SAID";
+    else if (profileId === "qr") parserUsed = "QR";
+    else parserUsed = "BARCODE";
   }
 
   const profile = getProfile(profileId);

@@ -87,11 +87,13 @@ export default function DocumentScanner({
           const cams = await scanner.getCameras();
           if (cancelled) return;
           setCameras(cams);
-          const rear = cams.find((c) => /back|rear|environment/i.test(c.label || c.facingMode || ""));
-          if (rear) {
-            const id = rear.id || rear.deviceId;
+          const primary = scanner.pickPrimaryRearCamera(cams);
+          if (primary) {
+            const id = primary.id || primary.deviceId;
             await scanner.setCameraId(id);
             setSelectedCamera(id);
+            try { localStorage.setItem("barkoder_camera_id", String(id)); } catch (_) {}
+            console.log("[barKoder] auto-selected camera", primary.label || id);
           }
         } catch (e) {
           const msg = String(e?.name || e?.message || e).toLowerCase();
@@ -138,7 +140,7 @@ export default function DocumentScanner({
 
   const handleResult = useCallback(async (raw) => {
     const { parsed, profileId, profile: resolvedProfile, mappedFields: mapped, parserUsed, qrInfo } =
-      scanner.resolveDocument(raw, caller);
+      scanner.resolveDocument(raw, caller, documentType);
     console.log("[barKoder] barcode_detected", { type: parsed.barcodeType, resolved: profileId, parsed: !!parsed.formattedJSON });
     scanner.logDebug("barcode_detected", { type: parsed.barcodeType, resolved: profileId });
 
@@ -186,6 +188,8 @@ export default function DocumentScanner({
   const handleFlashToggle = useCallback(() => { scanner.toggleFlash(); setFlashOn((v) => !v); }, []);
 
   const errMsg = error ? (ERROR_MESSAGES[error.type] || ERROR_MESSAGES.init_error) : null;
+  const backCameras = cameras.filter((c) => /back|rear|environment/i.test(c.label || c.facingMode || ""));
+  const showCameraPicker = backCameras.length > 1;
   const headerLabel = documentType === "auto" ? "Scan Document" : profile.label;
 
   return (
@@ -247,7 +251,7 @@ export default function DocumentScanner({
 
       {status !== "result" && (
         <div className="shrink-0 p-3 flex items-center gap-2" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
-          {cameras.length > 1 && (
+          {showCameraPicker && (
             <select value={selectedCamera || ""} onChange={(e) => handleCameraChange(e.target.value)}
               className="flex-1 bg-slate-800 text-slate-200 text-xs rounded-lg px-3 py-2.5 border border-slate-700">
               {cameras.map((c) => (

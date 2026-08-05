@@ -1,223 +1,234 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  QrCode, CreditCard, Car, Camera, CheckCircle2, XCircle, Clock,
-  User, AlertTriangle, ScanLine, LogIn, LogOut, Shield, Sparkles,
-  Fingerprint, Eye, Zap, Brain, RefreshCw, ChevronRight, Search
+  Shield, Car, User, QrCode, LogIn, LogOut, CheckCircle2, XCircle,
+  Search, Fingerprint, CreditCard, X, Settings,
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
+import VisitorCard from "@/components/access/VisitorCard";
+import PurposeStep from "@/components/access/PurposeStep";
+import StepCard from "@/components/access/StepCard";
+import { resolveOrCreateVisitor, getGPS, getDeviceDescriptor, countPreviousVisits } from "@/lib/accessVisitor";
+
+const MODES = [
+  { id: "vehicle", label: "Vehicle Entry", icon: Car, desc: "Licence → Disc → Visit/Work" },
+  { id: "pedestrian", label: "Pedestrian Entry", icon: User, desc: "ID / Licence → Visit/Work" },
+  { id: "qr", label: "QR Pass", icon: QrCode, desc: "Resident / Visitor QR" },
+];
+
+const GATES = ["Main Gate", "Secondary Gate", "Pedestrian Gate", "Delivery Gate", "Emergency Gate"];
+const eventBg = { entry: "bg-emerald-500/10 border-emerald-500/30", exit: "bg-amber-500/10 border-amber-500/30", denied: "bg-rose-500/10 border-rose-500/30" };
+const eventBadge = { entry: "bg-emerald-600", exit: "bg-amber-600", denied: "bg-rose-600" };
 
 export default function AccessControl() {
   const [user, setUser] = useState(null);
-  const [scanMode, setScanMode] = useState("qr_code");
+  const [mode, setMode] = useState(null);
+  const [step, setStep] = useState("idle");
+  const [scanning, setScanning] = useState(false);
+  const [scanProfile, setScanProfile] = useState("auto");
   const [gate, setGate] = useState("Main Gate");
   const [eventType, setEventType] = useState("entry");
-  const [manualInput, setManualInput] = useState("");
-  const [scanResult, setScanResult] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [aiProcessing, setAiProcessing] = useState(false);
-  const [aiInsight, setAiInsight] = useState(null);
+  const [pendingVisitor, setPendingVisitor] = useState(null);
+  const [pendingMeta, setPendingMeta] = useState(null);
+  const [licenceScan, setLicenceScan] = useState(null);
+  const [discFields, setDiscFields] = useState(null);
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [scanProfile, setScanProfile] = useState("qr");
   const qc = useQueryClient();
 
-  useEffect(() => { base44.auth.me().then(setUser); }, []);
+  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
   const { data: recentLogs = [] } = useQuery({
     queryKey: ["access_logs_recent"],
     queryFn: () => base44.entities.AccessLog.list("-timestamp", 30),
-    refetchInterval: 8000
+    refetchInterval: 10000,
   });
-
-  // Real-time subscription for live updates
   useEffect(() => {
-    const unsubscribe = base44.entities.AccessLog.subscribe((event) => {
-      qc.invalidateQueries({ queryKey: ["access_logs_recent"] });
-    });
-    return unsubscribe;
+    const unsub = base44.entities.AccessLog.subscribe(() => qc.invalidateQueries(["access_logs_recent"]));
+    return unsub;
   }, []);
 
-  const logMutation = useMutation({
-    mutationFn: async (logData) => {
-      return await base44.entities.AccessLog.create({
-        ...logData,
-        gate_name: gate,
-        event_type: eventType,
-        scan_method: scanMode,
-        timestamp: new Date().toISOString(),
-        guard_id: user?.id,
-        guard_name: user?.full_name
-      });
-    },
-    onSuccess: (data) => {
-      setScanResult(data);
-      qc.invalidateQueries(["access_logs_recent"]);
-      // Auto-clear after 6 seconds
-      setTimeout(() => setScanResult(null), 6000);
-    }
+  const { data: destinations = [] } = useQuery({
+    queryKey: ["destinations"],
+    queryFn: () => base44.entities.Destination.list(),
+  });
+  const { data: workTypes = [] } = useQuery({
+    queryKey: ["work_types"],
+    queryFn: () => base44.entities.WorkType.list(),
   });
 
-  const handleScan = async (scannedData) => {
+  const resetWorkflow = () => {
+    setMode(null); setStep("idle"); setPendingVisitor(null); setPendingMeta(null);
+    setLicenceScan(null); setDiscFields(null);
+  };
+
+  const startMode = (m) => {
+    resetWorkflow(); setResult(null);
+    setMode(m);
+    setStep(m === "vehicle" ? "licence" : m === "pedestrian" ? "id" : "qr");
+  };
+
+  const openScanner = (profileId) => { setScanProfile(profileId); setScanning(true); };
+
+  const onScanAccept = async (scan) => {
     setScanning(false);
-    let personInfo = { person_name: "Unknown", person_type: "unknown", scanned_data: scannedData };
-
-    const visitors = await base44.entities.Visitor.filter({ otp_code: scannedData });
-    if (visitors.length > 0) {
-      const v = visitors[0];
-      personInfo = {
-        person_name: v.visitor_name,
-        person_type: "visitor",
-        unit_number: v.unit_number,
-        visitor_id: v.id,
-        scanned_data: scannedData,
-        vehicle_registration: v.vehicle_registration
-      };
-      await base44.entities.Visitor.update(v.id, {
-        status: eventType === "entry" ? "entered" : "exited",
-        entered_at: eventType === "entry" ? new Date().toISOString() : v.entered_at,
-        exited_at: eventType === "exit" ? new Date().toISOString() : v.exited_at
-      });
-    } else {
-      const residents = await base44.entities.Resident.filter({ id_number: scannedData });
-      if (residents.length > 0) {
-        const r = residents[0];
-        personInfo = { person_name: r.full_name, person_type: "resident", unit_number: r.unit_number, scanned_data: scannedData };
-      }
-    }
-
-    logMutation.mutate(personInfo);
-  };
-
-  const handleManualSubmit = () => {
-    if (!manualInput.trim()) return;
-    handleScan(manualInput.trim());
-    setManualInput("");
-  };
-
-  const handleDocScanAccept = async (scan) => {
-    const mapped = scan.mappedFields || null;
-    const qr = scan.qrInfo || null;
-    let scanValue = "UNKNOWN";
-    let insight = null;
-    if (scan.resolvedProfileId === "qr" && qr) {
-      scanValue = qr.payload || "UNKNOWN";
-      insight = { document_type: "qr", id_number: "", full_name: "", registration_number: "", licence_number: "", expiry_date: "", confidence: 100, authenticity_notes: `Decoded via barKoder ${scan.sdkVersion}`, raw_text: qr.payload || "" };
-    } else {
-      scanValue = mapped?.visitor_id_number || mapped?.driver_licence_number || mapped?.registration_number || mapped?.barcode_value || scan.result?.textualData || "UNKNOWN";
-      insight = {
-        document_type: scan.resolvedProfileId || "unknown",
-        id_number: mapped?.visitor_id_number || "",
-        full_name: mapped?.visitor_name || [mapped?.first_names, mapped?.surname].filter(Boolean).join(" "),
-        registration_number: mapped?.registration_number || "",
-        licence_number: mapped?.driver_licence_number || "",
-        expiry_date: mapped?.expiry_date || "",
-        confidence: scan.result?.parsed ? 100 : 40,
-        authenticity_notes: `Decoded via barKoder ${scan.sdkVersion} (${scan.result?.barcodeType})`,
-        raw_text: scan.result?.textualData || ""
-      };
-    }
-    setAiInsight(insight);
-    setAiProcessing(false);
-
-    // Persist the rendered driver's-licence photo to a matching Visitor record.
-    if (scan.photoUrl) {
-      const idNum = mapped?.visitor_id_number || mapped?.driver_licence_number;
-      if (idNum) {
-        try {
-          const matches = await base44.entities.Visitor.filter({ visitor_id_number: idNum });
-          if (matches.length > 0) {
-            await base44.entities.Visitor.update(matches[0].id, {
-              id_scan_url: scan.photoUrl,
-              scan_thumbnail_url: scan.photoUrl,
-              scan_document_type: scan.resolvedProfileId,
-              scan_barcode_type: scan.result?.barcodeType,
-              scan_sdk_version: scan.sdkVersion,
-              scan_parser_used: scan.parserUsed,
+    setBusy(true);
+    try {
+      if (step === "licence" || step === "id") {
+        const mapped = scan.mappedFields || {};
+        const { visitor, created } = await resolveOrCreateVisitor({ mapped, photoUrl: scan.photoUrl, scan });
+        const previous = await countPreviousVisits(visitor?.id);
+        setPendingVisitor(visitor);
+        setPendingMeta({ created, previous });
+        setLicenceScan(scan);
+        setStep(mode === "vehicle" ? "disc" : "purpose");
+      } else if (step === "disc") {
+        const disc = scan.mappedFields || {};
+        if (disc.registration_number) {
+          try {
+            await base44.entities.VehicleLicenceDisc.create({
+              registration_number: disc.registration_number,
+              vin: disc.vin || "", engine_number: disc.engine_number || "",
+              licence_number: disc.licence_number || "", make: disc.make || "",
+              model: disc.model || "", colour: disc.colour || "",
+              expiry_date: disc.expiry_date || "", owner: disc.owner || "",
+              province: disc.province || "",
+              raw_scan_json: scan.result?.formattedJSONRaw || scan.result?.textualData || "",
               scan_timestamp: new Date().toISOString(),
-              scan_raw_json: scan.result?.textualData || "",
+              scanned_by_id: user?.id, scanned_by_name: user?.full_name,
+              related_visitor_id: pendingVisitor?.id || "",
             });
-          }
-        } catch (e) { console.warn("[barKoder] photo persist failed", e?.message || e); }
-      }
-    }
-
-    await handleScan(scanValue);
-  };
-
-  const handleAIScan = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setAiProcessing(true);
-    setAiInsight(null);
-
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `You are an AI security access control system analyzing a South African document image.
-
-Analyze this document and extract ALL visible information. The document could be:
-1. SA Green ID Book - extract: 13-digit ID number, full name, date of birth, gender
-2. SA Smart ID Card - extract: 13-digit ID number, full name, date of birth  
-3. SA Driver's Licence (card) - extract: licence number, full name, ID number, vehicle codes, expiry
-4. Vehicle Licence Disc - extract: registration number, vehicle make/model, expiry date, engine number
-5. QR Code / Barcode - extract: embedded data
-
-Also assess: document authenticity indicators (any visible tampering, damage), confidence score (0-100).
-
-Return structured JSON with document_type, id_number, full_name, registration_number, licence_number, expiry_date, confidence, authenticity_notes, raw_text`,
-      file_urls: [file_url],
-      response_json_schema: {
-        type: "object",
-        properties: {
-          document_type: { type: "string" },
-          id_number: { type: "string" },
-          full_name: { type: "string" },
-          registration_number: { type: "string" },
-          licence_number: { type: "string" },
-          expiry_date: { type: "string" },
-          confidence: { type: "number" },
-          authenticity_notes: { type: "string" },
-          raw_text: { type: "string" }
+          } catch (e) { console.warn("[access] vehicle disc create failed", e?.message || e); }
         }
+        setDiscFields(disc);
+        setStep("purpose");
+      } else if (step === "qr") {
+        await handleQR(scan);
       }
-    });
-
-    setAiInsight(result);
-    setAiProcessing(false);
-
-    const scanValue = result.id_number || result.licence_number || result.registration_number || result.raw_text || "UNKNOWN";
-    await handleScan(scanValue);
+    } catch (e) {
+      console.error("[access] scan accept failed", e);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const filteredLogs = recentLogs.filter(log => {
+  const handleQR = async (scan) => {
+    const payload = scan.result?.textualData || "";
+    let visitor = null;
+    try { const m = await base44.entities.Visitor.filter({ otp_code: payload }); if (m.length) visitor = m[0]; } catch (_) {}
+    if (!visitor) { try { const m = await base44.entities.Visitor.filter({ qr_code: payload }); if (m.length) visitor = m[0]; } catch (_) {} }
+    if (visitor) {
+      await finalize({ purpose: "none", destination: "", workType: "", visitor, scan, qrPayload: payload });
+    } else {
+      await finalize({ purpose: "none", destination: "", workType: "", visitor: null, scan, qrPayload: payload, denied: true });
+    }
+  };
+
+  const onApprove = (purpose, { destination, workType }) => {
+    finalize({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
+  };
+
+  const finalize = async ({ purpose, destination, workType, visitor, scan, qrPayload, denied }) => {
+    setBusy(true);
+    try {
+      const mapped = scan?.mappedFields || licenceScan?.mappedFields || {};
+      const disc = discFields || {};
+      const gps = await getGPS();
+      const device = getDeviceDescriptor();
+      const v = visitor || pendingVisitor;
+      const personType = v ? "visitor" : "unknown";
+      let entryTime = eventType === "entry" ? new Date().toISOString() : null;
+      let exitTime = eventType === "exit" ? new Date().toISOString() : null;
+      let timeOnSite = null;
+      if (eventType === "exit" && v?.id) {
+        try {
+          const entries = await base44.entities.AccessLog.filter({ visitor_id: v.id, event_type: "entry" });
+          const last = entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+          if (last) {
+            const mins = Math.round((Date.now() - new Date(last.timestamp).getTime()) / 60000);
+            if (mins > 0) { timeOnSite = mins; entryTime = last.timestamp; }
+          }
+        } catch (_) {}
+      }
+      const log = {
+        event_type: denied ? "denied" : eventType,
+        person_type: personType,
+        person_id: v?.id || "",
+        person_name: v?.visitor_name || "Unknown",
+        visitor_id: v?.id || "",
+        unit_number: v?.unit_number || "",
+        gate_name: gate,
+        scan_method: denied ? "qr_code" : (scan?.resolvedProfileId === "qr" ? "qr_code" : scan?.resolvedProfileId === "sa_id" ? "sa_id" : scan?.resolvedProfileId === "vehicle_disc" ? "vehicle_disc" : "drivers_licence"),
+        scanned_data: qrPayload || scan?.result?.textualData || "",
+        qr_code: qrPayload || "",
+        driver_licence_number: mapped.driver_licence_number || "",
+        sa_id_number: mapped.visitor_id_number || "",
+        vehicle_registration: disc.registration_number || "",
+        vehicle_licence_disc_number: disc.licence_number || "",
+        vehicle_vin: disc.vin || "",
+        vehicle_make: disc.make || "",
+        vehicle_model: disc.model || "",
+        vehicle_colour: disc.colour || "",
+        vehicle_licence_number: disc.licence_number || "",
+        destination: destination || "",
+        visit_or_work: purpose || "none",
+        work_type: workType || "",
+        parsed_json: scan?.result?.formattedJSONRaw || licenceScan?.result?.formattedJSONRaw || "",
+        confidence: (scan?.result?.parsed || licenceScan?.result?.parsed) ? 100 : 40,
+        device,
+        photo_url: scan?.photoUrl || licenceScan?.photoUrl || "",
+        location: gps,
+        entry_time: entryTime,
+        exit_time: exitTime,
+        time_on_site_minutes: timeOnSite,
+        timestamp: new Date().toISOString(),
+        guard_id: user?.id,
+        guard_name: user?.full_name,
+        flagged: !!denied,
+        flag_reason: denied ? "QR not recognised" : "",
+        notes: "",
+      };
+      const created = await base44.entities.AccessLog.create(log);
+      if (v?.id && !denied) {
+        try {
+          await base44.entities.Visitor.update(v.id, {
+            status: eventType === "entry" ? "entered" : "exited",
+            entered_at: eventType === "entry" ? entryTime : v.entered_at,
+            exited_at: eventType === "exit" ? exitTime : v.exited_at,
+          });
+        } catch (_) {}
+      }
+      setResult({ ...log, id: created?.id });
+      resetWorkflow();
+      qc.invalidateQueries(["access_logs_recent"]);
+      setTimeout(() => setResult(null), 8000);
+    } catch (e) {
+      console.error("[access] finalize failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const filteredLogs = recentLogs.filter((log) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
       log.person_name?.toLowerCase().includes(q) ||
       log.gate_name?.toLowerCase().includes(q) ||
-      log.person_type?.toLowerCase().includes(q)
+      log.scan_method?.toLowerCase().includes(q) ||
+      log.vehicle_registration?.toLowerCase().includes(q) ||
+      log.driver_licence_number?.toLowerCase().includes(q) ||
+      log.sa_id_number?.toLowerCase().includes(q)
     );
   });
-
-  const eventColors = { entry: "text-emerald-400", exit: "text-amber-400", denied: "text-rose-400" };
-  const personColors = {
-    resident: "bg-sky-600", visitor: "bg-purple-600", guard: "bg-emerald-600",
-    vendor: "bg-orange-600", unknown: "bg-slate-600"
-  };
-  const eventBg = { entry: "bg-emerald-500/10 border-emerald-500/30", exit: "bg-amber-500/10 border-amber-500/30", denied: "bg-rose-500/10 border-rose-500/30" };
-
-  const todayStats = {
-    entries: recentLogs.filter(l => l.event_type === "entry").length,
-    exits: recentLogs.filter(l => l.event_type === "exit").length,
-    denied: recentLogs.filter(l => l.event_type === "denied").length,
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 pb-24">
@@ -226,10 +237,10 @@ Return structured JSON with document_type, id_number, full_name, registration_nu
           documentType={scanProfile}
           caller="access_control"
           onClose={() => setScanning(false)}
-          onAccept={handleDocScanAccept}
+          onAccept={onScanAccept}
         />
       )}
-      {/* Header */}
+
       <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 px-4 py-3">
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           <div className="flex items-center gap-3">
@@ -238,33 +249,23 @@ Return structured JSON with document_type, id_number, full_name, registration_nu
             </div>
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">Access Control</h1>
-              <p className="text-slate-400 text-xs">AI-Powered Gate Management</p>
+              <p className="text-slate-400 text-xs">Guarded Entry & Exit</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-            <span className="text-emerald-400 text-xs font-medium">LIVE</span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+              <span className="text-emerald-400 text-xs font-medium">LIVE</span>
+            </div>
+            <Link to="/AccessSettings" className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300">
+              <Settings className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto p-4 space-y-4">
-
-        {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "Entries", value: todayStats.entries, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-            { label: "Exits", value: todayStats.exits, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
-            { label: "Denied", value: todayStats.denied, color: "text-rose-400", bg: "bg-rose-500/10 border-rose-500/20" },
-          ].map(s => (
-            <div key={s.label} className={`${s.bg} border rounded-xl p-3 text-center`}>
-              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-slate-400 text-xs mt-0.5">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Gate & Event Controls */}
+        {/* Gate + Event controls */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-slate-400 text-xs mb-1.5 block font-medium">Gate Point</label>
@@ -273,9 +274,7 @@ Return structured JSON with document_type, id_number, full_name, registration_nu
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {["Main Gate", "Secondary Gate", "Pedestrian Gate", "Delivery Gate", "Emergency Gate"].map(g => (
-                  <SelectItem key={g} value={g}>{g}</SelectItem>
-                ))}
+                {GATES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -302,194 +301,147 @@ Return structured JSON with document_type, id_number, full_name, registration_nu
           </div>
         </div>
 
-        {/* Scan Method Tabs */}
-        <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 overflow-hidden">
-          <div className="grid grid-cols-4 border-b border-slate-700/50">
-            {[
-              { value: "qr_code", label: "QR / OTP", icon: QrCode },
-              { value: "sa_id", label: "SA ID", icon: CreditCard },
-              { value: "drivers_licence", label: "Licence", icon: Fingerprint },
-              { value: "vehicle_disc", label: "Vehicle", icon: Car },
-            ].map(({ value, label, icon: Icon }) => (
+        {/* Mode selection */}
+        {!mode && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {MODES.map((m) => (
               <button
-                key={value}
-                onClick={() => setScanMode(value)}
-                className={`flex flex-col items-center gap-1 py-3 text-xs font-medium transition-all ${
-                  scanMode === value
-                    ? "bg-sky-500/20 text-sky-400 border-b-2 border-sky-400"
-                    : "text-slate-400 hover:text-slate-300"
-                }`}
+                key={m.id}
+                onClick={() => startMode(m.id)}
+                className="rounded-2xl border-2 border-dashed border-sky-500/40 bg-sky-500/5 hover:border-sky-400/70 hover:bg-sky-500/10 p-4 flex flex-col items-center gap-2 transition-all active:scale-95"
               >
-                <Icon className="w-4 h-4" />
-                {label}
+                <div className="w-11 h-11 rounded-full bg-sky-500/20 flex items-center justify-center">
+                  <m.icon className="w-6 h-6 text-sky-400" />
+                </div>
+                <span className="text-white font-semibold text-sm">{m.label}</span>
+                <span className="text-slate-500 text-xs text-center">{m.desc}</span>
               </button>
             ))}
           </div>
+        )}
 
-          <div className="p-4 space-y-3">
-            {scanMode === "qr_code" ? (
-              <div>
-                {scanning ? (
-                  <div className="py-6 text-center text-slate-400 text-sm">Live barKoder scanner open…</div>
-                ) : (
-                  <button
-                    onClick={() => { setScanProfile("qr"); setScanning(true); }}
-                    className="w-full h-24 bg-gradient-to-br from-sky-500/10 to-blue-600/10 border-2 border-dashed border-sky-500/40 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-sky-400/60 transition-all active:scale-95"
-                  >
-                    <div className="w-10 h-10 bg-sky-500/20 rounded-full flex items-center justify-center">
-                      <ScanLine className="w-5 h-5 text-sky-400" />
-                    </div>
-                    <span className="text-sky-400 font-semibold text-sm">Tap to Scan QR / OTP</span>
-                  </button>
+        {/* Workflow panel */}
+        {mode && (
+          <div className="rounded-2xl border border-slate-700/50 bg-slate-800/40 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-slate-700 capitalize">{mode}</Badge>
+                <span className="text-slate-400 text-xs">Step: <span className="text-slate-200">{step}</span></span>
+              </div>
+              <button onClick={resetWorkflow} className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {mode === "vehicle" && step === "licence" && (
+              <StepCard icon={Fingerprint} title="Step 1 — Scan Driver's Licence" subtitle="Back of card, PDF417 barcode" onScan={() => openScanner("drivers_licence")} busy={busy} />
+            )}
+
+            {mode === "pedestrian" && step === "id" && (
+              <div className="space-y-3">
+                <p className="text-slate-300 text-sm font-medium">Scan SA ID Card / Book or Driver's Licence</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <StepCard icon={CreditCard} title="SA ID" onScan={() => openScanner("sa_id")} busy={busy} />
+                  <StepCard icon={Fingerprint} title="Driver's Licence" onScan={() => openScanner("drivers_licence")} busy={busy} />
+                </div>
+              </div>
+            )}
+
+            {pendingVisitor && step !== "qr" && (
+              <VisitorCard visitor={pendingVisitor} meta={pendingMeta} photoUrl={licenceScan?.photoUrl} />
+            )}
+
+            {mode === "vehicle" && step === "disc" && (
+              <div className="space-y-3">
+                <StepCard icon={Car} title="Step 2 — Scan Vehicle Licence Disc" subtitle="Disc PDF417 barcode" onScan={() => openScanner("vehicle_disc")} busy={busy} />
+                {discFields && (
+                  <div className="rounded-xl bg-slate-900/70 border border-slate-800 p-3 text-xs space-y-1">
+                    <p className="text-slate-300 font-semibold">{discFields.registration_number || "—"}</p>
+                    <p className="text-slate-400">{[discFields.make, discFields.model].filter(Boolean).join(" ") || "—"}</p>
+                    {discFields.vin && <p className="text-slate-500 font-mono">VIN: {discFields.vin}</p>}
+                    {discFields.expiry_date && <p className="text-slate-500">Expiry: {discFields.expiry_date}</p>}
+                  </div>
                 )}
               </div>
-            ) : (
+            )}
+
+            {step === "purpose" && (
               <div className="space-y-3">
-                {/* Live barKoder scan */}
-                <div>
-                  <button
-                    onClick={() => { setScanProfile("auto"); setScanning(true); }}
-                    className="w-full h-24 border-2 border-dashed border-purple-500/40 bg-purple-500/10 hover:border-purple-400/60 rounded-xl flex flex-col items-center justify-center gap-2 transition-all active:scale-95"
-                  >
-                    <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
-                      <ScanLine className="w-5 h-5 text-purple-400" />
-                    </div>
-                    <span className="text-purple-400 font-semibold text-sm">Scan Document</span>
-                    <span className="text-slate-500 text-xs">ID / Driver's Licence / Vehicle Disc</span>
-                  </button>
-                </div>
-
-                {/* AI Insight Result */}
-                <AnimatePresence>
-                  {aiInsight && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-3 space-y-1"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <Brain className="w-4 h-4 text-purple-400" />
-                        <span className="text-purple-300 text-xs font-semibold uppercase tracking-wide">AI Document Analysis</span>
-                        {aiInsight.confidence && (
-                          <Badge className={`ml-auto text-xs ${aiInsight.confidence > 80 ? 'bg-emerald-600' : aiInsight.confidence > 60 ? 'bg-amber-600' : 'bg-rose-600'}`}>
-                            {aiInsight.confidence}% confidence
-                          </Badge>
-                        )}
-                      </div>
-                      {aiInsight.document_type && <p className="text-slate-300 text-xs"><span className="text-slate-500">Type:</span> {aiInsight.document_type}</p>}
-                      {aiInsight.full_name && <p className="text-white text-sm font-semibold">{aiInsight.full_name}</p>}
-                      {aiInsight.id_number && <p className="text-slate-300 text-xs"><span className="text-slate-500">ID:</span> {aiInsight.id_number}</p>}
-                      {aiInsight.registration_number && <p className="text-slate-300 text-xs"><span className="text-slate-500">Reg:</span> {aiInsight.registration_number}</p>}
-                      {aiInsight.expiry_date && <p className="text-slate-300 text-xs"><span className="text-slate-500">Expires:</span> {aiInsight.expiry_date}</p>}
-                      {aiInsight.authenticity_notes && (
-                        <p className="text-amber-300 text-xs mt-1">⚠ {aiInsight.authenticity_notes}</p>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Manual Entry */}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder={scanMode === "vehicle_disc" ? "Registration number (e.g. CA 123-456)" : scanMode === "sa_id" ? "13-digit SA ID number" : "Licence number"}
-                    value={manualInput}
-                    onChange={e => setManualInput(e.target.value)}
-                    className="bg-slate-900 border-slate-700 text-white h-11"
-                    onKeyDown={e => e.key === "Enter" && handleManualSubmit()}
-                  />
-                  <Button onClick={handleManualSubmit} className="bg-emerald-600 hover:bg-emerald-700 h-11 px-4 shrink-0">
-                    <Zap className="w-4 h-4" />
-                  </Button>
-                </div>
+                <p className="text-slate-300 text-sm font-medium">
+                  Step {mode === "vehicle" ? 3 : 2} — Visit or Work?
+                </p>
+                <PurposeStep
+                  destinations={destinations}
+                  workTypes={workTypes}
+                  onApprove={onApprove}
+                  busy={busy}
+                  eventType={eventType}
+                />
               </div>
             )}
 
-            {logMutation.isPending && (
-              <div className="flex items-center gap-2 py-2 justify-center">
-                <RefreshCw className="w-4 h-4 text-sky-400 animate-spin" />
-                <span className="text-slate-400 text-sm">Processing...</span>
-              </div>
+            {mode === "qr" && step === "qr" && (
+              <StepCard icon={QrCode} title="Scan QR Code" subtitle="Resident / visitor pass" onScan={() => openScanner("qr")} busy={busy} />
             )}
           </div>
-        </div>
+        )}
 
-        {/* Scan Result */}
+        {/* Result */}
         <AnimatePresence>
-          {scanResult && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-            >
-              <div className={`border-2 rounded-2xl p-4 ${scanResult.flagged ? "border-rose-500 bg-rose-500/10" : "border-emerald-500 bg-emerald-500/10"}`}>
-                <div className="flex items-center gap-4">
-                  <div className={`w-14 h-14 rounded-full flex items-center justify-center ${scanResult.flagged ? "bg-rose-500/20" : "bg-emerald-500/20"}`}>
-                    {scanResult.flagged
-                      ? <XCircle className="w-7 h-7 text-rose-400" />
-                      : <CheckCircle2 className="w-7 h-7 text-emerald-400" />
-                    }
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-white font-bold text-lg">{scanResult.person_name}</p>
-                    <p className="text-slate-300 text-sm capitalize">{scanResult.person_type} • {eventType} logged</p>
-                    {scanResult.unit_number && <p className="text-slate-400 text-xs mt-0.5">Unit: {scanResult.unit_number}</p>}
-                    <p className="text-slate-500 text-xs mt-0.5">{gate} • {new Date().toLocaleTimeString()}</p>
-                  </div>
-                  {scanResult.flagged ? (
-                    <Badge className="bg-rose-600 shrink-0">DENIED</Badge>
-                  ) : (
-                    <Badge className={eventType === "entry" ? "bg-emerald-600 shrink-0" : "bg-amber-600 shrink-0"}>
-                      {eventType.toUpperCase()}
-                    </Badge>
-                  )}
+          {result && (
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <div className={`border-2 rounded-2xl p-4 flex items-center gap-4 ${result.flagged ? "border-rose-500 bg-rose-500/10" : "border-emerald-500 bg-emerald-500/10"}`}>
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${result.flagged ? "bg-rose-500/20" : "bg-emerald-500/20"}`}>
+                  {result.flagged ? <XCircle className="w-7 h-7 text-rose-400" /> : <CheckCircle2 className="w-7 h-7 text-emerald-400" />}
                 </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold truncate">{result.person_name || "Unknown"}</p>
+                  <p className="text-slate-300 text-sm capitalize">{result.person_type} • {result.event_type} logged</p>
+                  {result.destination && <p className="text-slate-400 text-xs">Destination: {result.destination}</p>}
+                  {result.work_type && <p className="text-slate-400 text-xs">Work: {result.work_type}</p>}
+                  {result.vehicle_registration && <p className="text-slate-400 text-xs">Vehicle: {result.vehicle_registration}</p>}
+                  <p className="text-slate-500 text-xs">{result.gate_name} • {new Date(result.timestamp).toLocaleTimeString()}</p>
+                </div>
+                <Badge className={`${eventBadge[result.event_type] || "bg-slate-600"} shrink-0`}>{result.event_type.toUpperCase()}</Badge>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Recent Logs */}
+        {/* Live logs */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-white font-semibold">Live Access Log</h2>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <Input
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 bg-slate-800 border-slate-700 text-white text-xs w-32"
-              />
-            </div>
+            <Link to="/AccessHistory" className="text-xs text-sky-400 font-medium">View all →</Link>
+          </div>
+          <div className="relative mb-3">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Input
+              placeholder="Search name, reg, ID…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-9 bg-slate-800 border-slate-700 text-white text-sm"
+            />
           </div>
           <div className="space-y-2">
-            <AnimatePresence>
-              {filteredLogs.map((log, i) => (
-                <motion.div
-                  key={log.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.02 }}
-                >
-                  <div className={`border rounded-xl p-3 flex items-center justify-between ${eventBg[log.event_type] || "bg-slate-800/50 border-slate-700/50"}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${personColors[log.person_type]}`}>
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-white text-sm font-medium">{log.person_name || "Unknown"}</p>
-                        <p className="text-slate-400 text-xs">{log.gate_name} • {new Date(log.timestamp).toLocaleTimeString()}</p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-xs font-bold uppercase ${eventColors[log.event_type]}`}>{log.event_type}</p>
-                      <p className="text-slate-500 text-xs capitalize">{log.person_type}</p>
-                    </div>
+            {filteredLogs.slice(0, 8).map((log) => (
+              <div key={log.id} className={`border rounded-xl p-3 flex items-center justify-between ${eventBg[log.event_type] || "bg-slate-800/50 border-slate-700/50"}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  {log.photo_url
+                    ? <img src={log.photo_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                    : <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-slate-300" /></div>}
+                  <div className="min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{log.person_name || "Unknown"}</p>
+                    <p className="text-slate-400 text-xs truncate">
+                      {log.gate_name} • {new Date(log.timestamp).toLocaleTimeString()}
+                      {log.scan_method && log.scan_method !== "qr_code" ? ` • ${log.scan_method}` : ""}
+                      {log.vehicle_registration ? ` • ${log.vehicle_registration}` : ""}
+                    </p>
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                </div>
+                <Badge className={`${eventBadge[log.event_type] || "bg-slate-600"} shrink-0 text-xs`}>{log.event_type}</Badge>
+              </div>
+            ))}
             {filteredLogs.length === 0 && (
               <div className="text-center py-8 text-slate-500">
                 <Shield className="w-8 h-8 mx-auto mb-2 opacity-30" />
