@@ -143,12 +143,14 @@ async function resolveLicenseKey() {
 /* Error classification                                                */
 /* ------------------------------------------------------------------ */
 function classifyInitError(err) {
-  const msg = String(err?.message || err || "").toLowerCase();
+  const raw = String(err?.message || err || "");
+  const msg = raw.toLowerCase();
+  const detail = raw ? ` [${raw.slice(0, 180)}]` : "";
   if (msg.includes("license") || msg.includes("licence") || msg.includes("key"))
-    return { type: "license_error", message: "barKoder licence is invalid, expired, or not authorised for this domain." };
+    return { type: "license_error", message: "barKoder licence is invalid, expired, or not authorised for this domain." + detail };
   if (msg.includes("wasm") || msg.includes("webassembly"))
-    return { type: "wasm_error", message: "Failed to load the barKoder WebAssembly engine." };
-  return { type: "init_error", message: "barKoder scanner failed to initialize." };
+    return { type: "wasm_error", message: "Failed to load the barKoder WebAssembly engine." + detail };
+  return { type: "init_error", message: "barKoder scanner failed to initialize." + detail };
 }
 
 /* ------------------------------------------------------------------ */
@@ -170,14 +172,11 @@ export async function initializeBarkoder() {
 
     let Barkoder;
     try {
-      // barKoder 1.7+ ships a SIMD and a no-SIMD wasm; pick the matching one.
-      let hasSIMD = false;
-      try { hasSIMD = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11])); }
-      catch (_) { hasSIMD = false; }
-      // useMainThreadOnly avoids pthreads/workers, which require COOP/COEP
-      // cross-origin isolation headers that the WebView/preview lacks.
-      Barkoder = await SDK.initialize(key, { wasmPath: hasSIMD ? WASM_SIMD_URL : WASM_NO_SIMD_URL, useMainThreadOnly: true });
-      console.log("[barKoder] sdk_initialized (license OK)", { simd: hasSIMD, mainThread: true });
+      // Always use the no-SIMD build — it is universally compatible across the
+      // Android WebView and avoids instantiation failures that occur on devices
+      // that report SIMD support but reject the SIMD binary at runtime.
+      Barkoder = await SDK.initialize(key, { wasmPath: WASM_NO_SIMD_URL, useMainThreadOnly: true });
+      console.log("[barKoder] sdk_initialized (license OK)", { wasm: WASM_NO_SIMD_URL, mainThread: true });
     }
     catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
