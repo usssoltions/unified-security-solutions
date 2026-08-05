@@ -20,11 +20,12 @@
  * Privacy: the licence key is never logged, surfaced in errors, or shown.
  */
 import { processQR } from "@/lib/qrProcessor";
-// Vite-resolved URLs for the barKoder WASM binaries. barKoder 1.7+ resolves the
-// WASM relative to window.location.href (the page URL) unless wasmPath is
-// supplied — which 404s in this app — so we feed it the Vite-emitted asset URL.
-import wasmSimdUrl from "barkoder-wasm/barkoder.wasm?url";
-import wasmNoSimdUrl from "barkoder-wasm/barkoder_nosimd.wasm?url";
+// The barKoder WASM binaries are copied into /public so they are served at a
+// fixed absolute URL (works in the Vite dev server, the production build and
+// the Android WebView wrapper). barKoder 1.7+ resolves the WASM relative to
+// window.location.href unless an absolute wasmPath is supplied.
+const WASM_SIMD_URL = "/barkoder.wasm";
+const WASM_NO_SIMD_URL = "/barkoder_nosimd.wasm";
 
 export const SDK_VERSION = "barkoder-wasm@1.7.0";
 
@@ -175,7 +176,7 @@ export async function initializeBarkoder() {
       catch (_) { hasSIMD = false; }
       // useMainThreadOnly avoids pthreads/workers, which require COOP/COEP
       // cross-origin isolation headers that the WebView/preview lacks.
-      Barkoder = await SDK.initialize(key, { wasmPath: hasSIMD ? wasmSimdUrl : wasmNoSimdUrl, useMainThreadOnly: true });
+      Barkoder = await SDK.initialize(key, { wasmPath: hasSIMD ? WASM_SIMD_URL : WASM_NO_SIMD_URL, useMainThreadOnly: true });
       console.log("[barKoder] sdk_initialized (license OK)", { simd: hasSIMD, mainThread: true });
     }
     catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
