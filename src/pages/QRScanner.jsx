@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Camera, AlertCircle, CheckCircle2, MapPin, Clock, Upload, PenTool } from "lucide-react";
-import QRCodeReader from "../components/guard/QRCodeReader";
+import { Camera, AlertCircle, CheckCircle2, MapPin, Clock, Upload, PenTool, ScanLine } from "lucide-react";
+import DocumentScanner from "../components/documents/DocumentScanner";
 import SignaturePad from "../components/guard/SignaturePad";
 
 export default function QRScanner() {
@@ -27,6 +27,13 @@ export default function QRScanner() {
   const [showSignature, setShowSignature] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [distanceFromCheckpoint, setDistanceFromCheckpoint] = useState(null);
+  const [scanning, setScanning] = useState(false);
+
+  const handleDocAccept = (scan) => {
+    setScanning(false);
+    const payload = scan.qrInfo?.payload || scan.result?.textualData || "";
+    handleScan(payload);
+  };
 
   useEffect(() => {
     loadData();
@@ -454,7 +461,18 @@ export default function QRScanner() {
               </p>
             </CardHeader>
           </Card>
-          <QRCodeReader onScan={handleScan} />
+          {scanning ? (
+            <DocumentScanner
+              documentType="qr"
+              caller="qr_scanner"
+              onClose={() => setScanning(false)}
+              onAccept={handleDocAccept}
+            />
+          ) : (
+            <Button onClick={() => setScanning(true)} className="w-full h-14 bg-gradient-to-r from-sky-500 to-blue-600">
+              <ScanLine className="w-5 h-5 mr-2" /> Tap to Scan Checkpoint
+            </Button>
+          )}
         </div>
       </div>
     );

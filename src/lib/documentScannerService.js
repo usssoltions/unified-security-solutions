@@ -92,12 +92,46 @@ export function getProfile(profileId) {
 /* ------------------------------------------------------------------ */
 /* Licence handling                                                    */
 /* ------------------------------------------------------------------ */
+let resolvedKey = null;
+let keyPromise = null;
+
 export function getLicenseKey() {
   const raw = import.meta.env?.VITE_BARKODER_LICENSE_KEY;
-  if (typeof raw !== "string" || raw.trim().length === 0) return null;
-  return raw.trim();
+  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  return resolvedKey;
 }
 export function isLicenseConfigured() { return getLicenseKey() !== null; }
+
+/**
+ * Resolves the licence key: Vite env first, then the authenticated
+ * getBarkoderLicense backend function (which reads the BARKODER_LICENSE_KEY
+ * secret). Cached for the session.
+ */
+async function resolveLicenseKey() {
+  const envKey = import.meta.env?.VITE_BARKODER_LICENSE_KEY;
+  if (typeof envKey === "string" && envKey.trim().length > 0) return envKey.trim();
+  if (resolvedKey) return resolvedKey;
+  if (keyPromise) return keyPromise;
+  keyPromise = (async () => {
+    try {
+      const { base44 } = await import("@/api/base44Client");
+      const { data } = await base44.functions.invoke("getBarkoderLicense", {});
+      if (data?.key) {
+        resolvedKey = data.key;
+        logDebug("license_loaded", { source: "backend" });
+        console.log("[barKoder] license_loaded (backend)");
+        return resolvedKey;
+      }
+      throw new Error("No key returned");
+    } catch (e) {
+      logDebug("license_load_failed", { reason: String(e?.message || e) });
+      console.error("[barKoder] license_load_failed", e?.message || e);
+      keyPromise = null;
+      throw { type: "license_missing", message: "barKoder licence key is not configured. Set BARKODER_LICENSE_KEY (app secret) or VITE_BARKODER_LICENSE_KEY." };
+    }
+  })();
+  return keyPromise;
+}
 
 /* ------------------------------------------------------------------ */
 /* Error classification                                                */
@@ -119,18 +153,18 @@ export async function initializeBarkoder() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    const key = getLicenseKey();
-    if (!key) throw { type: "license_missing", message: "barKoder licence key is not configured. Set VITE_BARKODER_LICENSE_KEY before using the scanner." };
+    const key = await resolveLicenseKey();
+    if (!key) throw { type: "license_missing", message: "barKoder licence key is not configured. Set BARKODER_LICENSE_KEY (app secret) or VITE_BARKODER_LICENSE_KEY." };
     if (typeof window !== "undefined" && !window.isSecureContext)
       throw { type: "insecure_context", message: "A secure HTTPS context is required for camera access and WASM streaming." };
 
     let SDK;
-    try { SDK = (await import("barkoder-wasm")).default; barkoderSDKStatic = SDK; }
-    catch (e) { logDebug("wasm_load_error"); throw { type: "wasm_error", message: "Failed to load the barKoder WebAssembly asset." }; }
+    try { SDK = (await import("barkoder-wasm")).default; barkoderSDKStatic = SDK; console.log("[barKoder] wasm_loaded"); }
+    catch (e) { logDebug("wasm_load_error"); console.error("[barKoder] wasm_load_error", e); throw { type: "wasm_error", message: "Failed to load the barKoder WebAssembly asset." }; }
 
     let Barkoder;
-    try { Barkoder = await SDK.initialize(key); }
-    catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); throw classifyInitError(e); }
+    try { Barkoder = await SDK.initialize(key); console.log("[barKoder] sdk_initialized (license OK)"); }
+    catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
     Barkoder.setCameraResolution(Barkoder.constants.CameraResolution.FHD);
     Barkoder.setDecodingSpeed(Barkoder.constants.DecodingSpeed.Normal);
@@ -190,9 +224,10 @@ export async function setCameraId(id) { const bk = await initializeBarkoder(); b
 /* ------------------------------------------------------------------ */
 export function startScanner(callback) {
   if (!barkoderInstance) throw { type: "not_initialized", message: "Scanner is not initialized." };
+  console.log("[barKoder] startScanner (continuous)");
   barkoderInstance.startScanner(callback);
 }
-export function stopScanner() { if (barkoderInstance) { try { barkoderInstance.stopScanner(); } catch (_) {} } }
+export function stopScanner() { if (barkoderInstance) { try { barkoderInstance.stopScanner(); console.log("[barKoder] stopScanner"); } catch (_) {} } }
 export function toggleFlash() { if (barkoderInstance) { try { barkoderInstance.changeFlashState(); } catch (_) {} } }
 
 /* ------------------------------------------------------------------ */
@@ -323,6 +358,7 @@ const QR_SUBTYPES = ["resident_qr", "visitor_qr", "contractor_qr", "staff_qr", "
 
 export function resolveDocument(rawResult, caller) {
   const parsed = parseResult(rawResult);
+  console.log("[barKoder] resolveDocument", { barcodeType: parsed.barcodeType, hasJSON: !!parsed.formattedJSON, textLen: (parsed.textualData || "").length });
   const flat = parsed.formattedJSON ? flattenFields(parsed.formattedJSON) : {};
   const bt = (parsed.barcodeType || "").toLowerCase();
 

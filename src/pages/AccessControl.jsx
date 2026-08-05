@@ -12,7 +12,7 @@ import {
   User, AlertTriangle, ScanLine, LogIn, LogOut, Shield, Sparkles,
   Fingerprint, Eye, Zap, Brain, RefreshCw, ChevronRight, Search
 } from "lucide-react";
-import QRCodeReader from "@/components/guard/QRCodeReader";
+import DocumentScanner from "@/components/documents/DocumentScanner";
 
 export default function AccessControl() {
   const [user, setUser] = useState(null);
@@ -25,6 +25,7 @@ export default function AccessControl() {
   const [aiProcessing, setAiProcessing] = useState(false);
   const [aiInsight, setAiInsight] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [scanProfile, setScanProfile] = useState("qr");
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
@@ -100,6 +101,33 @@ export default function AccessControl() {
     setManualInput("");
   };
 
+  const handleDocScanAccept = async (scan) => {
+    const mapped = scan.mappedFields || null;
+    const qr = scan.qrInfo || null;
+    let scanValue = "UNKNOWN";
+    let insight = null;
+    if (scan.resolvedProfileId === "qr" && qr) {
+      scanValue = qr.payload || "UNKNOWN";
+      insight = { document_type: "qr", id_number: "", full_name: "", registration_number: "", licence_number: "", expiry_date: "", confidence: 100, authenticity_notes: `Decoded via barKoder ${scan.sdkVersion}`, raw_text: qr.payload || "" };
+    } else {
+      scanValue = mapped?.visitor_id_number || mapped?.driver_licence_number || mapped?.registration_number || mapped?.barcode_value || scan.result?.textualData || "UNKNOWN";
+      insight = {
+        document_type: scan.resolvedProfileId || "unknown",
+        id_number: mapped?.visitor_id_number || "",
+        full_name: mapped?.visitor_name || [mapped?.first_names, mapped?.surname].filter(Boolean).join(" "),
+        registration_number: mapped?.registration_number || "",
+        licence_number: mapped?.driver_licence_number || "",
+        expiry_date: mapped?.expiry_date || "",
+        confidence: scan.result?.parsed ? 100 : 40,
+        authenticity_notes: `Decoded via barKoder ${scan.sdkVersion} (${scan.result?.barcodeType})`,
+        raw_text: scan.result?.textualData || ""
+      };
+    }
+    setAiInsight(insight);
+    setAiProcessing(false);
+    await handleScan(scanValue);
+  };
+
   const handleAIScan = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -170,6 +198,14 @@ Return structured JSON with document_type, id_number, full_name, registration_nu
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 pb-24">
+      {scanning && (
+        <DocumentScanner
+          documentType={scanProfile}
+          caller="access_control"
+          onClose={() => setScanning(false)}
+          onAccept={handleDocScanAccept}
+        />
+      )}
       {/* Header */}
       <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 px-4 py-3">
         <div className="flex items-center justify-between max-w-2xl mx-auto">
@@ -271,15 +307,10 @@ Return structured JSON with document_type, id_number, full_name, registration_nu
             {scanMode === "qr_code" ? (
               <div>
                 {scanning ? (
-                  <div className="rounded-xl overflow-hidden">
-                    <QRCodeReader onScan={handleScan} />
-                    <Button onClick={() => setScanning(false)} variant="outline" className="w-full mt-2 border-slate-600 text-slate-300">
-                      Cancel
-                    </Button>
-                  </div>
+                  <div className="py-6 text-center text-slate-400 text-sm">Live barKoder scanner open…</div>
                 ) : (
                   <button
-                    onClick={() => setScanning(true)}
+                    onClick={() => { setScanProfile("qr"); setScanning(true); }}
                     className="w-full h-24 bg-gradient-to-br from-sky-500/10 to-blue-600/10 border-2 border-dashed border-sky-500/40 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-sky-400/60 transition-all active:scale-95"
                   >
                     <div className="w-10 h-10 bg-sky-500/20 rounded-full flex items-center justify-center">
@@ -291,34 +322,18 @@ Return structured JSON with document_type, id_number, full_name, registration_nu
               </div>
             ) : (
               <div className="space-y-3">
-                {/* AI Camera Scan */}
+                {/* Live barKoder scan */}
                 <div>
-                  <input type="file" accept="image/*" capture="environment" onChange={handleAIScan} className="hidden" id="doc-ai-scan" />
-                  <label htmlFor="doc-ai-scan">
-                    <div className={`w-full h-24 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 ${
-                      aiProcessing
-                        ? "border-purple-400/60 bg-purple-500/10"
-                        : "border-purple-500/40 bg-purple-500/10 hover:border-purple-400/60"
-                    }`}>
-                      {aiProcessing ? (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <Brain className="w-5 h-5 text-purple-400 animate-pulse" />
-                            <Sparkles className="w-4 h-4 text-purple-300 animate-spin" />
-                          </div>
-                          <span className="text-purple-300 text-sm font-medium">AI Analyzing Document...</span>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
-                            <Camera className="w-5 h-5 text-purple-400" />
-                          </div>
-                          <span className="text-purple-400 font-semibold text-sm">AI Scan Document</span>
-                          <span className="text-slate-500 text-xs">ID / Driver's Licence / Vehicle Disc</span>
-                        </>
-                      )}
+                  <button
+                    onClick={() => { setScanProfile("auto"); setScanning(true); }}
+                    className="w-full h-24 border-2 border-dashed border-purple-500/40 bg-purple-500/10 hover:border-purple-400/60 rounded-xl flex flex-col items-center justify-center gap-2 transition-all active:scale-95"
+                  >
+                    <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
+                      <ScanLine className="w-5 h-5 text-purple-400" />
                     </div>
-                  </label>
+                    <span className="text-purple-400 font-semibold text-sm">Scan Document</span>
+                    <span className="text-slate-500 text-xs">ID / Driver's Licence / Vehicle Disc</span>
+                  </button>
                 </div>
 
                 {/* AI Insight Result */}

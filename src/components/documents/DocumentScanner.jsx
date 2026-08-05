@@ -74,10 +74,10 @@ export default function DocumentScanner({
   useEffect(() => {
     let cancelled = false;
     const start = async () => {
-      if (!scanner.isLicenseConfigured()) return reportError({ type: "license_missing" });
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
       try {
         await scanner.initializeBarkoder();
+        console.log("[barKoder] DocumentScanner initialized");
         if (cancelled) return;
         const { supported } = await scanner.configureForProfile(documentType);
         if (cancelled) return;
@@ -102,7 +102,7 @@ export default function DocumentScanner({
       } catch (e) { if (!cancelled) reportError(e); }
     };
     start();
-    return () => { cancelled = true; scanner.stopScanner(); };
+    return () => { cancelled = true; scanner.stopScanner(); scanner.resetInstance(); console.log("[barKoder] DocumentScanner unmount (instance reset for next open)"); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType]);
 
@@ -126,6 +126,7 @@ export default function DocumentScanner({
         handleResult(raw);
       });
       setStatus("scanning");
+      console.log("[barKoder] camera_started", { profile: documentType, caller });
       scanner.logDebug("camera_started", { profile: documentType, caller });
     } catch (e) { reportError(e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,6 +135,7 @@ export default function DocumentScanner({
   const handleResult = useCallback(async (raw) => {
     const { parsed, profileId, profile: resolvedProfile, mappedFields: mapped, parserUsed, qrInfo } =
       scanner.resolveDocument(raw, caller);
+    console.log("[barKoder] barcode_detected", { type: parsed.barcodeType, resolved: profileId, parsed: !!parsed.formattedJSON });
     scanner.logDebug("barcode_detected", { type: parsed.barcodeType, resolved: profileId });
 
     let photo = null;
