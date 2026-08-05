@@ -83,23 +83,12 @@ export default function DocumentScanner({
         if (cancelled) return;
         if (!supported) return reportError({ type: "profile_not_active" });
 
-        try {
-          const cams = await scanner.getCameras();
-          if (cancelled) return;
-          setCameras(cams);
-          const primary = scanner.pickPrimaryRearCamera(cams);
-          if (primary) {
-            const id = primary.id || primary.deviceId;
-            await scanner.setCameraId(id);
-            setSelectedCamera(id);
-            try { localStorage.setItem("barkoder_camera_id", String(id)); } catch (_) {}
-            console.log("[barKoder] auto-selected camera", primary.label || id);
-          }
-        } catch (e) {
-          const msg = String(e?.name || e?.message || e).toLowerCase();
-          if (msg.includes("notallowed") || msg.includes("denied")) return reportError({ type: "camera_denied" });
-          if (msg.includes("notfound") || msg.includes("devices")) return reportError({ type: "no_camera" });
-        }
+        // Per the barKoder integration guide, do NOT call getCameras() before
+        // startScanner — it forces a redundant getUserMedia permission
+        // round-trip that hangs indefinitely on the Android WebView. With no
+        // cameraId set, the SDK defaults to facingMode:"environment" (the rear
+        // camera), which is correct for every scan profile; the SDK also
+        // caches the user's manual camera choice across sessions on its own.
         beginScanning();
       } catch (e) { if (!cancelled) reportError(e); }
     };
@@ -124,7 +113,17 @@ export default function DocumentScanner({
           "| formattedJSON?", !!(raw?.formattedJSON || (raw?.results?.[0]?.formattedJSON)),
           "| textualData len:", (raw?.textualData || raw?.results?.[0]?.textualData || "").length);
         if (processingRef.current) return;
-        if (!raw || raw.error) return;
+        if (!raw) return;
+        if (raw.error) {
+          // SDK reports camera/permission failures via the result callback as
+          // { resultCount:0, type:"error", error:{name, message} }.
+          const nm = String(raw.error.name || raw.error.message || "").toLowerCase();
+          if (nm.includes("notallowed") || nm.includes("denied") || nm.includes("permission") || nm.includes("security"))
+            return reportError({ type: "camera_denied" });
+          if (nm.includes("notfound") || nm.includes("notreadable") || nm.includes("device") || nm.includes("camera"))
+            return reportError({ type: "no_camera" });
+          return; // transient — keep scanning
+        }
         if (raw.resultsCount === 0) return;
         if (!raw.textualData && !(raw.results && raw.results.length)) return;
         processingRef.current = true;
