@@ -125,6 +125,29 @@ export default function AccessControl() {
     }
     setAiInsight(insight);
     setAiProcessing(false);
+
+    // Persist the rendered driver's-licence photo to a matching Visitor record.
+    if (scan.photoUrl) {
+      const idNum = mapped?.visitor_id_number || mapped?.driver_licence_number;
+      if (idNum) {
+        try {
+          const matches = await base44.entities.Visitor.filter({ visitor_id_number: idNum });
+          if (matches.length > 0) {
+            await base44.entities.Visitor.update(matches[0].id, {
+              id_scan_url: scan.photoUrl,
+              scan_thumbnail_url: scan.photoUrl,
+              scan_document_type: scan.resolvedProfileId,
+              scan_barcode_type: scan.result?.barcodeType,
+              scan_sdk_version: scan.sdkVersion,
+              scan_parser_used: scan.parserUsed,
+              scan_timestamp: new Date().toISOString(),
+              scan_raw_json: scan.result?.textualData || "",
+            });
+          }
+        } catch (e) { console.warn("[barKoder] photo persist failed", e?.message || e); }
+      }
+    }
+
     await handleScan(scanValue);
   };
 

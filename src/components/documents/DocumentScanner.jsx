@@ -144,8 +144,11 @@ export default function DocumentScanner({
 
     let photo = null;
     if (resolvedProfile.supportsPhoto && parsed.formattedJSON) {
-      photo = await scanner.getSadlPhoto(parsed.textualData);
+      // Barkoder.getSADLImage needs the formatted JSON string (reads Fields[15..17]),
+      // NOT the raw PDF417 textualData.
+      photo = await scanner.getSadlPhoto(parsed.formattedJSONRaw);
     }
+    console.log("[barKoder] photo_present", { yes: !!photo, source: parsed.formattedJSONSource });
     scanner.logDebug("photo_present", { yes: !!photo });
 
     setResult(parsed);

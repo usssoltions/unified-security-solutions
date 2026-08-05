@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, RefreshCw, X, ChevronDown, ChevronUp, User, FileWarning, IdCard, QrCode } from "lucide-react";
 
 const HIDDEN_KEYS = new Set(["_raw"]);
+// SADL image fields rendered as the photo (handled separately) — never as text.
+const HIDDEN_PARSED_KEYS = ["imagerawbase64", "image width", "image height"];
 
 export default function DocumentScanReview({
   result, photoUrl, mappedFields, profile, qrInfo,
@@ -18,9 +20,13 @@ export default function DocumentScanReview({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const fields = result?.formattedJSON?.Fields || result?.formattedJSON || [];
-  const fieldEntries = Array.isArray(fields)
+  const allParsedEntries = Array.isArray(fields)
     ? fields.map((f, i) => [f?.Field ?? `Field ${i}`, f?.Value])
     : Object.entries(result?.formattedJSON || {});
+  // Hide the raw Base64 photo + dimension fields — the photo is rendered above.
+  const fieldEntries = allParsedEntries.filter(([k]) =>
+    k && !HIDDEN_PARSED_KEYS.includes(String(k).toLowerCase())
+  );
 
   const isParsed = !!result?.parsed;
   const hasPhoto = !!photoUrl;

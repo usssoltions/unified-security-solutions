@@ -275,6 +275,11 @@ export function parseResult(rawResult) {
     timestamp, parsed: !!formattedJSON, malformedJSON,
     rawResultKeys: rawResult ? Object.keys(rawResult) : [],
     formattedJSONSource: typeof formattedJSONStr === "string" ? "sdk" : (formattedJSON ? "textual" : "none"),
+    // Original SDK formatted-JSON string (verbatim) — required by getSadlPhoto(),
+    // which calls Barkoder.getSADLImage(jsonString) to extract the 200x250 photo.
+    formattedJSONRaw: (typeof formattedJSONStr === "string" && formattedJSONStr.length > 0)
+      ? formattedJSONStr
+      : (formattedJSON ? JSON.stringify(formattedJSON) : null),
   };
 }
 
@@ -418,18 +423,30 @@ export function resolveDocument(rawResult, caller) {
 /* ------------------------------------------------------------------ */
 /* SADL photograph extraction                                          */
 /* ------------------------------------------------------------------ */
-export async function getSadlPhoto(textualData) {
-  if (!textualData) return null;
+/**
+ * Extracts the SADL driver's-licence photograph.
+ *
+ * Barkoder.getSADLImage(jsonString) parses the *formatted* JSON (not the raw
+ * PDF417 text), reads Fields[15]=Image Width, Fields[16]=Image Height,
+ * Fields[17]=ImageRawBase64, decodes the base64 grayscale bytes and returns an
+ * ImageData (200x250 RGBA). We render it to a canvas → PNG data URL.
+ *
+ * @param {string} formattedJsonString  the SDK's formattedJSON string (SADL)
+ */
+export async function getSadlPhoto(formattedJsonString) {
+  if (!formattedJsonString) return null;
   const bk = await initializeBarkoder();
   try {
-    const imageData = await bk.getSADLImage(textualData);
-    if (!imageData) return null;
+    const imageData = await bk.getSADLImage(formattedJsonString);
+    if (!imageData) { console.warn("[barKoder] getSADLImage returned no ImageData"); return null; }
     const canvas = document.createElement("canvas");
     canvas.width = imageData.width;
     canvas.height = imageData.height;
     canvas.getContext("2d").putImageData(imageData, 0, 0);
-    return canvas.toDataURL("image/png");
-  } catch (_) { return null; }
+    const url = canvas.toDataURL("image/png");
+    console.log("[barKoder] SADL photo extracted", { w: imageData.width, h: imageData.height, urlLen: url.length });
+    return url;
+  } catch (e) { console.warn("[barKoder] getSADLImage failed:", e?.message || e); return null; }
 }
 
 /* ------------------------------------------------------------------ */
