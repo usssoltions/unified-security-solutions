@@ -120,11 +120,11 @@ export default function DocumentScanReview({
                 </div>
               ))}
             </div>
-          ) : (
+          ) : !isQR ? (
             <div className="flex items-center gap-2 text-amber-300 text-sm p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
               <FileWarning className="w-4 h-4" /> Barcode decoded but structured parsing unavailable.
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Diagnostics */}

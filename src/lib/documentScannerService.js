@@ -21,7 +21,7 @@
  */
 import { processQR } from "@/lib/qrProcessor";
 
-export const SDK_VERSION = "barkoder-wasm@1.5.0";
+export const SDK_VERSION = "barkoder-wasm@1.7.0";
 
 const DEBUG_LOG = [];
 let barkoderInstance = null;
@@ -391,16 +391,29 @@ export function extractMappedFields(formattedJSON, profileId) {
   if (profile.mapper === "sa_id") {
     const surname = pickField(flat, "surname");
     const firstNames = pickField(flat, "names", "first names", "forename", "given name", "first name", "full names");
-    const idNumber = pickField(flat, "id number", "identity number", "idnumber", "id no", "sa id");
+    let idNumber = pickField(flat, "id number", "identity number", "idnumber", "id no", "sa id");
+    let dob = pickField(flat, "date of birth", "birth", "dob");
+    let gender = pickField(flat, "sex", "gender");
+    let nationality = pickField(flat, "nationality");
+    // SA ID numbers encode DOB (YYMMDD), gender (seq >= 5000 = male) and
+    // citizenship (digit 11: 0 = SA citizen, 1 = permanent resident).
+    if (idNumber && /^\d{13}$/.test(idNumber)) {
+      const yy = idNumber.slice(0, 2), mm = idNumber.slice(2, 4), dd = idNumber.slice(4, 6);
+      const seq = parseInt(idNumber.slice(6, 10), 10);
+      const citizen = idNumber.slice(10, 11);
+      if (!dob) dob = `${parseInt(yy, 10) <= 30 ? "20" + yy : "19" + yy}-${mm}-${dd}`;
+      if (!gender) gender = seq >= 5000 ? "Male" : "Female";
+      if (!nationality) nationality = citizen === "0" ? "South African" : "";
+    }
     const name = [firstNames, surname].filter(Boolean).join(" ").trim() || surname || firstNames;
     return {
       visitor_name: name,
       visitor_id_number: idNumber,
       surname,
       first_names: firstNames,
-      date_of_birth: pickField(flat, "date of birth", "birth", "dob"),
-      gender: pickField(flat, "sex", "gender"),
-      nationality: pickField(flat, "nationality"),
+      date_of_birth: dob,
+      gender,
+      nationality,
       country: pickField(flat, "country", "country of birth", "country of issue"),
       initials: pickField(flat, "initials"),
       _raw: flat,
@@ -469,7 +482,36 @@ export function resolveDocument(rawResult, caller, hintProfileId) {
   }
 
   const profile = getProfile(profileId);
-  const mappedFields = parsed.formattedJSON ? extractMappedFields(parsed.formattedJSON, profileId) : null;
+  let mappedFields = parsed.formattedJSON ? extractMappedFields(parsed.formattedJSON, profileId) : null;
+
+  // QR / generic barcode: the raw textual payload IS the result — never flag it as malformed.
+  if (profileId === "qr" || profileId === "generic_barcode") {
+    if (parsed.textualData) { parsed.parsed = true; parsed.malformedJSON = false; }
+  }
+  // SA ID backstop (older SDKs without the SA-ID parser): pull the 13-digit ID
+  // number out of the raw PDF417 text and derive DOB/gender/citizenship from it.
+  if (profileId === "sa_id" && !mappedFields && parsed.textualData) {
+    const id = (parsed.textualData.match(/\b\d{13}\b/) || [])[0];
+    if (id) {
+      const yy = id.slice(0, 2), mm = id.slice(2, 4), dd = id.slice(4, 6);
+      const seq = parseInt(id.slice(6, 10), 10);
+      const citizen = id.slice(10, 11);
+      mappedFields = {
+        visitor_name: "", surname: "", first_names: "", initials: "",
+        visitor_id_number: id,
+        date_of_birth: `${parseInt(yy, 10) <= 30 ? "20" + yy : "19" + yy}-${mm}-${dd}`,
+        gender: seq >= 5000 ? "Male" : "Female",
+        nationality: citizen === "0" ? "South African" : "",
+        _raw: {},
+      };
+      parsed.parsed = true; parsed.malformedJSON = false;
+    }
+  }
+  // Vehicle disc backstop: decoded but unstructured on older SDKs — still counts
+  // as parsed (raw preserved). SDK 1.7.0+ returns structured formattedJSON (MVL).
+  if (profileId === "vehicle_disc" && !parsed.formattedJSON && parsed.textualData) {
+    parsed.parsed = true; parsed.malformedJSON = false;
+  }
 
   let qrInfo = null;
   if (profileId === "qr" && parsed.textualData) {
