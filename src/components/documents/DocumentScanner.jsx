@@ -70,6 +70,7 @@ export default function DocumentScanner({
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
   const processingRef = useRef(false);
   const loadingTimerRef = useRef(null);
+  const hostRef = useRef(null);
 
   const reportError = useCallback((err) => {
     if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
@@ -81,6 +82,10 @@ export default function DocumentScanner({
     let cancelled = false;
     const start = async () => {
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
+      // Move the persistent #barkoder-container into this scanner's host
+      // before initialising, so the SDK (which captures the container once at
+      // module load) always attaches the live feed to a live, on-screen element.
+      scanner.mountScannerContainer(hostRef.current);
       try {
         await scanner.initializeBarkoder();
         console.log("[barKoder] DocumentScanner initialized (engine ready)");
@@ -97,6 +102,7 @@ export default function DocumentScanner({
       cancelled = true;
       if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
       scanner.stopScanner();
+      scanner.unmountScannerContainer();
       console.log("[barKoder] DocumentScanner unmount (camera released, engine kept)");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -264,7 +270,7 @@ export default function DocumentScanner({
       </div>
 
       <div className="relative flex-1 mx-3 rounded-2xl overflow-hidden bg-black border border-slate-700/50 min-h-[280px]">
-        <div id="barkoder-container" className="absolute inset-0" style={{ width: "100%", height: "100%", minWidth: 280, minHeight: 280, background: "#000" }} />
+        <div ref={hostRef} className="absolute inset-0" style={{ width: "100%", height: "100%", minWidth: 280, minHeight: 280, background: "#000" }} />
 
         {status === "scanning" && (
           <div className="absolute inset-0 pointer-events-none flex flex-col">

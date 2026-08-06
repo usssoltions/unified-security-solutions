@@ -36,6 +36,66 @@ let initPromise = null;
 let currentProfileId = null;
 
 /* ------------------------------------------------------------------ */
+/* Persistent scanner container                                        */
+/* ------------------------------------------------------------------ */
+// barKoder captures `document.getElementById('barkoder-container')` ONCE,
+// as a static class field at module-load time, and attaches the camera
+// preview to that element on every scan. If that element is ever removed
+// from the DOM (a React modal unmounting), the SDK keeps pointing at the
+// detached node and the live feed never appears — the scanner hangs on
+// "Starting camera…". To honour the SDK's documented div-id contract while
+// surviving React remounts, we create ONE persistent #barkoder-container
+// when this module loads (before the SDK is imported, so the SDK captures
+// it) and reuse it for every scanner open: move it into the active
+// scanner's host on mount, park it (hidden) in <body> on unmount, but
+// NEVER destroy it. The SDK's cached reference therefore always points at
+// a live element.
+let scannerContainerEl = null;
+
+export function ensureScannerContainer() {
+  if (typeof document === "undefined") return null;
+  if (scannerContainerEl && document.body.contains(scannerContainerEl)) return scannerContainerEl;
+  const existing = document.getElementById("barkoder-container");
+  if (existing) { scannerContainerEl = existing; return existing; }
+  const el = document.createElement("div");
+  el.id = "barkoder-container";
+  el.style.position = "fixed";
+  el.style.left = "-9999px";
+  el.style.top = "0";
+  el.style.width = "100%";
+  el.style.height = "100%";
+  el.style.background = "#000";
+  document.body.appendChild(el);
+  scannerContainerEl = el;
+  return el;
+}
+
+export function mountScannerContainer(hostEl) {
+  const el = ensureScannerContainer();
+  if (!el || !hostEl) return el;
+  if (el.parentNode !== hostEl) hostEl.appendChild(el);
+  el.style.position = "absolute";
+  el.style.left = "0";
+  el.style.top = "0";
+  el.style.width = "100%";
+  el.style.height = "100%";
+  return el;
+}
+
+export function unmountScannerContainer() {
+  const el = scannerContainerEl || (typeof document !== "undefined" && document.getElementById("barkoder-container"));
+  if (!el) return;
+  if (el.parentNode !== document.body) document.body.appendChild(el);
+  el.style.position = "fixed";
+  el.style.left = "-9999px";
+  el.style.top = "0";
+}
+
+// Create the persistent container as soon as this module loads — it must
+// exist before the barKoder SDK module is imported (the SDK captures it).
+ensureScannerContainer();
+
+/* ------------------------------------------------------------------ */
 /* Debug log (sanitized — no personal data, no key)                    */
 /* ------------------------------------------------------------------ */
 function logDebug(event, meta = {}) {
