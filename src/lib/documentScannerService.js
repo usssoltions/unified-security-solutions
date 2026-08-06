@@ -251,7 +251,11 @@ export async function initializeBarkoder() {
     }
     catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
-    Barkoder.setCameraResolution(Barkoder.constants.CameraResolution.FHD);
+    // NOTE: setCameraResolution(FHD) was removed — it forces 1920×1080 and on
+    // several Android rear cameras getUserMedia rejects with OverconstrainedError,
+    // so the feed never starts and the scanner hangs on "Starting camera…". The
+    // SDK default resolution is the one barKoder tested with and the one that
+    // worked for SADL originally.
     Barkoder.setDecodingSpeed(Barkoder.constants.DecodingSpeed.Normal);
     Barkoder.setContinuous(false);
     Barkoder.setFlashEnabled(true);

@@ -68,6 +68,7 @@ export default function DocumentScanner({
   const [photoUrl, setPhotoUrl] = useState(null);
   const [mappedFields, setMappedFields] = useState(null);
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
+  const [diag, setDiag] = useState(null);
   const processingRef = useRef(false);
   const loadingTimerRef = useRef(null);
   const hostRef = useRef(null);
@@ -136,8 +137,25 @@ export default function DocumentScanner({
     if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
     loadingTimerRef.current = setTimeout(() => {
       if (watchdogStopped) return;
-      console.error("[barKoder] camera did not go live within 15s — profile:", documentType);
-      scanner.logDebug("camera_not_live_timeout", { profile: documentType });
+      // Capture a diagnostic snapshot so we can see exactly why the camera
+      // never went live (container missing? video attached but not playing?
+      // no stream?) instead of guessing.
+      const cont = document.getElementById("barkoder-container");
+      const v = cont && cont.querySelector("video");
+      const snapshot = {
+        profile: documentType,
+        containerPresent: !!cont,
+        containerInDom: cont ? document.body.contains(cont) : false,
+        videoPresent: !!v,
+        videoReadyState: v ? v.readyState : null,
+        videoWidth: v ? v.videoWidth : null,
+        videoHasSrcObject: v ? !!v.srcObject : null,
+        scannerActive: scanner.isScannerActive(),
+        debug: scanner.getDebugLog().slice(-10),
+      };
+      console.error("[barKoder] camera did not go live within 15s — diagnostic:", snapshot);
+      setDiag(snapshot);
+      scanner.logDebug("camera_not_live_timeout", { profile: documentType, snapshot });
       scanner.stopScanner();
       reportError({ type: "camera_failed" });
     }, 15000);
@@ -300,6 +318,14 @@ export default function DocumentScanner({
             <Button onClick={beginScanning} className="bg-sky-500 hover:bg-sky-600">
               <RefreshCw className="w-4 h-4 mr-2" /> Retry
             </Button>
+            {diag && (
+              <details className="mt-2 w-full max-w-md text-left">
+                <summary className="text-xs text-slate-500 cursor-pointer">Diagnostic</summary>
+                <pre className="mt-2 text-[10px] leading-tight text-slate-400 bg-slate-900/80 rounded-lg p-2 overflow-auto max-h-40">
+{JSON.stringify(diag, null, 1)}
+                </pre>
+              </details>
+            )}
           </div>
         )}
 
