@@ -65,10 +65,14 @@ export default defineConfig({
     patchBarkoderWasm(),
     react(),
   ],
-  optimizeDeps: {
-    // Route barkoder-wasm through the plugin pipeline (instead of esbuild
-    // pre-bundling, which bypasses user plugins) so the MIME/SIMD patch above
-    // also applies during local development / the app preview.
-    exclude: ['barkoder-wasm']
-  }
+  // NOTE: barkoder-wasm is intentionally NOT excluded from optimizeDeps.
+  // Its UMD wrapper assigns to top-level `this`, which is `undefined` in an
+  // ESM module — excluding it forces Vite to serve it as ESM, the UMD's global
+  // fallback then does `undefined['BarkoderSDK'] = …` and throws
+  // "Cannot set properties of undefined (setting 'BarkoderSDK')". Letting
+  // esbuild pre-bundle it gives the correct CommonJS interop so the
+  // `module.exports` branch is taken and `import('barkoder-wasm').default`
+  // resolves (this is why SADL worked originally). The WASM SIMD/MIME/container
+  // patches above still apply in the production Rollup build, where Vite
+  // plugins run and Rollup's CJS handling likewise takes `module.exports`.
 });
