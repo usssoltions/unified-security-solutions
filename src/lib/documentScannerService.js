@@ -51,7 +51,9 @@ export const SCAN_PROFILES = {
   auto: {
     id: "auto", label: "Auto Detect",
     decoders: ["PDF417", "QR", "Datamatrix", "Aztec", "Code128", "Code93", "Code39"],
-    formatting: "Automatic", supportsPhoto: false, mapper: "auto",
+    // SADL formatting is the South-African PDF417 parser family (DL + ID + disc).
+    // It only applies to PDF417; QR/1D barcodes still return their raw payload.
+    formatting: "SADL", supportsPhoto: false, mapper: "auto",
     status: "active", instruction: "Align the document / barcode inside the frame",
   },
   drivers_licence: {
@@ -61,12 +63,17 @@ export const SCAN_PROFILES = {
   },
   vehicle_disc: {
     id: "vehicle_disc", label: "Vehicle Licence Disc",
-    decoders: ["PDF417"], formatting: "Automatic", supportsPhoto: false, mapper: "vehicle_disc",
+    // SA vehicle licence disc (MVL) is parsed by the SADL formatter + the
+    // SADL_decode_vehicle_disk custom option (barKoder docs).
+    decoders: ["PDF417"], formatting: "SADL", supportsPhoto: false, mapper: "vehicle_disc",
     status: "active", instruction: "Align the barcode on the vehicle licence disc inside the frame",
   },
   sa_id: {
     id: "sa_id", label: "SA ID Card / Book",
-    decoders: ["PDF417", "Code39"], formatting: "Automatic", supportsPhoto: false, mapper: "sa_id",
+    // SA ID card/book PDF417 is parsed by the SADL formatter + the
+    // SADL_decode_ID custom option (barKoder docs). Code39 kept as a fallback
+    // for the older ID book 1D barcode (raw 13-digit ID -> backstop parser).
+    decoders: ["PDF417", "Code39"], formatting: "SADL", supportsPhoto: false, mapper: "sa_id",
     status: "active", instruction: "Align the PDF417 barcode on the SA ID card inside the frame",
   },
   passport_mr: {
@@ -75,9 +82,13 @@ export const SCAN_PROFILES = {
     status: "planned", instruction: "Align the MRZ at the bottom of the passport inside the frame",
   },
   qr: {
-    id: "qr", label: "QR Code",
-    decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr",
-    status: "active", instruction: "Align the QR code inside the frame",
+    id: "qr", label: "QR / Barcode",
+    // Universal gate scanner: QR + 2D + common 1D (incl. product barcodes) +
+    // PDF417. Formatting stays Disabled so the raw payload is returned verbatim
+    // and passed straight into the QR access workflow.
+    decoders: ["QR", "Datamatrix", "Aztec", "PDF417", "Code128", "Code93", "Code39", "Ean13", "Ean8", "UpcA", "UpcE"],
+    formatting: null, supportsPhoto: false, mapper: "qr",
+    status: "active", instruction: "Align the QR code or barcode inside the frame",
   },
   resident_qr: { id: "resident_qr", label: "Resident QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "resident", status: "active", instruction: "Align the resident QR code inside the frame" },
   visitor_qr: { id: "visitor_qr", label: "Visitor QR", decoders: ["QR"], formatting: null, supportsPhoto: false, mapper: "qr", qrType: "visitor", status: "active", instruction: "Align the visitor QR code inside the frame" },
@@ -223,9 +234,21 @@ export async function configureForProfile(profileId) {
   } catch (_) { logDebug("formatting_unavailable", { formatting: profile.formatting }); }
 
   try {
-    if (profile.mapper === "sadl") {
+    // SADL formatting is the South-African PDF417 parser family. The SA ID and
+    // SA Vehicle Licence Disc parsers are BETA custom options that must be
+    // enabled explicitly alongside SADL formatting (barKoder docs):
+    //   setCustomOption("SADL_decode_ID", 1)            -> SA ID card/book parser
+    //   setCustomOption("SADL_decode_vehicle_disk", 1) -> SA vehicle licence disc parser
+    // Both are harmless for a DL scan (the base SADL parser still handles it),
+    // and they let a single SADL-configured profile parse any SA PDF417 document.
+    if (profile.formatting === "SADL") {
       const setter = bk.setCustomOption || barkoderSDKStatic?.setCustomOption;
-      if (typeof setter === "function") setter.call(bk, "SADL_decode_ID", 1);
+      if (typeof setter === "function") {
+        setter.call(bk, "SADL_decode_ID", 1);
+        setter.call(bk, "SADL_decode_vehicle_disk", 1);
+        console.log("[barKoder] SADL custom options enabled (decode_ID + decode_vehicle_disk)");
+        logDebug("sadl_options_enabled", { profile: profileId });
+      }
     }
   } catch (_) { /* optional */ }
 
@@ -462,7 +485,10 @@ export function resolveDocument(rawResult, caller, hintProfileId) {
   const keys = Object.keys(flat).map((k) => k.toLowerCase());
   const has = (re) => keys.some((k) => re.test(k));
 
-  const isLicence = has(/driver licence|driver license|licence number|license number|vehicle class|prdp|restriction/);
+  // NB: "licence number" alone is NOT DL-specific — SA vehicle licence discs
+  // also carry a "Licence Number" field. Require a DL-only field instead so a
+  // disc isn't mis-routed to the driver's-licence parser in auto mode.
+  const isLicence = has(/driver licence|driver license|vehicle class|prdp|restriction|licence status/);
   const isVehicle = has(/registration|reg no|\bvin\b|chassis|engine number|engine no|\bmake\b|\bmodel\b|disc number|licence disc/);
   const isSAID = has(/id number|identity number|idnumber|id no/) && has(/surname|names|forename|first name/);
 
