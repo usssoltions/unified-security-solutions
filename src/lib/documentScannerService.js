@@ -316,19 +316,14 @@ export function stopScanner() {
 export function toggleFlash() { if (barkoderInstance) { try { barkoderInstance.changeFlashState(); } catch (_) {} } }
 
 /**
- * Apply the last manually- or auto-selected rear camera BEFORE startScanner so
- * the right physical camera opens directly (no mid-scan restart). The SDK's own
- * cached id takes precedence; we only fall back to our localStorage value.
+ * The SDK selects the rear camera on its own via getUserMedia
+ * ({ facingMode: "environment" }) and manages its own cached camera id
+ * (CAMED_CAMERA_ID_KEY). We deliberately do NOT inject a deviceId here: a
+ * stale localStorage id from a previous device/session would make
+ * getUserMedia({ deviceId: { exact: <gone> } }) reject with NotFoundError and
+ * the camera would never open. Let the SDK's defaults handle camera choice.
  */
-export async function applyRememberedCamera() {
-  try {
-    const bk = await initializeBarkoder();
-    const active = bk.getActiveCamera ? bk.getActiveCamera() : null;
-    if (active) return; // SDK already has a camera chosen
-    const remembered = localStorage.getItem("barkoder_camera_id");
-    if (remembered) { bk.setCameraId(remembered); console.log("[barKoder] applied remembered camera", remembered); }
-  } catch (_) { /* non-fatal */ }
-}
+export async function applyRememberedCamera() { /* no-op — SDK defaults to rear camera */ }
 
 /**
  * After the camera is already running (permission granted), enumerate the

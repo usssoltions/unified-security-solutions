@@ -28,34 +28,24 @@ function patchBarkoderWasm() {
       if (patched.includes(stream)) {
         patched = patched.replace(stream, 'let globalCompiledModule;try{globalCompiledModule=await WebAssembly.compileStreaming(wasmResponse);}catch(_mimeErr){const _resp=await fetch(wasmUrl);globalCompiledModule=await WebAssembly.compile(await _resp.arrayBuffer());}return globalCompiledModule;');
       }
-      // 3) Re-bind the camera container on every addPreview() call. barKoder
-      // captures `document.getElementById('barkoder-container')` ONCE at module
-      // load (a static class field). When the React DocumentScanner unmounts and
-      // remounts, React creates a NEW div but the SDK still references the old
-      // (now-detached) one, so startScanner appends the camera preview to a
-      // detached node -> the preview is invisible and the UI hangs on
-      // "Trying to open camera…". Re-querying the container in addPreview()
-      // (which runs on every startScanner) attaches the preview to the CURRENT
-      // div, so the engine instance can be reused across opens (fast re-open).
-      const addPreview = "static addPreview(){var container_exists=(this.container!=undefined";
-      if (patched.includes(addPreview)) {
-        patched = patched.replace(
-          addPreview,
-          "static addPreview(){this.container=document.getElementById('barkoder-container')||this.container||document.body;try{this.resizeObserver.disconnect();this.resizeObserver.observe(this.container);}catch(_re){}var container_exists=(this.container!=undefined"
-        );
-      }
-      // 4) Skip camera enumeration inside startScanner. barKoder's startScanner
-      // calls populateCameraPicker() -> Barkoder.getCameras() (enumerateDevices)
-      // BEFORE opening the camera. On several Android WebView devices (e.g. the
-      // Cubot King Kong ES used in the field) this enumeration NEVER resolves,
-      // so startScanner hangs and the camera is never opened — the UI stays
-      // stuck on "Starting camera…". The camera picker is disabled for guards
-      // (setCameraPickerEnabled(false)), so enumeration only feeds a hidden UI.
-      // startCamera() opens the camera directly via getUserMedia (facingMode
-      // environment), so skipping enumeration here is safe and unblocks the open.
+      // 3) Skip camera enumeration inside startScanner. barKoder's startScanner
+      // awaits populateCameraPicker(), which calls Barkoder.getCameras()
+      // (enumerateDevices) BEFORE opening the camera. On several Android WebView
+      // devices that enumeration never resolves, so the camera never opens. We
+      // can't just drop the call: the very next line reads JS_media.cameras
+      // (cameraPickerUI_update does `cameras.length`) — if cameras is undefined
+      // it throws, and since populateCameraPicker is awaited inside start(),
+      // that throw aborts startCamera() for EVERY scan type. So instead of the
+      // hanging getCameras(), seed an empty camera list. The picker (disabled
+      // for guards via setCameraPickerEnabled(false)) renders nothing, and
+      // startCamera() opens the rear camera directly via
+      // getUserMedia({ facingMode: "environment" }) — no enumerateDevices, no
+      // hang, works on every device. The container re-bind that used to live
+      // here is unnecessary: start() re-queries #barkoder-container on every
+      // call, so the SDK always attaches the preview to the current div.
       const enumCall = "try{await Barkoder.getCameras();}catch(e){";
       if (patched.includes(enumCall)) {
-        patched = patched.replace(enumCall, "try{void 0;/* enumeration skipped — hangs on some Android WebViews */}catch(e){");
+        patched = patched.replace(enumCall, "try{JS_media.cameras=JS_media.cameras||[];}catch(e){");
       }
       return patched === code ? null : { code: patched, map: null };
     }

@@ -160,9 +160,9 @@ export default function DocumentScanner({
     };
 
     try {
-      // Open the remembered rear camera directly (no permission round-trip),
-      // then apply the decoder/formatting for this profile — both in-memory.
-      await scanner.applyRememberedCamera();
+      // Apply the decoder/formatting for this profile in-memory. The SDK
+      // selects the rear camera itself (getUserMedia facingMode "environment")
+      // — we do NOT inject a deviceId (a stale id would make getUserMedia fail).
       const { supported } = await scanner.configureForProfile(documentType);
       if (!supported) { reportError({ type: "profile_not_active" }); return; }
 
