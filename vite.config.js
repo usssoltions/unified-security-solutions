@@ -44,6 +44,19 @@ function patchBarkoderWasm() {
           "static addPreview(){this.container=document.getElementById('barkoder-container')||this.container||document.body;try{this.resizeObserver.disconnect();this.resizeObserver.observe(this.container);}catch(_re){}var container_exists=(this.container!=undefined"
         );
       }
+      // 4) Skip camera enumeration inside startScanner. barKoder's startScanner
+      // calls populateCameraPicker() -> Barkoder.getCameras() (enumerateDevices)
+      // BEFORE opening the camera. On several Android WebView devices (e.g. the
+      // Cubot King Kong ES used in the field) this enumeration NEVER resolves,
+      // so startScanner hangs and the camera is never opened — the UI stays
+      // stuck on "Starting camera…". The camera picker is disabled for guards
+      // (setCameraPickerEnabled(false)), so enumeration only feeds a hidden UI.
+      // startCamera() opens the camera directly via getUserMedia (facingMode
+      // environment), so skipping enumeration here is safe and unblocks the open.
+      const enumCall = "try{await Barkoder.getCameras();}catch(e){";
+      if (patched.includes(enumCall)) {
+        patched = patched.replace(enumCall, "try{void 0;/* enumeration skipped — hangs on some Android WebViews */}catch(e){");
+      }
       return patched === code ? null : { code: patched, map: null };
     }
   };

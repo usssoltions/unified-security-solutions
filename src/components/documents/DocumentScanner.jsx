@@ -48,7 +48,8 @@ const ERROR_MESSAGES = {
   no_camera: { title: "No camera found", body: "No camera device was detected on this device." },
   camera_in_use: { title: "Camera in use", body: "The camera is already in use by another application. Close it and retry." },
   not_detected: { title: "No barcode detected", body: "No barcode was detected before the scan timed out. Try again with better lighting and framing." },
-  profile_not_active: { title: "Document type not enabled", body: "This document type is configured but not yet enabled." }
+  profile_not_active: { title: "Document type not enabled", body: "This document type is configured but not yet enabled." },
+  camera_failed: { title: "Camera failed to start", body: "The camera didn't open in time. Make sure no other app is using it, then retry." }
 };
 
 export default function DocumentScanner({
@@ -110,15 +111,53 @@ export default function DocumentScanner({
     setResolved(null);
     processingRef.current = false;
 
-    // Hard timeout: never hang on "Starting camera…". If the camera hasn't
-    // opened in 8s (e.g. permission stuck, camera held by another app, stale
-    // stream), surface a clear error instead of waiting forever.
+    // Live-camera watchdog. The SDK's startScanner returns immediately — the
+    // camera opens asynchronously via getUserMedia. Flipping to "scanning" before
+    // the <video> actually has a live stream hides real camera-open failures
+    // (permission stuck, enumeration hang, camera busy) behind a black frame
+    // and the user just sees a frozen viewfinder. Instead, stay on
+    // "Starting camera…" and poll the SDK's <video> element until it is playing;
+    // only then show the scan frame. If it never goes live within 15s, stop and
+    // surface a clear error. As a belt-and-suspenders fix for the SDK's stale
+    // container reference, if the <video> was attached to document.body (because
+    // the addPreview re-query patch didn't apply), relocate its preview node
+    // into #barkoder-container so the feed is actually visible.
+    let watchdogStopped = false;
+    const stopWatchdog = () => {
+      watchdogStopped = true;
+      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
+    };
     if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
     loadingTimerRef.current = setTimeout(() => {
-      console.error("[barKoder] camera init TIMEOUT (8s) — profile:", documentType);
-      scanner.logDebug("camera_init_timeout", { profile: documentType });
-      reportError({ type: "init_error" });
-    }, 8000);
+      if (watchdogStopped) return;
+      console.error("[barKoder] camera did not go live within 15s — profile:", documentType);
+      scanner.logDebug("camera_not_live_timeout", { profile: documentType });
+      scanner.stopScanner();
+      reportError({ type: "camera_failed" });
+    }, 15000);
+
+    const pollLive = () => {
+      if (watchdogStopped || processingRef.current) return;
+      const cont = document.getElementById("barkoder-container");
+      let v = cont && cont.querySelector("video");
+      if (!v && cont) {
+        // SDK attached the preview to document.body (stale container ref) —
+        // relocate the camera preview node into our visible container.
+        const orphan = document.body.querySelector("video");
+        if (orphan) {
+          const preview = orphan.parentElement;
+          if (preview) { try { cont.appendChild(preview); v = orphan; } catch (_) {} }
+        }
+      }
+      if (v && (v.readyState >= 2 || (v.videoWidth && v.videoWidth > 0))) {
+        stopWatchdog();
+        setStatus("scanning");
+        console.log("[barKoder] camera_live", { profile: documentType, w: v.videoWidth, caller });
+        scanner.logDebug("camera_live", { profile: documentType });
+        return;
+      }
+      setTimeout(pollLive, 250);
+    };
 
     try {
       // Open the remembered rear camera directly (no permission round-trip),
@@ -148,13 +187,12 @@ export default function DocumentScanner({
         handleResult(raw);
       });
 
-      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
-      setStatus("scanning");
-      console.log("[barKoder] camera_started", { profile: documentType, caller });
-      scanner.logDebug("camera_started", { profile: documentType, caller });
-      // Non-blocking: now that permission is granted, learn the best rear
-      // autofocus camera for the NEXT open. Does not restart the active scan.
-      scanner.autoSelectRearCamera().catch(() => {});
+      // Start the live-camera watchdog (flips to "scanning" only when the feed
+      // is actually live). NOTE: autoSelectRearCamera() is NOT called here — it
+      // runs Barkoder.getCameras() (enumerateDevices), which hangs on the target
+      // Android WebView. The SDK opens the rear camera directly via getUserMedia
+      // (facingMode "environment"), which is sufficient without enumeration.
+      pollLive();
     } catch (e) {
       if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
       reportError(e);
