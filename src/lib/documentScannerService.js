@@ -293,13 +293,77 @@ export function pickPrimaryRearCamera(cameras) {
 /* ------------------------------------------------------------------ */
 /* Scanning                                                            */
 /* ------------------------------------------------------------------ */
+// Guards against two startScanner() calls racing (e.g. React StrictMode
+// double-mount). The barKoder SDK hangs if startScanner is invoked while a
+// previous camera session is still opening.
+let scannerActive = false;
+export function isScannerActive() { return scannerActive; }
+
 export function startScanner(callback) {
   if (!barkoderInstance) throw { type: "not_initialized", message: "Scanner is not initialized." };
-  console.log("[barKoder] startScanner (continuous)");
+  if (scannerActive) { console.warn("[barKoder] startScanner ignored — camera already starting"); return; }
+  scannerActive = true;
+  console.log("[barKoder] startScanner (engine reused, continuous)");
+  logDebug("startScanner", { reused: true });
   barkoderInstance.startScanner(callback);
 }
-export function stopScanner() { if (barkoderInstance) { try { barkoderInstance.stopScanner(); console.log("[barKoder] stopScanner"); } catch (_) {} } }
+export function stopScanner() {
+  if (barkoderInstance) { try { barkoderInstance.stopScanner(); } catch (_) {} }
+  scannerActive = false;
+  console.log("[barKoder] stopScanner (camera released, engine kept in memory)");
+  logDebug("stopScanner");
+}
 export function toggleFlash() { if (barkoderInstance) { try { barkoderInstance.changeFlashState(); } catch (_) {} } }
+
+/**
+ * Apply the last manually- or auto-selected rear camera BEFORE startScanner so
+ * the right physical camera opens directly (no mid-scan restart). The SDK's own
+ * cached id takes precedence; we only fall back to our localStorage value.
+ */
+export async function applyRememberedCamera() {
+  try {
+    const bk = await initializeBarkoder();
+    const active = bk.getActiveCamera ? bk.getActiveCamera() : null;
+    if (active) return; // SDK already has a camera chosen
+    const remembered = localStorage.getItem("barkoder_camera_id");
+    if (remembered) { bk.setCameraId(remembered); console.log("[barKoder] applied remembered camera", remembered); }
+  } catch (_) { /* non-fatal */ }
+}
+
+/**
+ * After the camera is already running (permission granted), enumerate the
+ * physical cameras and pick the best rear autofocus module. This avoids the
+ * redundant getUserMedia permission round-trip that hangs the Android WebView
+ * when getCameras() is called before startScanner. The choice is persisted for
+ * the next open — it does NOT restart the active scan.
+ */
+export async function autoSelectRearCamera() {
+  try {
+    const bk = await initializeBarkoder();
+    if (!bk.getCameras) return;
+    const cameras = await bk.getCameras();
+    if (!cameras || !cameras.length) return;
+    // Only refine when the device actually labels cameras as back/rear. When
+    // labels are generic ("Camera 0/1/2" with no facing info — common on the
+    // Android WebView), picking by index could select a FRONT camera, so we
+    // trust the SDK's facingMode:"environment" default instead of guessing.
+    const isBack = (c) => /back|rear|environment/i.test(c.label || "");
+    const back = cameras.filter(isBack);
+    if (!back.length) {
+      console.log("[barKoder] no back-labelled cameras; keeping SDK environment default");
+      logDebug("camera_default_kept", { total: cameras.length });
+      return;
+    }
+    const best = pickPrimaryRearCamera(cameras);
+    if (!best?.id) return;
+    const active = bk.getActiveCamera ? bk.getActiveCamera() : null;
+    if (active === best.id) return;
+    bk.setCameraId(best.id);
+    try { localStorage.setItem("barkoder_camera_id", best.id); } catch (_) {}
+    console.log("[barKoder] auto-selected rear camera", best.label || best.id, "of", cameras.length);
+    logDebug("camera_auto_selected", { label: best.label || best.id, total: cameras.length });
+  } catch (e) { console.warn("[barKoder] autoSelectRearCamera failed:", e?.message || e); logDebug("camera_auto_select_failed", { reason: String(e?.message || e) }); }
+}
 
 /* ------------------------------------------------------------------ */
 /* Result parsing                                                      */
@@ -593,6 +657,8 @@ export async function getSadlPhoto(formattedJsonString) {
 /* ------------------------------------------------------------------ */
 /* Cleanup                                                             */
 /* ------------------------------------------------------------------ */
+// Full teardown — only for app shutdown / logout. Normal scanner close should
+// call stopScanner() only (keeps the WASM engine compiled for fast re-open).
 export function resetInstance() {
   stopScanner();
   barkoderInstance = null;

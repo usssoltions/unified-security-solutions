@@ -28,6 +28,22 @@ function patchBarkoderWasm() {
       if (patched.includes(stream)) {
         patched = patched.replace(stream, 'let globalCompiledModule;try{globalCompiledModule=await WebAssembly.compileStreaming(wasmResponse);}catch(_mimeErr){const _resp=await fetch(wasmUrl);globalCompiledModule=await WebAssembly.compile(await _resp.arrayBuffer());}return globalCompiledModule;');
       }
+      // 3) Re-bind the camera container on every addPreview() call. barKoder
+      // captures `document.getElementById('barkoder-container')` ONCE at module
+      // load (a static class field). When the React DocumentScanner unmounts and
+      // remounts, React creates a NEW div but the SDK still references the old
+      // (now-detached) one, so startScanner appends the camera preview to a
+      // detached node -> the preview is invisible and the UI hangs on
+      // "Trying to open camera…". Re-querying the container in addPreview()
+      // (which runs on every startScanner) attaches the preview to the CURRENT
+      // div, so the engine instance can be reused across opens (fast re-open).
+      const addPreview = "static addPreview(){var container_exists=(this.container!=undefined";
+      if (patched.includes(addPreview)) {
+        patched = patched.replace(
+          addPreview,
+          "static addPreview(){this.container=document.getElementById('barkoder-container')||this.container||document.body;try{this.resizeObserver.disconnect();this.resizeObserver.observe(this.container);}catch(_re){}var container_exists=(this.container!=undefined"
+        );
+      }
       return patched === code ? null : { code: patched, map: null };
     }
   };

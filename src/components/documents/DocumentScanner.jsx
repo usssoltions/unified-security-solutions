@@ -68,8 +68,13 @@ export default function DocumentScanner({
   const [mappedFields, setMappedFields] = useState(null);
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
   const processingRef = useRef(false);
+  const loadingTimerRef = useRef(null);
 
-  const reportError = useCallback((err) => { setError(err); setStatus("error"); }, []);
+  const reportError = useCallback((err) => {
+    if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
+    console.error("[barKoder] scanner error", err);
+    setError(err); setStatus("error");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,23 +82,22 @@ export default function DocumentScanner({
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
       try {
         await scanner.initializeBarkoder();
-        console.log("[barKoder] DocumentScanner initialized");
+        console.log("[barKoder] DocumentScanner initialized (engine ready)");
         if (cancelled) return;
-        const { supported } = await scanner.configureForProfile(documentType);
-        if (cancelled) return;
-        if (!supported) return reportError({ type: "profile_not_active" });
-
-        // Per the barKoder integration guide, do NOT call getCameras() before
-        // startScanner — it forces a redundant getUserMedia permission
-        // round-trip that hangs indefinitely on the Android WebView. With no
-        // cameraId set, the SDK defaults to facingMode:"environment" (the rear
-        // camera), which is correct for every scan profile; the SDK also
-        // caches the user's manual camera choice across sessions on its own.
-        beginScanning();
+        await beginScanning();
       } catch (e) { if (!cancelled) reportError(e); }
     };
     start();
-    return () => { cancelled = true; scanner.stopScanner(); scanner.resetInstance(); console.log("[barKoder] DocumentScanner unmount (instance reset for next open)"); };
+    // On close: release only the CAMERA (stopScanner). The WASM engine instance
+    // is kept in memory so the next open skips the ~2-3s WASM compile and just
+    // re-acquires the camera (<1s). The vite patch re-binds the container div
+    // so the reused instance attaches to the new <div id="barkoder-container">.
+    return () => {
+      cancelled = true;
+      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
+      scanner.stopScanner();
+      console.log("[barKoder] DocumentScanner unmount (camera released, engine kept)");
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType]);
 
@@ -105,13 +109,26 @@ export default function DocumentScanner({
     setMappedFields(null);
     setResolved(null);
     processingRef.current = false;
+
+    // Hard timeout: never hang on "Starting camera…". If the camera hasn't
+    // opened in 8s (e.g. permission stuck, camera held by another app, stale
+    // stream), surface a clear error instead of waiting forever.
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    loadingTimerRef.current = setTimeout(() => {
+      console.error("[barKoder] camera init TIMEOUT (8s) — profile:", documentType);
+      scanner.logDebug("camera_init_timeout", { profile: documentType });
+      reportError({ type: "init_error" });
+    }, 8000);
+
     try {
-      await scanner.configureForProfile(documentType);
+      // Open the remembered rear camera directly (no permission round-trip),
+      // then apply the decoder/formatting for this profile — both in-memory.
+      await scanner.applyRememberedCamera();
+      const { supported } = await scanner.configureForProfile(documentType);
+      if (!supported) { reportError({ type: "profile_not_active" }); return; }
+
       scanner.startScanner((raw) => {
         console.log("[barKoder] RAW DECODE RESULT (unmodified):", raw);
-        console.log("[barKoder] result keys:", raw ? Object.keys(raw) : [],
-          "| formattedJSON?", !!(raw?.formattedJSON || (raw?.results?.[0]?.formattedJSON)),
-          "| textualData len:", (raw?.textualData || raw?.results?.[0]?.textualData || "").length);
         if (processingRef.current) return;
         if (!raw) return;
         if (raw.error) {
@@ -130,10 +147,18 @@ export default function DocumentScanner({
         scanner.stopScanner();
         handleResult(raw);
       });
+
+      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
       setStatus("scanning");
       console.log("[barKoder] camera_started", { profile: documentType, caller });
       scanner.logDebug("camera_started", { profile: documentType, caller });
-    } catch (e) { reportError(e); }
+      // Non-blocking: now that permission is granted, learn the best rear
+      // autofocus camera for the NEXT open. Does not restart the active scan.
+      scanner.autoSelectRearCamera().catch(() => {});
+    } catch (e) {
+      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
+      reportError(e);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType, caller]);
 
