@@ -28,25 +28,13 @@ function patchBarkoderWasm() {
       if (patched.includes(stream)) {
         patched = patched.replace(stream, 'let globalCompiledModule;try{globalCompiledModule=await WebAssembly.compileStreaming(wasmResponse);}catch(_mimeErr){const _resp=await fetch(wasmUrl);globalCompiledModule=await WebAssembly.compile(await _resp.arrayBuffer());}return globalCompiledModule;');
       }
-      // 3) Skip camera enumeration inside startScanner. barKoder's startScanner
-      // awaits populateCameraPicker(), which calls Barkoder.getCameras()
-      // (enumerateDevices) BEFORE opening the camera. On several Android WebView
-      // devices that enumeration never resolves, so the camera never opens. We
-      // can't just drop the call: the very next line reads JS_media.cameras
-      // (cameraPickerUI_update does `cameras.length`) — if cameras is undefined
-      // it throws, and since populateCameraPicker is awaited inside start(),
-      // that throw aborts startCamera() for EVERY scan type. So instead of the
-      // hanging getCameras(), seed an empty camera list. The picker (disabled
-      // for guards via setCameraPickerEnabled(false)) renders nothing, and
-      // startCamera() opens the rear camera directly via
-      // getUserMedia({ facingMode: "environment" }) — no enumerateDevices, no
-      // hang, works on every device. The container re-bind that used to live
-      // here is unnecessary: start() re-queries #barkoder-container on every
-      // call, so the SDK always attaches the preview to the current div.
-      const enumCall = "try{await Barkoder.getCameras();}catch(e){";
-      if (patched.includes(enumCall)) {
-        patched = patched.replace(enumCall, "try{JS_media.cameras=JS_media.cameras||[];}catch(e){");
-      }
+      // 3) Camera enumeration is left UNPATCHED — this is the documented barKoder
+      // flow. populateCameraPicker() calls Barkoder.getCameras() (enumerateDevices)
+      // and then startCamera() opens the rear camera via getUserMedia
+      // ({ facingMode: "environment" }). Stubbing getCameras() out (seeding an
+      // empty camera list) deviated from the SDK's documented flow and caused the
+      // camera to stall on devices where the open depends on enumeration
+      // completing. Per the barKoder README, leave it as-is.
       return patched === code ? null : { code: patched, map: null };
     }
   };
