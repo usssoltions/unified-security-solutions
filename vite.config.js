@@ -28,13 +28,27 @@ function patchBarkoderWasm() {
       if (patched.includes(stream)) {
         patched = patched.replace(stream, 'let globalCompiledModule;try{globalCompiledModule=await WebAssembly.compileStreaming(wasmResponse);}catch(_mimeErr){const _resp=await fetch(wasmUrl);globalCompiledModule=await WebAssembly.compile(await _resp.arrayBuffer());}return globalCompiledModule;');
       }
-      // 3) Camera enumeration is left UNPATCHED — this is the documented barKoder
+      // 3) Re-bind the preview container on every scan. barKoder captures
+      // DOM_elements.container = document.getElementById('barkoder-container')
+      // ONCE, as a static class field at module-load time, and addPreview() then
+      // appends the camera preview to that cached element. When the scanner
+      // component unmounts and remounts (or a different scan type opens), the new
+      // <div id="barkoder-container"> is a different element, but the SDK keeps
+      // pointing at the old, now-detached div — a detached div still passes the
+      // `tagName==='DIV'` check, so addPreview() happily attaches the live feed to
+      // a div that is no longer on screen. The feed never appears and the scanner
+      // hangs on "Starting camera…". Re-query the current container at the top of
+      // addPreview() (which runs on every startScanner) and require it to still be
+      // in the document; fall back to document.body only when it is genuinely gone.
+      const addPreviewHead = "static addPreview(){var container_exists=(this.container!=undefined&&this.container!=null&&typeof this.container==='object'&&this.container.tagName==='DIV');if(!container_exists)this.container=document.body;this.container.appendChild(this.cameraPreview);";
+      const addPreviewFix = "static addPreview(){this.container=document.getElementById('barkoder-container')||this.container;var container_exists=(this.container!=undefined&&this.container!=null&&typeof this.container==='object'&&this.container.tagName==='DIV'&&document.body.contains(this.container));if(!container_exists)this.container=document.body;this.container.appendChild(this.cameraPreview);";
+      if (patched.includes(addPreviewHead)) {
+        patched = patched.replace(addPreviewHead, addPreviewFix);
+      }
+      // 4) Camera enumeration is left UNPATCHED — this is the documented barKoder
       // flow. populateCameraPicker() calls Barkoder.getCameras() (enumerateDevices)
       // and then startCamera() opens the rear camera via getUserMedia
-      // ({ facingMode: "environment" }). Stubbing getCameras() out (seeding an
-      // empty camera list) deviated from the SDK's documented flow and caused the
-      // camera to stall on devices where the open depends on enumeration
-      // completing. Per the barKoder README, leave it as-is.
+      // ({ facingMode: "environment" }). Per the barKoder README, leave it as-is.
       return patched === code ? null : { code: patched, map: null };
     }
   };
