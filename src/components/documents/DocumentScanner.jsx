@@ -51,6 +51,27 @@ const ERROR_MESSAGES = {
   profile_not_active: { title: "Document type not enabled", body: "This document type is configured but not yet enabled." }
 };
 
+// The barKoder SDK reads `document.getElementById('barkoder-container')` ONCE
+// at module-load time (static class field) and caches that element forever.
+// If React re-creates the div on every open, the SDK keeps pointing at the old,
+// detached element and the camera feed never starts. So we keep ONE persistent
+// container element and re-attach it into the current viewport on each open —
+// before the SDK is (re)initialized.
+let _scannerContainer = null;
+function ensureScannerContainer(wrapper) {
+  if (!wrapper) return null;
+  if (!_scannerContainer) {
+    _scannerContainer = document.createElement("div");
+    _scannerContainer.id = "barkoder-container";
+  }
+  Object.assign(_scannerContainer.style, {
+    position: "absolute", inset: "0", width: "100%", height: "100%",
+    minWidth: "280px", minHeight: "280px", background: "#000",
+  });
+  if (_scannerContainer.parentNode !== wrapper) wrapper.appendChild(_scannerContainer);
+  return _scannerContainer;
+}
+
 export default function DocumentScanner({
   documentType = "auto",
   caller = null,
@@ -68,6 +89,7 @@ export default function DocumentScanner({
   const [mappedFields, setMappedFields] = useState(null);
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
   const processingRef = useRef(false);
+  const viewportRef = useRef(null);
 
   const reportError = useCallback((err) => { setError(err); setStatus("error"); }, []);
 
@@ -75,6 +97,9 @@ export default function DocumentScanner({
     let cancelled = false;
     const start = async () => {
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
+      // Attach the persistent #barkoder-container BEFORE the SDK loads/initializes,
+      // so its cached container reference always points at a live, in-DOM element.
+      ensureScannerContainer(viewportRef.current);
       try {
         await scanner.initializeBarkoder();
         console.log("[barKoder] DocumentScanner initialized");
@@ -104,7 +129,13 @@ export default function DocumentScanner({
       } catch (e) { if (!cancelled) reportError(e); }
     };
     start();
-    return () => { cancelled = true; scanner.stopScanner(); scanner.resetInstance(); console.log("[barKoder] DocumentScanner unmount (instance reset for next open)"); };
+    return () => {
+      cancelled = true;
+      scanner.stopScanner();
+      scanner.resetInstance();
+      if (_scannerContainer && _scannerContainer.parentNode) _scannerContainer.parentNode.removeChild(_scannerContainer);
+      console.log("[barKoder] DocumentScanner unmount (instance reset for next open)");
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType]);
 
@@ -202,7 +233,7 @@ export default function DocumentScanner({
       </div>
 
       <div className="relative flex-1 mx-3 rounded-2xl overflow-hidden bg-black border border-slate-700/50 min-h-[280px]">
-        <div id="barkoder-container" className="absolute inset-0" style={{ width: "100%", height: "100%", minWidth: 280, minHeight: 280, background: "#000" }} />
+        <div ref={viewportRef} className="absolute inset-0" style={{ width: "100%", height: "100%", minWidth: 280, minHeight: 280, background: "#000" }} />
 
         {status === "scanning" && (
           <div className="absolute inset-0 pointer-events-none flex flex-col">
