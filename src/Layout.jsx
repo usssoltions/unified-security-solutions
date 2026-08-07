@@ -206,8 +206,6 @@ export default function Layout({ children, currentPageName }) {
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
         { title: "Incident Queue", url: createPageUrl("AdminIncidents"), icon: AlertTriangle },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
-        { title: "Access History", url: createPageUrl("AccessHistory"), icon: FileText },
-        { title: "Access Settings", url: createPageUrl("AccessSettings"), icon: Sliders },
         { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "PTT Recordings", url: createPageUrl("PTTRecordings"), icon: Radio },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },

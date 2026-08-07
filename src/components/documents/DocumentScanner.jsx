@@ -48,8 +48,7 @@ const ERROR_MESSAGES = {
   no_camera: { title: "No camera found", body: "No camera device was detected on this device." },
   camera_in_use: { title: "Camera in use", body: "The camera is already in use by another application. Close it and retry." },
   not_detected: { title: "No barcode detected", body: "No barcode was detected before the scan timed out. Try again with better lighting and framing." },
-  profile_not_active: { title: "Document type not enabled", body: "This document type is configured but not yet enabled." },
-  camera_failed: { title: "Camera failed to start", body: "The camera didn't open in time. Make sure no other app is using it, then retry." }
+  profile_not_active: { title: "Document type not enabled", body: "This document type is configured but not yet enabled." }
 };
 
 export default function DocumentScanner({
@@ -68,44 +67,42 @@ export default function DocumentScanner({
   const [photoUrl, setPhotoUrl] = useState(null);
   const [mappedFields, setMappedFields] = useState(null);
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
-  const [diag, setDiag] = useState(null);
   const processingRef = useRef(false);
-  const loadingTimerRef = useRef(null);
-  const hostRef = useRef(null);
 
-  const reportError = useCallback((err) => {
-    if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
-    console.error("[barKoder] scanner error", err);
-    setError(err); setStatus("error");
-  }, []);
+  const reportError = useCallback((err) => { setError(err); setStatus("error"); }, []);
 
   useEffect(() => {
     let cancelled = false;
     const start = async () => {
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
-      // Move the persistent #barkoder-container into this scanner's host
-      // before initialising, so the SDK (which captures the container once at
-      // module load) always attaches the live feed to a live, on-screen element.
-      scanner.mountScannerContainer(hostRef.current);
       try {
         await scanner.initializeBarkoder();
-        console.log("[barKoder] DocumentScanner initialized (engine ready)");
+        console.log("[barKoder] DocumentScanner initialized");
         if (cancelled) return;
-        await beginScanning();
+        const { supported } = await scanner.configureForProfile(documentType);
+        if (cancelled) return;
+        if (!supported) return reportError({ type: "profile_not_active" });
+
+        try {
+          const cams = await scanner.getCameras();
+          if (cancelled) return;
+          setCameras(cams);
+          const rear = cams.find((c) => /back|rear|environment/i.test(c.label || c.facingMode || ""));
+          if (rear) {
+            const id = rear.id || rear.deviceId;
+            await scanner.setCameraId(id);
+            setSelectedCamera(id);
+          }
+        } catch (e) {
+          const msg = String(e?.name || e?.message || e).toLowerCase();
+          if (msg.includes("notallowed") || msg.includes("denied")) return reportError({ type: "camera_denied" });
+          if (msg.includes("notfound") || msg.includes("devices")) return reportError({ type: "no_camera" });
+        }
+        beginScanning();
       } catch (e) { if (!cancelled) reportError(e); }
     };
     start();
-    // On close: release only the CAMERA (stopScanner). The WASM engine instance
-    // is kept in memory so the next open skips the ~2-3s WASM compile and just
-    // re-acquires the camera (<1s). The vite patch re-binds the container div
-    // so the reused instance attaches to the new <div id="barkoder-container">.
-    return () => {
-      cancelled = true;
-      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
-      scanner.stopScanner();
-      scanner.unmountScannerContainer();
-      console.log("[barKoder] DocumentScanner unmount (camera released, engine kept)");
-    };
+    return () => { cancelled = true; scanner.stopScanner(); scanner.resetInstance(); console.log("[barKoder] DocumentScanner unmount (instance reset for next open)"); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType]);
 
@@ -117,126 +114,38 @@ export default function DocumentScanner({
     setMappedFields(null);
     setResolved(null);
     processingRef.current = false;
-
-    // Live-camera watchdog. The SDK's startScanner returns immediately — the
-    // camera opens asynchronously via getUserMedia. Flipping to "scanning" before
-    // the <video> actually has a live stream hides real camera-open failures
-    // (permission stuck, enumeration hang, camera busy) behind a black frame
-    // and the user just sees a frozen viewfinder. Instead, stay on
-    // "Starting camera…" and poll the SDK's <video> element until it is playing;
-    // only then show the scan frame. If it never goes live within 15s, stop and
-    // surface a clear error. As a belt-and-suspenders fix for the SDK's stale
-    // container reference, if the <video> was attached to document.body (because
-    // the addPreview re-query patch didn't apply), relocate its preview node
-    // into #barkoder-container so the feed is actually visible.
-    let watchdogStopped = false;
-    const stopWatchdog = () => {
-      watchdogStopped = true;
-      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
-    };
-    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
-    loadingTimerRef.current = setTimeout(() => {
-      if (watchdogStopped) return;
-      // Capture a diagnostic snapshot so we can see exactly why the camera
-      // never went live (container missing? video attached but not playing?
-      // no stream?) instead of guessing.
-      const cont = document.getElementById("barkoder-container");
-      const v = cont && cont.querySelector("video");
-      const snapshot = {
-        profile: documentType,
-        containerPresent: !!cont,
-        containerInDom: cont ? document.body.contains(cont) : false,
-        videoPresent: !!v,
-        videoReadyState: v ? v.readyState : null,
-        videoWidth: v ? v.videoWidth : null,
-        videoHasSrcObject: v ? !!v.srcObject : null,
-        scannerActive: scanner.isScannerActive(),
-        debug: scanner.getDebugLog().slice(-10),
-      };
-      console.error("[barKoder] camera did not go live within 15s — diagnostic:", snapshot);
-      setDiag(snapshot);
-      scanner.logDebug("camera_not_live_timeout", { profile: documentType, snapshot });
-      scanner.stopScanner();
-      reportError({ type: "camera_failed" });
-    }, 15000);
-
-    const pollLive = () => {
-      if (watchdogStopped || processingRef.current) return;
-      const cont = document.getElementById("barkoder-container");
-      let v = cont && cont.querySelector("video");
-      if (!v && cont) {
-        // SDK attached the preview to document.body (stale container ref) —
-        // relocate the camera preview node into our visible container.
-        const orphan = document.body.querySelector("video");
-        if (orphan) {
-          const preview = orphan.parentElement;
-          if (preview) { try { cont.appendChild(preview); v = orphan; } catch (_) {} }
-        }
-      }
-      if (v && (v.readyState >= 2 || (v.videoWidth && v.videoWidth > 0))) {
-        stopWatchdog();
-        setStatus("scanning");
-        console.log("[barKoder] camera_live", { profile: documentType, w: v.videoWidth, caller });
-        scanner.logDebug("camera_live", { profile: documentType });
-        return;
-      }
-      setTimeout(pollLive, 250);
-    };
-
     try {
-      // Apply the decoder/formatting for this profile in-memory. The SDK
-      // selects the rear camera itself (getUserMedia facingMode "environment")
-      // — we do NOT inject a deviceId (a stale id would make getUserMedia fail).
-      const { supported } = await scanner.configureForProfile(documentType);
-      if (!supported) { reportError({ type: "profile_not_active" }); return; }
-
+      await scanner.configureForProfile(documentType);
       scanner.startScanner((raw) => {
         console.log("[barKoder] RAW DECODE RESULT (unmodified):", raw);
+        console.log("[barKoder] result keys:", raw ? Object.keys(raw) : [],
+          "| formattedJSON?", !!(raw?.formattedJSON || (raw?.results?.[0]?.formattedJSON)),
+          "| textualData len:", (raw?.textualData || raw?.results?.[0]?.textualData || "").length);
         if (processingRef.current) return;
-        if (!raw) return;
-        if (raw.error) {
-          // SDK reports camera/permission failures via the result callback as
-          // { resultCount:0, type:"error", error:{name, message} }.
-          const nm = String(raw.error.name || raw.error.message || "").toLowerCase();
-          if (nm.includes("notallowed") || nm.includes("denied") || nm.includes("permission") || nm.includes("security"))
-            return reportError({ type: "camera_denied" });
-          if (nm.includes("notfound") || nm.includes("notreadable") || nm.includes("device") || nm.includes("camera"))
-            return reportError({ type: "no_camera" });
-          return; // transient — keep scanning
-        }
+        if (!raw || raw.error) return;
         if (raw.resultsCount === 0) return;
         if (!raw.textualData && !(raw.results && raw.results.length)) return;
         processingRef.current = true;
         scanner.stopScanner();
         handleResult(raw);
       });
-
-      // Start the live-camera watchdog (flips to "scanning" only when the feed
-      // is actually live). NOTE: autoSelectRearCamera() is NOT called here — it
-      // runs Barkoder.getCameras() (enumerateDevices), which hangs on the target
-      // Android WebView. The SDK opens the rear camera directly via getUserMedia
-      // (facingMode "environment"), which is sufficient without enumeration.
-      pollLive();
-    } catch (e) {
-      if (loadingTimerRef.current) { clearTimeout(loadingTimerRef.current); loadingTimerRef.current = null; }
-      reportError(e);
-    }
+      setStatus("scanning");
+      console.log("[barKoder] camera_started", { profile: documentType, caller });
+      scanner.logDebug("camera_started", { profile: documentType, caller });
+    } catch (e) { reportError(e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType, caller]);
 
   const handleResult = useCallback(async (raw) => {
     const { parsed, profileId, profile: resolvedProfile, mappedFields: mapped, parserUsed, qrInfo } =
-      scanner.resolveDocument(raw, caller, documentType);
+      scanner.resolveDocument(raw, caller);
     console.log("[barKoder] barcode_detected", { type: parsed.barcodeType, resolved: profileId, parsed: !!parsed.formattedJSON });
     scanner.logDebug("barcode_detected", { type: parsed.barcodeType, resolved: profileId });
 
     let photo = null;
     if (resolvedProfile.supportsPhoto && parsed.formattedJSON) {
-      // Barkoder.getSADLImage needs the formatted JSON string (reads Fields[15..17]),
-      // NOT the raw PDF417 textualData.
-      photo = await scanner.getSadlPhoto(parsed.formattedJSONRaw);
+      photo = await scanner.getSadlPhoto(parsed.textualData);
     }
-    console.log("[barKoder] photo_present", { yes: !!photo, source: parsed.formattedJSONSource });
     scanner.logDebug("photo_present", { yes: !!photo });
 
     setResult(parsed);
@@ -274,8 +183,6 @@ export default function DocumentScanner({
   const handleFlashToggle = useCallback(() => { scanner.toggleFlash(); setFlashOn((v) => !v); }, []);
 
   const errMsg = error ? (ERROR_MESSAGES[error.type] || ERROR_MESSAGES.init_error) : null;
-  const backCameras = cameras.filter((c) => /back|rear|environment/i.test(c.label || c.facingMode || ""));
-  const showCameraPicker = backCameras.length > 1;
   const headerLabel = documentType === "auto" ? "Scan Document" : profile.label;
 
   return (
@@ -288,7 +195,7 @@ export default function DocumentScanner({
       </div>
 
       <div className="relative flex-1 mx-3 rounded-2xl overflow-hidden bg-black border border-slate-700/50 min-h-[280px]">
-        <div ref={hostRef} className="absolute inset-0" style={{ width: "100%", height: "100%", minWidth: 280, minHeight: 280, background: "#000" }} />
+        <div id="barkoder-container" className="absolute inset-0" style={{ width: "100%", height: "100%", minWidth: 280, minHeight: 280, background: "#000" }} />
 
         {status === "scanning" && (
           <div className="absolute inset-0 pointer-events-none flex flex-col">
@@ -318,14 +225,6 @@ export default function DocumentScanner({
             <Button onClick={beginScanning} className="bg-sky-500 hover:bg-sky-600">
               <RefreshCw className="w-4 h-4 mr-2" /> Retry
             </Button>
-            {diag && (
-              <details className="mt-2 w-full max-w-md text-left">
-                <summary className="text-xs text-slate-500 cursor-pointer">Diagnostic</summary>
-                <pre className="mt-2 text-[10px] leading-tight text-slate-400 bg-slate-900/80 rounded-lg p-2 overflow-auto max-h-40">
-{JSON.stringify(diag, null, 1)}
-                </pre>
-              </details>
-            )}
           </div>
         )}
 
@@ -345,7 +244,7 @@ export default function DocumentScanner({
 
       {status !== "result" && (
         <div className="shrink-0 p-3 flex items-center gap-2" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
-          {showCameraPicker && (
+          {cameras.length > 1 && (
             <select value={selectedCamera || ""} onChange={(e) => handleCameraChange(e.target.value)}
               className="flex-1 bg-slate-800 text-slate-200 text-xs rounded-lg px-3 py-2.5 border border-slate-700">
               {cameras.map((c) => (

@@ -10,8 +10,6 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, RefreshCw, X, ChevronDown, ChevronUp, User, FileWarning, IdCard, QrCode } from "lucide-react";
 
 const HIDDEN_KEYS = new Set(["_raw"]);
-// SADL image fields rendered as the photo (handled separately) — never as text.
-const HIDDEN_PARSED_KEYS = ["imagerawbase64", "image width", "image height"];
 
 export default function DocumentScanReview({
   result, photoUrl, mappedFields, profile, qrInfo,
@@ -20,13 +18,9 @@ export default function DocumentScanReview({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const fields = result?.formattedJSON?.Fields || result?.formattedJSON || [];
-  const allParsedEntries = Array.isArray(fields)
+  const fieldEntries = Array.isArray(fields)
     ? fields.map((f, i) => [f?.Field ?? `Field ${i}`, f?.Value])
     : Object.entries(result?.formattedJSON || {});
-  // Hide the raw Base64 photo + dimension fields — the photo is rendered above.
-  const fieldEntries = allParsedEntries.filter(([k]) =>
-    k && !HIDDEN_PARSED_KEYS.includes(String(k).toLowerCase())
-  );
 
   const isParsed = !!result?.parsed;
   const hasPhoto = !!photoUrl;
@@ -120,11 +114,11 @@ export default function DocumentScanReview({
                 </div>
               ))}
             </div>
-          ) : !isQR ? (
+          ) : (
             <div className="flex items-center gap-2 text-amber-300 text-sm p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
               <FileWarning className="w-4 h-4" /> Barcode decoded but structured parsing unavailable.
             </div>
-          ) : null}
+          )}
         </div>
 
         {/* Diagnostics */}

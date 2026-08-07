@@ -1,7 +1,6 @@
 {
   "name": "AccessLog",
   "type": "object",
-  "description": "Permanent, searchable audit record of every access entry, exit and denial.",
   "properties": {
     "event_type": {
       "type": "string",
@@ -18,7 +17,6 @@
         "visitor",
         "guard",
         "vendor",
-        "contractor",
         "unknown"
       ]
     },
@@ -28,16 +26,10 @@
     "person_name": {
       "type": "string"
     },
-    "visitor_id": {
-      "type": "string"
-    },
     "unit_number": {
       "type": "string"
     },
     "gate_name": {
-      "type": "string"
-    },
-    "site_name": {
       "type": "string"
     },
     "scan_method": {
@@ -54,68 +46,10 @@
     "scanned_data": {
       "type": "string"
     },
-    "qr_code": {
-      "type": "string"
-    },
-    "driver_licence_number": {
-      "type": "string"
-    },
-    "sa_id_number": {
-      "type": "string"
-    },
     "vehicle_registration": {
       "type": "string"
     },
-    "vehicle_licence_disc_number": {
-      "type": "string"
-    },
-    "vehicle_vin": {
-      "type": "string"
-    },
-    "vehicle_make": {
-      "type": "string"
-    },
-    "vehicle_model": {
-      "type": "string"
-    },
-    "vehicle_colour": {
-      "type": "string"
-    },
-    "vehicle_licence_number": {
-      "type": "string"
-    },
-    "destination": {
-      "type": "string"
-    },
-    "visit_or_work": {
-      "type": "string",
-      "enum": [
-        "visit",
-        "work",
-        "none"
-      ],
-      "default": "none"
-    },
-    "work_type": {
-      "type": "string"
-    },
-    "company": {
-      "type": "string"
-    },
-    "visitor_type": {
-      "type": "string"
-    },
     "photo_url": {
-      "type": "string"
-    },
-    "parsed_json": {
-      "type": "string",
-      "description": "Verbatim barKoder formattedJSON for the scan"
-    },
-    "confidence": {
-      "type": "number"
-    },
-    "device": {
       "type": "string"
     },
     "location": {
@@ -129,17 +63,6 @@
         }
       }
     },
-    "entry_time": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "exit_time": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "time_on_site_minutes": {
-      "type": "number"
-    },
     "timestamp": {
       "type": "string",
       "format": "date-time"
@@ -148,6 +71,9 @@
       "type": "string"
     },
     "guard_name": {
+      "type": "string"
+    },
+    "visitor_id": {
       "type": "string"
     },
     "notes": {
