@@ -73,8 +73,8 @@ export function clearDebugLog() { DEBUG_LOG.length = 0; }
 export const SCAN_PROFILES = {
   auto: {
     id: "auto", label: "Auto Detect",
-    decoders: ["PDF417", "QR", "Datamatrix", "Aztec", "Code128", "Code93", "Code39"],
-    formatting: "Automatic", supportsPhoto: false, mapper: "auto",
+    decoders: ["PDF417", "QR", "QRMicro"],
+    formatting: "SADL", supportsPhoto: false, mapper: "auto",
     status: "active", instruction: "Align the document / barcode inside the frame",
   },
   drivers_licence: {
@@ -84,12 +84,12 @@ export const SCAN_PROFILES = {
   },
   vehicle_disc: {
     id: "vehicle_disc", label: "Vehicle Licence Disc",
-    decoders: ["PDF417"], formatting: "Automatic", supportsPhoto: false, mapper: "vehicle_disc",
+    decoders: ["PDF417"], formatting: "SADL", supportsPhoto: false, mapper: "vehicle_disc",
     status: "active", instruction: "Align the barcode on the vehicle licence disc inside the frame",
   },
   sa_id: {
     id: "sa_id", label: "SA ID Card / Book",
-    decoders: ["PDF417", "Code39"], formatting: "Automatic", supportsPhoto: false, mapper: "sa_id",
+    decoders: ["PDF417"], formatting: "SADL", supportsPhoto: false, mapper: "sa_id",
     status: "active", instruction: "Align the PDF417 barcode on the SA ID card inside the frame",
   },
   passport_mr: {
@@ -217,13 +217,28 @@ export async function initializeBarkoder() {
     console.log("[barKoder] sdk_initialized (license OK, wasm:" + (simdSupported() ? "simd" : "nosimd") + ")"); }
     catch (e) { logDebug("init_error", { reason: classifyInitError(e).type, msg: String(e?.message||e).slice(0,240) }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
-    Barkoder.setCameraResolution(Barkoder.constants.CameraResolution.FHD);
-    Barkoder.setDecodingSpeed(Barkoder.constants.DecodingSpeed.Normal);
-    Barkoder.setContinuous(false);
-    Barkoder.setFlashEnabled(true);
-    Barkoder.setZoomEnabled(false);
-    Barkoder.setCloseEnabled(false);
+    // === barKoder demo-exact configuration (see SADL demo app.js) ============
+    // The demo enables PDF417 + QR + QRMicro, uses Slow decoding for accuracy,
+    // the SADL formatter, and the two custom options that work around the
+    // v1.7.0 bug blocking SA ID and Vehicle Disc parsing. These are applied
+    // ONCE globally so every scan is parsed exactly like the demo.
+    Barkoder.setEnabledDecoders(
+      Barkoder.constants.Decoders.PDF417,
+      Barkoder.constants.Decoders.QR,
+      Barkoder.constants.Decoders.QRMicro
+    );
+    Barkoder.setDecodingSpeed(Barkoder.constants.DecodingSpeed.Slow);
+    Barkoder.setFormatting(Barkoder.constants.Formatting.SADL);
+    Barkoder.setCustomOption("SADL_decode_ID", 1);
+    Barkoder.setCustomOption("SADL_decode_vehicle_disk", 1);
+    Barkoder.setImageResultEnabled(false);
+    Barkoder.setBarcodeThumbnailOnResultEnabled(false);
+    try { Barkoder.addEventListener("stopScanner", () => logDebug("scanner_stopped")); } catch (_) { /* optional */ }
+    // ======================================================================
+    // UI helpers (do not affect decoding/parsing): suppress the SDK's own
+    // camera picker (we render our own) and enable the torch for our button.
     Barkoder.setCameraPickerEnabled(false);
+    Barkoder.setFlashEnabled(true);
 
     barkoderInstance = Barkoder;
     logDebug("sdk_initialized");
@@ -260,9 +275,11 @@ export async function configureForProfile(profileId) {
   } catch (_) { logDebug("formatting_unavailable", { formatting: profile.formatting }); }
 
   try {
-    if (profile.mapper === "sadl") {
-      const setter = bk.setCustomOption || barkoderSDKStatic?.setCustomOption;
-      if (typeof setter === "function") setter.call(bk, "SADL_decode_ID", 1);
+    // Re-assert the demo's SA ID + Vehicle Disc parser fix for any SADL-format
+    // profile (set globally at init; harmless to reapply).
+    if (profile.formatting === "SADL" && typeof bk.setCustomOption === "function") {
+      bk.setCustomOption("SADL_decode_ID", 1);
+      bk.setCustomOption("SADL_decode_vehicle_disk", 1);
     }
   } catch (_) { /* optional */ }
 
@@ -519,6 +536,12 @@ export function resolveDocument(rawResult, caller, hintProfileId) {
 
   if (hintProfileId && hintProfileId !== "auto" && getProfile(hintProfileId).status === "active") {
     profileId = hintProfileId;
+  } else if (parsed.formattedJSON && parsed.formattedJSON.Standard === "SADL") {
+    profileId = "drivers_licence"; parserUsed = "SADL";
+  } else if (parsed.formattedJSON && parsed.formattedJSON.Standard === "SAID") {
+    profileId = "sa_id"; parserUsed = "SAID";
+  } else if (parsed.formattedJSON && parsed.formattedJSON.Standard === "VehicleDisc") {
+    profileId = "vehicle_disc"; parserUsed = "VehicleDisc";
   } else if (parsed.formattedJSON && isLicence) {
     profileId = "drivers_licence"; parserUsed = "SADL";
   } else if (parsed.formattedJSON && isVehicle) {

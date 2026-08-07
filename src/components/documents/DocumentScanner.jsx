@@ -125,17 +125,12 @@ export default function DocumentScanner({
           // which hangs indefinitely on some Android WebViews. With permission
           // already granted we enumerate devices directly (fast, no permissions
           // query); startCamera uses the id directly in the getUserMedia constraint.
+          // Match the demo: do NOT set a camera id — the SDK defaults to the
+          // rear (environment) camera. We only enumerate to populate our
+          // optional camera-picker UI; a manual pick calls setCameraId.
           const cams = await scanner.enumerateCamerasSafe();
           if (cancelled || aborted) return;
           setCameras(cams);
-          const primary = scanner.pickPrimaryRearCamera(cams);
-          if (primary) {
-            const id = primary.id || primary.deviceId;
-            await scanner.setCameraId(id);
-            setSelectedCamera(id);
-            try { localStorage.setItem("barkoder_camera_id", String(id)); } catch (_) {}
-            console.log("[barKoder] auto-selected camera", primary.label || id);
-          }
         } catch (e) {
           const msg = String(e?.name || e?.message || e).toLowerCase();
           if (msg.includes("notallowed") || msg.includes("denied")) return reportError({ type: "camera_denied" });
