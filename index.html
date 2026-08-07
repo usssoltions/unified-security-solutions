@@ -67,6 +67,12 @@
       })();
     </script>
     <div id="root"></div>
+
+    <!-- barKoder Web/WASM SDK — loaded exactly like the vendor SADL demo:
+         a classic <script> tag pulling the UMD bundle + sibling .wasm files
+         from the app root, exposing window.BarkoderSDK before the app boots. -->
+    <script src="/barkoder-umd.js"></script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

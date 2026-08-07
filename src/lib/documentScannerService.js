@@ -21,21 +21,17 @@
  */
 import { processQR } from "@/lib/qrProcessor";
 
-function simdSupported() {
-  try {
-    return WebAssembly.validate(new Uint8Array([
-      0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,11,0
-    ]));
-  } catch (_) { return false; }
-}
-function wasmAssetUrl(file) {
-  const base = new URL("./", window.location.href).href.replace(/\/$/, "");
-  return base + "/" + file;
-}
-// Some static hosts serve .wasm with the wrong MIME (application/octet-stream),
-// which makes WebAssembly.compileStreaming throw "Incorrect response MIME
-// type". Patch it once to fall back to ArrayBuffer compilation on that error,
-// so the SDK initializes regardless of how the host serves the file.
+// The barKoder SDK is loaded exactly like the vendor SADL demo: a classic
+// <script src="/barkoder-umd.js"> tag in index.html exposes window.BarkoderSDK
+// (with sibling barkoder.wasm / barkoder_nosimd.wasm at the app root). The SDK
+// resolves the WASM by its own script URL + auto-selects SIMD vs no-SIMD, so
+// initialize() takes ONLY the licence key — no wasmPath, no options.
+//
+// One robustness shim the demo doesn't need: some static hosts serve .wasm
+// with the wrong MIME (application/octet-stream), which makes the SDK's
+// internal WebAssembly.compileStreaming throw "Incorrect response MIME type".
+// Patch it once to fall back to ArrayBuffer compilation on that error, so the
+// SDK initializes regardless of how the host serves the file.
 function patchCompileStreamingOnce() {
   if (window.__barkoderWasmMimePatched) return;
   const orig = WebAssembly.compileStreaming.bind(WebAssembly);
@@ -48,6 +44,23 @@ function patchCompileStreamingOnce() {
     }
   };
   window.__barkoderWasmMimePatched = true;
+}
+
+/**
+ * Resolves the global `window.BarkoderSDK` exposed by /barkoder-umd.js. The
+ * classic script tag in index.html runs before the app module, so this is
+ * normally immediate; we poll briefly only as a safety net.
+ */
+function waitForBarkoderSDK(timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const tick = () => {
+      if (typeof window !== "undefined" && window.BarkoderSDK && typeof window.BarkoderSDK.initialize === "function") return resolve(window.BarkoderSDK);
+      if (Date.now() - start > timeoutMs) return reject(new Error("window.BarkoderSDK not available — /barkoder-umd.js failed to load."));
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
 }
 
 export const SDK_VERSION = "barkoder-wasm@1.7.0";
@@ -190,17 +203,13 @@ export async function initializeBarkoder() {
 
     let SDK;
     try {
-      const mod = await import("barkoder-wasm");
-      // The barKoder UMD assigns module.exports the SDK object (or a Promise
-      // that resolves to it). Handle default, namespace, and thenable shapes.
-      let candidate = (mod && mod.default) ? mod.default : mod;
-      if (candidate && typeof candidate.then === "function") {
-        try { candidate = await candidate; } catch (_) { /* fall through to not-initialized */ }
-      }
-      if (!candidate || typeof candidate.initialize !== "function") {
-        throw new Error("barKoder module loaded but exposed no `initialize` (got " + (candidate === undefined ? "undefined" : typeof candidate) + ").");
-      }
-      SDK = candidate; barkoderSDKStatic = SDK; console.log("[barKoder] wasm_loaded");
+      // window.BarkoderSDK is provided by /barkoder-umd.js (script tag in
+      // index.html). It loads before the app module, but guard anyway and
+      // wait briefly in case of slow parsing.
+      SDK = await waitForBarkoderSDK();
+      barkoderSDKStatic = SDK;
+      console.log("[barKoder] umd_loaded (window.BarkoderSDK ready)");
+      patchCompileStreamingOnce();
     } catch (e) {
       const reason = String(e?.message || e).slice(0, 240);
       logDebug("wasm_load_error", { reason });
@@ -209,13 +218,13 @@ export async function initializeBarkoder() {
     }
 
     let Barkoder;
-    try { const wasmFile = simdSupported() ? "barkoder.wasm" : "barkoder_nosimd.wasm";
-    const wasmPath = wasmAssetUrl(wasmFile);
-    patchCompileStreamingOnce();
-    console.log("[barKoder] initialize wasmPath=", wasmPath, "simd=", simdSupported());
-    Barkoder = await SDK.initialize(key, { wasmPath });
-    console.log("[barKoder] sdk_initialized (license OK, wasm:" + (simdSupported() ? "simd" : "nosimd") + ")"); }
-    catch (e) { logDebug("init_error", { reason: classifyInitError(e).type, msg: String(e?.message||e).slice(0,240) }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
+    try {
+      // Demo-exact: initialize(LICENSE_KEY) with NO options. The SDK resolves
+      // the WASM by its own script URL and auto-selects SIMD/no-SIMD.
+      console.log("[barKoder] initialize (no options — demo-exact)");
+      Barkoder = await SDK.initialize(key);
+      console.log("[barKoder] sdk_initialized (license OK)");
+    } catch (e) { logDebug("init_error", { reason: classifyInitError(e).type, msg: String(e?.message||e).slice(0,240) }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
     // === barKoder demo-exact configuration (see SADL demo app.js) ============
     // The demo enables PDF417 + QR + QRMicro, uses Slow decoding for accuracy,
