@@ -47,6 +47,8 @@ const ERROR_MESSAGES = {
   camera_denied: { title: "Camera permission denied", body: "Allow camera access in your browser settings to scan barcodes." },
   no_camera: { title: "No camera found", body: "No camera device was detected on this device." },
   camera_in_use: { title: "Camera in use", body: "The camera is already in use by another application. Close it and retry." },
+  camera_unavailable: { title: "Camera unavailable", body: "This environment blocked camera access. The scanner can't run inside the builder preview — open the published app on a device over HTTPS." },
+  camera_timeout: { title: "Camera not responding", body: "The camera didn't start in time. Grant camera permission, make sure no other app is using it, then retry." },
   not_detected: { title: "No barcode detected", body: "No barcode was detected before the scan timed out. Try again with better lighting and framing." },
   profile_not_active: { title: "Document type not enabled", body: "This document type is configured but not yet enabled." }
 };
@@ -95,11 +97,20 @@ export default function DocumentScanner({
 
   useEffect(() => {
     let cancelled = false;
+    let aborted = false;
+    let watchdog = null;
     const start = async () => {
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
+      // The builder preview runs in an iframe without camera permission — bail early
+      // with a clear message instead of hanging forever on getUserMedia.
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function")
+        return reportError({ type: "camera_unavailable" });
       // Attach the persistent #barkoder-container BEFORE the SDK loads/initializes,
       // so its cached container reference always points at a live, in-DOM element.
       ensureScannerContainer(viewportRef.current);
+      // If init + camera start doesn't progress within 12s (e.g. a blocked/hung
+      // getUserMedia in the preview iframe), surface a clear error + Retry.
+      watchdog = setTimeout(() => { if (!cancelled) { aborted = true; console.warn("[barKoder] watchdog: camera start timed out"); reportError({ type: "camera_timeout" }); } }, 12000);
       try {
         await scanner.initializeBarkoder();
         console.log("[barKoder] DocumentScanner initialized");
@@ -110,7 +121,7 @@ export default function DocumentScanner({
 
         try {
           const cams = await scanner.getCameras();
-          if (cancelled) return;
+          if (cancelled || aborted) return;
           setCameras(cams);
           const primary = scanner.pickPrimaryRearCamera(cams);
           if (primary) {
@@ -125,12 +136,15 @@ export default function DocumentScanner({
           if (msg.includes("notallowed") || msg.includes("denied")) return reportError({ type: "camera_denied" });
           if (msg.includes("notfound") || msg.includes("devices")) return reportError({ type: "no_camera" });
         }
+        if (cancelled || aborted) return;
         beginScanning();
       } catch (e) { if (!cancelled) reportError(e); }
+      finally { if (watchdog) clearTimeout(watchdog); }
     };
     start();
     return () => {
       cancelled = true;
+      if (watchdog) clearTimeout(watchdog);
       scanner.stopScanner();
       scanner.resetInstance();
       if (_scannerContainer && _scannerContainer.parentNode) _scannerContainer.parentNode.removeChild(_scannerContainer);
