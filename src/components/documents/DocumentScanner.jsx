@@ -228,6 +228,9 @@ export default function DocumentScanner({
             <div className="text-center">
               <h3 className="text-white font-semibold text-base mb-1">{errMsg.title}</h3>
               <p className="text-slate-400 text-sm">{errMsg.body}</p>
+              {error?.message && (
+                <p className="text-slate-500 text-[11px] mt-2 break-words font-mono">{error.message}</p>
+              )}
             </div>
             <Button onClick={beginScanning} className="bg-sky-500 hover:bg-sky-600">
               <RefreshCw className="w-4 h-4 mr-2" /> Retry
