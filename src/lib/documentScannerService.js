@@ -32,6 +32,18 @@ function wasmAssetUrl(file) {
   const base = new URL("./", window.location.href).href.replace(/\/$/, "");
   return base + "/" + file;
 }
+// Fetch the wasm bytes and re-wrap as a Blob with the correct MIME type.
+// Some static hosts serve .wasm as application/octet-stream, which makes
+// WebAssembly.compileStreaming reject it ("Incorrect response MIME type").
+// A blob URL preserves the type we set, so the SDK's internal streaming
+// compile succeeds regardless of how the host serves the file.
+async function wasmBlobUrl(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("Failed to fetch barKoder wasm (HTTP " + resp.status + ")");
+  const buf = await resp.arrayBuffer();
+  const blob = new Blob([buf], { type: "application/wasm" });
+  return URL.createObjectURL(blob);
+}
 
 export const SDK_VERSION = "barkoder-wasm@1.7.0";
 
@@ -177,7 +189,7 @@ export async function initializeBarkoder() {
 
     let Barkoder;
     try { const wasmFile = simdSupported() ? "barkoder.wasm" : "barkoder_nosimd.wasm";
-    const wasmPath = wasmAssetUrl(wasmFile);
+    const wasmPath = await wasmBlobUrl(wasmAssetUrl(wasmFile));
     console.log("[barKoder] initialize wasmPath=", wasmPath, "simd=", simdSupported());
     Barkoder = await SDK.initialize(key, { wasmPath });
     console.log("[barKoder] sdk_initialized (license OK, wasm:" + (simdSupported() ? "simd" : "nosimd") + ")"); }
