@@ -11,5 +11,11 @@ export default defineConfig({
       legacySDKImports: process.env.BASE44_LEGACY_SDK_IMPORTS === 'true'
     }),
     react(),
-  ]
+  ],
+  optimizeDeps: {
+    // barkoder-wasm ships a UMD bundle; pre-bundle it so the dynamic import()
+    // in documentScannerService resolves a stable ESM chunk instead of failing
+    // to load the CJS module at runtime.
+    include: ["barkoder-wasm"]
+  }
 });

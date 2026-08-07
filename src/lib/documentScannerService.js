@@ -189,8 +189,24 @@ export async function initializeBarkoder() {
       throw { type: "insecure_context", message: "A secure HTTPS context is required for camera access and WASM streaming." };
 
     let SDK;
-    try { SDK = (await import("barkoder-wasm")).default; barkoderSDKStatic = SDK; console.log("[barKoder] wasm_loaded"); }
-    catch (e) { logDebug("wasm_load_error"); console.error("[barKoder] wasm_load_error", e); throw { type: "wasm_error", message: "Failed to load the barKoder WebAssembly asset." }; }
+    try {
+      const mod = await import("barkoder-wasm");
+      // The barKoder UMD assigns module.exports the SDK object (or a Promise
+      // that resolves to it). Handle default, namespace, and thenable shapes.
+      let candidate = (mod && mod.default) ? mod.default : mod;
+      if (candidate && typeof candidate.then === "function") {
+        try { candidate = await candidate; } catch (_) { /* fall through to not-initialized */ }
+      }
+      if (!candidate || typeof candidate.initialize !== "function") {
+        throw new Error("barKoder module loaded but exposed no `initialize` (got " + (candidate === undefined ? "undefined" : typeof candidate) + ").");
+      }
+      SDK = candidate; barkoderSDKStatic = SDK; console.log("[barKoder] wasm_loaded");
+    } catch (e) {
+      const reason = String(e?.message || e).slice(0, 240);
+      logDebug("wasm_load_error", { reason });
+      console.error("[barKoder] wasm_load_error", e);
+      throw { type: "wasm_error", message: "Failed to load the barKoder WebAssembly engine: " + reason };
+    }
 
     let Barkoder;
     try { const wasmFile = simdSupported() ? "barkoder.wasm" : "barkoder_nosimd.wasm";
@@ -199,7 +215,7 @@ export async function initializeBarkoder() {
     console.log("[barKoder] initialize wasmPath=", wasmPath, "simd=", simdSupported());
     Barkoder = await SDK.initialize(key, { wasmPath });
     console.log("[barKoder] sdk_initialized (license OK, wasm:" + (simdSupported() ? "simd" : "nosimd") + ")"); }
-    catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
+    catch (e) { logDebug("init_error", { reason: classifyInitError(e).type, msg: String(e?.message||e).slice(0,240) }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
     Barkoder.setCameraResolution(Barkoder.constants.CameraResolution.FHD);
     Barkoder.setDecodingSpeed(Barkoder.constants.DecodingSpeed.Normal);
