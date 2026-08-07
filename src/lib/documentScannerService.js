@@ -21,7 +21,7 @@
  */
 import { processQR } from "@/lib/qrProcessor";
 
-export const SDK_VERSION = "barkoder-wasm@1.5.0";
+export const SDK_VERSION = "barkoder-wasm@1.7.0";
 
 const DEBUG_LOG = [];
 let barkoderInstance = null;
@@ -285,13 +285,13 @@ export function parseResult(rawResult) {
     try {
       const obj = JSON.parse(formattedJSONStr);
       if (obj && typeof obj === "object") formattedJSON = obj;
-    } catch (_) { /* formattedJSON not JSON; fall through to textualData */ }
+    } catch (_) { malformedJSON = true; /* SDK's own formattedJSON was unparseable */ }
   }
   if (!formattedJSON && textualData) {
     try {
       const obj = JSON.parse(textualData);
       if (obj && typeof obj === "object") formattedJSON = obj;
-    } catch (_) { malformedJSON = !!textualData; }
+    } catch (_) { /* textualData isn't JSON — normal for PDF417/Code39/plain-text QR */ }
   }
 
   return {
@@ -325,18 +325,21 @@ function flattenFields(formattedJSON) {
   return { ...formattedJSON };
 }
 
+function norm(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
 function pickField(flat, ...needles) {
   const keys = Object.keys(flat);
   for (const n of needles) {
-    const key = keys.find((k) => k.toLowerCase().includes(n));
+    const nn = norm(n);
+    if (!nn) continue;
+    const key = keys.find((k) => norm(k).includes(nn));
     if (key !== undefined && flat[key] != null && flat[key] !== "") return String(flat[key]);
   }
   return "";
 }
 
 function looksLikeSADL(flat) {
-  const keys = Object.keys(flat).map((k) => k.toLowerCase());
-  return keys.some((k) => /surname|forename|id number|date of birth|driver licence|licence number/.test(k));
+  const keys = Object.keys(flat).map((k) => norm(k));
+  return keys.some((k) => /surname|forename|firstname|lastname|idnumber|dateofbirth|dob|driverlicence|driverlicense|licensenumber|licencenumber|vehiclecode|vehicleclass|prdp/.test(k));
 }
 
 /* ------------------------------------------------------------------ */
@@ -348,23 +351,23 @@ export function extractMappedFields(formattedJSON, profileId) {
   const flat = flattenFields(formattedJSON);
 
   if (profile.mapper === "sadl") {
-    const surname = pickField(flat, "surname");
+    const surname = pickField(flat, "surname", "last name", "last names", "family name");
     const firstNames = pickField(flat, "forename", "first name", "first names", "given name", "names");
     const initials = pickField(flat, "initials");
-    const idNumber = pickField(flat, "id number", "identity number", "id_number", "idnumber", "id no", "sa id");
+    const idNumber = pickField(flat, "id number", "identity number", "idnumber", "id no", "sa id");
     const name = [firstNames, surname].filter(Boolean).join(" ").trim() || surname || firstNames;
     return {
       visitor_name: name,
       visitor_id_number: idNumber,
       surname, first_names: firstNames, initials,
-      driver_licence_number: pickField(flat, "licence number", "license number", "licence no", "license no", "dl no", "driver licence"),
+      driver_licence_number: pickField(flat, "license number", "licence number", "license no", "licence no", "dl no", "driver licence", "driver license"),
       date_of_birth: pickField(flat, "date of birth", "birth", "dob"),
       gender: pickField(flat, "sex", "gender"),
       nationality: pickField(flat, "nationality"),
       country: pickField(flat, "country"),
       issue_date: pickField(flat, "issue date", "date of issue"),
       expiry_date: pickField(flat, "expiry date", "date of expiry", "expiry"),
-      vehicle_classes: pickField(flat, "vehicle class", "vehicle classes", "class", "code", "categories"),
+      vehicle_classes: pickField(flat, "vehicle code", "vehicle codes", "vehicle class", "vehicle classes", "class", "code", "categories"),
       restrictions: pickField(flat, "restriction"),
       prdp: pickField(flat, "prdp"),
       licence_status: pickField(flat, "licence status", "status"),
@@ -389,7 +392,7 @@ export function extractMappedFields(formattedJSON, profileId) {
   }
 
   if (profile.mapper === "sa_id") {
-    const surname = pickField(flat, "surname");
+    const surname = pickField(flat, "surname", "last name", "last names", "family name");
     const firstNames = pickField(flat, "names", "first names", "forename", "given name", "first name", "full names");
     const idNumber = pickField(flat, "id number", "identity number", "idnumber", "id no", "sa id");
     const name = [firstNames, surname].filter(Boolean).join(" ").trim() || surname || firstNames;
@@ -432,12 +435,12 @@ export function resolveDocument(rawResult, caller, hintProfileId) {
   console.log("[barKoder] resolveDocument", { barcodeType: parsed.barcodeType, hasJSON: !!parsed.formattedJSON, textLen: (parsed.textualData || "").length, hint: hintProfileId });
   const flat = parsed.formattedJSON ? flattenFields(parsed.formattedJSON) : {};
   const bt = (parsed.barcodeType || "").toLowerCase();
-  const keys = Object.keys(flat).map((k) => k.toLowerCase());
+  const keys = Object.keys(flat).map((k) => norm(k));
   const has = (re) => keys.some((k) => re.test(k));
 
-  const isLicence = has(/driver licence|driver license|licence number|license number|vehicle class|prdp|restriction/);
-  const isVehicle = has(/registration|reg no|\bvin\b|chassis|engine number|engine no|\bmake\b|\bmodel\b|disc number|licence disc/);
-  const isSAID = has(/id number|identity number|idnumber|id no/) && has(/surname|names|forename|first name/);
+  const isLicence = has(/driverlicence|driverlicense|licencenumber|licensenumber|vehiclecode|vehicleclass|prdp|restriction/);
+  const isVehicle = has(/registration|regno|vin|chassis|enginenumber|engineno|discnumber|licencedisc/) || (has(/make/) && has(/model/));
+  const isSAID = has(/idnumber|identitynumber|idno/) && has(/surname|firstname|lastname|forename|names/);
 
   let profileId;
   let parserUsed = null;
