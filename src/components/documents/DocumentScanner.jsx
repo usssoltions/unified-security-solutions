@@ -97,21 +97,21 @@ export default function DocumentScanner({
 
   useEffect(() => {
     let cancelled = false;
-    let aborted = false;
-    let watchdog = null;
     const start = async () => {
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
       // The builder preview runs in an iframe without camera permission — bail early
       // with a clear message instead of hanging forever on getUserMedia.
       if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function")
         return reportError({ type: "camera_unavailable" });
-      // Attach the persistent #barkoder-container BEFORE the SDK loads/initializes,
-      // so its cached container reference always points at a live, in-DOM element.
+      // Attach the persistent #barkoder-container before starting. The SDK reads
+      // it by id inside start() (verified in barkoder-umd.js), so it just needs to
+      // be in the DOM when startScanner runs — not at module load.
       ensureScannerContainer(viewportRef.current);
-      // If init + camera start doesn't progress within 20s (e.g. a blocked/hung
-      // getUserMedia, or a very slow first-time WASM compile), surface a clear
-      // error + Retry instead of spinning forever.
-      watchdog = setTimeout(() => { if (!cancelled) { aborted = true; console.warn("[barKoder] watchdog: camera start timed out"); reportError({ type: "camera_timeout" }); } }, 20000);
+      // The barKoder demo has no watchdog: it initializes once and shows the
+      // camera, waiting as long as needed for a barcode. A cold-start WASM
+      // compile can legitimately exceed 20s on a slow device, and a timeout
+      // there produces a false "Camera not responding". We rely on the SDK to
+      // start the camera and only surface genuine permission/hardware errors.
       try {
         await scanner.initializeBarkoder();
         console.log("[barKoder] DocumentScanner initialized");
@@ -121,34 +121,34 @@ export default function DocumentScanner({
         if (!supported) return reportError({ type: "profile_not_active" });
 
         try {
-          // The SDK's getCameras() calls navigator.permissions.query({name:"camera"}),
-          // which hangs indefinitely on some Android WebViews. With permission
-          // already granted we enumerate devices directly (fast, no permissions
-          // query); startCamera uses the id directly in the getUserMedia constraint.
           // Match the demo: do NOT set a camera id — the SDK defaults to the
-          // rear (environment) camera. We only enumerate to populate our
-          // optional camera-picker UI; a manual pick calls setCameraId.
+          // rear (environment) camera. We only enumerate (via the hang-safe
+          // path, since getCameras() calls permissions.query which hangs on
+          // some Android WebViews) to populate our optional camera-picker UI;
+          // a manual pick calls setCameraId.
           const cams = await scanner.enumerateCamerasSafe();
-          if (cancelled || aborted) return;
+          if (cancelled) return;
           setCameras(cams);
         } catch (e) {
           const msg = String(e?.name || e?.message || e).toLowerCase();
           if (msg.includes("notallowed") || msg.includes("denied")) return reportError({ type: "camera_denied" });
           if (msg.includes("notfound") || msg.includes("devices")) return reportError({ type: "no_camera" });
         }
-        if (cancelled || aborted) return;
+        if (cancelled) return;
         beginScanning();
       } catch (e) { if (!cancelled) reportError(e); }
-      finally { if (watchdog) clearTimeout(watchdog); }
     };
     start();
     return () => {
       cancelled = true;
-      if (watchdog) clearTimeout(watchdog);
       scanner.stopScanner();
-      scanner.resetInstance();
+      // Keep the SDK instance alive across opens — the demo initializes once
+      // and reuses it. Resetting on every close forces a full WASM re-compile
+      // next time (slow, and what pushed us past the old watchdog). We only
+      // detach the container so the view is hidden when closed;
+      // ensureScannerContainer re-attaches the same element on the next open.
       if (_scannerContainer && _scannerContainer.parentNode) _scannerContainer.parentNode.removeChild(_scannerContainer);
-      console.log("[barKoder] DocumentScanner unmount (instance reset for next open)");
+      console.log("[barKoder] DocumentScanner closed (instance retained for next open)");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType]);
