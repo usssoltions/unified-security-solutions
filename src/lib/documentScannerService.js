@@ -20,6 +20,16 @@
  * Privacy: the licence key is never logged, surfaced in errors, or shown.
  */
 import { processQR } from "@/lib/qrProcessor";
+import barkoderWasmSimdUrl from "barkoder-wasm/barkoder.wasm?url";
+import barkoderWasmNosimdUrl from "barkoder-wasm/barkoder_nosimd.wasm?url";
+
+function simdSupported() {
+  try {
+    return WebAssembly.validate(new Uint8Array([
+      0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,11,0
+    ]));
+  } catch (_) { return false; }
+}
 
 export const SDK_VERSION = "barkoder-wasm@1.7.0";
 
@@ -163,7 +173,9 @@ export async function initializeBarkoder() {
     catch (e) { logDebug("wasm_load_error"); console.error("[barKoder] wasm_load_error", e); throw { type: "wasm_error", message: "Failed to load the barKoder WebAssembly asset." }; }
 
     let Barkoder;
-    try { Barkoder = await SDK.initialize(key); console.log("[barKoder] sdk_initialized (license OK)"); }
+    try { const wasmPath = simdSupported() ? barkoderWasmSimdUrl : barkoderWasmNosimdUrl;
+    Barkoder = await SDK.initialize(key, { wasmPath });
+    console.log("[barKoder] sdk_initialized (license OK, wasm:" + (simdSupported() ? "simd" : "nosimd") + ")"); }
     catch (e) { logDebug("init_error", { reason: classifyInitError(e).type }); console.error("[barKoder] init_error", e); throw classifyInitError(e); }
 
     Barkoder.setCameraResolution(Barkoder.constants.CameraResolution.FHD);
