@@ -108,9 +108,10 @@ export default function DocumentScanner({
       // Attach the persistent #barkoder-container BEFORE the SDK loads/initializes,
       // so its cached container reference always points at a live, in-DOM element.
       ensureScannerContainer(viewportRef.current);
-      // If init + camera start doesn't progress within 12s (e.g. a blocked/hung
-      // getUserMedia in the preview iframe), surface a clear error + Retry.
-      watchdog = setTimeout(() => { if (!cancelled) { aborted = true; console.warn("[barKoder] watchdog: camera start timed out"); reportError({ type: "camera_timeout" }); } }, 12000);
+      // If init + camera start doesn't progress within 20s (e.g. a blocked/hung
+      // getUserMedia, or a very slow first-time WASM compile), surface a clear
+      // error + Retry instead of spinning forever.
+      watchdog = setTimeout(() => { if (!cancelled) { aborted = true; console.warn("[barKoder] watchdog: camera start timed out"); reportError({ type: "camera_timeout" }); } }, 20000);
       try {
         await scanner.initializeBarkoder();
         console.log("[barKoder] DocumentScanner initialized");
@@ -120,7 +121,11 @@ export default function DocumentScanner({
         if (!supported) return reportError({ type: "profile_not_active" });
 
         try {
-          const cams = await scanner.getCameras();
+          // The SDK's getCameras() calls navigator.permissions.query({name:"camera"}),
+          // which hangs indefinitely on some Android WebViews. With permission
+          // already granted we enumerate devices directly (fast, no permissions
+          // query); startCamera uses the id directly in the getUserMedia constraint.
+          const cams = await scanner.enumerateCamerasSafe();
           if (cancelled || aborted) return;
           setCameras(cams);
           const primary = scanner.pickPrimaryRearCamera(cams);

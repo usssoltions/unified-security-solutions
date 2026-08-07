@@ -280,6 +280,27 @@ export async function getCameras() { const bk = await initializeBarkoder(); retu
 export async function setCameraId(id) { const bk = await initializeBarkoder(); bk.setCameraId(id); }
 
 /**
+ * Enumerates video devices directly via navigator.mediaDevices.enumerateDevices,
+ * bypassing the SDK's getCameras(). The SDK's getCameras() calls
+ * navigator.permissions.query({name:"camera"}), which hangs indefinitely on some
+ * Android WebView versions — and since startCamera builds its getUserMedia
+ * constraint from the camera id directly (deviceId:{exact:...}), we don't need
+ * the SDK's internal camera list. Returns [] on any failure/timeout (never throws).
+ */
+export async function enumerateCamerasSafe(timeoutMs = 5000) {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== "function") return [];
+  let timer;
+  const timed = new Promise((resolve) => { timer = setTimeout(() => resolve([]), timeoutMs); });
+  try {
+    const devices = await Promise.race([navigator.mediaDevices.enumerateDevices(), timed]);
+    clearTimeout(timer);
+    const list = (devices || []).filter((d) => d.kind === "videoinput")
+      .map((d) => ({ id: d.deviceId, deviceId: d.deviceId, label: d.label || "", facingMode: "" }));
+    return list;
+  } catch (_) { clearTimeout(timer); return []; }
+}
+
+/**
  * Picks the primary rear camera, hiding duplicate telephoto/macro back cameras
  * that some Android devices (e.g. Cubot King Kong ES) expose as "camera 0/1/2".
  * Prefers a remembered choice, then the back camera with the lowest index
