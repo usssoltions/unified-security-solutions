@@ -11,6 +11,8 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import IncomingCallHandler from '@/components/IncomingCallHandler';
 import AndroidDownload from '@/pages/AndroidDownload';
+import AccessHistory from '@/pages/AccessHistory';
+import AccessSettings from '@/pages/AccessSettings';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -68,6 +70,16 @@ const AuthenticatedApp = () => {
         <Route path="/AndroidDownload" element={
           <LayoutWrapper currentPageName="AndroidDownload">
             <AndroidDownload />
+          </LayoutWrapper>
+        } />
+        <Route path="/AccessHistory" element={
+          <LayoutWrapper currentPageName="AccessHistory">
+            <AccessHistory />
+          </LayoutWrapper>
+        } />
+        <Route path="/AccessSettings" element={
+          <LayoutWrapper currentPageName="AccessSettings">
+            <AccessSettings />
           </LayoutWrapper>
         } />
         <Route path="*" element={<PageNotFound />} />
