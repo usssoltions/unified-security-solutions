@@ -246,7 +246,24 @@ export default function GuardShift() {
   }
 
   if (showForceSignOut) return <ForceSignOutModal user={user} />;
-  if (!user.is_clocked_in && user.role_type === "guard") return <ClockInOut user={user} location={location} />;
+  if (!user.is_clocked_in && user.role_type === "guard") {
+    // Render the shift-acknowledgement modal OVER the clock-in screen so a guard
+    // can Accept / Decline / Request Revision for an upcoming shift BEFORE they
+    // clock in (the WhatsApp "sign your shift" link lands here). Without this the
+    // guard only sees "No Shift Assigned" and can never acknowledge.
+    return (
+      <>
+        <ClockInOut user={user} location={location} />
+        {shiftToAck && (
+          <ShiftAcknowledgeModal
+            shift={shiftToAck}
+            user={user}
+            onClose={() => { setShiftToAck(null); queryClient.invalidateQueries(["upcomingShifts"]); }}
+          />
+        )}
+      </>
+    );
+  };
 
   if (showDailyReportModal && user?.needs_daily_report) {
     return (
