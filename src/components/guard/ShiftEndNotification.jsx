@@ -18,20 +18,33 @@ export default function ShiftEndNotification({ shift, user, location }) {
   useEffect(() => {
     if (!shift || !shift.end_time) return;
 
+    // Server is the source of truth for whether the end-of-shift alert has
+    // already fired. We only sound the siren on the FIRST transition; on later
+    // mounts (reload / refetch) we keep the modal but stay silent — this kills
+    // the recurring alert-sound loop on remount.
+    const alreadyNotified = !!shift.ended_notified;
+    if (alreadyNotified) setShowNotification(true);
+
     const checkShiftEnd = () => {
       const endTime = new Date(shift.end_time);
-      const now = new Date();
-      
-      if (now >= endTime && !showNotification) {
+      if (new Date() >= endTime && !showNotification) {
         setShowNotification(true);
-        playAlertSound();
+        if (!alreadyNotified) {
+          playAlertSound();
+          // Stamp the shift + notify supervisors server-side (Phase G/H). The
+          // function is idempotent, so a duplicate invoke from a refetch race
+          // is harmless.
+          base44.functions.invoke("sendShiftEndNotification", { shiftId: shift.id }).catch(() => {});
+        }
       }
     };
 
     checkShiftEnd();
     const interval = setInterval(checkShiftEnd, 30000);
 
-    return () => clearInterval(interval);
+    // Stop the looping siren when the component unmounts (e.g. clock-out →
+    // reload) so audio elements can't outlive the component.
+    return () => { clearInterval(interval); stopAlertSound(); };
   }, [shift, showNotification]);
 
   const playAlertSound = () => {
@@ -55,15 +68,15 @@ export default function ShiftEndNotification({ shift, user, location }) {
 
   const clockOutMutation = useMutation({
     mutationFn: async () => {
-      if (!location) {
-        throw new Error("Location services must be enabled");
-      }
-
+      // Allow clock-out even when GPS is momentarily unavailable — record
+      // whatever location we have (or null) rather than deadlocking the guard
+      // at the end of their shift waiting for a fix.
       await base44.entities.Shift.update(shift.id, {
         status: "completed",
         clock_out: {
           timestamp: new Date().toISOString(),
-          location: location
+          location: location || null,
+          verified: !!location
         }
       });
 
@@ -148,7 +161,7 @@ export default function ShiftEndNotification({ shift, user, location }) {
                 </Button>
                 <Button
                   onClick={() => clockOutMutation.mutate()}
-                  disabled={clockOutMutation.isPending || !location}
+                  disabled={clockOutMutation.isPending}
                   className="h-16 text-lg bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 font-bold"
                 >
                   {clockOutMutation.isPending ? (
@@ -227,8 +240,8 @@ export default function ShiftEndNotification({ shift, user, location }) {
           )}
 
           {!location && (
-            <p className="text-rose-400 text-center font-semibold animate-pulse">
-              ⚠️ Waiting for GPS location...
+            <p className="text-amber-400 text-center text-sm">
+              GPS unavailable — your location will be omitted from the clock-out record.
             </p>
           )}
 

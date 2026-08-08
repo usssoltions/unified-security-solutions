@@ -41,6 +41,16 @@
       "default": false,
       "description": "Whether the 2-hour reminder email has been sent \u2014 prevents duplicate reminders"
     },
+    "ended_notified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Server source of truth: set true once the shift-end alert has fired and supervisors were notified. Prevents duplicate end-of-shift notifications and the recurring alert-sound loop on remount/reload."
+    },
+    "ended_notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the shift-end notification was first dispatched."
+    },
     "guard_ack_status": {
       "type": "string",
       "enum": [
@@ -102,6 +112,9 @@
               "type": "number"
             }
           }
+        },
+        "verified": {
+          "type": "boolean"
         }
       }
     },
