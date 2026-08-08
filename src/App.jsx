@@ -13,6 +13,7 @@ import IncomingCallHandler from '@/components/IncomingCallHandler';
 import AndroidDownload from '@/pages/AndroidDownload';
 import AccessHistory from '@/pages/AccessHistory';
 import AccessSettings from '@/pages/AccessSettings';
+import ProtectedPage from '@/components/ProtectedPage';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -62,24 +63,32 @@ const AuthenticatedApp = () => {
             path={`/${path}`}
             element={
               <LayoutWrapper currentPageName={path}>
-                <Page />
+                <ProtectedPage pageKey={path}>
+                  <Page />
+                </ProtectedPage>
               </LayoutWrapper>
             }
           />
         ))}
         <Route path="/AndroidDownload" element={
           <LayoutWrapper currentPageName="AndroidDownload">
-            <AndroidDownload />
+            <ProtectedPage pageKey="AndroidDownload">
+              <AndroidDownload />
+            </ProtectedPage>
           </LayoutWrapper>
         } />
         <Route path="/AccessHistory" element={
           <LayoutWrapper currentPageName="AccessHistory">
-            <AccessHistory />
+            <ProtectedPage pageKey="AccessHistory">
+              <AccessHistory />
+            </ProtectedPage>
           </LayoutWrapper>
         } />
         <Route path="/AccessSettings" element={
           <LayoutWrapper currentPageName="AccessSettings">
-            <AccessSettings />
+            <ProtectedPage pageKey="AccessSettings">
+              <AccessSettings />
+            </ProtectedPage>
           </LayoutWrapper>
         } />
         <Route path="*" element={<PageNotFound />} />

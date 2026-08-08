@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { queryClientInstance } from "@/lib/query-client";
 import { base44 } from "@/api/base44Client";
 import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
@@ -100,10 +101,33 @@ export default function Layout({ children, currentPageName }) {
     } catch (e) {}
   };
 
+  // Track the previously-seen user id on this shared device so we can purge
+  // any cached data left over from a previous session the instant a NEW user
+  // logs in. Without this, React Query can briefly serve the prior user's
+  // records (notifications, logs, shifts) to the next user.
+  const prevUserId = React.useRef(null);
+
+  useEffect(() => {
+    if (!user) { prevUserId.current = null; return; }
+    if (prevUserId.current !== null && prevUserId.current !== user.id) {
+      try { queryClientInstance.clear(); } catch (_) {}
+    }
+    prevUserId.current = user.id;
+  }, [user?.id]);
+
   const handleLogout = async () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    await base44.auth.logout();
+    // PHASE E/F — full session reset on shared devices. Order matters:
+    // 1) drop every cached query so the next user can never read the previous
+    //    user's data from memory, 2) wipe client storage, 3) terminate the
+    //    auth session, 4) hard-navigate to "/" so the whole app remounts fresh
+    //    (no stale menu, no cached role, no reachable Back to admin pages).
+    try { queryClientInstance.clear(); } catch (_) {}
+    try { queryClientInstance.invalidateQueries(); } catch (_) {}
+    try { localStorage.clear(); } catch (_) {}
+    try { sessionStorage.clear(); } catch (_) {}
+    try { await base44.auth.logout(); } catch (_) {}
+    // Hard reload guarantees the previous user's component tree is destroyed.
+    window.location.assign("/");
   };
 
   const updateTabState = React.useCallback((tabName, url) => {
