@@ -81,6 +81,27 @@ export default function Layout({ children, currentPageName }) {
     return () => clearInterval(keepAlive);
   }, [user]);
 
+  // Seal the device hardware-back button at the app root so an authenticated
+  // user can never back out of the app into the login screen. When on the role's
+  // home page we push a sentinel history entry (same URL); pressing hardware back
+  // lands on the sentinel and we immediately re-seal it, trapping the user inside.
+  useEffect(() => {
+    if (!user) return;
+    const rootItem = getNavigationItems().find(i => i.isRoot);
+    if (!rootItem) return;
+    const rootPath = rootItem.url;
+    if (window.location.pathname === rootPath) {
+      window.history.pushState({ ussGuard: true }, "");
+    }
+    const handlePopState = (e) => {
+      if (window.location.pathname === rootPath && (!e.state || !e.state.ussGuard)) {
+        window.history.pushState({ ussGuard: true }, "");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [user, location.pathname]);
+
   const loadUser = async () => {
     try {
       const currentUser = await base44.auth.me();
@@ -298,6 +319,7 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const navigationItems = getNavigationItems();
+  const rootUrl = navigationItems.find(item => item.isRoot)?.url;
   const isRootPage = navigationItems.some(item => item.isRoot && location.pathname === item.url);
   const canGoBack = !isRootPage && window.history.length > 1;
 
@@ -348,7 +370,7 @@ export default function Layout({ children, currentPageName }) {
               <div className="px-4 lg:px-6 h-16 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   {canGoBack ? (
-                    <button onClick={() => navigate(-1)} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-800 text-slate-300 lg:hidden">
+                    <button onClick={() => navigate(rootUrl)} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-800 text-slate-300 lg:hidden">
                       <ArrowLeft className="w-5 h-5" />
                     </button>
                   ) : (
@@ -404,8 +426,8 @@ export default function Layout({ children, currentPageName }) {
                     </div>
                   </div>
 
-                  <button onClick={handleLogout} className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-400 transition-colors">
-                    <LogOut className="w-4 h-4" />
+                  <button onClick={handleLogout} title="Log out" className="w-12 h-12 bg-rose-500/15 border border-rose-500/30 rounded-xl flex items-center justify-center text-rose-400 hover:bg-rose-500/25 transition-colors">
+                    <LogOut className="w-5 h-5" />
                   </button>
                 </div>
               </div>
