@@ -52,12 +52,12 @@ export default function AssetManagement() {
 
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center">
+          <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shrink-0">
             <Package className="w-6 h-6 text-white" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Asset Management</h1>
             <p className="text-slate-400">Track equipment, vehicles, and service schedules</p>
           </div>
@@ -68,7 +68,7 @@ export default function AssetManagement() {
             setSelectedAsset(null);
             setShowForm(true);
           }}
-          className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
+          className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 w-full sm:w-auto"
         >
           <Plus className="w-5 h-5 mr-2" />
           Add Asset
@@ -109,7 +109,7 @@ export default function AssetManagement() {
       </div>
 
       <Tabs defaultValue="all" className="w-full">
-        <TabsList className="bg-slate-800/50">
+        <TabsList className="bg-slate-800/50 grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="all">All Assets</TabsTrigger>
           <TabsTrigger value="reminders">Service Reminders</TabsTrigger>
           <TabsTrigger value="vehicles">Vehicles</TabsTrigger>

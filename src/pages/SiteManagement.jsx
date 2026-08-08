@@ -51,19 +51,19 @@ export default function SiteManagement() {
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-sky-400 to-sky-600 rounded-full flex items-center justify-center">
+          <div className="w-12 h-12 bg-gradient-to-br from-sky-400 to-sky-600 rounded-full flex items-center justify-center shrink-0">
             <MapPin className="w-6 h-6 text-white" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Site Management</h1>
             <p className="text-slate-400">Manage security sites and checkpoints</p>
           </div>
         </div>
         <Button
           onClick={() => setShowForm(true)}
-          className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
+          className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 w-full sm:w-auto"
         >
           <Plus className="w-5 h-5 mr-2" />
           Add Site

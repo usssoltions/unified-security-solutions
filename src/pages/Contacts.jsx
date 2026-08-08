@@ -134,20 +134,20 @@ export default function Contacts() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center shrink-0">
                 <Users className="w-6 h-6 text-white" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h1 className="text-2xl font-bold text-white">Contacts</h1>
                 <p className="text-slate-400 text-sm">Call or message team members</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {isGroupCallMode && selectedUsers.length > 0 && (
                 <Button
                   onClick={startGroupCall}

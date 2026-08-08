@@ -406,17 +406,17 @@ export default function PTT() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center">
+            <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center shrink-0">
               <Radio className="w-6 h-6 text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-bold text-white">Push-to-Talk Radio</h1>
               <p className="text-slate-400 text-sm">Live Voice Communication</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <AvailabilitySelector user={user} />
             <div className="h-6 w-px bg-slate-700" />
             <Dialog open={showNewChannel} onOpenChange={setShowNewChannel}>

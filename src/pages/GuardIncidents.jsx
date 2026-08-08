@@ -86,14 +86,14 @@ export default function GuardIncidents() {
       await queryClient.invalidateQueries(["incidents"]);
     }}>
       <div className="min-h-screen p-4 lg:p-6 space-y-6">
-        <div className="flex items-center justify-between">
-        <div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Incident Reports</h1>
           <p className="text-slate-400 mt-1">Document and track security incidents</p>
         </div>
         <Button
           onClick={() => setShowForm(true)}
-          className="bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
+          className="bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 w-full sm:w-auto"
         >
           <Plus className="w-5 h-5 mr-2" />
           Report Incident

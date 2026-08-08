@@ -34,7 +34,7 @@ export default function Analytics() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -44,35 +44,35 @@ export default function Analytics() {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="bg-slate-800 border border-slate-700">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-sky-600">
+          <TabsList className="bg-slate-800 border border-slate-700 w-full flex overflow-x-auto">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-sky-600 shrink-0">
               <BarChart3 className="w-4 h-4 mr-2" />
               Overview
             </TabsTrigger>
-            <TabsTrigger value="ai-risk" className="data-[state=active]:bg-purple-600">
+            <TabsTrigger value="ai-risk" className="data-[state=active]:bg-purple-600 shrink-0">
               <Sparkles className="w-4 h-4 mr-2" />
               AI Risk Predictor
             </TabsTrigger>
-            <TabsTrigger value="performance" className="data-[state=active]:bg-sky-600">
+            <TabsTrigger value="performance" className="data-[state=active]:bg-sky-600 shrink-0">
               <Users className="w-4 h-4 mr-2" />
               Performance
             </TabsTrigger>
-            <TabsTrigger value="sites" className="data-[state=active]:bg-sky-600">
+            <TabsTrigger value="sites" className="data-[state=active]:bg-sky-600 shrink-0">
               <TrendingUp className="w-4 h-4 mr-2" />
               Sites
             </TabsTrigger>
-            <TabsTrigger value="maintenance" className="data-[state=active]:bg-sky-600">
+            <TabsTrigger value="maintenance" className="data-[state=active]:bg-sky-600 shrink-0">
               <AlertTriangle className="w-4 h-4 mr-2" />
               Maintenance
             </TabsTrigger>
-            <TabsTrigger value="comparative" className="data-[state=active]:bg-sky-600">
+            <TabsTrigger value="comparative" className="data-[state=active]:bg-sky-600 shrink-0">
               <Calendar className="w-4 h-4 mr-2" />
               Comparative
             </TabsTrigger>
-            <TabsTrigger value="custom" className="data-[state=active]:bg-sky-600">
+            <TabsTrigger value="custom" className="data-[state=active]:bg-sky-600 shrink-0">
               Custom Reports
             </TabsTrigger>
-            <TabsTrigger value="scheduler" className="data-[state=active]:bg-sky-600">
+            <TabsTrigger value="scheduler" className="data-[state=active]:bg-sky-600 shrink-0">
               Scheduler
             </TabsTrigger>
           </TabsList>
