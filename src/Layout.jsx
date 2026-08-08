@@ -82,21 +82,27 @@ export default function Layout({ children, currentPageName }) {
   }, [user]);
 
   // Seal the device hardware-back button so an authenticated user can never back
-  // out of the app into the login screen. On mount we push a sentinel history
-  // entry (same URL) so the browser history always has a same-document buffer
-  // below the current entry; any hardware/browser back fires popstate, which we
-  // intercept to re-seal the buffer and bounce the user home.
+  // out of the app into the login screen. Two layers:
+  //  1. Native Android shell calls window.__ussHardwareBack() on hardware back
+  //     (see MainActivity) — navigates to the role home, never to login.
+  //  2. Browser fallback: a sentinel history entry + popstate handler re-seals
+  //     and bounces home, so the browser/preview back button can't escape either.
   useEffect(() => {
     if (!user) return;
     const rootPath = getNavigationItems().find(i => i.isRoot)?.url;
     if (!rootPath) return;
+    const goHome = () => navigate(rootPath, { replace: true });
+    window.__ussHardwareBack = goHome;
     window.history.pushState({ ussGuard: true }, "");
     const handlePopState = () => {
       window.history.pushState({ ussGuard: true }, "");
-      navigate(rootPath, { replace: true });
+      goHome();
     };
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      delete window.__ussHardwareBack;
+    };
   }, [user, navigate]);
 
   const loadUser = async () => {

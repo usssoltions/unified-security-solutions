@@ -188,8 +188,15 @@ public class MainActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (webView != null && webView.canGoBack()) {
-                    webView.goBack();
+                if (webView != null) {
+                    // Never walk WebView history backward — that can reach the
+                    // login/auth page and exit the authenticated session. Instead
+                    // ask the web app to go to the role home screen. Falls back to
+                    // reloading the app URL if the JS hook isn't loaded yet.
+                    webView.evaluateJavascript(
+                        "if(window.__ussHardwareBack){window.__ussHardwareBack();}else{window.location.replace('"
+                            + APP_URL + "');}",
+                        null);
                 } else {
                     setEnabled(false);
                     onBackPressed();

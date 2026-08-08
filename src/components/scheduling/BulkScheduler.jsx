@@ -47,10 +47,11 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
     try {
       const site = sites.find(s => s.id === formData.site_id);
       const shifts = [];
-      
-      const startDate = new Date(formData.start_date);
-      const endDate = new Date(formData.end_date);
-      
+
+      // Parse as local time so the weekday matches what the user picked.
+      const startDate = new Date(formData.start_date + "T00:00:00");
+      const endDate = new Date(formData.end_date + "T00:00:00");
+
       for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
         const dayName = d.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
         
@@ -89,6 +90,11 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
         }
       }
 
+      if (shifts.length === 0) {
+        alert("No shifts match the selected days within this date range. Pick repeat days that fall inside your date range.");
+        return;
+      }
+
       const createdShifts = await base44.entities.Shift.bulkCreate(shifts);
 
       // Send email + in-app notifications for all guard-assigned shifts
@@ -120,7 +126,8 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
 
       onSuccess();
     } catch (error) {
-      alert("Failed to create shifts");
+      console.error("BulkScheduler shift creation failed:", error);
+      alert("Failed to create shifts: " + (error?.message || error));
     } finally {
       setSubmitting(false);
     }
