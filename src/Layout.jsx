@@ -81,26 +81,23 @@ export default function Layout({ children, currentPageName }) {
     return () => clearInterval(keepAlive);
   }, [user]);
 
-  // Seal the device hardware-back button at the app root so an authenticated
-  // user can never back out of the app into the login screen. When on the role's
-  // home page we push a sentinel history entry (same URL); pressing hardware back
-  // lands on the sentinel and we immediately re-seal it, trapping the user inside.
+  // Seal the device hardware-back button so an authenticated user can never back
+  // out of the app into the login screen. On mount we push a sentinel history
+  // entry (same URL) so the browser history always has a same-document buffer
+  // below the current entry; any hardware/browser back fires popstate, which we
+  // intercept to re-seal the buffer and bounce the user home.
   useEffect(() => {
     if (!user) return;
-    const rootItem = getNavigationItems().find(i => i.isRoot);
-    if (!rootItem) return;
-    const rootPath = rootItem.url;
-    if (window.location.pathname === rootPath) {
+    const rootPath = getNavigationItems().find(i => i.isRoot)?.url;
+    if (!rootPath) return;
+    window.history.pushState({ ussGuard: true }, "");
+    const handlePopState = () => {
       window.history.pushState({ ussGuard: true }, "");
-    }
-    const handlePopState = (e) => {
-      if (window.location.pathname === rootPath && (!e.state || !e.state.ussGuard)) {
-        window.history.pushState({ ussGuard: true }, "");
-      }
+      navigate(rootPath, { replace: true });
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [user, location.pathname]);
+  }, [user, navigate]);
 
   const loadUser = async () => {
     try {
@@ -400,15 +397,15 @@ export default function Layout({ children, currentPageName }) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300">
-                    <Menu className="w-5 h-5" />
+                  <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden w-11 h-11 bg-slate-800 rounded-xl flex items-center justify-center text-slate-200 active:scale-95 transition-transform touch-manipulation">
+                    <Menu className="w-6 h-6" />
                   </button>
 
                   <button
                     onClick={() => setShowNotifications(true)}
-                    className="relative w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300"
+                    className="relative w-11 h-11 bg-slate-800 rounded-xl flex items-center justify-center text-slate-200 active:scale-95 transition-transform touch-manipulation"
                   >
-                    <Bell className="w-4 h-4" />
+                    <Bell className="w-5 h-5" />
                     {notificationCount > 0 && (
                       <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
                         {notificationCount > 9 ? '9+' : notificationCount}
@@ -426,8 +423,8 @@ export default function Layout({ children, currentPageName }) {
                     </div>
                   </div>
 
-                  <button onClick={handleLogout} title="Log out" className="w-12 h-12 bg-rose-500/15 border border-rose-500/30 rounded-xl flex items-center justify-center text-rose-400 hover:bg-rose-500/25 transition-colors">
-                    <LogOut className="w-5 h-5" />
+                  <button onClick={handleLogout} title="Log out" className="w-12 h-12 bg-rose-500/15 border border-rose-500/30 rounded-xl flex items-center justify-center text-rose-400 hover:bg-rose-500/25 active:scale-95 transition touch-manipulation shrink-0">
+                    <LogOut className="w-6 h-6" />
                   </button>
                 </div>
               </div>
