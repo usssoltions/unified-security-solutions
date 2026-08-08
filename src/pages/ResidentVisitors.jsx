@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, X, Clock, CheckCircle2, Car, Phone, ScanLine, IdCard, ChevronDown, ChevronUp } from "lucide-react";
+import { UserPlus, X, Clock, CheckCircle2, Car, Phone, ScanLine, IdCard, ChevronDown, ChevronUp, QrCode } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
 import VisitorScanHistory from "@/components/documents/VisitorScanHistory";
 import { uploadDocumentPhotoWithThumbnail } from "@/lib/documentPhotoManager";
 import { recordScanAudit, getQuickGPS } from "@/lib/documentScanAudit";
+import { visitorQrImageUrl } from "@/lib/whatsapp";
+import VisitorQrShareModal from "@/components/visitors/VisitorQrShareModal";
 
 const DL_FIELDS = [
   "surname", "first_names", "initials", "driver_licence_number",
@@ -31,6 +33,7 @@ export default function ResidentVisitors() {
   const [scanPayload, setScanPayload] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showLicenceDetails, setShowLicenceDetails] = useState(false);
+  const [shareVisitor, setShareVisitor] = useState(null);
   const scanOpenRef = useRef(0);
   const qc = useQueryClient();
 
@@ -45,12 +48,14 @@ export default function ResidentVisitors() {
   const createMutation = useMutation({
     mutationFn: async (data) => {
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const qrCode = "VST" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
       return await base44.entities.Visitor.create({
         ...data,
         resident_id: user.id,
         resident_name: user.full_name,
         unit_number: user.unit_number,
         otp_code: otp,
+        qr_code: qrCode,
         status: "approved",
         id_scan_url: scanPayload?.photoUrl || null,
         scan_thumbnail_url: scanPayload?.thumbnail || null,
@@ -71,11 +76,28 @@ export default function ResidentVisitors() {
           mapped_summary: `${variables.visitor_name} ${variables.visitor_id_number || ""}`.trim(),
         }).catch(() => {});
       }
+      // Notify relevant staff (admins / guards) via backend (in-app + email)
+      if (_data?.id) {
+        base44.functions.invoke("sendVisitorRegistrationNotification", {
+          visitorId: _data.id,
+          visitorName: variables.visitor_name,
+          visitorIdNumber: variables.visitor_id_number,
+          visitorPhone: variables.visitor_phone,
+          vehicleReg: variables.vehicle_registration,
+          hostName: user.full_name,
+          unitNumber: user.unit_number,
+          validFrom: variables.valid_from,
+          validUntil: variables.valid_until,
+          qrCode: _data.qr_code,
+          otp: _data.otp_code,
+        }).catch(() => {});
+      }
       qc.invalidateQueries(["my_visitors"]);
       setShowForm(false);
       setScanPayload(null);
       setForm(EMPTY_FORM);
       setShowLicenceDetails(false);
+      setShareVisitor(_data);
     }
   });
 
@@ -275,6 +297,14 @@ export default function ResidentVisitors() {
                           <p className="text-2xl font-mono font-bold text-sky-400 tracking-widest">{v.otp_code}</p>
                         </div>
                       )}
+                      {v.qr_code && (
+                        <div className="mt-2 flex items-center gap-3">
+                          <img src={visitorQrImageUrl(v.qr_code)} alt="Visitor QR" className="w-16 h-16 bg-white p-1 rounded shrink-0" />
+                          <Button size="sm" variant="outline" className="border-slate-600 text-slate-300" onClick={() => setShareVisitor(v)}>
+                            <QrCode className="w-4 h-4 mr-1" /> Show / Send QR
+                          </Button>
+                        </div>
+                      )}
                       <VisitorScanHistory visitor={v} />
                     </div>
                     <Badge variant="outline" className="border-slate-600 text-slate-400 capitalize">{v.visit_type?.replace("_", " ")}</Badge>
@@ -292,6 +322,14 @@ export default function ResidentVisitors() {
           documentType="auto"
           onClose={handleScannerClose}
           onAccept={handleScanAccept}
+        />
+      )}
+
+      {shareVisitor && (
+        <VisitorQrShareModal
+          visitor={shareVisitor}
+          hostName={user?.full_name}
+          onClose={() => setShareVisitor(null)}
         />
       )}
     </div>

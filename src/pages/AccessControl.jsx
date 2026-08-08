@@ -49,6 +49,8 @@ export default function AccessControl() {
   const [exitCandidates, setExitCandidates] = useState([]);
   const [manualExitTarget, setManualExitTarget] = useState(null);
   const [overrideTarget, setOverrideTarget] = useState(null);
+  const [qrVisitor, setQrVisitor] = useState(null);
+  const [qrPayload, setQrPayload] = useState(null);
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
@@ -76,6 +78,7 @@ export default function AccessControl() {
     setMode(null); setStep("idle"); setPendingVisitor(null); setPendingMeta(null);
     setLicenceScan(null); setDiscFields(null);
     setActiveRecord(null); setExitCandidates([]);
+    setQrVisitor(null); setQrPayload(null);
   };
 
   const startMode = (m) => {
@@ -182,11 +185,19 @@ export default function AccessControl() {
       return;
     }
     if (visitor) {
-      await finalizeEntry({ purpose: "none", destination: "", workType: "", visitor, scan, qrPayload: payload });
+      // Hold for guard confirmation — show visitor details before granting access
+      setPendingVisitor(visitor);
+      setLicenceScan(scan);
+      setQrVisitor(visitor);
+      setQrPayload(payload);
+      setStep("qr_confirm");
     } else {
       await finalizeEntry({ purpose: "none", destination: "", workType: "", visitor: null, scan, qrPayload: payload, denied: true });
     }
   };
+
+  const confirmQrEntry = () => finalizeEntry({ purpose: "none", destination: "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload });
+  const denyQrEntry = () => finalizeEntry({ purpose: "none", destination: "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload, denied: true });
 
   const onApprove = (purpose, { destination, workType }) => {
     finalizeEntry({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
@@ -473,6 +484,21 @@ export default function AccessControl() {
 
             {mode === "qr" && step === "qr" && (
               <StepCard icon={QrCode} title="Scan QR Code" subtitle="Resident / visitor pass" onScan={() => openScanner("qr")} busy={busy} />
+            )}
+
+            {step === "qr_confirm" && qrVisitor && (
+              <div className="space-y-3">
+                <p className="text-emerald-300 text-sm font-medium">QR Pass Verified — confirm visitor details before granting access</p>
+                <VisitorCard visitor={qrVisitor} meta={null} photoUrl={licenceScan?.photoUrl} />
+                <div className="flex gap-3">
+                  <Button onClick={confirmQrEntry} disabled={busy} className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                    <ShieldCheck className="w-5 h-5 mr-2" /> Authorize Entry
+                  </Button>
+                  <Button onClick={denyQrEntry} disabled={busy} variant="outline" className="flex-1 h-12 border-rose-500/40 text-rose-400 hover:bg-rose-500/10">
+                    <XCircle className="w-5 h-5 mr-2" /> Deny
+                  </Button>
+                </div>
+              </div>
             )}
 
             {step === "pick_exit" && (

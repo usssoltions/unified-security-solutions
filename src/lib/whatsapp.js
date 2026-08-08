@@ -296,3 +296,28 @@ ${details ? `\nDetails: ${details}` : ""}
 
 📱 Review in app: ${appDeepLink("ControlRoom")}`;
 }
+
+// ─── Visitor pass (QR) helpers ────────────────────────────────────────────────
+
+/** Build a QR code image URL encoding the visitor's unique qr_code token. */
+export function visitorQrImageUrl(qrCode) {
+  if (!qrCode) return "";
+  return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCode)}`;
+}
+
+/** Message sent to the VISITOR's phone with their QR pass + visit details. */
+export function visitorPassMessage({ visitorName, hostName, unitNumber, validFrom, validUntil, otp, qrImageUrl, qrCode }) {
+  const dateRange = validFrom && validUntil
+    ? `${new Date(validFrom).toLocaleDateString("en-ZA")} – ${new Date(validUntil).toLocaleDateString("en-ZA")}`
+    : "Open";
+  return `🎫 *VISITOR PASS — ${visitorName || "Visitor"}*
+
+Host: ${hostName || "—"}${unitNumber ? ` (Unit ${unitNumber})` : ""}
+Valid: ${dateRange}
+OTP: ${otp || "—"}
+
+Show this QR code at the gate to gain entry:
+${qrImageUrl}
+
+Access code: ${qrCode || "—"}`;
+}
