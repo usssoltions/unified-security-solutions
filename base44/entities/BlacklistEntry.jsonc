@@ -1,0 +1,97 @@
+{
+  "name": "BlacklistEntry",
+  "type": "object",
+  "description": "A person or vehicle barred from entering the estate. Matched against scans at the gate; a match blocks entry unless a supervisor overrides it (Phase D).",
+  "properties": {
+    "entry_type": {
+      "type": "string",
+      "enum": [
+        "person",
+        "vehicle"
+      ],
+      "description": "Whether this blacklist record targets a person (by ID/licence) or a vehicle (by registration)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Person full name, or vehicle owner / label for vehicle entries."
+    },
+    "identifier_type": {
+      "type": "string",
+      "enum": [
+        "sa_id",
+        "driver_licence",
+        "passport",
+        "vehicle_registration"
+      ],
+      "description": "Which scanned identifier this entry is matched on."
+    },
+    "identifier_value": {
+      "type": "string",
+      "description": "The ID number, driver's licence number, passport number, or vehicle registration to match. Normalised uppercase, no spaces."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "trespassing",
+        "theft",
+        "vandalism",
+        "assault",
+        "blacklisted_by_client",
+        "suspicious_activity",
+        "non_payment",
+        "other"
+      ],
+      "default": "other"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "default": "medium"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text context / incident reference."
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "An inactive entry is kept for history but no longer blocks entry."
+    },
+    "expiry_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Optional date after which the entry auto-deactivates."
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "added_by_id": {
+      "type": "string"
+    },
+    "added_by_name": {
+      "type": "string"
+    },
+    "deactivated_by_id": {
+      "type": "string"
+    },
+    "deactivated_by_name": {
+      "type": "string"
+    },
+    "deactivated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "entry_type",
+    "identifier_type",
+    "identifier_value",
+    "reason",
+    "active"
+  ]
+}

@@ -4,8 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Briefcase, Plus, Trash2, Shield, Phone, Mail } from "lucide-react";
+import { Building2, Briefcase, Plus, Trash2, Shield, Phone, Mail, Ban } from "lucide-react";
 import AddDestinationModal from "@/components/access/AddDestinationModal";
+import BlacklistManager from "@/components/access/BlacklistManager";
 
 const DEFAULT_WORK_TYPES = [
   "Contractor", "Delivery", "Maintenance", "Gardener", "Cleaning",
@@ -14,6 +15,7 @@ const DEFAULT_WORK_TYPES = [
 
 export default function AccessSettings() {
   const qc = useQueryClient();
+  const [tab, setTab] = useState("general");
   const [newWorkType, setNewWorkType] = useState("");
   const [addingDefaults, setAddingDefaults] = useState(false);
 
@@ -74,6 +76,18 @@ export default function AccessSettings() {
       </div>
 
       <div className="max-w-3xl mx-auto p-4 space-y-6">
+        {/* Tabs */}
+        <div className="flex gap-2">
+          <button onClick={() => setTab("general")} className={`flex-1 h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold ${tab === "general" ? "bg-sky-500 text-white" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+            <Shield className="w-4 h-4" /> General
+          </button>
+          <button onClick={() => setTab("blacklist")} className={`flex-1 h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold ${tab === "blacklist" ? "bg-rose-500 text-white" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+            <Ban className="w-4 h-4" /> Blacklist
+          </button>
+        </div>
+
+        {tab === "general" && (
+        <>
         {/* Destinations */}
         <section className="rounded-2xl border border-slate-700/50 bg-slate-800/40 p-4">
           <div className="flex items-center justify-between mb-3">
@@ -143,6 +157,10 @@ export default function AccessSettings() {
             {workTypes.length === 0 && <p className="text-slate-500 text-sm">No work types yet.</p>}
           </div>
         </section>
+        </>
+        )}
+
+        {tab === "blacklist" && <BlacklistManager />}
       </div>
     </div>
   );
