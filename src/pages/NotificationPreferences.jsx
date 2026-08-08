@@ -97,12 +97,12 @@ export default function NotificationPreferences() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 sm:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-              <Bell className="w-8 h-8 text-sky-400" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
+              <Bell className="w-8 h-8 text-sky-400 shrink-0" />
               Notification Preferences
             </h1>
             <p className="text-slate-400 mt-1">Manage how you receive notifications</p>
@@ -110,7 +110,7 @@ export default function NotificationPreferences() {
           <Button
             onClick={handleSave}
             disabled={saveMutation.isPending}
-            className="bg-emerald-600 hover:bg-emerald-700"
+            className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto"
           >
             {saveMutation.isPending ? (
               <>

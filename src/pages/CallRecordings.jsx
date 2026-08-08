@@ -150,14 +150,14 @@ export default function CallRecordings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center">
+            <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center shrink-0">
               <Mic className="w-6 h-6 text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-bold text-white">Call Recordings</h1>
               <p className="text-slate-400 text-sm">
                 {totalSize} recordings • {Math.floor(totalDuration / 60)} minutes total

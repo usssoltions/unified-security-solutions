@@ -36,7 +36,7 @@ export default function CompletedPatrols() {
     const totalItems = selectedPatrol.completed_items?.length || 0;
 
     return (
-      <div className="min-h-screen p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <div className="min-h-screen p-4 sm:p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex items-center gap-4">
             <Button

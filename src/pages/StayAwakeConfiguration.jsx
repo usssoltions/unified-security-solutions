@@ -152,7 +152,7 @@ export default function StayAwakeConfiguration() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-6 mt-4">
+                      <div className="flex flex-wrap items-center gap-6 mt-4">
                         <div className="flex items-center gap-3">
                           <Switch
                             checked={guardSettings[guard.id]?.enabled || false}

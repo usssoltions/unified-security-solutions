@@ -42,11 +42,11 @@ export default function PatrolChecklists() {
   };
 
   return (
-    <div className="min-h-screen p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen p-4 sm:p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Patrol Checklists</h1>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Patrol Checklists</h1>
             <p className="text-slate-400">Create and manage site patrol checklists</p>
           </div>
           <Button
@@ -54,7 +54,7 @@ export default function PatrolChecklists() {
               setEditingTemplate(null);
               setShowForm(true);
             }}
-            className="bg-sky-600 hover:bg-sky-700"
+            className="bg-sky-600 hover:bg-sky-700 w-full sm:w-auto"
           >
             <Plus className="w-5 h-5 mr-2" />
             New Checklist
