@@ -98,15 +98,15 @@ export default function AdminMaintenance() {
 
   return (
     <div className="min-h-screen p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
-            <Wrench className="w-8 h-8 text-amber-400" />
+            <Wrench className="w-8 h-8 text-amber-400 shrink-0" />
             Maintenance Requests
           </h1>
           <p className="text-slate-400 mt-1">View and manage all maintenance requests</p>
         </div>
-        <Button onClick={exportToCSV} className="bg-emerald-600 hover:bg-emerald-700">
+        <Button onClick={exportToCSV} className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">
           <Download className="w-4 h-4 mr-2" />
           Export CSV
         </Button>

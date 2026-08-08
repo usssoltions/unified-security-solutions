@@ -82,14 +82,14 @@ export default function GuardMaintenance() {
 
   return (
     <div className="min-h-screen p-4 lg:p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Maintenance Requests</h1>
           <p className="text-slate-400 mt-1">Report facility issues and repairs needed</p>
         </div>
         <Button
           onClick={() => setShowForm(true)}
-          className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700"
+          className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 w-full sm:w-auto"
         >
           <Plus className="w-5 h-5 mr-2" />
           New Request
