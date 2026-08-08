@@ -34,7 +34,7 @@ export function getGPS() {
  * @param {object} args { mapped, photoUrl, scan }
  * @returns {Promise<{visitor, created, error?}>}
  */
-export async function resolveOrCreateVisitor({ mapped, photoUrl, scan }) {
+export async function resolveOrCreateVisitor({ mapped, photoUrl, scan, createIfMissing = true }) {
   const idNum = mapped?.visitor_id_number || "";
   const licNum = mapped?.driver_licence_number || "";
 
@@ -68,6 +68,8 @@ export async function resolveOrCreateVisitor({ mapped, photoUrl, scan }) {
     return { visitor, created: false };
   }
 
+  if (!createIfMissing) return { visitor: null, created: false };
+
   const name = mapped?.visitor_name
     || [mapped?.first_names, mapped?.surname].filter(Boolean).join(" ").trim()
     || "Unknown";
@@ -95,4 +97,18 @@ export async function countPreviousVisits(visitorId) {
     const logs = await base44.entities.AccessLog.filter({ visitor_id: visitorId });
     return logs.length;
   } catch (_) { return 0; }
+}
+
+/**
+ * Returns all AccessLog records for a visitor that are still 'inside' (active
+ * entries awaiting exit), newest first. Used by the exit flow to UPDATE the
+ * correct record instead of creating a duplicate (Phase B). Multiple results
+ * trigger the ambiguous-match picker.
+ */
+export async function findActiveInsideRecords(visitorId) {
+  if (!visitorId) return [];
+  try {
+    const recs = await base44.entities.AccessLog.filter({ visitor_id: visitorId, status: "inside" });
+    return recs.sort((a, b) => new Date(b.entry_time || b.timestamp) - new Date(a.entry_time || a.timestamp));
+  } catch (_) { return []; }
 }

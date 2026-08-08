@@ -15,7 +15,9 @@ import DocumentScanner from "@/components/documents/DocumentScanner";
 import VisitorCard from "@/components/access/VisitorCard";
 import PurposeStep from "@/components/access/PurposeStep";
 import StepCard from "@/components/access/StepCard";
-import { resolveOrCreateVisitor, getGPS, getDeviceDescriptor, countPreviousVisits } from "@/lib/accessVisitor";
+import { resolveOrCreateVisitor, getGPS, getDeviceDescriptor, countPreviousVisits, findActiveInsideRecords } from "@/lib/accessVisitor";
+import ExitConfirmModal from "@/components/access/ExitConfirmModal";
+import { can, PERMISSIONS } from "@/lib/permissions";
 
 const MODES = [
   { id: "vehicle", label: "Vehicle Entry", icon: Car, desc: "Licence → Disc → Visit/Work" },
@@ -42,6 +44,9 @@ export default function AccessControl() {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeRecord, setActiveRecord] = useState(null);
+  const [exitCandidates, setExitCandidates] = useState([]);
+  const [manualExitTarget, setManualExitTarget] = useState(null);
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
@@ -68,6 +73,7 @@ export default function AccessControl() {
   const resetWorkflow = () => {
     setMode(null); setStep("idle"); setPendingVisitor(null); setPendingMeta(null);
     setLicenceScan(null); setDiscFields(null);
+    setActiveRecord(null); setExitCandidates([]);
   };
 
   const startMode = (m) => {
@@ -78,10 +84,49 @@ export default function AccessControl() {
 
   const openScanner = (profileId) => { setScanProfile(profileId); setScanning(true); };
 
+  // Exit flow: resolve the visitor, then find their active "inside" record(s).
+  const beginExitForVisitor = async (visitor, scan) => {
+    const candidates = await findActiveInsideRecords(visitor?.id);
+    setLicenceScan(scan);
+    if (!candidates.length) {
+      setResult({
+        flagged: true, flag_reason: "No active entry found for this visitor",
+        person_name: visitor?.visitor_name || "Unknown", person_type: "visitor",
+        event_type: "exit", status: "denied", gate_name: gate, timestamp: new Date().toISOString(),
+      });
+      resetWorkflow();
+      setTimeout(() => setResult(null), 6000);
+      return;
+    }
+    if (candidates.length === 1) { setActiveRecord(candidates[0]); setStep("confirm_exit"); }
+    else { setExitCandidates(candidates); setStep("pick_exit"); }
+  };
+
   const onScanAccept = async (scan) => {
     setScanning(false);
     setBusy(true);
     try {
+      // ---- EXIT BY RESCAN ---- branch before the entry workflow.
+      if (eventType === "exit") {
+        if (step === "qr") { await handleQR(scan); return; }
+        const mapped = scan.mappedFields || {};
+        const { visitor } = await resolveOrCreateVisitor({ mapped, photoUrl: scan.photoUrl, scan, createIfMissing: false });
+        setPendingVisitor(visitor);
+        if (!visitor?.id) {
+          setResult({
+            flagged: true, flag_reason: "Visitor not recognised — cannot exit",
+            person_name: "Unknown", person_type: "unknown",
+            event_type: "exit", status: "denied", gate_name: gate, timestamp: new Date().toISOString(),
+          });
+          resetWorkflow();
+          setTimeout(() => setResult(null), 6000);
+          return;
+        }
+        await beginExitForVisitor(visitor, scan);
+        return;
+      }
+
+      // ---- ENTRY / DENY ---- (original workflow)
       if (step === "licence" || step === "id") {
         const mapped = scan.mappedFields || {};
         const { visitor, created } = await resolveOrCreateVisitor({ mapped, photoUrl: scan.photoUrl, scan });
@@ -125,18 +170,71 @@ export default function AccessControl() {
     let visitor = null;
     try { const m = await base44.entities.Visitor.filter({ otp_code: payload }); if (m.length) visitor = m[0]; } catch (_) {}
     if (!visitor) { try { const m = await base44.entities.Visitor.filter({ qr_code: payload }); if (m.length) visitor = m[0]; } catch (_) {} }
+
+    if (eventType === "exit") {
+      if (!visitor) {
+        await finalizeEntry({ purpose: "none", visitor: null, scan, qrPayload: payload, denied: true });
+      } else {
+        await beginExitForVisitor(visitor, scan);
+      }
+      return;
+    }
     if (visitor) {
-      await finalize({ purpose: "none", destination: "", workType: "", visitor, scan, qrPayload: payload });
+      await finalizeEntry({ purpose: "none", destination: "", workType: "", visitor, scan, qrPayload: payload });
     } else {
-      await finalize({ purpose: "none", destination: "", workType: "", visitor: null, scan, qrPayload: payload, denied: true });
+      await finalizeEntry({ purpose: "none", destination: "", workType: "", visitor: null, scan, qrPayload: payload, denied: true });
     }
   };
 
   const onApprove = (purpose, { destination, workType }) => {
-    finalize({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
+    finalizeEntry({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
   };
 
-  const finalize = async ({ purpose, destination, workType, visitor, scan, qrPayload, denied }) => {
+  const confirmExit = () => { if (activeRecord) finalizeExit(activeRecord, { scan: licenceScan }); };
+  const pickExitRecord = (rec) => { setActiveRecord(rec); setExitCandidates([]); setStep("confirm_exit"); };
+
+  // Exit = UPDATE the active record (status inside → exited). No duplicate log.
+  const finalizeExit = async (activeLog, { scan, manual } = {}) => {
+    setBusy(true);
+    try {
+      const gps = await getGPS();
+      const now = new Date().toISOString();
+      const entryTime = activeLog.entry_time || activeLog.timestamp;
+      const mins = Math.max(0, Math.round((Date.now() - new Date(entryTime).getTime()) / 60000));
+      const sm = manual ? "manual"
+        : scan?.resolvedProfileId === "qr" ? "qr_code"
+        : scan?.resolvedProfileId === "sa_id" ? "sa_id"
+        : scan?.resolvedProfileId === "vehicle_disc" ? "vehicle_disc"
+        : "drivers_licence";
+      const update = {
+        status: "exited",
+        event_type: "exit",
+        exit_time: now,
+        exit_gate: gate,
+        exit_guard_id: user?.id,
+        exit_guard_name: user?.full_name,
+        exit_scan_method: sm,
+        exit_location: gps,
+        exit_notes: manual ? "Manually exited from live log" : "",
+        time_on_site_minutes: mins,
+      };
+      await base44.entities.AccessLog.update(activeLog.id, update);
+      if (activeLog.visitor_id) {
+        try { await base44.entities.Visitor.update(activeLog.visitor_id, { status: "exited", exited_at: now }); } catch (_) {}
+      }
+      setResult({ ...activeLog, ...update, person_name: activeLog.person_name });
+      resetWorkflow();
+      qc.invalidateQueries(["access_logs_recent"]);
+      setTimeout(() => setResult(null), 8000);
+    } catch (e) {
+      console.error("[access] finalize exit failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Entry = CREATE a new record with status "inside" (or "denied").
+  const finalizeEntry = async ({ purpose, destination, workType, visitor, scan, qrPayload, denied }) => {
     setBusy(true);
     try {
       const mapped = scan?.mappedFields || licenceScan?.mappedFields || {};
@@ -145,21 +243,10 @@ export default function AccessControl() {
       const device = getDeviceDescriptor();
       const v = visitor || pendingVisitor;
       const personType = v ? "visitor" : "unknown";
-      let entryTime = eventType === "entry" ? new Date().toISOString() : null;
-      let exitTime = eventType === "exit" ? new Date().toISOString() : null;
-      let timeOnSite = null;
-      if (eventType === "exit" && v?.id) {
-        try {
-          const entries = await base44.entities.AccessLog.filter({ visitor_id: v.id, event_type: "entry" });
-          const last = entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-          if (last) {
-            const mins = Math.round((Date.now() - new Date(last.timestamp).getTime()) / 60000);
-            if (mins > 0) { timeOnSite = mins; entryTime = last.timestamp; }
-          }
-        } catch (_) {}
-      }
+      const now = new Date().toISOString();
       const log = {
-        event_type: denied ? "denied" : eventType,
+        event_type: denied ? "denied" : "entry",
+        status: denied ? "denied" : "inside",
         person_type: personType,
         person_id: v?.id || "",
         person_name: v?.visitor_name || "Unknown",
@@ -186,10 +273,10 @@ export default function AccessControl() {
         device,
         photo_url: scan?.photoUrl || licenceScan?.photoUrl || "",
         location: gps,
-        entry_time: entryTime,
-        exit_time: exitTime,
-        time_on_site_minutes: timeOnSite,
-        timestamp: new Date().toISOString(),
+        entry_time: now,
+        exit_time: null,
+        time_on_site_minutes: null,
+        timestamp: now,
         guard_id: user?.id,
         guard_name: user?.full_name,
         flagged: !!denied,
@@ -198,13 +285,7 @@ export default function AccessControl() {
       };
       const created = await base44.entities.AccessLog.create(log);
       if (v?.id && !denied) {
-        try {
-          await base44.entities.Visitor.update(v.id, {
-            status: eventType === "entry" ? "entered" : "exited",
-            entered_at: eventType === "entry" ? entryTime : v.entered_at,
-            exited_at: eventType === "exit" ? exitTime : v.exited_at,
-          });
-        } catch (_) {}
+        try { await base44.entities.Visitor.update(v.id, { status: "entered", entered_at: now }); } catch (_) {}
       }
       setResult({ ...log, id: created?.id });
       resetWorkflow();
@@ -383,6 +464,43 @@ export default function AccessControl() {
             {mode === "qr" && step === "qr" && (
               <StepCard icon={QrCode} title="Scan QR Code" subtitle="Resident / visitor pass" onScan={() => openScanner("qr")} busy={busy} />
             )}
+
+            {step === "pick_exit" && (
+              <div className="space-y-3">
+                <p className="text-amber-300 text-sm font-medium">Multiple active entries found — select the one being exited</p>
+                <div className="space-y-2">
+                  {exitCandidates.map((rec) => (
+                    <button key={rec.id} onClick={() => pickExitRecord(rec)}
+                      className="w-full text-left rounded-xl border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 p-3 flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-white text-sm font-medium truncate">{rec.person_name || "Unknown"}</p>
+                        <p className="text-slate-400 text-xs truncate">{rec.gate_name} • entered {new Date(rec.entry_time || rec.timestamp).toLocaleTimeString()}</p>
+                        {rec.vehicle_registration && <p className="text-slate-500 text-xs">{rec.vehicle_registration}</p>}
+                      </div>
+                      <LogOut className="w-4 h-4 text-amber-400 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {step === "confirm_exit" && activeRecord && (
+              <div className="space-y-3">
+                {pendingVisitor && <VisitorCard visitor={pendingVisitor} meta={pendingMeta} photoUrl={licenceScan?.photoUrl} />}
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 space-y-1">
+                  <p className="text-amber-200 text-xs font-semibold uppercase tracking-wide">Active entry to close</p>
+                  <p className="text-white text-sm font-medium">{activeRecord.person_name || "Unknown"}</p>
+                  <p className="text-slate-300 text-xs">{activeRecord.gate_name} • entered {new Date(activeRecord.entry_time || activeRecord.timestamp).toLocaleString()}</p>
+                  {activeRecord.vehicle_registration && <p className="text-slate-400 text-xs">Vehicle: {activeRecord.vehicle_registration}</p>}
+                  <p className="text-emerald-400 text-sm font-semibold">
+                    On site: {Math.max(0, Math.round((Date.now() - new Date(activeRecord.entry_time || activeRecord.timestamp).getTime()) / 60000))} min
+                  </p>
+                </div>
+                <Button onClick={confirmExit} disabled={busy} className="w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-semibold">
+                  <LogOut className="w-5 h-5 mr-2" /> Confirm Exit
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -424,24 +542,42 @@ export default function AccessControl() {
             />
           </div>
           <div className="space-y-2">
-            {filteredLogs.slice(0, 8).map((log) => (
-              <div key={log.id} className={`border rounded-xl p-3 flex items-center justify-between ${eventBg[log.event_type] || "bg-slate-800/50 border-slate-700/50"}`}>
-                <div className="flex items-center gap-3 min-w-0">
-                  {log.photo_url
-                    ? <img src={log.photo_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
-                    : <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-slate-300" /></div>}
-                  <div className="min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{log.person_name || "Unknown"}</p>
-                    <p className="text-slate-400 text-xs truncate">
-                      {log.gate_name} • {new Date(log.timestamp).toLocaleTimeString()}
-                      {log.scan_method && log.scan_method !== "qr_code" ? ` • ${log.scan_method}` : ""}
-                      {log.vehicle_registration ? ` • ${log.vehicle_registration}` : ""}
-                    </p>
+            {filteredLogs.slice(0, 8).map((log) => {
+              const inside = log.status === "inside";
+              const canExit = inside && can(user, PERMISSIONS.ACCESS_MANUAL_EXIT);
+              return (
+                <div
+                  key={log.id}
+                  className={`border rounded-xl p-3 flex items-center justify-between ${eventBg[log.event_type] || "bg-slate-800/50 border-slate-700/50"} ${inside ? "ring-1 ring-amber-500/40" : ""}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {log.photo_url
+                      ? <img src={log.photo_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                      : <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-slate-300" /></div>}
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{log.person_name || "Unknown"}</p>
+                      <p className="text-slate-400 text-xs truncate">
+                        {log.gate_name} • {new Date(log.timestamp).toLocaleTimeString()}
+                        {log.scan_method && log.scan_method !== "qr_code" ? ` • ${log.scan_method}` : ""}
+                        {log.vehicle_registration ? ` • ${log.vehicle_registration}` : ""}
+                        {log.time_on_site_minutes != null && log.status === "exited" ? ` • ${log.time_on_site_minutes}m` : ""}
+                      </p>
+                    </div>
                   </div>
+                  {inside ? (
+                    <button
+                      onClick={() => canExit && setManualExitTarget(log)}
+                      disabled={!canExit}
+                      className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold ${canExit ? "bg-amber-500 text-white" : "bg-slate-700 text-slate-400 cursor-not-allowed"}`}
+                    >
+                      <LogOut className="w-3.5 h-3.5" /> Exit
+                    </button>
+                  ) : (
+                    <Badge className={`${eventBadge[log.event_type] || "bg-slate-600"} shrink-0 text-xs`}>{log.event_type}</Badge>
+                  )}
                 </div>
-                <Badge className={`${eventBadge[log.event_type] || "bg-slate-600"} shrink-0 text-xs`}>{log.event_type}</Badge>
-              </div>
-            ))}
+              );
+            })}
             {filteredLogs.length === 0 && (
               <div className="text-center py-8 text-slate-500">
                 <Shield className="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -451,6 +587,19 @@ export default function AccessControl() {
           </div>
         </div>
       </div>
+
+      {manualExitTarget && (
+        <ExitConfirmModal
+          target={manualExitTarget}
+          busy={busy}
+          onClose={() => setManualExitTarget(null)}
+          onConfirm={() => {
+            const target = manualExitTarget;
+            setManualExitTarget(null);
+            finalizeExit(target, { manual: true });
+          }}
+        />
+      )}
     </div>
   );
 }

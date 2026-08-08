@@ -1,7 +1,7 @@
 {
   "name": "AccessLog",
   "type": "object",
-  "description": "Permanent, searchable audit record of every access entry, exit and denial.",
+  "description": "Permanent, searchable audit record of every access entry, exit and denial. A single record represents the full entry\u2192exit lifecycle: it is created on entry with status 'inside' and UPDATED on exit (not duplicated).",
   "properties": {
     "event_type": {
       "type": "string",
@@ -9,7 +9,21 @@
         "entry",
         "exit",
         "denied"
-      ]
+      ],
+      "description": "Latest event on this record. Entry records start as 'entry' and flip to 'exit' when the visitor leaves."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "inside",
+        "exited",
+        "denied",
+        "blacklisted",
+        "override_approved",
+        "overridden"
+      ],
+      "default": "inside",
+      "description": "Lifecycle status. 'inside' = currently on site; 'exited' = has left; 'denied' = refused entry; 'blacklisted' = blocked by blacklist; 'override_approved'/'overridden' = supervisor overrode a block."
     },
     "person_type": {
       "type": "string",
@@ -35,7 +49,8 @@
       "type": "string"
     },
     "gate_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Entry gate"
     },
     "site_name": {
       "type": "string"
@@ -110,7 +125,7 @@
     },
     "parsed_json": {
       "type": "string",
-      "description": "Verbatim barKoder formattedJSON for the scan"
+      "description": "Verbatim barKoder formattedJSON for the entry scan"
     },
     "confidence": {
       "type": "number"
@@ -127,7 +142,8 @@
         "lng": {
           "type": "number"
         }
-      }
+      },
+      "description": "Entry GPS"
     },
     "entry_time": {
       "type": "string",
@@ -142,13 +158,68 @@
     },
     "timestamp": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "description": "Record creation time (= entry time)"
     },
     "guard_id": {
-      "type": "string"
+      "type": "string",
+      "description": "Entry guard"
     },
     "guard_name": {
       "type": "string"
+    },
+    "exit_gate": {
+      "type": "string",
+      "description": "Gate used to exit"
+    },
+    "exit_guard_id": {
+      "type": "string"
+    },
+    "exit_guard_name": {
+      "type": "string"
+    },
+    "exit_scan_method": {
+      "type": "string",
+      "enum": [
+        "qr_code",
+        "sa_id",
+        "drivers_licence",
+        "vehicle_disc",
+        "manual",
+        "face"
+      ]
+    },
+    "exit_location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "exit_notes": {
+      "type": "string"
+    },
+    "override_approved_by": {
+      "type": "string",
+      "description": "Supervisor user id who overrode a block"
+    },
+    "override_approved_by_name": {
+      "type": "string"
+    },
+    "override_approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "override_reason": {
+      "type": "string"
+    },
+    "blacklist_match_id": {
+      "type": "string",
+      "description": "BlacklistEntry id that matched, if any"
     },
     "notes": {
       "type": "string"
@@ -163,6 +234,7 @@
   },
   "required": [
     "event_type",
+    "status",
     "person_type",
     "gate_name",
     "timestamp"
