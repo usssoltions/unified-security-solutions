@@ -1,0 +1,50 @@
+{
+  "name": "BlacklistOverride",
+  "type": "object",
+  "description": "Permanent audit record of every supervisor override of a blacklist block. Created server-side by the authorizeBlacklistOverride backend function only after the caller's supervisor role is verified from their live session \u2014 never trust a client-supplied supervisor id.",
+  "properties": {
+    "access_log_id": {
+      "type": "string",
+      "description": "The AccessLog record that was blacklisted and is now overridden."
+    },
+    "blacklist_entry_id": {
+      "type": "string",
+      "description": "The BlacklistEntry that matched and was overridden."
+    },
+    "identifier_value": {
+      "type": "string",
+      "description": "The matched SA ID / licence / registration."
+    },
+    "person_name": {
+      "type": "string"
+    },
+    "supervisor_id": {
+      "type": "string",
+      "description": "Authenticated supervisor user id (from base44.auth.me)."
+    },
+    "supervisor_name": {
+      "type": "string"
+    },
+    "supervisor_role": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Mandatory justification supplied by the supervisor."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "denied"
+      ],
+      "default": "approved"
+    }
+  },
+  "required": [
+    "access_log_id",
+    "supervisor_id",
+    "reason",
+    "action"
+  ]
+}

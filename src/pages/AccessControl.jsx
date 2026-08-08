@@ -9,14 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, Car, User, QrCode, LogIn, LogOut, CheckCircle2, XCircle,
-  Search, Fingerprint, CreditCard, X, Settings,
+  Search, Fingerprint, CreditCard, X, Settings, ShieldCheck,
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
 import VisitorCard from "@/components/access/VisitorCard";
 import PurposeStep from "@/components/access/PurposeStep";
 import StepCard from "@/components/access/StepCard";
-import { resolveOrCreateVisitor, getGPS, getDeviceDescriptor, countPreviousVisits, findActiveInsideRecords } from "@/lib/accessVisitor";
+import { resolveOrCreateVisitor, getGPS, getDeviceDescriptor, countPreviousVisits, findActiveInsideRecords, checkBlacklist } from "@/lib/accessVisitor";
 import ExitConfirmModal from "@/components/access/ExitConfirmModal";
+import OverrideModal from "@/components/access/OverrideModal";
 import { can, PERMISSIONS } from "@/lib/permissions";
 
 const MODES = [
@@ -47,6 +48,7 @@ export default function AccessControl() {
   const [activeRecord, setActiveRecord] = useState(null);
   const [exitCandidates, setExitCandidates] = useState([]);
   const [manualExitTarget, setManualExitTarget] = useState(null);
+  const [overrideTarget, setOverrideTarget] = useState(null);
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
@@ -244,9 +246,16 @@ export default function AccessControl() {
       const v = visitor || pendingVisitor;
       const personType = v ? "visitor" : "unknown";
       const now = new Date().toISOString();
+      const blacklist = await checkBlacklist({
+        saId: mapped.visitor_id_number,
+        driverLicence: mapped.driver_licence_number,
+        vehicleReg: disc.registration_number,
+      });
+      const isBlacklisted = !!blacklist;
+      const isDenied = !!denied || isBlacklisted;
       const log = {
-        event_type: denied ? "denied" : "entry",
-        status: denied ? "denied" : "inside",
+        event_type: isDenied ? "denied" : "entry",
+        status: isBlacklisted ? "blacklisted" : (denied ? "denied" : "inside"),
         person_type: personType,
         person_id: v?.id || "",
         person_name: v?.visitor_name || "Unknown",
@@ -279,12 +288,13 @@ export default function AccessControl() {
         timestamp: now,
         guard_id: user?.id,
         guard_name: user?.full_name,
-        flagged: !!denied,
-        flag_reason: denied ? "QR not recognised" : "",
+        flagged: isDenied,
+        flag_reason: isBlacklisted ? `Blacklisted: ${blacklist.reason}` : (denied ? "QR not recognised" : ""),
+        blacklist_match_id: isBlacklisted ? blacklist.id : "",
         notes: "",
       };
       const created = await base44.entities.AccessLog.create(log);
-      if (v?.id && !denied) {
+      if (v?.id && !isDenied) {
         try { await base44.entities.Visitor.update(v.id, { status: "entered", entered_at: now }); } catch (_) {}
       }
       setResult({ ...log, id: created?.id });
@@ -518,6 +528,7 @@ export default function AccessControl() {
                   {result.destination && <p className="text-slate-400 text-xs">Destination: {result.destination}</p>}
                   {result.work_type && <p className="text-slate-400 text-xs">Work: {result.work_type}</p>}
                   {result.vehicle_registration && <p className="text-slate-400 text-xs">Vehicle: {result.vehicle_registration}</p>}
+                  {result.flag_reason && <p className="text-rose-300 text-xs font-medium">{result.flag_reason}</p>}
                   <p className="text-slate-500 text-xs">{result.gate_name} • {new Date(result.timestamp).toLocaleTimeString()}</p>
                 </div>
                 <Badge className={`${eventBadge[result.event_type] || "bg-slate-600"} shrink-0`}>{result.event_type.toUpperCase()}</Badge>
@@ -564,7 +575,14 @@ export default function AccessControl() {
                       </p>
                     </div>
                   </div>
-                  {inside ? (
+                  {log.status === "blacklisted" && can(user, PERMISSIONS.BLACKLIST_OVERRIDE) ? (
+                    <button
+                      onClick={() => setOverrideTarget(log)}
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-500 text-white"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" /> Override
+                    </button>
+                  ) : inside ? (
                     <button
                       onClick={() => canExit && setManualExitTarget(log)}
                       disabled={!canExit}
@@ -598,6 +616,14 @@ export default function AccessControl() {
             setManualExitTarget(null);
             finalizeExit(target, { manual: true });
           }}
+        />
+      )}
+
+      {overrideTarget && (
+        <OverrideModal
+          target={overrideTarget}
+          onClose={() => setOverrideTarget(null)}
+          onDone={() => { setOverrideTarget(null); qc.invalidateQueries(["access_logs_recent"]); }}
         />
       )}
     </div>

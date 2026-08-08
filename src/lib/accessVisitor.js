@@ -112,3 +112,18 @@ export async function findActiveInsideRecords(visitorId) {
     return recs.sort((a, b) => new Date(b.entry_time || b.timestamp) - new Date(a.entry_time || a.timestamp));
   } catch (_) { return []; }
 }
+
+/**
+ * Checks scanned identifiers against active BlacklistEntry records.
+ * Returns the first active entry whose identifier_value matches any of the
+ * supplied SA ID / driver's licence / vehicle registration (Phase D).
+ */
+export async function checkBlacklist({ saId, driverLicence, vehicleReg }) {
+  const norm = (v) => (v || "").toString().toUpperCase().replace(/\s+/g, "");
+  const ids = [norm(saId), norm(driverLicence), norm(vehicleReg)].filter(Boolean);
+  if (!ids.length) return null;
+  try {
+    const entries = await base44.entities.BlacklistEntry.filter({ active: true });
+    return entries.find((e) => ids.includes(norm(e.identifier_value))) || null;
+  } catch (_) { return null; }
+}
