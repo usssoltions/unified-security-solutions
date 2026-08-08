@@ -112,13 +112,16 @@ export default function ControlRoom() {
       {/* Header */}
       <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-6 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${isCritical ? "bg-rose-500 animate-pulse shadow-rose-500/40" : "bg-gradient-to-br from-sky-400 to-blue-600 shadow-sky-500/30"}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0 ${isCritical ? "bg-rose-500 animate-pulse shadow-rose-500/40" : "bg-gradient-to-br from-sky-400 to-blue-600 shadow-sky-500/30"}`}>
               <Radio className="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h1 className="text-white font-bold text-lg leading-tight">Control Room</h1>
-              <p className="text-slate-400 text-xs">{currentTime.toLocaleTimeString()} • Real-time monitoring</p>
+            <div className="min-w-0">
+              <h1 className="text-white font-bold text-lg leading-tight truncate">Control Room</h1>
+              <p className="text-slate-400 text-xs">
+                <span className="sm:hidden">{currentTime.toLocaleTimeString()}</span>
+                <span className="hidden sm:inline">{currentTime.toLocaleTimeString()} • Real-time monitoring</span>
+              </p>
             </div>
           </div>
 

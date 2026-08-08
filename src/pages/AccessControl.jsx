@@ -394,12 +394,12 @@ export default function AccessControl() {
 
         {/* Mode selection */}
         {!mode && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
             {MODES.map((m) => (
               <button
                 key={m.id}
                 onClick={() => startMode(m.id)}
-                className="rounded-2xl border-2 border-dashed border-sky-500/40 bg-sky-500/5 hover:border-sky-400/70 hover:bg-sky-500/10 p-4 flex flex-col items-center gap-2 transition-all active:scale-95"
+                className="min-w-[240px] shrink-0 sm:min-w-0 rounded-2xl border-2 border-dashed border-sky-500/40 bg-sky-500/5 hover:border-sky-400/70 hover:bg-sky-500/10 p-4 flex flex-col items-center gap-2 transition-all active:scale-95"
               >
                 <div className="w-11 h-11 rounded-full bg-sky-500/20 flex items-center justify-center">
                   <m.icon className="w-6 h-6 text-sky-400" />

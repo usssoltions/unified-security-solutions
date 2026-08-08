@@ -183,7 +183,7 @@ export default function LiveMap({ activeGuards }) {
 
   if (guardsWithLocation.length === 0) {
     return (
-      <div className="h-[600px] bg-slate-900 rounded-lg flex items-center justify-center">
+      <div className="h-[380px] sm:h-[600px] bg-slate-900 rounded-lg flex items-center justify-center">
         <div className="text-center">
           <MapPin className="w-12 h-12 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-400">No active guards with location data</p>
@@ -257,7 +257,7 @@ export default function LiveMap({ activeGuards }) {
       <MapContainer
         center={center}
         zoom={12}
-        style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }}
+        className="h-[380px] sm:h-[600px] w-full rounded-lg"
         scrollWheelZoom={true}
       >
         <TileLayer

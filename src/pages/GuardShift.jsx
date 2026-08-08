@@ -302,7 +302,7 @@ export default function GuardShift() {
 
         {/* Header */}
         <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 px-4 py-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between max-w-2xl mx-auto">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${
                 user.is_clocked_in ? "bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-emerald-500/30" : "bg-slate-700"
