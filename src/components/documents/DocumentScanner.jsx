@@ -79,6 +79,11 @@ export default function DocumentScanner({
   caller = null,
   onClose,
   onAccept,
+  // When true, a decoded barcode is dispatched to onAccept immediately instead
+  // of showing the generic DocumentScanReview panel. Used by Access Control for
+  // QR visitor-pass scans so a plain token QR goes straight to the visitor
+  // lookup instead of the "QR · unknown / not parsed" review screen.
+  autoAccept = false,
 }) {
   const profile = scanner.getProfile(documentType);
   const [status, setStatus] = useState("loading");
@@ -92,6 +97,10 @@ export default function DocumentScanner({
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
   const processingRef = useRef(false);
   const viewportRef = useRef(null);
+  // Always invoke the latest onAccept — avoids a stale closure when autoAccept
+  // bypasses the review screen and dispatches the scan immediately on decode.
+  const onAcceptRef = useRef(onAccept);
+  onAcceptRef.current = onAccept;
 
   const reportError = useCallback((err) => { setError(err); setStatus("error"); }, []);
 
@@ -198,14 +207,28 @@ export default function DocumentScanner({
     console.log("[barKoder] photo_present", { yes: !!photo, source: parsed.formattedJSONSource });
     scanner.logDebug("photo_present", { yes: !!photo });
 
+    const scanPayload = {
+      result: parsed, photoUrl: photo, mappedFields: mapped,
+      profile: resolvedProfile, resolvedProfileId: profileId,
+      parserUsed, qrInfo, sdkVersion: scanner.SDK_VERSION,
+    };
     setResult(parsed);
     setPhotoUrl(photo);
     setMappedFields(mapped);
     setResolved({ profileId, profile: resolvedProfile, parserUsed, qrInfo });
-    setStatus("result");
     playBeep();
+
+    // autoAccept (Access Control QR pass): skip the generic review panel and
+    // dispatch the freshly-decoded result straight to the caller so it can look
+    // up the visitor token. Uses the ref so the latest onAccept is invoked.
+    if (autoAccept) {
+      scanner.stopScanner();
+      onAcceptRef.current?.(scanPayload);
+      return;
+    }
+    setStatus("result");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caller]);
+  }, [caller, documentType, autoAccept]);
 
   const handleClose = useCallback(() => { scanner.stopScanner(); onClose?.(); }, [onClose]);
   const handleScanAgain = useCallback(() => { beginScanning(); }, [beginScanning]);

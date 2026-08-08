@@ -202,15 +202,31 @@ export default function AccessControl() {
   };
 
   const handleQR = async (scan) => {
-    const payload = scan.result?.textualData || "";
+    // The QR contains ONLY a unique visitor/pass token (e.g. VSTMSKUUVX3J5N0) —
+    // not structured data. Look that token up against the Visitor table.
+    const payload = (scan.result?.textualData || "").trim();
     let visitor = null;
-    try { const m = await base44.entities.Visitor.filter({ qr_code: payload }); if (m.length) visitor = m[0]; } catch (_) {}
-    if (!visitor) { try { const m = await base44.entities.Visitor.filter({ otp_code: payload }); if (m.length) visitor = m[0]; } catch (_) {} }
+    if (payload) {
+      try { const m = await base44.entities.Visitor.filter({ qr_code: payload }); if (m.length) visitor = m[0]; } catch (_) {}
+      if (!visitor) { try { const m = await base44.entities.Visitor.filter({ otp_code: payload }); if (m.length) visitor = m[0]; } catch (_) {} }
+      // Case-insensitive fallback — guards against any casing mismatch between
+      // the stored token and the decoded QR payload.
+      if (!visitor) {
+        try {
+          const recent = await base44.entities.Visitor.list("-created_date", 200);
+          const pnorm = payload.toUpperCase();
+          visitor = recent.find((v) =>
+            (v.qr_code || "").toUpperCase() === pnorm ||
+            (v.otp_code || "").toUpperCase() === pnorm
+          ) || null;
+        } catch (_) {}
+      }
+    }
 
     // EXIT by QR: resolve active inside record(s) for the matched visitor
     if (eventType === "exit") {
       if (!visitor) {
-        setQrStatus({ label: "UNKNOWN OR INVALID VISITOR PASS", message: "QR decoded but no matching visitor record was found. Cannot process exit." });
+        setQrStatus({ label: "UNKNOWN OR INVALID VISITOR PASS", message: `QR token "${payload}" decoded but no matching visitor record was found. Cannot process exit.` });
         setStep("qr_invalid");
         return;
       }
@@ -222,13 +238,27 @@ export default function AccessControl() {
     setLicenceScan(scan);
     setQrPayload(payload);
     if (!visitor) {
-      setQrStatus({ label: "UNKNOWN OR INVALID VISITOR PASS", message: "The QR code was scanned successfully, but no matching active Expected Visitor record could be found." });
+      setQrStatus({ label: "UNKNOWN OR INVALID VISITOR PASS", message: `The QR token "${payload}" was scanned successfully, but no matching Expected Visitor record was found in the database.` });
       setStep("qr_invalid");
       return;
     }
     const pass = evaluateVisitorPass(visitor);
     if (!pass.valid) {
       setQrStatus(pass);
+      setStep("qr_invalid");
+      return;
+    }
+    // Blacklist pre-check (person by SA ID + vehicle by registration)
+    const blMatch = await checkBlacklist({
+      saId: visitor.visitor_id_number,
+      vehicleReg: visitor.vehicle_registration,
+    });
+    if (blMatch) {
+      setQrVisitor(visitor);
+      setQrStatus({
+        label: "ACCESS DENIED — BLACKLISTED",
+        message: `${visitor.visitor_name}${visitor.surname ? " " + visitor.surname : ""} is on the blacklist (${(blMatch.reason || "other").replace(/_/g, " ")}). Entry is blocked. A supervisor override is required to proceed.`,
+      });
       setStep("qr_invalid");
       return;
     }
@@ -383,6 +413,7 @@ export default function AccessControl() {
           caller="access_control"
           onClose={() => setScanning(false)}
           onAccept={onScanAccept}
+          autoAccept={scanProfile === "qr"}
         />
       )}
 
