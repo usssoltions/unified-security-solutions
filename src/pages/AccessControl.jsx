@@ -53,8 +53,17 @@ function evaluateVisitorPass(visitor) {
   if (visitor.valid_until && new Date(visitor.valid_until).getTime() < now) {
     return { valid: false, label: "VISITOR PASS EXPIRED", message: `This pass expired on ${new Date(visitor.valid_until).toLocaleString("en-ZA")}.` };
   }
-  if (visitor.valid_from && new Date(visitor.valid_from).getTime() > now) {
-    return { valid: false, label: "VISITOR PASS NOT YET VALID", message: `This pass is valid from ${new Date(visitor.valid_from).toLocaleString("en-ZA")}.` };
+  // A pass is "not yet valid" only if its expected calendar date is strictly
+  // in the future. Same-day early arrivals are allowed — the expected arrival
+  // time is informational, not a hard gate (a visitor arriving before their
+  // ETA is normal and must still see their visitor details card).
+  if (visitor.valid_from) {
+    const vf = new Date(visitor.valid_from);
+    const startOfValidFrom = new Date(vf.getFullYear(), vf.getMonth(), vf.getDate());
+    const startOfToday = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate());
+    if (startOfValidFrom.getTime() > startOfToday.getTime()) {
+      return { valid: false, label: "VISITOR PASS NOT YET VALID", message: `This pass is valid from ${new Date(visitor.valid_from).toLocaleString("en-ZA")}.` };
+    }
   }
   return { valid: true };
 }
