@@ -14,9 +14,21 @@
     "visitor_name": {
       "type": "string"
     },
+    "surname": {
+      "type": "string",
+      "description": "Visitor surname (required for expected visitors)"
+    },
+    "visitor_entry_type": {
+      "type": "string",
+      "enum": [
+        "vehicle",
+        "pedestrian"
+      ],
+      "description": "Whether this expected visitor arrives by vehicle or on foot. Determines whether vehicle_registration is required."
+    },
     "visitor_id_number": {
       "type": "string",
-      "description": "SA ID number (from licence or manual)"
+      "description": "SA ID number (from licence or manual). Mandatory for expected visitors."
     },
     "visitor_phone": {
       "type": "string"
@@ -24,8 +36,18 @@
     "vehicle_registration": {
       "type": "string"
     },
-    "surname": {
-      "type": "string"
+    "destination": {
+      "type": "string",
+      "description": "Destination selected by the resident from the configured Destinations. Mandatory for expected visitors; shown to the guard on entry."
+    },
+    "expected_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the visitor is expected to arrive."
+    },
+    "expected_arrival_time": {
+      "type": "string",
+      "description": "Expected arrival time (HH:MM)."
     },
     "first_names": {
       "type": "string"

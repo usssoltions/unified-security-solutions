@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, Car, User, QrCode, LogIn, LogOut, CheckCircle2, XCircle,
   Search, Fingerprint, CreditCard, X, Settings, ShieldCheck,
+  MapPin, Calendar, Clock, IdCard, AlertCircle, Home,
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
 import VisitorCard from "@/components/access/VisitorCard";
@@ -29,6 +30,34 @@ const MODES = [
 const GATES = ["Main Gate", "Secondary Gate", "Pedestrian Gate", "Delivery Gate", "Emergency Gate"];
 const eventBg = { entry: "bg-emerald-500/10 border-emerald-500/30", exit: "bg-amber-500/10 border-amber-500/30", denied: "bg-rose-500/10 border-rose-500/30" };
 const eventBadge = { entry: "bg-emerald-600", exit: "bg-amber-600", denied: "bg-rose-600" };
+
+// Evaluate an expected-visitor pass against its status + validity window.
+// Returns { valid: boolean, label?, message? }.
+function evaluateVisitorPass(visitor) {
+  if (!visitor) {
+    return { valid: false, label: "UNKNOWN OR INVALID VISITOR PASS", message: "QR decoded but no matching active visitor record was found." };
+  }
+  const now = Date.now();
+  if (visitor.status === "denied") {
+    return { valid: false, label: "VISITOR PASS CANCELLED", message: "This visitor pass was cancelled by the host." };
+  }
+  if (visitor.status === "expired") {
+    return { valid: false, label: "VISITOR PASS EXPIRED", message: "This visitor pass has expired." };
+  }
+  if (visitor.status === "entered") {
+    return { valid: false, label: "VISITOR PASS ALREADY USED", message: "This visitor has already entered the estate." };
+  }
+  if (visitor.status === "exited") {
+    return { valid: false, label: "VISITOR PASS ALREADY USED", message: "This visitor has already entered and exited the estate." };
+  }
+  if (visitor.valid_until && new Date(visitor.valid_until).getTime() < now) {
+    return { valid: false, label: "VISITOR PASS EXPIRED", message: `This pass expired on ${new Date(visitor.valid_until).toLocaleString("en-ZA")}.` };
+  }
+  if (visitor.valid_from && new Date(visitor.valid_from).getTime() > now) {
+    return { valid: false, label: "VISITOR PASS NOT YET VALID", message: `This pass is valid from ${new Date(visitor.valid_from).toLocaleString("en-ZA")}.` };
+  }
+  return { valid: true };
+}
 
 export default function AccessControl() {
   const [user, setUser] = useState(null);
@@ -51,6 +80,7 @@ export default function AccessControl() {
   const [overrideTarget, setOverrideTarget] = useState(null);
   const [qrVisitor, setQrVisitor] = useState(null);
   const [qrPayload, setQrPayload] = useState(null);
+  const [qrStatus, setQrStatus] = useState(null);
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
@@ -79,6 +109,7 @@ export default function AccessControl() {
     setLicenceScan(null); setDiscFields(null);
     setActiveRecord(null); setExitCandidates([]);
     setQrVisitor(null); setQrPayload(null);
+    setQrStatus(null);
   };
 
   const startMode = (m) => {
@@ -173,31 +204,42 @@ export default function AccessControl() {
   const handleQR = async (scan) => {
     const payload = scan.result?.textualData || "";
     let visitor = null;
-    try { const m = await base44.entities.Visitor.filter({ otp_code: payload }); if (m.length) visitor = m[0]; } catch (_) {}
-    if (!visitor) { try { const m = await base44.entities.Visitor.filter({ qr_code: payload }); if (m.length) visitor = m[0]; } catch (_) {} }
+    try { const m = await base44.entities.Visitor.filter({ qr_code: payload }); if (m.length) visitor = m[0]; } catch (_) {}
+    if (!visitor) { try { const m = await base44.entities.Visitor.filter({ otp_code: payload }); if (m.length) visitor = m[0]; } catch (_) {} }
 
+    // EXIT by QR: resolve active inside record(s) for the matched visitor
     if (eventType === "exit") {
       if (!visitor) {
-        await finalizeEntry({ purpose: "none", visitor: null, scan, qrPayload: payload, denied: true });
-      } else {
-        await beginExitForVisitor(visitor, scan);
+        setQrStatus({ label: "UNKNOWN OR INVALID VISITOR PASS", message: "QR decoded but no matching visitor record was found. Cannot process exit." });
+        setStep("qr_invalid");
+        return;
       }
+      await beginExitForVisitor(visitor, scan);
       return;
     }
-    if (visitor) {
-      // Hold for guard confirmation — show visitor details before granting access
-      setPendingVisitor(visitor);
-      setLicenceScan(scan);
-      setQrVisitor(visitor);
-      setQrPayload(payload);
-      setStep("qr_confirm");
-    } else {
-      await finalizeEntry({ purpose: "none", destination: "", workType: "", visitor: null, scan, qrPayload: payload, denied: true });
+
+    // ENTRY by QR
+    setLicenceScan(scan);
+    setQrPayload(payload);
+    if (!visitor) {
+      setQrStatus({ label: "UNKNOWN OR INVALID VISITOR PASS", message: "The QR code was scanned successfully, but no matching active Expected Visitor record could be found." });
+      setStep("qr_invalid");
+      return;
     }
+    const pass = evaluateVisitorPass(visitor);
+    if (!pass.valid) {
+      setQrStatus(pass);
+      setStep("qr_invalid");
+      return;
+    }
+    setPendingVisitor(visitor);
+    setQrVisitor(visitor);
+    setStep("qr_confirm");
   };
 
-  const confirmQrEntry = () => finalizeEntry({ purpose: "none", destination: "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload });
-  const denyQrEntry = () => finalizeEntry({ purpose: "none", destination: "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload, denied: true });
+  const confirmQrEntry = () => finalizeEntry({ purpose: "none", destination: qrVisitor?.destination || "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload });
+  const denyQrEntry = () => finalizeEntry({ purpose: "none", destination: qrVisitor?.destination || "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload, denied: true });
+  const scanAgain = () => { setQrStatus(null); setQrVisitor(null); setQrPayload(null); setStep("qr"); openScanner("qr"); };
 
   const onApprove = (purpose, { destination, workType }) => {
     finalizeEntry({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
@@ -258,9 +300,9 @@ export default function AccessControl() {
       const personType = v ? "visitor" : "unknown";
       const now = new Date().toISOString();
       const blacklist = await checkBlacklist({
-        saId: mapped.visitor_id_number,
+        saId: v?.visitor_id_number || mapped.visitor_id_number,
         driverLicence: mapped.driver_licence_number,
-        vehicleReg: disc.registration_number,
+        vehicleReg: v?.vehicle_registration || disc.registration_number,
       });
       const isBlacklisted = !!blacklist;
       const isDenied = !!denied || isBlacklisted;
@@ -269,7 +311,7 @@ export default function AccessControl() {
         status: isBlacklisted ? "blacklisted" : (denied ? "denied" : "inside"),
         person_type: personType,
         person_id: v?.id || "",
-        person_name: v?.visitor_name || "Unknown",
+        person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
         visitor_id: v?.id || "",
         unit_number: v?.unit_number || "",
         gate_name: gate,
@@ -277,15 +319,16 @@ export default function AccessControl() {
         scanned_data: qrPayload || scan?.result?.textualData || "",
         qr_code: qrPayload || "",
         driver_licence_number: mapped.driver_licence_number || "",
-        sa_id_number: mapped.visitor_id_number || "",
-        vehicle_registration: disc.registration_number || "",
+        sa_id_number: v?.visitor_id_number || mapped.visitor_id_number || "",
+        vehicle_registration: disc.registration_number || v?.vehicle_registration || "",
         vehicle_licence_disc_number: disc.licence_number || "",
         vehicle_vin: disc.vin || "",
         vehicle_make: disc.make || "",
         vehicle_model: disc.model || "",
         vehicle_colour: disc.colour || "",
         vehicle_licence_number: disc.licence_number || "",
-        destination: destination || "",
+        destination: destination || v?.destination || "",
+        visitor_type: v?.visitor_entry_type || "",
         visit_or_work: purpose || "none",
         work_type: workType || "",
         parsed_json: scan?.result?.formattedJSONRaw || licenceScan?.result?.formattedJSONRaw || "",
@@ -483,16 +526,81 @@ export default function AccessControl() {
             )}
 
             {mode === "qr" && step === "qr" && (
-              <StepCard icon={QrCode} title="Scan QR Code" subtitle="Resident / visitor pass" onScan={() => openScanner("qr")} busy={busy} />
+              <StepCard icon={QrCode} title="Scan QR Code" subtitle="Expected visitor pass" onScan={() => openScanner("qr")} busy={busy} />
+            )}
+
+            {step === "qr_invalid" && qrStatus && (
+              <div className="space-y-3">
+                <div className="rounded-2xl border-2 border-rose-500/60 bg-rose-500/10 p-4 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-rose-500/20 flex items-center justify-center shrink-0">
+                      <XCircle className="w-7 h-7 text-rose-400" />
+                    </div>
+                    <div>
+                      <p className="text-rose-300 font-bold text-sm uppercase tracking-wide">{qrStatus.label}</p>
+                      {qrPayload && <p className="text-slate-400 text-xs font-mono mt-0.5">Scanned: {qrPayload}</p>}
+                    </div>
+                  </div>
+                  <p className="text-slate-300 text-sm">{qrStatus.message}</p>
+                </div>
+                <p className="text-slate-400 text-xs">Normal Expected Visitor entry is not allowed for this pass.</p>
+                <div className="flex gap-3">
+                  <Button onClick={scanAgain} disabled={busy} className="flex-1 h-12 bg-sky-600 hover:bg-sky-700">
+                    <QrCode className="w-5 h-5 mr-2" /> Scan Again
+                  </Button>
+                  <Button onClick={resetWorkflow} disabled={busy} variant="outline" className="flex-1 h-12 border-slate-600 text-slate-300">
+                    <X className="w-5 h-5 mr-2" /> Cancel
+                  </Button>
+                </div>
+              </div>
             )}
 
             {step === "qr_confirm" && qrVisitor && (
               <div className="space-y-3">
-                <p className="text-emerald-300 text-sm font-medium">QR Pass Verified — confirm visitor details before granting access</p>
-                <VisitorCard visitor={qrVisitor} meta={null} photoUrl={licenceScan?.photoUrl} />
+                <div className="flex items-center gap-2 text-emerald-300 text-sm font-semibold">
+                  <CheckCircle2 className="w-5 h-5" /> EXPECTED VISITOR FOUND
+                </div>
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    {licenceScan?.photoUrl
+                      ? <img src={licenceScan.photoUrl} alt="visitor" className="w-16 h-20 rounded-lg object-cover border border-slate-600" />
+                      : <div className="w-16 h-20 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center"><User className="w-7 h-7 text-slate-500" /></div>}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-bold text-lg truncate">{qrVisitor.visitor_name} {qrVisitor.surname ? qrVisitor.surname : ""}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge className={qrVisitor.visitor_entry_type === "vehicle" ? "bg-sky-600" : "bg-emerald-600"}>
+                          {qrVisitor.visitor_entry_type === "vehicle" ? "VEHICLE VISITOR" : "PEDESTRIAN VISITOR"}
+                        </Badge>
+                        <Badge variant="outline" className="border-emerald-500/50 text-emerald-300 capitalize">{qrVisitor.status}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5 text-sm pt-1">
+                    {qrVisitor.visitor_id_number && <p className="flex items-center gap-2 text-slate-300"><IdCard className="w-4 h-4 text-slate-400" /> ID: <span className="font-mono">{qrVisitor.visitor_id_number}</span></p>}
+                    {qrVisitor.visitor_entry_type === "vehicle" && qrVisitor.vehicle_registration && (
+                      <p className="flex items-center gap-2 text-slate-300"><Car className="w-4 h-4 text-sky-400" /> Vehicle: <span className="font-semibold text-white uppercase">{qrVisitor.vehicle_registration}</span></p>
+                    )}
+                    {qrVisitor.resident_name && <p className="flex items-center gap-2 text-slate-300"><Home className="w-4 h-4 text-slate-400" /> Host: <span className="text-white">{qrVisitor.resident_name}</span>{qrVisitor.unit_number ? ` (Unit ${qrVisitor.unit_number})` : ""}</p>}
+                  </div>
+                  {qrVisitor.destination && (
+                    <div className="rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-2 flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div>
+                        <p className="text-amber-300 text-xs uppercase tracking-wide font-semibold">Destination</p>
+                        <p className="text-white font-semibold">{qrVisitor.destination}</p>
+                      </div>
+                    </div>
+                  )}
+                  {qrVisitor.expected_date && (
+                    <p className="flex items-center gap-2 text-slate-400 text-xs"><Calendar className="w-3.5 h-3.5" /> Expected {new Date(`${qrVisitor.expected_date}T${qrVisitor.expected_arrival_time || "00:00"}:00`).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" })}</p>
+                  )}
+                  {qrVisitor.valid_until && (
+                    <p className="flex items-center gap-2 text-slate-400 text-xs"><Clock className="w-3.5 h-3.5" /> Valid until {new Date(qrVisitor.valid_until).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" })}</p>
+                  )}
+                </div>
                 <div className="flex gap-3">
                   <Button onClick={confirmQrEntry} disabled={busy} className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
-                    <ShieldCheck className="w-5 h-5 mr-2" /> Authorize Entry
+                    <ShieldCheck className="w-5 h-5 mr-2" /> Confirm Entry
                   </Button>
                   <Button onClick={denyQrEntry} disabled={busy} variant="outline" className="flex-1 h-12 border-rose-500/40 text-rose-400 hover:bg-rose-500/10">
                     <XCircle className="w-5 h-5 mr-2" /> Deny
@@ -595,6 +703,7 @@ export default function AccessControl() {
                       <p className="text-white text-sm font-medium truncate">{log.person_name || "Unknown"}</p>
                       <p className="text-slate-400 text-xs truncate">
                         {log.gate_name} • {new Date(log.timestamp).toLocaleTimeString()}
+                        {log.destination ? ` • → ${log.destination}` : ""}
                         {log.scan_method && log.scan_method !== "qr_code" ? ` • ${log.scan_method}` : ""}
                         {log.vehicle_registration ? ` • ${log.vehicle_registration}` : ""}
                         {log.time_on_site_minutes != null && log.status === "exited" ? ` • ${log.time_on_site_minutes}m` : ""}
