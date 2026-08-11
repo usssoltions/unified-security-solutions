@@ -156,3 +156,9 @@ button:focus-visible {
     @apply bg-background text-foreground;
   }
 }
+
+/* Trap Leaflet's internal panes (z-index 200–700) inside the map container so
+   map tiles, markers and controls never overlay the app chrome (mobile drawer
+   + bottom nav, both z-50). Fixes the map-bleeding-over-sidebar/bottom-nav bug
+   on every page that renders a Leaflet map. */
+.leaflet-container { isolation: isolate; }
