@@ -101,7 +101,7 @@ export default function ActiveShiftCard({ shift, user, location }) {
         <div className="grid grid-cols-2 gap-2 sm:gap-3">
           <Button
             className="bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm py-2 sm:py-3"
-            onClick={() => navigate(createPageUrl("QRScanner"))}
+            onClick={() => navigate(createPageUrl("AccessControl"))}
           >
             <Navigation className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             Scan

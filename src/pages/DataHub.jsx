@@ -21,7 +21,7 @@ const ENTITY_CONFIGS = [
   { key: "Alert",             label: "Alerts",             icon: AlertTriangle, color: "text-orange-400",  fields: ["type","title","priority","guard_name","site_id","status","created_date"] },
   { key: "AlarmResponse",     label: "Alarm Responses",    icon: Shield,        color: "text-rose-400",    fields: ["alarm_type","priority","status","address","client_name","assigned_to_name","dispatched_at"] },
   { key: "Visitor",           label: "Visitors",           icon: Users,         color: "text-cyan-400",    fields: ["visitor_name","unit_number","visit_type","status","entered_at","exited_at"] },
-  { key: "AccessLog",         label: "Access Logs",        icon: CheckCircle2,  color: "text-teal-400",    fields: ["person_name","person_type","event_type","gate_name","scan_method","timestamp"] },
+  { key: "AccessLog",         label: "Access Logs",        icon: CheckCircle2,  color: "text-teal-400",    fields: ["person_name","person_phone","person_type","event_type","gate_name","scan_method","sa_id_number","driver_licence_number","vehicle_registration","destination","guard_name","timestamp"] },
 ];
 
 function fmt(val) {

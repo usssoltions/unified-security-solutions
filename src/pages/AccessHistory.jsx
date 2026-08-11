@@ -10,11 +10,12 @@ import { Download, Search, ArrowUpDown, Shield, User } from "lucide-react";
 const COLUMNS = [
   { key: "timestamp", label: "Date/Time" },
   { key: "person_name", label: "Visitor" },
+  { key: "person_phone", label: "Contact" },
+  { key: "sa_id_number", label: "SA ID" },
+  { key: "driver_licence_number", label: "Licence No" },
   { key: "event_type", label: "Event" },
   { key: "gate_name", label: "Gate" },
   { key: "scan_method", label: "Scan Type" },
-  { key: "sa_id_number", label: "SA ID" },
-  { key: "driver_licence_number", label: "Licence No" },
   { key: "vehicle_registration", label: "Reg" },
   { key: "vehicle_make", label: "Vehicle" },
   { key: "destination", label: "Destination" },
@@ -62,7 +63,7 @@ export default function AccessHistory() {
       if (from && t < from) return false;
       if (to && t > to) return false;
       if (q) {
-        const hay = [l.person_name, l.sa_id_number, l.driver_licence_number, l.vehicle_registration,
+        const hay = [l.person_name, l.person_phone, l.sa_id_number, l.driver_licence_number, l.vehicle_registration,
           l.vehicle_licence_disc_number, l.destination, l.work_type, l.guard_name, l.qr_code].join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
@@ -250,6 +251,9 @@ export default function AccessHistory() {
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 {l.gate_name && <span className="text-slate-400">Gate: <span className="text-slate-200">{l.gate_name}</span></span>}
                 {l.scan_method && <span className="text-slate-400">Type: <span className="text-slate-200">{l.scan_method}</span></span>}
+                {l.sa_id_number && <span className="text-slate-400">ID: <span className="text-slate-200">{l.sa_id_number}</span></span>}
+                {l.driver_licence_number && <span className="text-slate-400">Licence: <span className="text-slate-200">{l.driver_licence_number}</span></span>}
+                {l.person_phone && <span className="text-slate-400">Contact: <span className="text-slate-200">{l.person_phone}</span></span>}
                 {l.vehicle_registration && <span className="text-slate-400">Reg: <span className="text-slate-200">{l.vehicle_registration}</span></span>}
                 {l.destination && <span className="text-slate-400">Dest: <span className="text-slate-200">{l.destination}</span></span>}
                 {l.work_type && <span className="text-slate-400">Work: <span className="text-slate-200">{l.work_type}</span></span>}

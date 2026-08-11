@@ -42,6 +42,10 @@
     "person_name": {
       "type": "string"
     },
+    "person_phone": {
+      "type": "string",
+      "description": "Visitor / person contact number, captured on entry so it is available in Access History & Data Hub for follow-up and dispute resolution."
+    },
     "visitor_id": {
       "type": "string"
     },

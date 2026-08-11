@@ -351,6 +351,7 @@ export default function AccessControl() {
         person_type: personType,
         person_id: v?.id || "",
         person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
+        person_phone: v?.visitor_phone || "",
         visitor_id: v?.id || "",
         unit_number: v?.unit_number || "",
         gate_name: gate,
@@ -401,7 +402,11 @@ export default function AccessControl() {
     }
   };
 
+  // Live Access Log shows only people currently ON SITE (status "inside").
+  // Completed exits and denials remain in the permanent Access History but are
+  // removed from the live log the moment an exit is finalised.
   const filteredLogs = recentLogs.filter((log) => {
+    if (log.status && log.status !== "inside") return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (

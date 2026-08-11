@@ -66,6 +66,7 @@ export default function ExpectedVisitorForm({ user, destinations, scanPayload, o
     if (!form.visitor_name?.trim()) return "Visitor name is required.";
     if (!form.surname?.trim()) return "Surname is required.";
     if (!form.visitor_id_number?.trim()) return "ID number is required.";
+    if (!form.visitor_phone?.trim()) return "Contact number is required.";
     if (isVehicle && !form.vehicle_registration?.trim()) return "Vehicle registration is required for vehicle visitors.";
     if (!form.destination) return "Destination is required.";
     if (!form.expected_date) return "Expected date is required.";
@@ -171,7 +172,7 @@ export default function ExpectedVisitorForm({ user, destinations, scanPayload, o
           <Input placeholder="ID number" value={form.visitor_id_number} onChange={set("visitor_id_number")} className="bg-slate-900 border-slate-700 text-white" />
         </div>
 
-        <Input placeholder="Visitor phone number (optional)" value={form.visitor_phone} onChange={set("visitor_phone")} className="bg-slate-900 border-slate-700 text-white" />
+        <Input placeholder="Visitor contact number *" value={form.visitor_phone} onChange={set("visitor_phone")} className="bg-slate-900 border-slate-700 text-white" />
 
         {/* Vehicle registration — only for vehicle visitors */}
         {isVehicle && (

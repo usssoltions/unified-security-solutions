@@ -180,38 +180,33 @@ ${formData.additional_notes}
       // Update user - mark that start of shift report is completed
       await base44.auth.updateMe({ needs_start_of_shift_report: false }).catch(() => {});
 
-      // Notify admins via in-app notification + email (no backend function needed)
+      // Notify supervisors / admins in real time via the backend function. The
+      // backend uses the service role so it can list ALL admin/supervisor users
+      // (a guard's own session can't list users) and sends branded emails +
+      // in-app notifications reliably.
       try {
-        const allUsers = await base44.entities.User.list();
-        const admins = allUsers.filter(u =>
-          ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
-        );
-        const notifTitle = `🛡️ Start of Shift — ${user.full_name} @ ${site?.name || shift?.site_name}`;
-        const notifMessage = `Guard ${user.full_name} has clocked in and submitted their start-of-shift report. Post: ${formData.shift_post || "N/A"}. Site: ${site?.name || "Unknown"}.`;
+        await base44.functions.invoke("sendStartOfShiftNotification", {
+          reportData: {
+            site_name: site?.name || shift?.site_name || "Unknown",
+            client_name: site?.client_name || "",
+            shift_post: formData.shift_post,
+            special_instructions: formData.special_instructions,
+            post_items_received: formData.post_items_received,
+            relieving_officer: formData.relieving_officer,
+            additional_notes: formData.additional_notes,
+            observations: formData.observations.filter(o => o.type || o.comments),
+            signature: formData.signature,
+            incidentId: createdHandover?.id || null,
+          },
+          location: currentLocation,
+          media: formData.photos.map(url => ({ type: "photo", url })),
+        });
+      } catch (notifError) {
+        console.warn("Start-of-shift notification skipped:", notifError?.message);
+      }
 
-        for (const admin of admins) {
-          await base44.entities.Notification.create({
-            recipient_id: admin.id,
-            recipient_name: admin.full_name,
-            type: "shift_reminder",
-            priority: "medium",
-            title: notifTitle,
-            message: notifMessage,
-            read: false,
-            related_entity: "shift_handover",
-            related_id: createdHandover?.id || null,
-          }).catch(() => {});
-
-          if (admin.email) {
-            await base44.integrations.Core.SendEmail({
-              to: admin.email,
-              subject: notifTitle,
-              body: `${notifMessage}\n\nPost: ${formData.shift_post}\nSpecial Instructions: ${formData.special_instructions}\nPost Items: ${formData.post_items_received}\nRelieving Officer: ${formData.relieving_officer}\nAdditional Notes: ${formData.additional_notes}\n${currentLocation ? `GPS: ${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}` : ""}`,
-            }).catch(() => {});
-          }
-        }
-
-        // Show WhatsApp notifier before redirecting
+      // Show WhatsApp notifier before redirecting
+      try {
         const { startOfShiftMessage, buildAdminLinks } = await import("@/lib/whatsapp");
         const waMsg = startOfShiftMessage({ guardName: user.full_name, siteName: site?.name || shift?.site_name, shiftPost: formData.shift_post });
         const waLinks = buildAdminLinks(waMsg);
@@ -219,9 +214,7 @@ ${formData.additional_notes}
           setWaMessage(waMsg);
           return; // onDone will navigate
         }
-      } catch (notifError) {
-        console.warn("Notification skipped:", notifError?.message);
-      }
+      } catch (_) {}
 
       // Redirect back to guard shift page
       navigate(createPageUrl("GuardShift"));

@@ -32,6 +32,7 @@ import PatrolAssignmentAlert from "../components/guard/PatrolAssignmentAlert";
 import OfflineSyncManager from "../components/guard/OfflineSyncManager";
 import SystemSetup from "../components/SystemSetup";
 import ShiftAcknowledgeModal from "../components/scheduling/ShiftAcknowledgeModal";
+import BatchShiftAcknowledgeModal from "../components/scheduling/BatchShiftAcknowledgeModal";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -47,6 +48,8 @@ export default function GuardShift() {
   const [showTraining, setShowTraining] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [shiftToAck, setShiftToAck] = useState(null);
+  const [pendingShifts, setPendingShifts] = useState([]);
+  const [showBatchAck, setShowBatchAck] = useState(false);
   const [showDailyReportModal, setShowDailyReportModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const lastStayAwakeCheck = useRef(null);
@@ -58,6 +61,19 @@ export default function GuardShift() {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // GuardShift is the guard home page. Redirect any non-guard role that lands
+  // here (e.g. via the "/" mainPage) to their own role dashboard so the guard
+  // Quick Actions / Scan / panic tools are never exposed to non-guard accounts.
+  useEffect(() => {
+    if (!user) return;
+    const roleHome = {
+      dispatcher: "ControlRoom", admin: "ControlRoom",
+      resident: "ResidentDashboard", estate_manager: "EstateManagerDashboard",
+      vendor: "VendorPortal", client: "ClientDashboard",
+    }[user.role_type];
+    if (roleHome) navigate(createPageUrl(roleHome), { replace: true });
+  }, [user, navigate]);
 
   const loadUser = async () => {
     setLoadingUser(true);
@@ -122,11 +138,11 @@ export default function GuardShift() {
     queryKey: ["upcomingShifts", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      // Fetch all scheduled shifts for this guard (upcoming, no date limit)
-      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "scheduled" }, "start_time", 20);
-      // Only show future shifts (start_time >= now)
-      const now = new Date();
-      return (shifts || []).filter(s => new Date(s.start_time) >= now);
+      // Fetch ALL scheduled shifts for this guard (no future-only filter) so a
+      // full week or month of assignments — including past-due unacknowledged
+      // ones — loads for batch acknowledgement. Sorted ascending by start_time.
+      const shifts = await base44.entities.Shift.filter({ guard_id: user.id, status: "scheduled" }, "start_time", 100);
+      return shifts || [];
     },
     enabled: !!user && !shiftsLoading,
     refetchInterval: 60000,
@@ -203,13 +219,27 @@ export default function GuardShift() {
     if (user?.needs_daily_report && activeShift && user.is_clocked_in) setShowDailyReportModal(true);
   }, [user, activeShift]);
 
-  // Auto-popup acknowledgement modal for unacknowledged upcoming shifts
+  // After clock-in a guard must complete, sign and submit the Start of Shift
+  // report before anything else. If they navigate back to the dashboard without
+  // submitting, bounce them back to the Start of Shift screen.
   useEffect(() => {
-    if (!shiftToAck && upcomingShifts.length > 0) {
-      const unacked = upcomingShifts.find(s => !s.guard_ack_status && s.status === "scheduled");
-      if (unacked) setShiftToAck(unacked);
+    if (user?.role_type === "guard" && user?.is_clocked_in && user?.needs_start_of_shift_report) {
+      navigate(createPageUrl("StartOfShift"), { replace: true });
     }
-  }, [upcomingShifts]);
+  }, [user, navigate]);
+
+  // Auto-popup acknowledgement: if there are unacknowledged scheduled shifts,
+  // open the Batch modal with ALL of them (one signature, one response applied
+  // to the whole week/month). A single pending shift still uses the single
+  // modal. This also catches past-due unacknowledged shifts now that the
+  // upcomingShifts query no longer filters to "today/future only".
+  useEffect(() => {
+    if (showBatchAck || shiftToAck) return;
+    const unacked = upcomingShifts.filter(s => !s.guard_ack_status && s.status === "scheduled");
+    if (unacked.length === 0) return;
+    if (unacked.length === 1) setShiftToAck(unacked[0]);
+    else { setPendingShifts(unacked); setShowBatchAck(true); }
+  }, [upcomingShifts, showBatchAck, shiftToAck]);
 
   useEffect(() => {
     if (user && !user.is_clocked_in && user.role_type === 'guard') {
@@ -259,6 +289,13 @@ export default function GuardShift() {
             shift={shiftToAck}
             user={user}
             onClose={() => { setShiftToAck(null); queryClient.invalidateQueries(["upcomingShifts"]); }}
+          />
+        )}
+        {showBatchAck && (
+          <BatchShiftAcknowledgeModal
+            shifts={pendingShifts}
+            user={user}
+            onClose={() => { setShowBatchAck(false); setPendingShifts([]); queryClient.invalidateQueries(["upcomingShifts"]); }}
           />
         )}
       </>
@@ -547,6 +584,13 @@ export default function GuardShift() {
             shift={shiftToAck}
             user={user}
             onClose={() => { setShiftToAck(null); queryClient.invalidateQueries(["upcomingShifts"]); }}
+          />
+        )}
+        {showBatchAck && (
+          <BatchShiftAcknowledgeModal
+            shifts={pendingShifts}
+            user={user}
+            onClose={() => { setShowBatchAck(false); setPendingShifts([]); queryClient.invalidateQueries(["upcomingShifts"]); }}
           />
         )}
       </div>

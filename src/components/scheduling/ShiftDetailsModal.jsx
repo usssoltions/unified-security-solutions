@@ -581,8 +581,14 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
                       {shift.guard_ack_at && new Date(shift.guard_ack_at).toLocaleString("en-ZA")}
                     </span>
                   </div>
-                  {shift.guard_ack_notes && (
-                    <p className="text-sm text-slate-400 mt-1">{shift.guard_ack_notes}</p>
+                  {shift.guard_ack_note && (
+                    <p className="text-sm text-slate-400 mt-1">{shift.guard_ack_note}</p>
+                  )}
+                  {shift.guard_ack_signature && (
+                    <div className="mt-2">
+                      <p className="text-xs text-slate-500 mb-1">Guard signature:</p>
+                      <img src={shift.guard_ack_signature} alt="Guard signature" className="h-16 bg-white rounded border border-slate-600" />
+                    </div>
                   )}
                 </div>
               )}
