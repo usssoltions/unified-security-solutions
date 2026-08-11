@@ -78,7 +78,17 @@ export default function GuardShift() {
 
   const loadUser = async () => {
     setLoadingUser(true);
-    const currentUser = await base44.auth.me();
+    let currentUser;
+    try {
+      currentUser = await base44.auth.me();
+    } catch (e) {
+      // A me() failure must not leave "Loading your shift…" spinning forever —
+      // drop to the "unable to load user" screen so the guard can reload,
+      // instead of an infinite spinner loop.
+      setUser(null);
+      setLoadingUser(false);
+      return;
+    }
     setUser(currentUser);
     setLoadingUser(false);
     // Defer the shift-sync check by 5s to avoid startup rate limits
@@ -220,14 +230,14 @@ export default function GuardShift() {
     if (user?.needs_daily_report && activeShift && user.is_clocked_in) setShowDailyReportModal(true);
   }, [user, activeShift]);
 
-  // After clock-in a guard must complete, sign and submit the Start of Shift
-  // report before anything else. If they navigate back to the dashboard without
-  // submitting, bounce them back to the Start of Shift screen.
-  useEffect(() => {
-    if (user?.role_type === "guard" && user?.is_clocked_in && user?.needs_start_of_shift_report) {
-      navigate(createPageUrl("StartOfShift"), { replace: true });
-    }
-  }, [user, navigate]);
+  // NOTE: a "bounce back to Start of Shift if needs_start_of_shift_report is
+  // set" redirect used to live here. It was removed because a stale flag left
+  // over from a previous incomplete session forced every guard login straight
+  // back to the Start of Shift screen in an endless loop. The clock-in flow
+  // already redirects to Start of Shift automatically (ClockInOut onSuccess),
+  // so the "start of shift automated after clock-in" behaviour is preserved
+  // without the login loop. The guard can still open the report any time from
+  // the Quick Actions "Start of Shift" tile.
 
   // Auto-popup acknowledgement: if there are unacknowledged scheduled shifts,
   // open the Batch modal with ALL of them (one signature, one response applied
