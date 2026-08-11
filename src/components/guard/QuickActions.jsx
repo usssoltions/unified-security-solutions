@@ -10,10 +10,10 @@ export default function QuickActions({ location, shiftId, siteId }) {
 
   const actions = [
     {
-      title: "Scan / Access",
+      title: "Scan QR",
       icon: QrCode,
       color: "from-sky-500 to-sky-600",
-      action: () => navigate(createPageUrl("AccessControl"))
+      action: () => navigate(createPageUrl("QRScanner"))
     },
     {
       title: "Report Incident",

@@ -50,6 +50,7 @@ export default function GuardShift() {
   const [shiftToAck, setShiftToAck] = useState(null);
   const [pendingShifts, setPendingShifts] = useState([]);
   const [showBatchAck, setShowBatchAck] = useState(false);
+  const [ackDismissed, setAckDismissed] = useState(false);
   const [showDailyReportModal, setShowDailyReportModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const lastStayAwakeCheck = useRef(null);
@@ -234,12 +235,15 @@ export default function GuardShift() {
   // modal. This also catches past-due unacknowledged shifts now that the
   // upcomingShifts query no longer filters to "today/future only".
   useEffect(() => {
-    if (showBatchAck || shiftToAck) return;
+    // ackDismissed stops the modal re-popping the instant a guard closes it
+    // without acknowledging — without this the effect re-opens it forever
+    // (infinite loop) because unacked shifts still exist on the next render.
+    if (ackDismissed || showBatchAck || shiftToAck) return;
     const unacked = upcomingShifts.filter(s => !s.guard_ack_status && s.status === "scheduled");
     if (unacked.length === 0) return;
     if (unacked.length === 1) setShiftToAck(unacked[0]);
     else { setPendingShifts(unacked); setShowBatchAck(true); }
-  }, [upcomingShifts, showBatchAck, shiftToAck]);
+  }, [upcomingShifts, showBatchAck, shiftToAck, ackDismissed]);
 
   useEffect(() => {
     if (user && !user.is_clocked_in && user.role_type === 'guard') {
@@ -288,14 +292,14 @@ export default function GuardShift() {
           <ShiftAcknowledgeModal
             shift={shiftToAck}
             user={user}
-            onClose={() => { setShiftToAck(null); queryClient.invalidateQueries(["upcomingShifts"]); }}
+            onClose={() => { setShiftToAck(null); setAckDismissed(true); queryClient.invalidateQueries(["upcomingShifts"]); }}
           />
         )}
         {showBatchAck && (
           <BatchShiftAcknowledgeModal
             shifts={pendingShifts}
             user={user}
-            onClose={() => { setShowBatchAck(false); setPendingShifts([]); queryClient.invalidateQueries(["upcomingShifts"]); }}
+            onClose={() => { setShowBatchAck(false); setPendingShifts([]); setAckDismissed(true); queryClient.invalidateQueries(["upcomingShifts"]); }}
           />
         )}
       </>
@@ -583,14 +587,14 @@ export default function GuardShift() {
           <ShiftAcknowledgeModal
             shift={shiftToAck}
             user={user}
-            onClose={() => { setShiftToAck(null); queryClient.invalidateQueries(["upcomingShifts"]); }}
+            onClose={() => { setShiftToAck(null); setAckDismissed(true); queryClient.invalidateQueries(["upcomingShifts"]); }}
           />
         )}
         {showBatchAck && (
           <BatchShiftAcknowledgeModal
             shifts={pendingShifts}
             user={user}
-            onClose={() => { setShowBatchAck(false); setPendingShifts([]); queryClient.invalidateQueries(["upcomingShifts"]); }}
+            onClose={() => { setShowBatchAck(false); setPendingShifts([]); setAckDismissed(true); queryClient.invalidateQueries(["upcomingShifts"]); }}
           />
         )}
       </div>
