@@ -26,7 +26,9 @@ Deno.serve(async (req) => {
     // Check if this automation is enabled
     const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
     const settings = settingsRecs?.[0];
-    if (!settings?.generate_scheduled_patrols) {
+    // Default to ENABLED when no settings record exists yet, so patrols generate
+    // out of the box. Only skip when an admin has explicitly disabled the toggle.
+    if (settings && settings.generate_scheduled_patrols === false) {
       return Response.json({ success: true, skipped: true, reason: 'Automation disabled' });
     }
 

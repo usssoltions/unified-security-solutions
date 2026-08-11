@@ -119,17 +119,20 @@ export default function GuardTrainingView({ user }) {
         </CardHeader>
 
         <CardContent className="p-6 space-y-4">
-          <p className="text-white text-lg font-medium">{question.question}</p>
+          <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-700">
+            <p className="text-white text-lg font-semibold leading-relaxed">{question.question}</p>
+          </div>
           
           <div className="space-y-2">
             {question.options.map((option, index) => (
               <Button
                 key={index}
+                variant="outline"
                 onClick={() => handleAnswer(index)}
-                className="w-full justify-start text-left h-auto py-4 bg-slate-900 hover:bg-sky-600 border border-slate-700"
+                className="w-full justify-start text-left h-auto py-4 bg-slate-900 hover:bg-sky-600 hover:text-white border border-slate-700 text-white"
               >
-                <span className="font-bold mr-3">{String.fromCharCode(65 + index)}.</span>
-                {option}
+                <span className="font-bold mr-3 text-sky-400">{String.fromCharCode(65 + index)}.</span>
+                <span className="text-white">{option}</span>
               </Button>
             ))}
           </div>

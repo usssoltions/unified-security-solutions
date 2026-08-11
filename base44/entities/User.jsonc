@@ -35,6 +35,10 @@
     "unit_number": {
       "type": "string"
     },
+    "security_pin": {
+      "type": "string",
+      "description": "4-digit PIN used for clock-in verification."
+    },
     "is_clocked_in": {
       "type": "boolean",
       "default": false
@@ -48,6 +52,32 @@
     "last_seen": {
       "type": "string",
       "format": "date-time"
+    },
+    "stay_awake_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the stay-awake alertness check is active for this guard."
+    },
+    "stay_awake_interval_minutes": {
+      "type": "number",
+      "default": 30,
+      "description": "Minutes between stay-awake checks."
+    },
+    "patrol_reminder_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "patrol_reminder_interval_minutes": {
+      "type": "number",
+      "default": 60
+    },
+    "needs_daily_report": {
+      "type": "boolean",
+      "default": false
+    },
+    "needs_start_of_shift_report": {
+      "type": "boolean",
+      "default": false
     },
     "custom_contacts": {
       "type": "array",
@@ -74,13 +104,5 @@
       "default": []
     }
   },
-  "required": [
-    "badge_number",
-    "phone",
-    "whatsapp",
-    "unit_number",
-    "profile_photo",
-    "push_token",
-    "last_seen"
-  ]
+  "required": []
 }

@@ -16,7 +16,7 @@ export default function UserForm({ user, onClose, onSuccess }) {
     email: user?.email || "",
     role_type: user?.role_type || "guard",
     badge_number: user?.badge_number || "",
-    phone_number: user?.phone_number || "",
+    phone: user?.phone || "",
     security_pin: user?.security_pin || "",
     new_password: ""
   });
@@ -31,7 +31,7 @@ export default function UserForm({ user, onClose, onSuccess }) {
         full_name: data.full_name,
         role_type: data.role_type,
         badge_number: data.badge_number,
-        phone_number: data.phone_number,
+        phone: data.phone,
         security_pin: data.security_pin
       };
       return await base44.entities.User.update(user.id, updateData);
@@ -210,8 +210,8 @@ export default function UserForm({ user, onClose, onSuccess }) {
                 <Label className="text-slate-300">Phone Number</Label>
                 <Input
                   type="tel"
-                  value={formData.phone_number}
-                  onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="bg-slate-900 border-slate-700 text-white"
                   placeholder="+27 12 345 6789"
                 />
