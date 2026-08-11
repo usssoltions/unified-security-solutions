@@ -28,7 +28,7 @@ export const ROLE_PAGES = {
   guard: P([
     "GuardShift", "GuardMyShifts", "Contacts", "CallHistory", "CallRecordings",
     "PTTRecordings", "PTT", "GuardIncidents", "GuardMaintenance", "GuardPatrol",
-    "AccessControl", "Profile",
+    "AccessControl", "QRScanner", "StartOfShift", "StartOfShiftHistory", "Profile",
   ]),
   dispatcher: P([
     "ControlRoom", "AdminIncidents", "AccessControl", "AccessHistory", "AccessSettings",
@@ -36,7 +36,7 @@ export const ROLE_PAGES = {
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "Profile",
+    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
   ]),
   admin: P([
     "ControlRoom", "AdminIncidents", "AccessControl", "AccessHistory", "AccessSettings",
@@ -44,7 +44,7 @@ export const ROLE_PAGES = {
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "Profile",
+    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
   ]),
   resident: P([
     "ResidentDashboard", "ResidentVisitors", "ResidentBookings", "ResidentOrders",

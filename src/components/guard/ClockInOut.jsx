@@ -121,28 +121,6 @@ export default function ClockInOut({ user, location }) {
         needs_start_of_shift_report: true
       });
 
-      // Fire the realtime start-of-shift notification immediately on clock-in
-      // (server-side, reliable) so supervisors/admins are alerted the moment a
-      // guard starts their shift — independent of the detailed StartOfShift form,
-      // which sends a second, detailed report notification on submit.
-      try {
-        await base44.functions.invoke("sendStartOfShiftNotification", {
-          reportData: {
-            site_name: assignedSite?.name || assignedShift?.site_name || "Unknown",
-            client_name: assignedSite?.client_name || "",
-            shift_post: "(start-of-shift report pending)",
-            special_instructions: "",
-            post_items_received: "",
-            relieving_officer: "",
-            additional_notes: "Guard clocked in — start-of-shift report to follow.",
-            observations: [],
-            signature: null,
-            incidentId: assignedShift?.id || null,
-          },
-          location,
-          media: [],
-        });
-      } catch (_) {}
     },
     onSuccess: () => {
       queryClient.invalidateQueries();

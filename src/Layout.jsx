@@ -246,6 +246,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
         { title: "AI Patrol", url: createPageUrl("GuardPatrol"), icon: Shield },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
+        { title: "Shift Reports", url: createPageUrl("StartOfShiftHistory"), icon: FileText },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
@@ -273,6 +274,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Analytics", url: createPageUrl("Analytics"), icon: BarChart3 },
         { title: "Guard Activity", url: createPageUrl("GuardActivity"), icon: Users },
         { title: "AI Reports", url: createPageUrl("AIReports"), icon: Sparkles },
+        { title: "Shift Reports", url: createPageUrl("StartOfShiftHistory"), icon: FileText },
         { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Stay Awake", url: createPageUrl("StayAwakeConfiguration"), icon: Zap },

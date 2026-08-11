@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Loader2, Send, Shield, Camera } from "lucide-react";
+import { Loader2, Send, Shield, Camera, Video } from "lucide-react";
 import SignaturePad from "../components/guard/SignaturePad";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 
@@ -29,6 +29,7 @@ export default function StartOfShift() {
     additional_notes: "",
     observations: [{ type: "", time: "", comments: "" }],
     photos: [],
+    videos: [],
     signature: null
   });
 
@@ -93,6 +94,34 @@ export default function StartOfShift() {
     e.target.value = '';
   };
 
+  const handleVideoUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    setUploadingPhoto(true);
+
+    for (const file of files) {
+      try {
+        if (!file.type.startsWith('video/')) {
+          alert(`${file.name} is not a video file`);
+          continue;
+        }
+        const result = await base44.integrations.Core.UploadFile({ file: file });
+        if (result?.file_url) {
+          setFormData(prev => ({ ...prev, videos: [...prev.videos, result.file_url] }));
+        } else {
+          throw new Error('No file URL returned from upload');
+        }
+      } catch (fileError) {
+        const errorMsg = fileError?.response?.data?.message || fileError?.message || 'Unknown error occurred';
+        alert(`Video upload failed: ${errorMsg}.`);
+      }
+    }
+
+    setUploadingPhoto(false);
+    e.target.value = '';
+  };
+
   const addObservation = () => {
     setFormData(prev => ({
       ...prev,
@@ -153,7 +182,12 @@ ${formData.additional_notes}
         key_activities: formData.observations
           .filter(obs => obs.type || obs.comments)
           .map(obs => `${obs.type || 'Observation'} at ${obs.time}: ${obs.comments}`),
-        media_attachments: formData.photos.map(url => ({ type: "photo", url }))
+        media_attachments: [
+          ...formData.photos.map(url => ({ type: "photo", url })),
+          ...formData.videos.map(url => ({ type: "video", url }))
+        ],
+        outgoing_guard_signature: formData.signature,
+        signed_at: new Date().toISOString()
       };
 
       // If offline or rate-limited, save locally and redirect
@@ -199,7 +233,10 @@ ${formData.additional_notes}
             incidentId: createdHandover?.id || null,
           },
           location: currentLocation,
-          media: formData.photos.map(url => ({ type: "photo", url })),
+          media: [
+            ...formData.photos.map(url => ({ type: "photo", url })),
+            ...formData.videos.map(url => ({ type: "video", url }))
+          ],
         });
       } catch (notifError) {
         console.warn("Start-of-shift notification skipped:", notifError?.message);
@@ -431,6 +468,36 @@ ${formData.additional_notes}
               <div className="grid grid-cols-1 gap-3">
                 {formData.photos.map((url, i) => (
                   <img key={i} src={url} alt={`Photo ${i+1}`} className="w-full h-auto max-h-96 object-contain bg-slate-900 rounded border border-slate-700" />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">VIDEOS</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <input
+              type="file"
+              accept="video/*"
+              capture="environment"
+              multiple
+              onChange={handleVideoUpload}
+              className="hidden"
+              id="videos"
+            />
+            <label htmlFor="videos">
+              <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-sky-500">
+                <Video className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                <p className="text-slate-400">{uploadingPhoto ? "Uploading..." : "Record/Upload Videos"}</p>
+              </div>
+            </label>
+            {formData.videos.length > 0 && (
+              <div className="grid grid-cols-1 gap-3">
+                {formData.videos.map((url, i) => (
+                  <video key={i} src={url} controls className="w-full h-auto max-h-96 bg-slate-900 rounded border border-slate-700" />
                 ))}
               </div>
             )}

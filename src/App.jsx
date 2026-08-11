@@ -13,6 +13,7 @@ import IncomingCallHandler from '@/components/IncomingCallHandler';
 import AndroidDownload from '@/pages/AndroidDownload';
 import AccessHistory from '@/pages/AccessHistory';
 import AccessSettings from '@/pages/AccessSettings';
+import StartOfShiftHistory from './pages/StartOfShiftHistory';
 import ProtectedPage from '@/components/ProtectedPage';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -88,6 +89,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="AccessSettings">
             <ProtectedPage pageKey="AccessSettings">
               <AccessSettings />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/StartOfShiftHistory" element={
+          <LayoutWrapper currentPageName="StartOfShiftHistory">
+            <ProtectedPage pageKey="StartOfShiftHistory">
+              <StartOfShiftHistory />
             </ProtectedPage>
           </LayoutWrapper>
         } />
