@@ -147,69 +147,10 @@ Deno.serve(async (req) => {
       } catch (e) { results.low_battery = { error: e.message }; }
     }
 
-    // ── 4. Generate Scheduled Patrols ──
-    if (settings.generate_scheduled_patrols) {
-      try {
-        const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
-        const todayEnd = new Date(now); todayEnd.setHours(23,59,59,999);
-        const sites = await base44.asServiceRole.entities.Site.filter({ status: 'active' });
-        const patrolSites = sites.filter(s => s.patrol_config?.enabled && s.patrol_config?.schedules?.length > 0);
-        if (patrolSites.length > 0) {
-          const patrolSiteIds = new Set(patrolSites.map(s => s.id));
-          const allShifts = await base44.asServiceRole.entities.Shift.filter({});
-          const todayShifts = allShifts.filter(s => {
-            const d = new Date(s.start_time);
-            return d >= todayStart && d <= todayEnd && ['scheduled','active','accepted'].includes(s.status) && patrolSiteIds.has(s.site_id);
-          });
-          if (todayShifts.length > 0) {
-            const todayPatrolsRaw = await base44.asServiceRole.entities.ScheduledPatrol.list('-scheduled_start', 500);
-            const todayPatrols = todayPatrolsRaw.filter(p => {
-              const d = new Date(p.scheduled_start); return d >= todayStart && d <= todayEnd;
-            });
-            let created = 0;
-            for (const site of patrolSites) {
-              const cfg = site.patrol_config;
-              const siteShift = todayShifts.find(s => s.site_id === site.id);
-              if (!siteShift) continue;
-              for (const schedule of cfg.schedules) {
-                const [h,m] = (schedule.start_time || '06:00').split(':').map(Number);
-                const [eh,em] = (schedule.end_time || '18:00').split(':').map(Number);
-                const startMins = h*60+m, endMins = eh*60+em, freqMins = schedule.frequency_minutes || 60;
-                let patrolMins = startMins, patrolNum = 1;
-                while (patrolMins <= endMins) {
-                  const scheduledStart = new Date(todayStart);
-                  scheduledStart.setMinutes(scheduledStart.getMinutes() + patrolMins);
-                  const alreadyExists = todayPatrols.some(p =>
-                    p.site_id === site.id && Math.abs(new Date(p.scheduled_start) - scheduledStart) < 5*60000
-                  );
-                  if (!alreadyExists) {
-                    const checkpoints = (site.checkpoints || []).map((cp,i) => ({
-                      checkpoint_id: cp.id, checkpoint_name: cp.name,
-                      risk_level: cp.risk_level || 'medium', required: cp.required !== false,
-                      completed: false, order: i+1
-                    }));
-                    await base44.asServiceRole.entities.ScheduledPatrol.create({
-                      site_id: site.id, site_name: site.name,
-                      guard_id: siteShift.guard_id, guard_name: siteShift.guard_name,
-                      shift_id: siteShift.id,
-                      scheduled_start: scheduledStart.toISOString(),
-                      scheduled_end: new Date(scheduledStart.getTime() + (cfg.duration_target_minutes || 30)*60000).toISOString(),
-                      status: scheduledStart <= now ? 'due' : 'upcoming',
-                      patrol_number: patrolNum, route_checkpoints: checkpoints,
-                      checkpoints_total: checkpoints.length, checkpoints_completed: 0,
-                      ai_route_generated: !!cfg.ai_route_optimization
-                    });
-                    created++;
-                  }
-                  patrolMins += freqMins; patrolNum++;
-                }
-              }
-            }
-            results.scheduled_patrols = { created };
-          }
-        }
-      } catch (e) { results.scheduled_patrols = { error: e.message }; }
-    }
+    // ── 4. Scheduled Patrol Generation is owned by the dedicated
+    //    generateScheduledPatrols automation (runs every 30 min, gated on
+    //    active shifts + patrol_config.enabled). Removed here to avoid
+    //    duplicate site/shift/patrol fetches and keep this monitor lean.
 
     // ── 5. Shift Reminders (once per shift) ──
     if (settings.send_shift_reminders) {
