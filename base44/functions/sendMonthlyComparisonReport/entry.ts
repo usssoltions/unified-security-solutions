@@ -126,6 +126,14 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Respect the global "Monthly Comparison" report toggle.
+    try {
+      const _s = await base44.asServiceRole.entities.AutomationSetting.list();
+      if (_s?.[0] && _s[0].report_monthly_comparison === false) {
+        return Response.json({ success: true, skipped: true, reason: 'monthly report disabled' });
+      }
+    } catch (_) {}
+
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);

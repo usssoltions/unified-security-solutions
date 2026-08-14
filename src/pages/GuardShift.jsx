@@ -210,7 +210,10 @@ export default function GuardShift() {
       }
     }, 30000);
     return () => clearInterval(id);
-  }, [user, activeShift]);
+    // Depend only on primitive identities (not the activeShift object, which
+    // refetches every 30s and would otherwise reset this interval before it
+    // ever ticks — which was why stay-awake alerts never fired).
+  }, [user?.id, activeShift?.id, user?.stay_awake_enabled]);
 
   // Patrol reminder system
   useEffect(() => {
@@ -224,7 +227,7 @@ export default function GuardShift() {
       }
     }, 60000);
     return () => clearInterval(id);
-  }, [user, activeShift]);
+  }, [user?.id, activeShift?.id, user?.patrol_reminder_enabled]);
 
   useEffect(() => {
     if (user?.needs_daily_report && activeShift && user.is_clocked_in) setShowDailyReportModal(true);

@@ -44,19 +44,12 @@ export default function PanicButton({ shiftId, siteId }) {
     try {
       const user = await base44.auth.me();
 
-      // Create panic alert in database
-      await base44.entities.Alert.create({
-        type: "panic",
-        priority: "critical",
-        title: "🚨 PANIC ALERT",
-        message: `EMERGENCY: ${user.full_name} has triggered a panic alert! Location: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}. ${notes ? `Notes: ${notes}` : ""}`,
-        guard_id: user.id,
-        guard_name: user.full_name,
-        site_id: siteId || "",
-        shift_id: shiftId || "",
-        location,
-        status: "active"
-      });
+      // Send the branded panic alert (HTML email + in-app notification) and
+      // create the Alert record immediately via the backend function. The
+      // backend is the source of truth for the alert, so we no longer create
+      // a duplicate client-side Alert. Fire-and-forget so the UI stays snappy.
+      base44.functions.invoke("sendPanicAlert", { location, notes, shiftId, siteId })
+        .catch((e) => console.error("Panic backend notification failed:", e));
 
       // Create an incident record so it shows in control room
       await base44.entities.Incident.create({

@@ -1,0 +1,36 @@
+{
+  "name": "SignalingMessage",
+  "type": "object",
+  "description": "Persistent store for WebRTC signaling messages (offers/answers/ICE candidates/call events) so the rtcSignaling function works reliably across serverless invocations. The previous in-memory Map was lost on every cold start, which broke voice calls.",
+  "properties": {
+    "to_user_id": {
+      "type": "string",
+      "description": "Recipient user id (the user who should receive this message)."
+    },
+    "from_user_id": {
+      "type": "string",
+      "description": "Sender user id."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "offer",
+        "answer",
+        "candidate",
+        "call_answered",
+        "call_ended"
+      ]
+    },
+    "call_id": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "string",
+      "description": "JSON-stringified offer / answer / ICE candidate (empty for call_answered / call_ended)."
+    }
+  },
+  "required": [
+    "to_user_id",
+    "type"
+  ]
+}

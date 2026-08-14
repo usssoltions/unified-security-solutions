@@ -11,6 +11,16 @@ const SUPERVISOR_ROLES = ['admin', 'dispatcher', 'supervisor', 'management'];
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Respect the global "Shift Reports" toggle — if disabled in System
+    // Configuration, never send the shift-end notification email.
+    try {
+      const _settings = await base44.asServiceRole.entities.AutomationSetting.list();
+      if (_settings?.[0] && _settings[0].report_shift_reports === false) {
+        return Response.json({ skipped: true, reason: 'shift reports disabled' });
+      }
+    } catch (_) {}
+
     const body = await req.json().catch(() => ({}));
     const shiftId = body && body.shiftId ? String(body.shiftId) : '';
     if (!shiftId) return Response.json({ error: 'shiftId is required' }, { status: 400 });

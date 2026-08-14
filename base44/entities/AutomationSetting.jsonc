@@ -26,6 +26,31 @@
       "type": "boolean",
       "default": false,
       "description": "Enable shift reminder emails (sent once per shift, 2 hours before start)"
+    },
+    "report_daily_activity": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the automated Daily Activity Report. When disabled, sendDailyActivityReport sends nothing."
+    },
+    "report_shift_reports": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable automated start/end-of-shift reports (sendShiftEndNotification + AutoReportGenerator). When disabled, no shift report is generated or emailed."
+    },
+    "report_weekly_analysis": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the automated Weekly Analysis Report."
+    },
+    "report_monthly_comparison": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the automated Monthly Comparison Report."
+    },
+    "report_incident_alerts": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable real-time critical incident alert emails (monitorHighPriorityIncidents). When disabled, critical incidents do not trigger alert emails."
     }
   }
 }

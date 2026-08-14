@@ -44,7 +44,7 @@ export default function StayAwakeConfiguration() {
       const settings = {};
       guards.forEach(guard => {
         settings[guard.id] = {
-          enabled: guard.stay_awake_enabled !== false,
+          enabled: guard.stay_awake_enabled === true,
           interval_minutes: guard.stay_awake_interval_minutes || 30
         };
       });

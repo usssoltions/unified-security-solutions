@@ -4,6 +4,14 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Respect the global "Weekly Analysis" report toggle.
+    try {
+      const _s = await base44.asServiceRole.entities.AutomationSetting.list();
+      if (_s?.[0] && _s[0].report_weekly_analysis === false) {
+        return Response.json({ success: true, skipped: true, reason: 'weekly report disabled' });
+      }
+    } catch (_) {}
+
     const today = new Date();
     const weekAgo = new Date(today);
     weekAgo.setDate(weekAgo.getDate() - 7);

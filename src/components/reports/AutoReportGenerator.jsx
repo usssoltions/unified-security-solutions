@@ -13,6 +13,13 @@ export default function AutoReportGenerator({ user, shift }) {
       if (generatedForShift.current.has(shift.id)) return;
       generatedForShift.current.add(shift.id);
       try {
+        // Respect the global "Shift Reports" toggle — if disabled in System
+        // Configuration, never auto-generate or email the shift-end report.
+        try {
+          const settings = await base44.entities.AutomationSetting.list();
+          if (settings?.[0] && settings[0].report_shift_reports === false) return;
+        } catch (_) {}
+
         const templates = await base44.entities.ReportTemplate.filter({
           template_type: "shift_end",
           auto_generate: true,
@@ -39,7 +46,16 @@ export default function AutoReportGenerator({ user, shift }) {
 
         const patrols = Array.isArray(patrolsRaw) ? patrolsRaw : [];
         const incidents = Array.isArray(incidentsRaw) ? incidentsRaw : [];
-        const maintenance = Array.isArray(maintenanceRaw) ? maintenanceRaw : [];
+        // Only count maintenance logged DURING this shift window. The old
+        // `guard_id`-only filter returned every maintenance request the guard
+        // had ever submitted, which made the AI shift-end report cite
+        // maintenance that never happened on the shift's day.
+        const _shiftStart = new Date(shift.start_time).getTime();
+        const _shiftEnd = new Date(shift.end_time).getTime();
+        const maintenance = (Array.isArray(maintenanceRaw) ? maintenanceRaw : []).filter((m) => {
+          const t = new Date(m.reported_at || m.created_date).getTime();
+          return t >= _shiftStart && t <= _shiftEnd + 3600000; // +1h grace for late entries
+        });
         const trainings = Array.isArray(trainingsRaw) ? trainingsRaw : [];
         const alerts = Array.isArray(alertsRaw) ? alertsRaw : [];
         const checkpoints = Array.isArray(checkpointsRaw) ? checkpointsRaw : [];
