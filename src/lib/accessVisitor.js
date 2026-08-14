@@ -58,14 +58,21 @@ export async function resolveOrCreateVisitor({ mapped, photoUrl, scan, createIfM
 
   if (visitor) {
     const updates = { ...scanMeta };
+    // The scanned document is the source of truth for identity fields. Always
+    // overwrite the stored name + OCR fields with the freshly scanned data so
+    // that a previously mis-named visitor record (e.g. a QR pass created with
+    // the wrong name, like "Tania Oelofse") is corrected on the next scan
+    // instead of perpetuating the wrong name on every subsequent entry.
     for (const k of VISITOR_FIELDS) {
-      if (mapped?.[k] && !visitor[k]) updates[k] = mapped[k];
+      if (mapped?.[k]) updates[k] = mapped[k];
     }
-    if (mapped?.visitor_name && (!visitor.visitor_name || visitor.visitor_name === "Unknown")) {
-      updates.visitor_name = mapped.visitor_name;
-    }
+    const scanName = mapped?.visitor_name
+      || [mapped?.first_names, mapped?.surname].filter(Boolean).join(" ").trim();
+    if (scanName) updates.visitor_name = scanName;
     try { await base44.entities.Visitor.update(visitor.id, updates); } catch (_) {}
-    return { visitor, created: false };
+    // Return the merged object so callers (VisitorCard, AccessLog) immediately
+    // reflect the corrected scanned name, not the stale stored one.
+    return { visitor: { ...visitor, ...updates }, created: false };
   }
 
   if (!createIfMissing) return { visitor: null, created: false };

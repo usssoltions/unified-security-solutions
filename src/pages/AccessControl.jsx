@@ -592,6 +592,7 @@ export default function AccessControl() {
                   onApprove={onApprove}
                   busy={busy}
                   eventType={eventType}
+                  canAddDestination={["admin", "estate_manager"].includes(user?.role_type)}
                 />
               </div>
             )}

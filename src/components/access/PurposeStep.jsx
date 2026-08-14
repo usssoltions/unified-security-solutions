@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Briefcase, Plus, CheckCircle2, RefreshCw, MapPin } from "lucide-react";
 import AddDestinationModal from "@/components/access/AddDestinationModal";
 
-export default function PurposeStep({ destinations = [], workTypes = [], onApprove, busy, eventType }) {
+export default function PurposeStep({ destinations = [], workTypes = [], onApprove, busy, eventType, canAddDestination = false }) {
   const [purpose, setPurpose] = useState(null);
   const [destination, setDestination] = useState("");
   const [workType, setWorkType] = useState("");
@@ -35,12 +35,14 @@ export default function PurposeStep({ destinations = [], workTypes = [], onAppro
             {activeDestinations.map((d) => (
               <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
             ))}
-            {activeDestinations.length === 0 && <SelectItem value="_none" disabled>No destinations yet — add one</SelectItem>}
+            {activeDestinations.length === 0 && <SelectItem value="_none" disabled>No destinations available</SelectItem>}
           </SelectContent>
         </Select>
-        <Button variant="outline" onClick={() => setAddOpen(true)} className="border-slate-600 text-sky-300 h-11 px-3 shrink-0">
-          <Plus className="w-4 h-4" />
-        </Button>
+        {canAddDestination && (
+          <Button variant="outline" onClick={() => setAddOpen(true)} className="border-slate-600 text-sky-300 h-11 px-3 shrink-0">
+            <Plus className="w-4 h-4" />
+          </Button>
+        )}
       </div>
       {extra}
     </div>
