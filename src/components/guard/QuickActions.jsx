@@ -1,7 +1,7 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, AlertTriangle, Wrench, Navigation, FileText } from "lucide-react";
+import { QrCode, AlertTriangle, Wrench, Navigation, FileText, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
@@ -28,10 +28,10 @@ export default function QuickActions({ location, shiftId, siteId }) {
       action: () => navigate(createPageUrl("GuardMaintenance"))
     },
     {
-      title: "Start of Shift",
-      icon: FileText,
+      title: "Access Control",
+      icon: ShieldCheck,
       color: "from-purple-500 to-purple-600",
-      action: () => navigate(createPageUrl("StartOfShift"))
+      action: () => navigate(createPageUrl("AccessControl"))
     }
   ];
 
