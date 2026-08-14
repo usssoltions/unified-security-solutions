@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Plus, X, AlertTriangle } from "lucide-react";
+import { Shield, Plus, X, AlertTriangle, Phone, Home } from "lucide-react";
+import WhatsAppNotifier from "@/components/WhatsAppNotifier";
+import { residentIncidentMessage } from "@/lib/whatsapp";
 
 const CATEGORIES = [
   { value: "theft", label: "Theft" },
@@ -25,11 +27,20 @@ const priorityColors = { low: "bg-slate-600", medium: "bg-amber-600", high: "bg-
 
 export default function ResidentIncidents() {
   const [user, setUser] = useState(null);
+  const [resident, setResident] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [waMessage, setWaMessage] = useState(null);
   const [form, setForm] = useState({ title: "", category: "", priority: "medium", description: "" });
   const qc = useQueryClient();
 
-  useEffect(() => { base44.auth.me().then(setUser); }, []);
+  useEffect(() => {
+    base44.auth.me().then((u) => {
+      setUser(u);
+      base44.entities.Resident.filter({ user_id: u.id }).then((res) => {
+        if (res.length > 0) setResident(res[0]);
+      });
+    });
+  }, []);
 
   // Incidents reported by this resident are stored with guard_id = resident id.
   const { data: myIncidents = [] } = useQuery({
@@ -37,6 +48,11 @@ export default function ResidentIncidents() {
     queryFn: () => base44.entities.Incident.filter({ guard_id: user?.id }),
     enabled: !!user, initialData: [],
   });
+
+  const residentName = resident?.full_name || user?.display_name || user?.full_name || "Resident";
+  const unitNumber = resident?.unit_number || user?.unit_number || "—";
+  const estateName = resident?.estate_name || "";
+  const contactPhone = resident?.phone || user?.phone_number || user?.phone || "";
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
@@ -47,41 +63,53 @@ export default function ResidentIncidents() {
         priority: data.priority,
         status: "reported",
         guard_id: user.id,
-        guard_name: user.display_name || user.full_name,
+        guard_name: residentName,
         site_id: "resident",
-        site_name: "Resident Report",
+        site_name: `Resident — Unit ${unitNumber}`,
         reported_at: new Date().toISOString(),
       });
-      // In-app notify admins & estate management for every resident incident.
-      // (Critical incidents also trigger the monitorHighPriorityIncidents
-      //  automation which sends the branded email.)
+      // Send branded real-time email + in-app notification to all
+      // admin / estate_manager / dispatcher users (server-side).
       try {
-        const admins = await base44.entities.User.list();
-        const recipients = admins.filter((u) => ["admin", "estate_manager", "dispatcher"].includes(u.role_type));
-        await Promise.all(recipients.map((a) =>
-          base44.entities.Notification.create({
-            recipient_id: a.id,
-            recipient_name: a.full_name,
-            type: "resident_incident",
-            priority: data.priority,
-            title: `Resident Incident: ${data.title}`,
-            message: `${user.display_name || user.full_name} reported a ${data.category} incident (${data.priority}).`,
-            read: false,
-            related_entity: "incident",
-            related_id: incident.id,
-            sent_via: ["in_app"],
-          }).catch(() => {})
-        ));
-      } catch (e) { console.warn("incident notify failed", e?.message || e); }
+        await base44.functions.invoke("notifyAdminsResidentReport", {
+          reportType: "incident",
+          reportId: incident.id,
+          residentName,
+          unitNumber,
+          estateName,
+          contactPhone,
+          category: data.category,
+          priority: data.priority,
+          title: data.title,
+          description: data.description,
+          reportedAt: new Date().toISOString(),
+        });
+      } catch (e) { console.warn("resident report notify failed", e?.message || e); }
       return incident;
     },
-    onSuccess: () => {
+    onSuccess: (_incident, data) => {
       qc.invalidateQueries(["my_incidents"]);
       setShowForm(false);
       setForm({ title: "", category: "", priority: "medium", description: "" });
-      alert("Incident reported. Security & management have been notified.");
+      // Show the WhatsApp notifier so the resident can send the report to all
+      // configured admin/management WhatsApp numbers in real time.
+      setWaMessage(residentIncidentMessage({
+        residentName, unitNumber, estateName, contactPhone,
+        category: data.category, priority: data.priority,
+        title: data.title, description: data.description,
+      }));
     },
   });
+
+  if (waMessage) {
+    return (
+      <WhatsAppNotifier
+        message={waMessage}
+        title="Send Incident Alerts via WhatsApp"
+        onDone={() => setWaMessage(null)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -94,6 +122,15 @@ export default function ResidentIncidents() {
             <Plus className="w-4 h-4 mr-2" /> New Incident
           </Button>
         </div>
+
+        {/* Resident info summary */}
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardContent className="p-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
+            <span className="flex items-center gap-1"><Home className="w-3 h-3" /> Unit {unitNumber}</span>
+            {estateName && <span>• {estateName}</span>}
+            {contactPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {contactPhone}</span>}
+          </CardContent>
+        </Card>
 
         {showForm && (
           <Card className="bg-slate-800 border-rose-500">
@@ -121,11 +158,9 @@ export default function ResidentIncidents() {
                 </SelectContent>
               </Select>
               <Textarea placeholder="Describe what happened, where and when *" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-900 border-slate-700 text-white" rows={4} />
-              {form.priority === "critical" && (
-                <div className="flex items-center gap-2 p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-300">
-                  <AlertTriangle className="w-4 h-4" /> Critical incidents immediately alert security & management by email.
-                </div>
-              )}
+              <div className="flex items-center gap-2 p-2 bg-sky-500/10 border border-sky-500/30 rounded-lg text-xs text-sky-300">
+                <AlertTriangle className="w-4 h-4" /> On submit, security & management are notified immediately by email and WhatsApp.
+              </div>
               <Button
                 className="w-full bg-rose-600 hover:bg-rose-700"
                 onClick={() => createMutation.mutate(form)}

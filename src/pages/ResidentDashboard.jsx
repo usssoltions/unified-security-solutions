@@ -66,6 +66,7 @@ export default function ResidentDashboard() {
     { label: "Payments", icon: CreditCard, to: "/ResidentPayments", color: "bg-emerald-500", desc: "Pay levies & more" },
     { label: "My Tickets", icon: Ticket, to: "/ResidentTickets", color: "bg-amber-500", desc: "Report issues" },
     { label: "Security", icon: Shield, to: "/ResidentIncidents", color: "bg-rose-500", desc: "Report incidents" },
+    { label: "Maintenance", icon: Wrench, to: "/ResidentMaintenance", color: "bg-amber-500", desc: "Report maintenance" },
   ];
 
   return (

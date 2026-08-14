@@ -243,6 +243,42 @@ Acknowledged: ${new Date().toLocaleString("en-ZA")}
 📱 View scheduling: ${appDeepLink("Scheduling")}`;
 }
 
+/** Resident-submitted incident report — sent to admins/management */
+export function residentIncidentMessage({ residentName, unitNumber, estateName, category, priority, title, description, contactPhone }) {
+  return `🔴 *RESIDENT INCIDENT REPORT*
+
+Resident: ${residentName}
+Unit: ${unitNumber || "—"}${estateName ? `\nEstate: ${estateName}` : ""}${contactPhone ? `\nContact: ${contactPhone}` : ""}
+Time: ${new Date().toLocaleString("en-ZA")}
+
+Type: ${category || "—"}
+Priority: ${priority || "medium"}
+Title: ${title || "—"}
+
+Description:
+${description || "None provided."}
+
+📱 Review in app: ${appDeepLink("AdminIncidents")}`;
+}
+
+/** Resident-submitted maintenance request — sent to admins/management */
+export function residentMaintenanceMessage({ residentName, unitNumber, estateName, address, category, urgency, title, description, contactPhone }) {
+  return `🔧 *RESIDENT MAINTENANCE REQUEST*
+
+Resident: ${residentName}
+Unit: ${unitNumber || "—"}${estateName ? `\nEstate: ${estateName}` : ""}${address ? `\nAddress: ${address}` : ""}${contactPhone ? `\nContact: ${contactPhone}` : ""}
+Time: ${new Date().toLocaleString("en-ZA")}
+
+Category: ${category || "—"}
+Urgency: ${urgency || "medium"}
+Issue: ${title || "—"}
+
+Details:
+${description || "None provided."}
+
+📱 Review in app: ${appDeepLink("AdminMaintenance")}`;
+}
+
 /** Sent to admins on start-of-shift report */
 export function startOfShiftMessage({ guardName, siteName, shiftPost }) {
   return `🛡️ *START OF SHIFT REPORT*

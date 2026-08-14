@@ -16,6 +16,7 @@ import AccessSettings from '@/pages/AccessSettings';
 import StartOfShiftHistory from './pages/StartOfShiftHistory';
 import ResidentLaundry from './pages/ResidentLaundry';
 import ResidentIncidents from './pages/ResidentIncidents';
+import ResidentMaintenance from './pages/ResidentMaintenance';
 import ProtectedPage from '@/components/ProtectedPage';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -112,6 +113,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="ResidentIncidents">
             <ProtectedPage pageKey="ResidentIncidents">
               <ResidentIncidents />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/ResidentMaintenance" element={
+          <LayoutWrapper currentPageName="ResidentMaintenance">
+            <ProtectedPage pageKey="ResidentMaintenance">
+              <ResidentMaintenance />
             </ProtectedPage>
           </LayoutWrapper>
         } />

@@ -289,6 +289,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Bookings", url: createPageUrl("ResidentBookings"), icon: Calendar },
         { title: "Order Food/Shop", url: createPageUrl("ResidentOrders"), icon: Package },
         { title: "Laundry", url: createPageUrl("ResidentLaundry"), icon: ShirtIcon },
+        { title: "Maintenance", url: createPageUrl("ResidentMaintenance"), icon: Wrench },
         { title: "Security", url: createPageUrl("ResidentIncidents"), icon: Shield },
         { title: "Tickets", url: createPageUrl("ResidentTickets"), icon: FileText },
         { title: "Payments", url: createPageUrl("ResidentPayments"), icon: Wrench },
