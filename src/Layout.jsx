@@ -6,7 +6,7 @@ import { base44 } from "@/api/base44Client";
 import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
   Menu, X, LogOut, Bell, Package, Sliders, RefreshCw, Sparkles, Zap,
-  FileText, Mic, Clock, ArrowLeft, UserCircle, Wrench, QrCode, MessageCircle
+  FileText, Mic, Clock, ArrowLeft, UserCircle, Wrench, QrCode, MessageCircle, ShirtIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -288,6 +288,8 @@ export default function Layout({ children, currentPageName }) {
         { title: "Visitors", url: createPageUrl("ResidentVisitors"), icon: QrCode },
         { title: "Bookings", url: createPageUrl("ResidentBookings"), icon: Calendar },
         { title: "Order Food/Shop", url: createPageUrl("ResidentOrders"), icon: Package },
+        { title: "Laundry", url: createPageUrl("ResidentLaundry"), icon: ShirtIcon },
+        { title: "Security", url: createPageUrl("ResidentIncidents"), icon: Shield },
         { title: "Tickets", url: createPageUrl("ResidentTickets"), icon: FileText },
         { title: "Payments", url: createPageUrl("ResidentPayments"), icon: Wrench },
         { title: "Announcements", url: createPageUrl("ResidentAnnouncements"), icon: Bell },

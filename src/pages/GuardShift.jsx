@@ -382,7 +382,7 @@ export default function GuardShift() {
               </div>
               <div>
                 <h1 className="text-white font-bold text-base leading-tight">
-                  {user.full_name?.split(' ')[0] || "Guard"}
+                  {(user.display_name || user.full_name)?.split(' ')[0] || "Guard"}
                 </h1>
                 <div className="flex items-center gap-2">
                   <div className={`w-1.5 h-1.5 rounded-full ${user.is_clocked_in ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`} />

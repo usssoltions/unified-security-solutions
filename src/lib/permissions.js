@@ -48,6 +48,7 @@ export const ROLE_PAGES = {
   ]),
   resident: P([
     "ResidentDashboard", "ResidentVisitors", "ResidentBookings", "ResidentOrders",
+    "ResidentLaundry", "ResidentIncidents",
     "ResidentTickets", "ResidentPayments", "ResidentAnnouncements", "Profile",
   ]),
   estate_manager: P([

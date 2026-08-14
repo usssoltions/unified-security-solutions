@@ -82,7 +82,7 @@ export default function ResidentDashboard() {
               <Home className="w-3 h-3" /> Unit {resident?.unit_number || user?.unit_number || "—"}
             </p>
           </div>
-          <Link to="/ResidentNotifications">
+          <Link to="/ResidentAnnouncements">
             <button className="relative p-2 rounded-xl bg-slate-800 text-slate-300">
               <Bell className="w-5 h-5" />
               {unreadAnnouncements.length > 0 && (
