@@ -23,6 +23,10 @@
       ],
       "default": "resident"
     },
+    "display_name": {
+      "type": "string",
+      "description": "Admin-editable display name. The platform-managed full_name field is read-only and cannot be updated via the SDK, so User Management edits this field and the app shows (display_name || full_name) everywhere a person's name appears."
+    },
     "badge_number": {
       "type": "string"
     },

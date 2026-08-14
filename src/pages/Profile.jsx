@@ -74,7 +74,7 @@ export default function Profile() {
               <Label className="text-slate-400">Full Name</Label>
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-slate-500" />
-                <span className="text-white">{user?.full_name}</span>
+                <span className="text-white">{user?.display_name || user?.full_name}</span>
               </div>
             </div>
 

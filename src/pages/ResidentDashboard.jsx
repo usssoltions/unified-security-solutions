@@ -76,7 +76,7 @@ export default function ResidentDashboard() {
         <div className="flex items-center justify-between pt-2">
           <div>
             <h1 className="text-2xl font-bold text-white">
-              Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {user?.full_name?.split(" ")[0]}!
+              Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {(user?.display_name || user?.full_name)?.split(" ")[0]}!
             </h1>
             <p className="text-slate-400 text-sm flex items-center gap-1 mt-1">
               <Home className="w-3 h-3" /> Unit {resident?.unit_number || user?.unit_number || "—"}

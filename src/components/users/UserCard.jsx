@@ -48,7 +48,7 @@ export default function UserCard({ user, onEdit, onDelete }) {
               <RoleIcon className={`w-6 h-6 ${config.color}`} />
             </div>
             <div>
-              <h3 className="font-semibold text-white">{user.full_name}</h3>
+              <h3 className="font-semibold text-white">{user.display_name || user.full_name}</h3>
               <Badge className={config.badgeColor}>
                 {user.role_type?.replace(/_/g, ' ')}
               </Badge>

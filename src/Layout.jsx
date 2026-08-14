@@ -423,10 +423,10 @@ export default function Layout({ children, currentPageName }) {
 
                   <div className="hidden md:flex items-center gap-2 bg-slate-800/80 rounded-xl px-3 py-2">
                     <div className="w-7 h-7 bg-gradient-to-br from-sky-400 to-blue-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white font-bold text-xs">{user.full_name?.[0]?.toUpperCase() || "U"}</span>
+                      <span className="text-white font-bold text-xs">{(user.display_name || user.full_name)?.[0]?.toUpperCase() || "U"}</span>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-white">{user.full_name}</p>
+                      <p className="text-xs font-semibold text-white">{(user.display_name || user.full_name)}</p>
                       <p className="text-xs text-slate-400">{user.badge_number || user.email}</p>
                     </div>
                   </div>
@@ -444,10 +444,10 @@ export default function Layout({ children, currentPageName }) {
                 <div className="p-4 border-b border-slate-700/50">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center">
-                      <span className="text-white font-bold">{user.full_name?.[0]?.toUpperCase() || "U"}</span>
+                      <span className="text-white font-bold">{(user.display_name || user.full_name)?.[0]?.toUpperCase() || "U"}</span>
                     </div>
                     <div>
-                      <p className="text-white font-semibold text-sm">{user.full_name}</p>
+                      <p className="text-white font-semibold text-sm">{(user.display_name || user.full_name)}</p>
                       <p className="text-slate-400 text-xs">{roleLabel}</p>
                     </div>
                   </div>
@@ -497,10 +497,10 @@ export default function Layout({ children, currentPageName }) {
                   <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center">
-                        <span className="text-white font-bold">{user.full_name?.[0]?.toUpperCase() || "U"}</span>
+                        <span className="text-white font-bold">{(user.display_name || user.full_name)?.[0]?.toUpperCase() || "U"}</span>
                       </div>
                       <div>
-                        <p className="text-white font-semibold text-sm">{user.full_name}</p>
+                        <p className="text-white font-semibold text-sm">{(user.display_name || user.full_name)}</p>
                         <p className="text-slate-400 text-xs">{roleLabel}</p>
                       </div>
                     </div>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Briefcase, Plus, CheckCircle2, RefreshCw } from "lucide-react";
+import { Building2, Briefcase, Plus, CheckCircle2, RefreshCw, MapPin } from "lucide-react";
 import AddDestinationModal from "@/components/access/AddDestinationModal";
 
 export default function PurposeStep({ destinations = [], workTypes = [], onApprove, busy, eventType }) {
@@ -10,7 +10,41 @@ export default function PurposeStep({ destinations = [], workTypes = [], onAppro
   const [workType, setWorkType] = useState("");
   const [addOpen, setAddOpen] = useState(false);
 
-  const canApprove = purpose === "visit" ? !!destination : purpose === "work" ? !!workType : false;
+  const activeDestinations = destinations.filter((d) => d.active !== false);
+
+  // A destination is ALWAYS required to approve entry — for both visits and
+  // work (contractors/couriers). For work, the work type is also required so
+  // we know exactly who they are and where they are going.
+  const canApprove = purpose === "visit"
+    ? !!destination
+    : purpose === "work"
+      ? !!workType && !!destination
+      : false;
+
+  const destinationSelect = (extra = null) => (
+    <div className="space-y-1.5">
+      <label className="text-slate-400 text-xs font-medium flex items-center gap-1">
+        <MapPin className="w-3 h-3" /> Destination *
+      </label>
+      <div className="flex gap-2">
+        <Select value={destination} onValueChange={setDestination}>
+          <SelectTrigger className="bg-slate-900 border-slate-700 text-white h-11 flex-1">
+            <SelectValue placeholder="Select destination" />
+          </SelectTrigger>
+          <SelectContent>
+            {activeDestinations.map((d) => (
+              <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+            ))}
+            {activeDestinations.length === 0 && <SelectItem value="_none" disabled>No destinations yet — add one</SelectItem>}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" onClick={() => setAddOpen(true)} className="border-slate-600 text-sky-300 h-11 px-3 shrink-0">
+          <Plus className="w-4 h-4" />
+        </Button>
+      </div>
+      {extra}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -39,43 +73,28 @@ export default function PurposeStep({ destinations = [], workTypes = [], onAppro
         </button>
       </div>
 
-      {purpose === "visit" && (
-        <div className="space-y-1.5">
-          <label className="text-slate-400 text-xs font-medium">Destination</label>
-          <div className="flex gap-2">
-            <Select value={destination} onValueChange={setDestination}>
-              <SelectTrigger className="bg-slate-900 border-slate-700 text-white h-11 flex-1">
-                <SelectValue placeholder="Select destination" />
-              </SelectTrigger>
-              <SelectContent>
-                {destinations.filter((d) => d.active !== false).map((d) => (
-                  <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
-                ))}
-                {destinations.length === 0 && <SelectItem value="_none" disabled>No destinations yet — add one</SelectItem>}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" onClick={() => setAddOpen(true)} className="border-slate-600 text-sky-300 h-11 px-3 shrink-0">
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      {purpose === "visit" && destinationSelect()}
 
       {purpose === "work" && (
-        <div className="space-y-1.5">
-          <label className="text-slate-400 text-xs font-medium">Work Type</label>
-          <Select value={workType} onValueChange={setWorkType}>
-            <SelectTrigger className="bg-slate-900 border-slate-700 text-white h-11">
-              <SelectValue placeholder="Select work type" />
-            </SelectTrigger>
-            <SelectContent>
-              {workTypes.filter((w) => w.active !== false).map((w) => (
-                <SelectItem key={w.id} value={w.name}>{w.name}</SelectItem>
-              ))}
-              {workTypes.length === 0 && <SelectItem value="_none" disabled>No work types — add in Access Settings</SelectItem>}
-            </SelectContent>
-          </Select>
-        </div>
+        <>
+          <div className="space-y-1.5">
+            <label className="text-slate-400 text-xs font-medium">Work Type *</label>
+            <Select value={workType} onValueChange={setWorkType}>
+              <SelectTrigger className="bg-slate-900 border-slate-700 text-white h-11">
+                <SelectValue placeholder="Select work type" />
+              </SelectTrigger>
+              <SelectContent>
+                {workTypes.filter((w) => w.active !== false).map((w) => (
+                  <SelectItem key={w.id} value={w.name}>{w.name}</SelectItem>
+                ))}
+                {workTypes.length === 0 && <SelectItem value="_none" disabled>No work types — add in Access Settings</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>
+          {destinationSelect(
+            <p className="text-xs text-amber-300/80">Required — we need to know exactly where this contractor / courier is going.</p>
+          )}
+        </>
       )}
 
       {canApprove && (

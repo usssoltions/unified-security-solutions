@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 export default function UserForm({ user, onClose, onSuccess }) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
-    full_name: user?.full_name || "",
+    display_name: user?.display_name || user?.full_name || "",
     email: user?.email || "",
     role_type: user?.role_type || "guard",
     badge_number: user?.badge_number || "",
@@ -28,7 +28,9 @@ export default function UserForm({ user, onClose, onSuccess }) {
   const updateUserMutation = useMutation({
     mutationFn: async (data) => {
       const updateData = {
-        full_name: data.full_name,
+        // full_name is a platform-managed read-only field and silently ignored
+        // on update, so we persist the editable name into display_name instead.
+        display_name: data.display_name,
         role_type: data.role_type,
         badge_number: data.badge_number,
         phone: data.phone,
@@ -157,8 +159,8 @@ export default function UserForm({ user, onClose, onSuccess }) {
               <div className="space-y-2">
                 <Label className="text-slate-300">Full Name *</Label>
                 <Input
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  value={formData.display_name}
+                  onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                   className="bg-slate-900 border-slate-700 text-white"
                   required
                 />

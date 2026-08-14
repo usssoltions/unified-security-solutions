@@ -345,6 +345,32 @@ export default function AccessControl() {
       });
       const isBlacklisted = !!blacklist;
       const isDenied = !!denied || isBlacklisted;
+
+      // Prevent duplicate entries: if this visitor already has an active
+      // "inside" record (not yet exited), block the new entry instead of
+      // creating a second open record. The guard is told the person is
+      // already on site so they can't be waved through a second time.
+      if (v?.id && !isDenied) {
+        const active = await findActiveInsideRecords(v.id);
+        if (active && active.length > 0) {
+          const rec = active[0];
+          setResult({
+            flagged: true,
+            flag_reason: "Already on site — duplicate entry blocked",
+            person_name: rec.person_name || v?.visitor_name || "Unknown",
+            person_type: "visitor",
+            event_type: "entry",
+            status: "denied",
+            gate_name: gate,
+            timestamp: new Date().toISOString(),
+          });
+          resetWorkflow();
+          qc.invalidateQueries(["access_logs_recent"]);
+          setTimeout(() => setResult(null), 8000);
+          return;
+        }
+      }
+
       const log = {
         event_type: isDenied ? "denied" : "entry",
         status: isBlacklisted ? "blacklisted" : (denied ? "denied" : "inside"),

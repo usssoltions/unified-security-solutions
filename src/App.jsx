@@ -14,6 +14,8 @@ import AndroidDownload from '@/pages/AndroidDownload';
 import AccessHistory from '@/pages/AccessHistory';
 import AccessSettings from '@/pages/AccessSettings';
 import StartOfShiftHistory from './pages/StartOfShiftHistory';
+import ResidentLaundry from './pages/ResidentLaundry';
+import ResidentIncidents from './pages/ResidentIncidents';
 import ProtectedPage from '@/components/ProtectedPage';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -96,6 +98,20 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="StartOfShiftHistory">
             <ProtectedPage pageKey="StartOfShiftHistory">
               <StartOfShiftHistory />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/ResidentLaundry" element={
+          <LayoutWrapper currentPageName="ResidentLaundry">
+            <ProtectedPage pageKey="ResidentLaundry">
+              <ResidentLaundry />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/ResidentIncidents" element={
+          <LayoutWrapper currentPageName="ResidentIncidents">
+            <ProtectedPage pageKey="ResidentIncidents">
+              <ResidentIncidents />
             </ProtectedPage>
           </LayoutWrapper>
         } />
