@@ -10,7 +10,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Use service role to get all users
+    // Only admins / dispatchers may list all user accounts.
+    if (!['admin', 'dispatcher'].includes(user.role_type)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Use service role to get all users (caller is authorized as admin/dispatcher)
     const users = await base44.asServiceRole.entities.User.list();
 
     return Response.json({ users });

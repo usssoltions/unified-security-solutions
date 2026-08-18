@@ -3,9 +3,20 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authenticate the caller — only a logged-in user may trigger a panic alert.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { guardId, guardName, location, shiftId, siteId, siteName } = await req.json();
-    
-    const panicId = `panic_${Date.now()}_${guardId}`;
+
+    // Authorize: the panic alert must be attributed to the authenticated
+    // caller, not a client-supplied guard id/name (prevents impersonation).
+    const panicGuardId = user.id;
+    const panicGuardName = user.display_name || user.full_name || guardName;
+    const panicId = `panic_${Date.now()}_${panicGuardId}`;
     
     // Get all admins and supervisors
     const allUsers = await base44.asServiceRole.entities.User.filter({});
@@ -28,8 +39,8 @@ Deno.serve(async (req) => {
       priority: 'critical',
       title: title,
       message: message,
-      guard_id: guardId,
-      guard_name: guardName,
+      guard_id: panicGuardId,
+      guard_name: panicGuardName,
       site_id: siteId,
       shift_id: shiftId,
       location: location,
