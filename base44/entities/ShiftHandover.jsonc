@@ -178,5 +178,49 @@
     "site_id",
     "outgoing_guard_id",
     "handover_time"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.outgoing_guard_id": "{{user.id}}"
+        },
+        {
+          "data.incoming_guard_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": null,
+    "update": {
+      "$or": [
+        {
+          "data.outgoing_guard_id": "{{user.id}}"
+        },
+        {
+          "data.incoming_guard_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

@@ -52,5 +52,28 @@
       "default": true,
       "description": "Enable real-time critical incident alert emails (monitorHighPriorityIncidents). When disabled, critical incidents do not trigger alert emails."
     }
-  }
+  },
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "required": []
 }

@@ -169,5 +169,46 @@
     "location",
     "dispatched_by",
     "assigned_to"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.dispatched_by": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": null,
+    "update": {
+      "$or": [
+        {
+          "data.assigned_to": "{{user.id}}"
+        },
+        {
+          "data.dispatched_by": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

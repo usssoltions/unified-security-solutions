@@ -96,5 +96,46 @@
     "target_guard_id",
     "original_shift_id",
     "reason"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.requesting_guard_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": null,
+    "update": {
+      "$or": [
+        {
+          "data.requesting_guard_id": "{{user.id}}"
+        },
+        {
+          "data.target_guard_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }
