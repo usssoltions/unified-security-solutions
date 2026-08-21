@@ -10,6 +10,16 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Authenticate the caller — push notification dispatch must not be
+    // triggerable by an unauthenticated attacker.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!['admin', 'dispatcher', 'supervisor', 'management'].includes(user.role_type)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');
     const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
 

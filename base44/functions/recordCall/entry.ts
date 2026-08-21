@@ -26,7 +26,16 @@ Deno.serve(async (req) => {
     const callHistory = await base44.asServiceRole.entities.CallHistory.filter({ call_id: callId });
     
     if (callHistory && callHistory.length > 0) {
-      await base44.asServiceRole.entities.CallHistory.update(callHistory[0].id, {
+      const call = callHistory[0];
+      // IDOR guard: only a participant in this call may attach a recording.
+      const isParticipant =
+        call.caller_id === user.id ||
+        call.receiver_id === user.id ||
+        (Array.isArray(call.participants) && call.participants.some(p => p.user_id === user.id));
+      if (!isParticipant) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      await base44.asServiceRole.entities.CallHistory.update(call.id, {
         recording_url: file_url,
         has_recording: true,
         duration_seconds: duration || 0

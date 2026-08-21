@@ -3,6 +3,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authenticate the caller — WhatsApp dispatch uses backend credentials
+    // and must not be triggerable without a login.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { guardId, shiftDetails, action } = await req.json();
     
     // Get guard details

@@ -12,6 +12,13 @@ export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Authenticate the caller — shift-end notifications must come from a
+    // logged-in user (guard's device or an admin/scheduled automation).
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Respect the global "Shift Reports" toggle — if disabled in System
     // Configuration, never send the shift-end notification email.
     try {
