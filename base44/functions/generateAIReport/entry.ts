@@ -177,9 +177,16 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Send email to recipients
-    if (emailRecipients && emailRecipients.length > 0) {
-      await Promise.all(emailRecipients.map(email =>
+    // Send email to recipients — validate against registered user emails to
+    // prevent the app from being used as an open mail relay.
+    const registeredEmails = new Set(
+      (guards || []).map(u => u.email?.toLowerCase()).filter(Boolean)
+    );
+    const safeRecipients = (emailRecipients || []).filter(
+      email => email && registeredEmails.has(String(email).toLowerCase())
+    );
+    if (safeRecipients.length > 0) {
+      await Promise.all(safeRecipients.map(email =>
         base44.asServiceRole.integrations.Core.SendEmail({
           to: email,
           subject: `${reportTitle} — ${now.toLocaleDateString()}`,
@@ -219,7 +226,7 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       reportId: reportRecord.id,
-      emailsSent: emailRecipients?.length || 0,
+      emailsSent: safeRecipients.length,
       summary: { incidents: filteredIncidents.length, maintenance: filteredMaintenance.length, shifts: filteredShifts.length },
     });
 

@@ -3,7 +3,16 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    
+
+    // Authenticate — attendance monitoring is an admin-only operation.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role_type !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const now = new Date();
     const graceMinutes = 15; // Allow 15 minutes late
     const checkTimeStart = new Date(now.getTime() - graceMinutes * 60000);

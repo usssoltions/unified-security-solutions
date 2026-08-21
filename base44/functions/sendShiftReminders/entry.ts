@@ -4,6 +4,15 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
+    // Authenticate — shift reminders are an admin-only operation.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role_type !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Check if this automation is enabled
     const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
     const settings = settingsRecs?.[0];

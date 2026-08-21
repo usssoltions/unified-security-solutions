@@ -3,6 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
 const BRAND_SECONDARY = '#1a1a1a';
+const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /**
  * notifyAdminsResidentReport
@@ -55,13 +56,13 @@ Deno.serve(async (req) => {
 
     const detailRows = isMaintenance
       ? `
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏷️ <strong>Category:</strong> ${category || 'N/A'}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">⚡ <strong>Urgency:</strong> ${severity}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🔧 <strong>Issue:</strong> ${title || 'N/A'}</p>`
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏷️ <strong>Category:</strong> ${escapeHtml(category || 'N/A')}</p>
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">⚡ <strong>Urgency:</strong> ${escapeHtml(severity)}</p>
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">🔧 <strong>Issue:</strong> ${escapeHtml(title || 'N/A')}</p>`
       : `
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏷️ <strong>Category:</strong> ${category || 'N/A'}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">⚠️ <strong>Priority:</strong> ${severity}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📋 <strong>Title:</strong> ${title || 'N/A'}</p>`;
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏷️ <strong>Category:</strong> ${escapeHtml(category || 'N/A')}</p>
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">⚠️ <strong>Priority:</strong> ${escapeHtml(severity)}</p>
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">📋 <strong>Title:</strong> ${escapeHtml(title || 'N/A')}</p>`;
 
     const emailBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f8fafc;">
@@ -74,18 +75,18 @@ Deno.serve(async (req) => {
 
   <div style="padding:30px;background:#f8f9fa;border-bottom:3px solid ${BRAND_COLOR};">
     <h2 style="color:#0c4a6e;margin:0 0 12px;font-size:20px;">${isMaintenance ? 'Maintenance Request Details' : 'Incident Report Details'}</h2>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">👤 <strong>Resident:</strong> ${residentName || 'N/A'}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏠 <strong>Unit:</strong> ${unitNumber || '—'}${estateName ? ` &nbsp;|&nbsp; <strong>Estate:</strong> ${estateName}` : ''}</p>
-    ${address ? `<p style="color:#64748b;margin:5px 0;font-size:14px;">📍 <strong>Address:</strong> ${address}</p>` : ''}
-    ${contactPhone ? `<p style="color:#64748b;margin:5px 0;font-size:14px;">📞 <strong>Contact:</strong> ${contactPhone}</p>` : ''}
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🕐 <strong>Reported:</strong> ${when}</p>
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">👤 <strong>Resident:</strong> ${escapeHtml(residentName || 'N/A')}</p>
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏠 <strong>Unit:</strong> ${escapeHtml(unitNumber || '—')}${estateName ? ` &nbsp;|&nbsp; <strong>Estate:</strong> ${escapeHtml(estateName)}` : ''}</p>
+    ${address ? `<p style="color:#64748b;margin:5px 0;font-size:14px;">📍 <strong>Address:</strong> ${escapeHtml(address)}</p>` : ''}
+    ${contactPhone ? `<p style="color:#64748b;margin:5px 0;font-size:14px;">📞 <strong>Contact:</strong> ${escapeHtml(contactPhone)}</p>` : ''}
+    <p style="color:#64748b;margin:5px 0;font-size:14px;">🕐 <strong>Reported:</strong> ${escapeHtml(when)}</p>
     ${detailRows}
   </div>
 
   <div style="padding:30px;">
     <div style="background:white;border:2px solid #e2e8f0;border-radius:12px;padding:25px;">
       <h3 style="color:${BRAND_SECONDARY};margin:0 0 12px;font-size:18px;border-bottom:2px solid ${BRAND_COLOR};padding-bottom:10px;">${isMaintenance ? 'Reason / Description' : 'Description'}</h3>
-      <p style="color:#1e293b;line-height:1.6;white-space:pre-wrap;">${(isMaintenance ? (reason || description) : description) || 'None provided.'}</p>
+      <p style="color:#1e293b;line-height:1.6;white-space:pre-wrap;">${escapeHtml((isMaintenance ? (reason || description) : description) || 'None provided.')}</p>
     </div>
   </div>
 
