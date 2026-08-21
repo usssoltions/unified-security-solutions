@@ -3,7 +3,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    
+
+    // Authenticate the caller — panic alerts must come from a logged-in user.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { guardName, location, notes } = await req.json();
 
     const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');

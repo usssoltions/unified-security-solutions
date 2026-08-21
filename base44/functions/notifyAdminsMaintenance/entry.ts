@@ -15,6 +15,13 @@ const BRAND_SECONDARY = '#1a1a1a';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authenticate the caller — only a logged-in user may trigger admin alerts.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { maintenanceId, guardName, maintenanceType, siteName, details, location } = await req.json();
 
     const allUsers = await base44.asServiceRole.entities.User.filter({});

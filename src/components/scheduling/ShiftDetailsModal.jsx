@@ -13,6 +13,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { buildWhatsAppLink, guardShiftAssignedMessage, shiftScheduleMessage } from "@/lib/whatsapp";
 import { MessageCircle, Send } from "lucide-react";
 
+// Escape user-controlled values before interpolating into HTML strings to
+// prevent stored DOM XSS via document.write.
+const escapeHtml = (str) =>
+  String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+
 export default function ShiftDetailsModal({ shift, onClose }) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
@@ -172,12 +179,12 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
             </head>
             <body>
               <h1>🛡️ Shift Schedule</h1>
-              <p class="detail"><span>Guard:</span> ${shift.guard_name}</p>
-              <p class="detail"><span>Site:</span> ${shift.site_name}</p>
-              <p class="detail"><span>Date:</span> ${new Date(shift.start_time).toLocaleDateString()}</p>
-              <p class="detail"><span>Time:</span> ${new Date(shift.start_time).toLocaleTimeString()} - ${new Date(shift.end_time).toLocaleTimeString()}</p>
-              <p class="detail"><span>Status:</span> ${shift.status}</p>
-              ${shift.notes ? `<p class="detail"><span>Notes:</span> ${shift.notes}</p>` : ''}
+              <p class="detail"><span>Guard:</span> ${escapeHtml(shift.guard_name)}</p>
+              <p class="detail"><span>Site:</span> ${escapeHtml(shift.site_name)}</p>
+              <p class="detail"><span>Date:</span> ${escapeHtml(new Date(shift.start_time).toLocaleDateString())}</p>
+              <p class="detail"><span>Time:</span> ${escapeHtml(new Date(shift.start_time).toLocaleTimeString())} - ${escapeHtml(new Date(shift.end_time).toLocaleTimeString())}</p>
+              <p class="detail"><span>Status:</span> ${escapeHtml(shift.status)}</p>
+              ${shift.notes ? `<p class="detail"><span>Notes:</span> ${escapeHtml(shift.notes)}</p>` : ''}
             </body>
           </html>
         `);

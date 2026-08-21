@@ -28,6 +28,8 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
     const results = [];
 
     // Create in-app notifications for each recipient
@@ -69,11 +71,11 @@ Deno.serve(async (req) => {
                     <h1 style="color: white; margin: 0; font-size: 24px;">SecureGuard Notification</h1>
                   </div>
                   <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px;">
-                    ${metadata?.guard_photo ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${metadata.guard_photo}" alt="Guard Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid #667eea;" /></div>` : ''}
-                      ${metadata?.photos && metadata.photos.length > 0 ? `<div style="margin: 20px 0;"><p style="color: #64748b; font-size: 14px; margin-bottom: 10px;"><strong>Photos (${metadata.photos.length}):</strong></p><div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">${metadata.photos.map((photo, idx) => `<img src="${photo}" alt="Photo ${idx + 1}" style="width: 100%; height: auto; border-radius: 6px; border: 1px solid #e2e8f0;" />`).join('')}</div></div>` : ''}
+                    ${metadata?.guard_photo ? `<div style="text-align: center; margin-bottom: 20px;"><img src="${esc(metadata.guard_photo)}" alt="Guard Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid #667eea;" /></div>` : ''}
+                      ${metadata?.photos && metadata.photos.length > 0 ? `<div style="margin: 20px 0;"><p style="color: #64748b; font-size: 14px; margin-bottom: 10px;"><strong>Photos (${metadata.photos.length}):</strong></p><div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">${metadata.photos.map((photo, idx) => `<img src="${esc(photo)}" alt="Photo ${idx + 1}" style="width: 100%; height: auto; border-radius: 6px; border: 1px solid #e2e8f0;" />`).join('')}</div></div>` : ''}
                     <div style="background: white; padding: 25px; border-radius: 8px; border-left: 4px solid #667eea;">
-                      <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">${title}</h2>
-                      <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 15px 0;">${message}</p>
+                      <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">${esc(title)}</h2>
+                      <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 15px 0;">${esc(message)}</p>
                       ${metadata ? `<div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0;">
                        <p style="color: #64748b; font-size: 14px; margin: 0;"><strong>Additional Details:</strong></p>
                        ${Object.entries(metadata).filter(([key]) => key !== 'guard_photo' && key !== 'signature' && key !== 'full_report').map(([key, value]) => {
@@ -84,13 +86,13 @@ Deno.serve(async (req) => {
                          } else if (key === 'lng' || key === 'longitude') {
                            return '';
                          } else {
-                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>${key.replace(/_/g, ' ')}:</strong> ${typeof value === 'object' ? JSON.stringify(value) : value}</p>`;
+                           return `<p style="color: #475569; font-size: 14px; margin: 10px 0 0 0;"><strong>${esc(key.replace(/_/g, ' '))}:</strong> ${esc(typeof value === 'object' ? JSON.stringify(value) : String(value))}</p>`;
                          }
                        }).join('')}
                       </div>` : ''}
-                      ${metadata?.full_report ? `<div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0;"><p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;"><strong>Full Report:</strong></p><pre style="white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.6; color: #1e293b; margin: 0;">${metadata.full_report}</pre></div>` : ''}
-                      ${metadata?.signature ? `<div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;"><p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;"><strong>Digital Signature:</strong></p><img src="${metadata.signature}" alt="Signature" style="max-width: 300px; height: auto; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>` : ''}
-                      <p style="color: #64748b; font-size: 14px; margin-top: 20px;">Priority: <span style="color: ${priority === 'critical' ? '#dc2626' : priority === 'high' ? '#ea580c' : priority === 'medium' ? '#ca8a04' : '#0284c7'}; font-weight: bold;">${priority.toUpperCase()}</span></p>
+                      ${metadata?.full_report ? `<div style="background: #f1f5f9; padding: 15px; border-radius: 6px; margin: 15px 0;"><p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;"><strong>Full Report:</strong></p><pre style="white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.6; color: #1e293b; margin: 0;">${esc(metadata.full_report)}</pre></div>` : ''}
+                      ${metadata?.signature ? `<div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;"><p style="color: #64748b; font-size: 14px; margin: 0 0 10px 0;"><strong>Digital Signature:</strong></p><img src="${esc(metadata.signature)}" alt="Signature" style="max-width: 300px; height: auto; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>` : ''}
+                      <p style="color: #64748b; font-size: 14px; margin-top: 20px;">Priority: <span style="color: ${priority === 'critical' ? '#dc2626' : priority === 'high' ? '#ea580c' : priority === 'medium' ? '#ca8a04' : '#0284c7'}; font-weight: bold;">${esc(priority).toUpperCase()}</span></p>
                     </div>
                     <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
                       <p style="color: #94a3b8; font-size: 12px; margin: 0;">SecureGuard Security Management System</p>

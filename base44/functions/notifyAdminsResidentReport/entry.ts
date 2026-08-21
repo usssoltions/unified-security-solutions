@@ -23,6 +23,13 @@ const BRAND_SECONDARY = '#1a1a1a';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authenticate the caller — only a logged-in user may submit a report.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const {
       reportType, reportId, residentName, unitNumber, estateName,
       contactPhone, address, category, priority, urgency,
