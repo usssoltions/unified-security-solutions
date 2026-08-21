@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, XCircle, Loader2, MapPin, X } from "lucide
 import { base44 } from "@/api/base44Client";
 import {
   activatePanic, updatePanicLocation, requestFreshLocation,
-  hapticFeedback, managePanic
+  hapticFeedback, managePanic, escalatePanic
 } from "@/lib/panicService";
 
 /**
@@ -59,6 +59,36 @@ export default function PanicButton({ shiftId, siteId, siteName }) {
       return () => clearTimeout(timer);
     }
   }, [panicState]);
+
+  // Escalation timer — if the panic remains unacknowledged for 2 minutes,
+  // trigger backend escalation. This is the PRIMARY (event-driven) path when
+  // the app is open. A backend scheduled function is the FALLBACK for when
+  // the app is closed. No polling — a single setTimeout that self-clears on
+  // acknowledgement/resolution/cancellation.
+  const escalationTimerRef = useRef(null);
+  const panicStateRef = useRef("idle");
+  useEffect(() => { panicStateRef.current = panicState; }, [panicState]);
+
+  useEffect(() => {
+    if (panicState === "activated" && panicId && !escalationTimerRef.current) {
+      escalationTimerRef.current = setTimeout(() => {
+        escalationTimerRef.current = null;
+        if (panicStateRef.current === "activated") {
+          escalatePanic(panicId);
+        }
+      }, 120000); // 2 minutes
+    }
+    if (panicState !== "activated" && escalationTimerRef.current) {
+      clearTimeout(escalationTimerRef.current);
+      escalationTimerRef.current = null;
+    }
+  }, [panicState, panicId]);
+
+  useEffect(() => {
+    return () => {
+      if (escalationTimerRef.current) clearTimeout(escalationTimerRef.current);
+    };
+  }, []);
 
   const handlePanicPress = async () => {
     // Activation lock — prevents duplicate panics from rapid tapping

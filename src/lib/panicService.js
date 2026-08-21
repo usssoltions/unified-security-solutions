@@ -111,3 +111,18 @@ export async function updatePanicLocation(panicId, location) {
 export async function managePanic(panicId, action, extra = {}) {
   return await base44.functions.invoke("managePanic", { panicId, action, ...extra });
 }
+
+/**
+ * Trigger backend escalation for a specific panic (if still unacknowledged).
+ * Called by the activator's client-side 2-minute timer — the PRIMARY
+ * (event-driven) escalation path when the app is open. The backend scheduled
+ * automation calling escalateUnacknowledgedPanics is the FALLBACK for when
+ * the app is closed. No polling — a single setTimeout.
+ */
+export async function escalatePanic(panicId) {
+  try {
+    return await base44.functions.invoke("escalateUnacknowledgedPanics", { panicId });
+  } catch (e) {
+    console.error("escalatePanic failed:", e);
+  }
+}

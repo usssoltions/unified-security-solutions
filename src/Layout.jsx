@@ -15,7 +15,6 @@ import NotificationCenter from "@/components/notifications/NotificationCenter";
 import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
 import RealTimeAlertMonitor from "@/components/alerts/RealTimeAlertMonitor";
 import GlobalPanicButton from "@/components/GlobalPanicButton";
-import PanicEscalationMonitor from "@/components/panic/PanicEscalationMonitor";
 import PWAInstaller from "@/components/PWAInstaller";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import PermissionEnforcement from "@/components/PermissionEnforcement";
@@ -395,7 +394,6 @@ export default function Layout({ children, currentPageName }) {
           {user && <PermissionEnforcement />}
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
-          <PanicEscalationMonitor user={user} />
 
 
           <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 w-full max-w-full overflow-x-hidden">
