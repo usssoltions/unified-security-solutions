@@ -14,6 +14,8 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
 import RealTimeAlertMonitor from "@/components/alerts/RealTimeAlertMonitor";
+import GlobalPanicButton from "@/components/GlobalPanicButton";
+import PanicEscalationMonitor from "@/components/panic/PanicEscalationMonitor";
 import PWAInstaller from "@/components/PWAInstaller";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import PermissionEnforcement from "@/components/PermissionEnforcement";
@@ -275,6 +277,7 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
         { title: "Incident Queue", url: createPageUrl("AdminIncidents"), icon: AlertTriangle },
+        { title: "Panic Management", url: createPageUrl("PanicManagement"), icon: Zap },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "Access History", url: createPageUrl("AccessHistory"), icon: FileText },
         { title: "Access Settings", url: createPageUrl("AccessSettings"), icon: Sliders },
@@ -326,6 +329,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Vendors", url: createPageUrl("EstateVendors"), icon: Package },
         { title: "Levy Management", url: createPageUrl("EstateLevy"), icon: Sliders },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
+        { title: "Panic Management", url: createPageUrl("PanicManagement"), icon: Zap },
         { title: "Security", url: createPageUrl("ControlRoom"), icon: Shield },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
@@ -391,6 +395,7 @@ export default function Layout({ children, currentPageName }) {
           {user && <PermissionEnforcement />}
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
+          <PanicEscalationMonitor user={user} />
 
 
           <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 w-full max-w-full overflow-x-hidden">
@@ -432,6 +437,8 @@ export default function Layout({ children, currentPageName }) {
                   <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden w-11 h-11 bg-slate-800 rounded-xl flex items-center justify-center text-slate-200 active:scale-95 transition-transform touch-manipulation">
                     <Menu className="w-6 h-6" />
                   </button>
+
+                  <GlobalPanicButton user={user} />
 
                   <button
                     onClick={() => setShowNotifications(true)}

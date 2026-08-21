@@ -1,14 +1,19 @@
 import React from "react";
-import { Plus, UserPlus, Check, X, CheckCircle2, AlertTriangle, RefreshCw, Clock, Wrench } from "lucide-react";
+import { Plus, UserPlus, Check, X, CheckCircle2, AlertTriangle, RefreshCw, Clock, Wrench, Bell, MapPin, Zap } from "lucide-react";
 
 const ACTION_CONFIG = {
   created: { icon: Plus, color: "text-sky-400", bg: "bg-sky-500/10", label: "Created" },
+  activated: { icon: Zap, color: "text-red-400", bg: "bg-red-500/10", label: "Activated" },
   assigned: { icon: UserPlus, color: "text-amber-400", bg: "bg-amber-500/10", label: "Assigned" },
   accepted: { icon: Check, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Accepted" },
+  acknowledged: { icon: Check, color: "text-amber-400", bg: "bg-amber-500/10", label: "Acknowledged" },
   declined: { icon: X, color: "text-rose-400", bg: "bg-rose-500/10", label: "Declined" },
   resolved: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Resolved" },
   completed: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Completed" },
   escalated: { icon: AlertTriangle, color: "text-rose-400", bg: "bg-rose-500/10", label: "Escalated" },
+  cancelled: { icon: X, color: "text-slate-400", bg: "bg-slate-500/10", label: "Cancelled" },
+  notifications_sent: { icon: Bell, color: "text-sky-400", bg: "bg-sky-500/10", label: "Notifications Sent" },
+  location_updated: { icon: MapPin, color: "text-purple-400", bg: "bg-purple-500/10", label: "Location Updated" },
   reassigned: { icon: RefreshCw, color: "text-amber-400", bg: "bg-amber-500/10", label: "Reassigned" },
   updated: { icon: Clock, color: "text-slate-400", bg: "bg-slate-500/10", label: "Updated" },
   closed: { icon: Check, color: "text-slate-400", bg: "bg-slate-500/10", label: "Closed" },

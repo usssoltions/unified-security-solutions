@@ -1,0 +1,243 @@
+{
+  "name": "PanicAlert",
+  "type": "object",
+  "description": "Emergency panic alert with full lifecycle: activated \u2192 acknowledged \u2192 assigned \u2192 accepted \u2192 resolved. Any authenticated user may CREATE their own panic; management (acknowledge/assign/resolve) is restricted to operational roles via the managePanic backend function.",
+  "properties": {
+    "panic_number": {
+      "type": "string",
+      "description": "Human-readable reference e.g. PNC-1234567890"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User ID of the person who activated the panic"
+    },
+    "user_name": {
+      "type": "string"
+    },
+    "user_role": {
+      "type": "string",
+      "description": "Role of the activator (guard, resident, admin, etc.)"
+    },
+    "badge_number": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "acknowledged",
+        "assigned",
+        "accepted",
+        "resolved",
+        "cancelled"
+      ],
+      "default": "active"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "critical"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "gps_accuracy": {
+      "type": "number",
+      "description": "GPS accuracy in metres"
+    },
+    "location_captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "location_source": {
+      "type": "string",
+      "enum": [
+        "cached",
+        "fresh",
+        "unavailable"
+      ]
+    },
+    "location_updated": {
+      "type": "boolean",
+      "default": false,
+      "description": "True once a fresh GPS fix has updated the initial cached location"
+    },
+    "acknowledged_by": {
+      "type": "string"
+    },
+    "acknowledged_by_name": {
+      "type": "string"
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "assigned_to": {
+      "type": "string"
+    },
+    "assigned_to_name": {
+      "type": "string"
+    },
+    "assigned_by": {
+      "type": "string"
+    },
+    "assigned_by_name": {
+      "type": "string"
+    },
+    "assigned_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "accepted_by": {
+      "type": "string"
+    },
+    "accepted_by_name": {
+      "type": "string"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved_by": {
+      "type": "string"
+    },
+    "resolved_by_name": {
+      "type": "string"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolution_notes": {
+      "type": "string"
+    },
+    "escalated": {
+      "type": "boolean",
+      "default": false
+    },
+    "escalated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "escalation_count": {
+      "type": "number",
+      "default": 0
+    },
+    "notification_sent": {
+      "type": "boolean",
+      "default": false
+    },
+    "activated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "activity_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string",
+            "description": "activated, notifications_sent, location_captured, location_updated, acknowledged, assigned, accepted, escalated, resolved, cancelled"
+          },
+          "by_user_id": {
+            "type": "string"
+          },
+          "by_user_name": {
+            "type": "string"
+          },
+          "from_status": {
+            "type": "string"
+          },
+          "to_status": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "user_id",
+    "user_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "data.assigned_to": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "data.assigned_to": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

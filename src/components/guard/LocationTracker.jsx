@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { saveOffline, isOnline } from '@/lib/offlineDB';
+import { cacheLastKnownLocation } from '@/lib/panicService';
 
 /**
  * Haversine distance in metres between two {lat,lng} points.
@@ -44,6 +45,8 @@ export default function LocationTracker({ user, shift, enabled }) {
 
       const coords = position.coords;
       const currentPos = { lat: coords.latitude, lng: coords.longitude };
+      // Cache position for instant Panic activation (no extra GPS request needed)
+      cacheLastKnownLocation({ lat: currentPos.lat, lng: currentPos.lng, accuracy: coords.accuracy });
       const moved = distanceMetres(lastPosRef.current, currentPos) > 25;
       const heartbeatDue = now - lastHeartbeatRef.current > 5 * 60 * 1000;
 

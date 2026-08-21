@@ -28,6 +28,7 @@ import GeneratedReportsView from "../components/reports/GeneratedReportsView";
 import PatrolRouteGuidance from "../components/guard/PatrolRouteGuidance";
 import ForceSignOutModal from "../components/guard/ForceSignOutModal";
 import PanicButton from "../components/guard/PanicButton";
+import { cacheLastKnownLocation } from "@/lib/panicService";
 import PatrolAssignmentAlert from "../components/guard/PatrolAssignmentAlert";
 import OfflineSyncManager from "../components/guard/OfflineSyncManager";
 import SystemSetup from "../components/SystemSetup";
@@ -124,7 +125,9 @@ export default function GuardShift() {
     if (!navigator.geolocation) return;
     locationWatchRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        const loc = { lat: position.coords.latitude, lng: position.coords.longitude, accuracy: position.coords.accuracy };
+        setLocation(loc);
+        cacheLastKnownLocation(loc);
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
@@ -489,8 +492,8 @@ export default function GuardShift() {
           {/* Active Shift Card */}
           {activeShift && <ActiveShiftCard shift={activeShift} user={user} location={location} />}
 
-          {/* Panic Button */}
-          {activeShift && <PanicButton shiftId={activeShift.id} siteId={activeShift.site_id} />}
+          {/* Panic Button — available to all guards, even without an active shift */}
+          <PanicButton shiftId={activeShift?.id} siteId={activeShift?.site_id} siteName={activeShift?.site_name} />
 
           {/* Pending Assignments */}
           {pendingAssignments.length > 0 && (

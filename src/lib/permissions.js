@@ -31,7 +31,7 @@ export const ROLE_PAGES = {
     "AccessControl", "QRScanner", "StartOfShift", "StartOfShiftHistory", "Profile",
   ]),
   dispatcher: P([
-    "ControlRoom", "AdminIncidents", "AccessControl", "AccessHistory", "AccessSettings",
+    "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
     "PTT", "PTTRecordings", "Contacts", "CallHistory", "CallRecordings", "Scheduling",
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
@@ -39,7 +39,7 @@ export const ROLE_PAGES = {
     "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
   ]),
   admin: P([
-    "ControlRoom", "AdminIncidents", "AccessControl", "AccessHistory", "AccessSettings",
+    "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
     "PTT", "PTTRecordings", "Contacts", "CallHistory", "CallRecordings", "Scheduling",
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
@@ -53,7 +53,7 @@ export const ROLE_PAGES = {
   ]),
   estate_manager: P([
     "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
-    "EstateLevy", "AccessControl", "ControlRoom", "Profile",
+    "EstateLevy", "AccessControl", "PanicManagement", "ControlRoom", "Profile",
   ]),
   vendor: P(["VendorPortal", "Profile"]),
   client: P(["ClientDashboard", "ClientReports", "ClientIncidents", "Profile"]),
