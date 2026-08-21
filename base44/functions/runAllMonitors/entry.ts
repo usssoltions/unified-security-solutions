@@ -4,11 +4,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Allow admin direct calls; allow system/scheduled-automation calls (no user).
-    const user = await base44.auth.me();
-    if (user && user.role_type !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // Authenticate — blocks unauthenticated external invocations.
+    let user = null;
+    try { user = await base44.auth.me(); } catch (_) {}
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role_type !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
     // Load toggle settings — exit immediately if ALL are disabled
     const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();

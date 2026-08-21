@@ -3,9 +3,9 @@
  *
  * THE SINGLE CENTRAL ESCALATION MECHANISM — replaces the previous client-side
  * 60-second polling monitor (PanicEscalationMonitor) which only worked when a
- * supervisor's browser was open. This backend function runs WITHOUT user auth
- * and uses asServiceRole throughout, so escalation occurs even when NO client
- * app is open (guards, supervisors, admins all closed).
+ * supervisor's browser was open. Uses asServiceRole for cross-user notification
+ * dispatch. Requires an authenticated caller: admins can trigger bulk
+ * escalation sweeps; any authenticated user can escalate their own panic.
  *
  * Can be called two ways:
  * 1. By scheduled automation (no body) → bulk-checks all active panics.
@@ -36,14 +36,27 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // No user auth required — this is a system-triggered function.
-    // Try to get user (optional — works for both authed client timer and
-    // system-triggered scheduled automation).
+    // Authenticate the caller — blocks unauthenticated external invocations.
     let callerUser = null;
-    try { callerUser = await base44.auth.me(); } catch (_) { /* system call */ }
+    try { callerUser = await base44.auth.me(); } catch (_) {}
+    if (!callerUser) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const { panicId } = body;
+
+    // Bulk check (no panicId) is admin-only — only admins can trigger a
+    // system-wide escalation sweep.
+    if (!panicId && callerUser.role_type !== 'admin') {
+      return Response.json({ error: 'Forbidden — bulk escalation requires admin role' }, { status: 403 });
+    }
+
+    // Specific panic: a non-admin may only escalate their OWN panic.
+    if (panicId && callerUser.role_type !== 'admin') {
+      const ownedPanic = await base44.asServiceRole.entities.PanicAlert.get(panicId);
+      if (!ownedPanic || ownedPanic.user_id !== callerUser.id) {
+        return Response.json({ error: 'Forbidden — you can only escalate your own panic' }, { status: 403 });
+      }
+    }
 
     const now = Date.now();
     let escalatedCount = 0;
