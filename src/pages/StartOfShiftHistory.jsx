@@ -68,7 +68,7 @@ export default function StartOfShiftHistory() {
   const downloadPrint = (r) => {
     const photos = (r.media_attachments || []).filter((m) => m.type === "photo");
     const videos = (r.media_attachments || []).filter((m) => m.type === "video");
-    const esc = (s) => (s || "").replace(/</g, "&lt;");
+    const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Start of Shift Report</title>
       <style>
         body{font-family:Arial,sans-serif;max-width:700px;margin:24px auto;color:#1e293b;padding:0 16px;}
@@ -90,9 +90,9 @@ export default function StartOfShiftHistory() {
       <pre>${esc(r.special_instructions)}</pre>
       <h2>Key Activities / Observations</h2>
       <ul>${(r.key_activities || []).map((a) => `<li>${esc(a)}</li>`).join("") || "<li>None</li>"}</ul>
-      ${photos.length ? `<h2>Photos</h2>${photos.map((m) => `<img src="${m.url}"/>`).join("")}` : ""}
-      ${videos.length ? `<h2>Videos</h2>${videos.map((m) => `<p><a href="${m.url}">${m.url}</a></p>`).join("")}` : ""}
-      ${r.outgoing_guard_signature ? `<h2>Signature</h2><img class="sig" src="${r.outgoing_guard_signature}"/>` : ""}
+      ${photos.length ? `<h2>Photos</h2>${photos.map((m) => `<img src="${esc(m.url)}"/>`).join("")}` : ""}
+      ${videos.length ? `<h2>Videos</h2>${videos.map((m) => `<p><a href="${esc(m.url)}">${esc(m.url)}</a></p>`).join("")}` : ""}
+      ${r.outgoing_guard_signature ? `<h2>Signature</h2><img class="sig" src="${esc(r.outgoing_guard_signature)}"/>` : ""}
       <div class="foot">Unified Security Solutions — Start of Shift Report</div>
       </body></html>`;
     const w = window.open("", "_blank");

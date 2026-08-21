@@ -4,6 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { QrCode, Printer, Mail, MessageSquare, Download } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
+const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 export default function CheckpointQRGenerator({ checkpoint, siteName }) {
   const [qrUrl, setQrUrl] = React.useState("");
 
@@ -55,10 +57,10 @@ export default function CheckpointQRGenerator({ checkpoint, siteName }) {
         </head>
         <body>
           <div class="qr-container">
-            <h1>${siteName}</h1>
-            <h2>${checkpoint.name}</h2>
+            <h1>${escapeHtml(siteName)}</h1>
+            <h2>${escapeHtml(checkpoint.name)}</h2>
             <img src="${qrUrl}" alt="QR Code" />
-            <div class="code">${checkpoint.qr_code}</div>
+            <div class="code">${escapeHtml(checkpoint.qr_code)}</div>
             <div class="details">
               <p>Scan this QR code to log checkpoint visit</p>
               <p>Location: ${checkpoint.location.lat.toFixed(6)}, ${checkpoint.location.lng.toFixed(6)}</p>

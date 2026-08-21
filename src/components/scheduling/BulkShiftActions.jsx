@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 export default function BulkShiftActions({ 
   selectedShifts, 
   allShifts, 
@@ -179,17 +181,17 @@ export default function BulkShiftActions({
             return acc;
           }, {})).map(([guardName, shifts]) => `
             <div class="guard-section">
-              <div class="guard-name">👤 ${guardName}</div>
+              <div class="guard-name">👤 ${escapeHtml(guardName)}</div>
               <div style="color: #64748b; margin-bottom: 15px;">${shifts.length} shift${shifts.length > 1 ? 's' : ''}</div>
               ${shifts.map((shift, idx) => `
                 <div class="shift">
-                  <div class="shift-site">${idx + 1}. ${shift.site_name}</div>
+                  <div class="shift-site">${idx + 1}. ${escapeHtml(shift.site_name)}</div>
                   <div class="shift-detail">📅 ${new Date(shift.start_time).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
                   <div class="shift-detail">🕐 ${new Date(shift.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} - ${new Date(shift.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
                   <div class="shift-detail">
-                    <span class="status status-${shift.status}">${shift.status.toUpperCase()}</span>
+                    <span class="status status-${escapeHtml(shift.status)}">${escapeHtml(shift.status.toUpperCase())}</span>
                   </div>
-                  ${shift.notes ? `<div class="shift-detail">📝 ${shift.notes}</div>` : ''}
+                  ${shift.notes ? `<div class="shift-detail">📝 ${escapeHtml(shift.notes)}</div>` : ''}
                 </div>
               `).join('')}
             </div>
