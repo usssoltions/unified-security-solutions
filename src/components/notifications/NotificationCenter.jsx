@@ -24,7 +24,11 @@ export default function NotificationCenter({ user, onClose }) {
       );
     },
     enabled: !!user,
-    refetchInterval: 10000
+    // No refetchInterval — BackgroundNotificationManager already holds a
+    // realtime subscription for this user's notifications and invalidates
+    // this query on every create. Polling every 10s while the panel is open
+    // was redundant.
+    refetchInterval: false
   });
 
   const markReadMutation = useMutation({

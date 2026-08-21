@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { saveOffline, isOnline } from "@/lib/offlineDB";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -72,13 +73,13 @@ export default function StartOfShift() {
           continue;
         }
         
-        // Upload using the integration
-        const result = await base44.integrations.Core.UploadFile({ file: file });
-        
-        if (result?.file_url) {
+        // Resize + compress before upload (was: full-res upload = 3-8MB per photo)
+        const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+
+        if (file_url) {
           setFormData(prev => ({
             ...prev,
-            photos: [...prev.photos, result.file_url]
+            photos: [...prev.photos, file_url]
           }));
         } else {
           throw new Error('No file URL returned from upload');

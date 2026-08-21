@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { maintenanceMessage } from "@/lib/whatsapp";
 import { base44 } from "@/api/base44Client";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,11 +173,13 @@ Officer Signature: Signed
     setUploading(true);
     for (const file of files) {
       try {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setFormData(prev => ({
-          ...prev,
-          media: [...prev.media, { type: 'photo', url: file_url }]
-        }));
+        const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+        if (file_url) {
+          setFormData(prev => ({
+            ...prev,
+            media: [...prev.media, { type: 'photo', url: file_url }]
+          }));
+        }
       } catch (err) {
         console.error("Upload error:", err);
       }
@@ -191,12 +194,21 @@ Officer Signature: Signed
     setUploading(true);
     try {
       for (const file of files) {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const isImage = file.type.startsWith('image/');
         const type = file.type.startsWith('video') ? 'video' : 'photo';
-        setFormData(prev => ({
-          ...prev,
-          media: [...prev.media, { type, url: file_url }]
-        }));
+        let file_url;
+        if (isImage) {
+          file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+        } else {
+          const res = await base44.integrations.Core.UploadFile({ file });
+          file_url = res?.file_url;
+        }
+        if (file_url) {
+          setFormData(prev => ({
+            ...prev,
+            media: [...prev.media, { type, url: file_url }]
+          }));
+        }
       }
     } catch (error) {
       alert("Failed to upload file");

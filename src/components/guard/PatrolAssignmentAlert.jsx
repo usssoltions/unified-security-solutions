@@ -39,10 +39,15 @@ export default function PatrolAssignmentAlert({ user }) {
       return recentPatrols;
     },
     enabled: !!user,
-    refetchInterval: 5000
+    // No refetchInterval — the realtime subscription below invalidates this
+    // query on every relevant PatrolPlan create, so polling every 5s was
+    // pure background waste (720 requests/hour for a guard on the shift page).
+    refetchInterval: false
   });
 
-  // Real-time subscription for patrol assignments
+  // Real-time subscription for patrol assignments — the SOLE trigger for
+  // re-fetching. Also invalidates on foreground return so a missed push
+  // during background is caught.
   useEffect(() => {
     if (!user) return;
 
@@ -52,7 +57,16 @@ export default function PatrolAssignmentAlert({ user }) {
       }
     });
 
-    return () => unsubscribe();
+    const onVisible = () => {
+      if (document.visibilityState === "visible")
+        queryClient.invalidateQueries(["newPatrolAssignments"]);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [user?.id, queryClient]);
 
   // Play alarm sound when new patrol is detected

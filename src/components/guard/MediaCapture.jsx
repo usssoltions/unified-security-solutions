@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Camera, Video, Mic, X, Loader2, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { optimizeImageFile } from "@/lib/imageOptimize";
 
 export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTACHMENTS" }) {
   const [recording, setRecording] = useState(null);
@@ -14,16 +15,23 @@ export default function MediaCapture({ media = [], onMediaUpdate, title = "ATTAC
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files);
     setUploading(true);
-    
+
     for (const file of files) {
       try {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        // Resize + compress before upload. A full-res phone-camera photo is
+        // 3–8 MB; after optimisation (1000px longest edge, JPEG 0.7) it's
+        // 50–200 KB — a 30×+ reduction with no visible quality loss at the
+        // resolutions displayed on screen. This is the single biggest
+        // contributor to the ~20 MB/scan observation: incident/maintenance
+        // evidence photos were uploaded at full camera resolution.
+        const optimized = await optimizeImageFile(file, { maxDim: 1000, quality: 0.7 });
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: optimized });
         onMediaUpdate([...media, { type: "photo", url: file_url }]);
       } catch (error) {
         alert("Failed to upload photo: " + error.message);
       }
     }
-    
+
     setUploading(false);
   };
 

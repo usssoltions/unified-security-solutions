@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { createPageUrl } from "@/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -145,7 +146,8 @@ export default function GuardPatrolChecklist() {
   const handlePhotoUpload = async (itemId, file) => {
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+      if (!file_url) throw new Error("Photo optimisation failed");
       const photoMetadata = {
         url: file_url,
         timestamp: new Date().toISOString(),

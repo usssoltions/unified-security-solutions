@@ -2,6 +2,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
+import { initDiagnostics } from '@/lib/networkDiagnostics'
+
+// Network diagnostics auto-enables if an admin has set the localStorage flag
+// (localStorage 'uss_net_diag' = '1'). Zero overhead when disabled — the
+// original fetch is used untouched. Disabled by default in production.
+initDiagnostics();
 
 // Register service worker for PWA support (app shell caching, push notifications, offline)
 if ('serviceWorker' in navigator && !import.meta.env.DEV) {

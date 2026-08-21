@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 
@@ -15,6 +15,17 @@ export default function BackgroundNotificationManager({ user }) {
   const alertUnsubRef = useRef(null);
   const notifUnsubRef = useRef(null);
   const queryClient = useQueryClient();
+
+  // Badge count ref + updater — declared early so the subscription effect
+  // (below) can reference them without a temporal-dead-zone error.
+  const badgeCountRef = useRef(0);
+  const updateBadgeCount = useCallback(() => {
+    if (!('setAppBadge' in navigator)) return;
+    const total = badgeCountRef.current;
+    try {
+      total > 0 ? navigator.setAppBadge(total) : navigator.clearAppBadge();
+    } catch (_) {}
+  }, []);
 
   // ── Wake Lock ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -75,6 +86,12 @@ export default function BackgroundNotificationManager({ user }) {
         queryClient.invalidateQueries({ queryKey: ['criticalAlerts'] });
         queryClient.invalidateQueries({ queryKey: ['alerts'] });
 
+        // Event-driven badge: an active alert increments the count
+        if (event.data?.status === 'active' || !event.data?.status) {
+          badgeCountRef.current += 1;
+          updateBadgeCount();
+        }
+
         // Show native notification when app is hidden
         if (document.hidden && Notification.permission === 'granted') {
           try {
@@ -99,6 +116,12 @@ export default function BackgroundNotificationManager({ user }) {
       if (event.type === 'create' && event.data?.recipient_id === user.id) {
         queryClient.invalidateQueries({ queryKey: ['notifications'] });
 
+        // Event-driven badge: a new unread notification increments the count
+        if (!event.data?.read) {
+          badgeCountRef.current += 1;
+          updateBadgeCount();
+        }
+
         if (document.hidden && Notification.permission === 'granted' && !event.data?.read) {
           try {
             new Notification(event.data?.title || 'SecureGuard', {
@@ -118,31 +141,42 @@ export default function BackgroundNotificationManager({ user }) {
       notifUnsubRef.current?.();
       notifUnsubRef.current = null;
     };
-  }, [user, queryClient]);
+  }, [user, queryClient, updateBadgeCount]);
 
   // ── App Badge (home screen icon count) ────────────────────────────────────
-  useEffect(() => {
-    if (!user || !('setAppBadge' in navigator)) return;
+  // Event-driven: the badge count is maintained from the SAME realtime
+  // subscriptions above (Alert + Notification) plus a single initial fetch on
+  // mount/foreground. No 120s polling — that was 30 redundant dual-entity
+  // queries per hour per device, all duplicating what the subscriptions
+  // already know.
 
-    const updateBadge = async () => {
+  // Initial accurate count on mount (one request, then event-driven after)
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const init = async () => {
       try {
         const [alerts, notifs] = await Promise.all([
           base44.entities.Alert.filter({ status: 'active' }),
           base44.entities.Notification.filter({ recipient_id: user.id, read: false })
         ]);
-        const total = (alerts?.length || 0) + (notifs?.length || 0);
-        total > 0 ? navigator.setAppBadge(total) : navigator.clearAppBadge();
+        if (cancelled) return;
+        badgeCountRef.current = (alerts?.length || 0) + (notifs?.length || 0);
+        updateBadgeCount();
       } catch (_) {}
     };
+    const t = setTimeout(init, 5000);
+    return () => { cancelled = true; clearTimeout(t); navigator.clearAppBadge?.(); };
+  }, [user, updateBadgeCount]);
 
-    const t = setTimeout(updateBadge, 8000);
-    const interval = setInterval(updateBadge, 120000);
-    return () => {
-      clearTimeout(t);
-      clearInterval(interval);
-      navigator.clearAppBadge?.();
+  // Recompute on foreground return (catches events received while backgrounded)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") updateBadgeCount();
     };
-  }, [user]);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [updateBadgeCount]);
 
   return null;
 }

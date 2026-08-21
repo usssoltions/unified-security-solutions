@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,7 +28,11 @@ export default function AIDocumentScanner({ onResult, scanMode }) {
     setResult(null);
     setError(null);
 
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
+    // Compress before upload — AI document analysis needs readable detail, so
+    // use a larger dimension (1280px) and higher quality (0.85) than ordinary
+    // photos, but still far smaller than the 3-8MB raw camera capture.
+    const file_url = await uploadOptimizedImage(file, { maxDim: 1280, quality: 0.85 });
+    if (!file_url) { setProcessing(false); setError("Upload failed"); return; }
 
     const analysisResult = await base44.integrations.Core.InvokeLLM({
       prompt: `You are an expert South African document verification AI. ${documentPrompts[scanMode] || documentPrompts.sa_id}

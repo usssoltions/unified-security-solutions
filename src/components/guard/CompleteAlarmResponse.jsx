@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,9 +32,16 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
       const urls = [];
       for (const file of files) {
         try {
-          const result = await base44.integrations.Core.UploadFile({ file });
-          if (result && result.file_url) {
-            urls.push(result.file_url);
+          let file_url;
+          // Compress images before upload; leave videos/audio raw
+          if (file.type.startsWith('image/')) {
+            file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+          } else {
+            const result = await base44.integrations.Core.UploadFile({ file });
+            file_url = result?.file_url;
+          }
+          if (file_url) {
+            urls.push(file_url);
           }
         } catch (err) {
           console.error("Upload error for file:", err);

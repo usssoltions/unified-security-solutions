@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,8 @@ export default function DailyReport() {
     setUploadingPhoto(true);
     for (const file of files) {
       try {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+        if (!file_url) continue;
         setReport(prev => ({
           ...prev,
           photos: [...prev.photos, file_url]

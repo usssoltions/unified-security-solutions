@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,7 +39,8 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
         throw new Error("No file selected");
       }
 
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+      if (!file_url) throw new Error("Photo optimisation failed");
       
       // Create photo metadata
       const photoData = {

@@ -64,12 +64,33 @@ export default function Layout({ children, currentPageName }) {
     };
   }, [retryCount]);
 
+  // Notification count: initial fetch + realtime subscription (no 90s polling).
+  // The previous interval polled Notification.filter every 90s = 40 redundant
+  // requests/hour per device, duplicating what BackgroundNotificationManager's
+  // subscription already knows. Now we update the count from create/update/delete
+  // events and re-fetch on foreground return to correct any drift.
   useEffect(() => {
-    if (user) {
-      const initialDelay = setTimeout(loadNotificationCount, 5000);
-      const interval = setInterval(loadNotificationCount, 90000);
-      return () => { clearTimeout(initialDelay); clearInterval(interval); };
-    }
+    if (!user) return;
+    loadNotificationCount();
+
+    const unsub = base44.entities.Notification.subscribe((event) => {
+      if (!event.data || event.data.recipient_id !== user.id) return;
+      if (event.type === 'create' && !event.data.read) {
+        setNotificationCount(c => c + 1);
+      } else if (event.type === 'update') {
+        if (event.data.read) setNotificationCount(c => Math.max(0, c - 1));
+        else setNotificationCount(c => c + 1);
+      } else if (event.type === 'delete') {
+        loadNotificationCount();
+      }
+    });
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadNotificationCount();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => { unsub(); document.removeEventListener('visibilitychange', onVisible); };
   }, [user]);
 
   // Keep session alive for ALL roles — ping every 10 min

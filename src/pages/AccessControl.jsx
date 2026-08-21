@@ -94,23 +94,41 @@ export default function AccessControl() {
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
+  // Live Access Log: fetches only recent records (the live log filters to
+  // status "inside" client-side). No polling — the realtime subscription
+  // below invalidates this query on every AccessLog create/update, which is
+  // the only time the live log needs to change. (Previously polled every 10s
+  // = 360 redundant requests/hour, each returning 30 full records with
+  // parsed_json payloads.)
   const { data: recentLogs = [] } = useQuery({
     queryKey: ["access_logs_recent"],
-    queryFn: () => base44.entities.AccessLog.list("-timestamp", 30),
-    refetchInterval: 10000,
+    queryFn: () => base44.entities.AccessLog.list("-timestamp", 20),
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
   });
   useEffect(() => {
     const unsub = base44.entities.AccessLog.subscribe(() => qc.invalidateQueries(["access_logs_recent"]));
-    return unsub;
-  }, []);
+    // Re-fetch on foreground return so a missed realtime event is caught.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") qc.invalidateQueries(["access_logs_recent"]);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { unsub(); document.removeEventListener("visibilitychange", onVisible); };
+  }, [qc]);
 
+  // Static configuration — cache for 10 minutes. These rarely change and were
+  // previously refetched on every mount/focus with no staleTime.
   const { data: destinations = [] } = useQuery({
     queryKey: ["destinations"],
     queryFn: () => base44.entities.Destination.list(),
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
   const { data: workTypes = [] } = useQuery({
     queryKey: ["work_types"],
     queryFn: () => base44.entities.WorkType.list(),
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const resetWorkflow = () => {

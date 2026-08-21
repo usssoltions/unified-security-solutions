@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { saveOffline, isOnline } from "@/lib/offlineDB";
+import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -290,8 +291,8 @@ export default function QRScanner() {
     const files = Array.from(e.target.files);
     for (const file of files) {
       try {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setPhotos([...photos, file_url]);
+        const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+        if (file_url) setPhotos([...photos, file_url]);
       } catch (error) {
         console.error("Photo upload error:", error);
       }
@@ -575,8 +576,8 @@ export default function QRScanner() {
                             try {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              const { file_url } = await base44.integrations.Core.UploadFile({ file });
-                              handleItemChange(index, "photo_url", file_url);
+                              const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+                              if (file_url) handleItemChange(index, "photo_url", file_url);
                             } catch (error) {
                               console.error("Photo upload error:", error);
                             }

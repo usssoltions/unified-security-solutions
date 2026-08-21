@@ -21,17 +21,21 @@ export default function RealTimeAlertMonitor({ user }) {
   const soundPlayedRef = useRef(new Set()); // Use ref — not state — so subscription never remounts
   const queryClient = useQueryClient();
 
-  // Fetch active critical alerts
+  // Fetch active critical alerts — NO polling. The realtime subscription
+  // below invalidates this query on every critical Alert create, which is
+  // the only time the visible set changes. (Previously polled every 60s
+  // redundantly alongside the subscription.)
   const { data: criticalAlerts = [] } = useQuery({
     queryKey: ["criticalAlerts"],
     queryFn: async () => {
-      const alerts = await base44.entities.Alert.filter({ 
+      const alerts = await base44.entities.Alert.filter({
         status: "active",
         priority: "critical"
       }, "-created_date", 50);
       return alerts;
     },
-    refetchInterval: 60000, // Check every 60 seconds — real-time handled by subscription
+    staleTime: 60000,
+    refetchOnWindowFocus: true,
     initialData: []
   });
 

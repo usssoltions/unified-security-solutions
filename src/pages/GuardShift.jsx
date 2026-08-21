@@ -60,7 +60,14 @@ export default function GuardShift() {
     loadUser();
     startLocationTracking();
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      // Clean up the geolocation watcher on unmount (previously leaked)
+      if (locationWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(locationWatchRef.current);
+        locationWatchRef.current = null;
+      }
+    };
   }, []);
 
   // GuardShift is the guard home page. Redirect any non-guard role that lands
@@ -105,26 +112,19 @@ export default function GuardShift() {
     }
   };
 
-  const lastLocationUpdate = useRef(0);
+  // Local-only geolocation watcher — sets the `location` state for UI
+  // components (PanicButton, StayAwakeAlert, QuickActions). It performs NO
+  // network upload; all GPS uploads are handled by the <LocationTracker>
+  // component which creates LocationTracking records. Previously this watcher
+  // ALSO called auth.updateMe every 60s — a duplicate upload alongside
+  // LocationTracker — and the watcher was never cleared on unmount (leak).
+  const locationWatchRef = useRef(null);
 
   const startLocationTracking = () => {
     if (!navigator.geolocation) return;
-    navigator.geolocation.watchPosition(
-      async (position) => {
-        const newLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
-        setLocation(newLocation);
-        // Throttle API updates to once every 60 seconds max
-        const now = Date.now();
-        if (now - lastLocationUpdate.current < 60000) return;
-        lastLocationUpdate.current = now;
-        // Use the already-loaded user state instead of calling me() again
-        setUser(prev => {
-          if (prev?.is_clocked_in) {
-            base44.auth.updateMe({ last_location: { ...newLocation, timestamp: new Date().toISOString() } })
-              .catch(() => {});
-          }
-          return prev;
-        });
+    locationWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
@@ -173,6 +173,9 @@ export default function GuardShift() {
     refetchOnWindowFocus: false
   });
 
+  // Arrived alarms: realtime subscription + 2-minute fallback refetch (was 15s).
+  // The 15s poll was 240 requests/hour for a guard on the shift page — the
+  // subscription below invalidates on every relevant AlarmResponse change.
   const { data: arrivedAlarms = [] } = useQuery({
     queryKey: ["arrivedAlarms", user?.id],
     queryFn: async () => {
@@ -180,10 +183,24 @@ export default function GuardShift() {
       return await base44.entities.AlarmResponse.filter({ assigned_to: user.id, status: "arrived" }) || [];
     },
     enabled: !!user,
-    refetchInterval: 15000,
-    staleTime: 10000
+    refetchInterval: 120000,
+    staleTime: 60000,
+    refetchOnWindowFocus: true
   });
 
+  useEffect(() => {
+    if (!user) return;
+    const unsub = base44.entities.AlarmResponse.subscribe((event) => {
+      if (event.type === 'create' || event.type === 'update') {
+        if (event.data?.assigned_to === user.id && event.data?.status === 'arrived')
+          queryClient.invalidateQueries(["arrivedAlarms"]);
+      }
+    });
+    return () => unsub();
+  }, [user?.id, queryClient]);
+
+  // Unread messages: realtime subscription + 3-minute fallback refetch (was 60s).
+  // Previously downloaded 20 ChatMessage records every 60s just to count unread.
   const { data: unreadMessages = 0 } = useQuery({
     queryKey: ["unreadMessages", user?.id],
     queryFn: async () => {
@@ -193,10 +210,18 @@ export default function GuardShift() {
       return msgs.filter(m => (m.recipient_id === user.id || m.is_broadcast) && !(Array.isArray(m.read_by) && m.read_by.includes(user.id))).length;
     },
     enabled: !!user && !shiftsLoading,
-    refetchInterval: 60000,
-    staleTime: 50000,
-    refetchOnWindowFocus: false
+    refetchInterval: 180000,
+    staleTime: 120000,
+    refetchOnWindowFocus: true
   });
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = base44.entities.ChatMessage.subscribe(() => {
+      queryClient.invalidateQueries(["unreadMessages"]);
+    });
+    return () => unsub();
+  }, [user?.id, queryClient]);
 
   // Stay Awake system
   useEffect(() => {
