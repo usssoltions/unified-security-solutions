@@ -18,6 +18,16 @@ const BRAND_SECONDARY = '#1a1a1a';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authenticate — critical incident alert dispatch is an admin-only operation.
+    const user = await base44.auth.me();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role_type !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await req.json();
 
     const incident = body.data;
