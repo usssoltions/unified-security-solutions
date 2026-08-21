@@ -12,10 +12,16 @@
     "type": {
       "type": "string",
       "enum": [
+        "incident_reported",
         "incident_assigned",
-        "maintenance_assigned",
+        "incident_accepted",
+        "incident_declined",
+        "incident_resolved",
         "incident_critical",
-        "incident_completed",
+        "maintenance_reported",
+        "maintenance_assigned",
+        "maintenance_accepted",
+        "maintenance_declined",
         "maintenance_completed",
         "status_change",
         "alarm_dispatch",

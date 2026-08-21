@@ -19,12 +19,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Authenticate — critical incident alert dispatch is an admin-only operation.
+    // This function is triggered both as an entity automation (no user
+    // session) and by direct admin HTTP calls.  Allow admin direct calls;
+    // allow system/automation calls (no user).  Block all non-admin users.
     const user = await base44.auth.me();
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (user.role_type !== 'admin') {
+    if (user && user.role_type !== 'admin') {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

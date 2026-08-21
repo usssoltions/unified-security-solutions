@@ -105,18 +105,33 @@ Voice Notes: ${data.voice_notes.length} voice note(s) attached
 Officer Signature: Signed
       `.trim();
 
+      const nowIso = new Date().toISOString();
+      const requestNumber = `MNT-${Date.now()}`;
       const maintenanceRequest = await base44.entities.MaintenanceRequest.create({
         title: `Maintenance: ${data.maintenance_type}`,
         description: reportContent,
         category: "other",
         urgency: "medium",
+        request_number: requestNumber,
         guard_id: data.guard_id,
         guard_name: data.guard_name,
+        badge_number: user.badge_number || "",
         site_id: data.site_id,
         site_name: data.site_name,
         location: data.location,
+        gps_accuracy: data.location?.accuracy || null,
+        location_captured_at: nowIso,
         reported_at: data.reported_at,
-        media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
+        media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))],
+        activity_log: [{
+          timestamp: nowIso,
+          action: "created",
+          by_user_id: data.guard_id,
+          by_user_name: data.guard_name,
+          from_status: null,
+          to_status: "reported",
+          notes: `Maintenance request submitted by ${data.guard_name}`
+        }]
       });
 
       try {

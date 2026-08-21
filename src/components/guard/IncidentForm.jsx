@@ -150,51 +150,53 @@ Officer Signature: Signed
         'Other': 'other'
       };
 
+      const nowIso = new Date().toISOString();
       const incident = await base44.entities.Incident.create({
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
         category: aiSuggestions?.recommended_category || categoryMap[data.incident_type] || "other",
         priority: aiSuggestions?.recommended_priority || "high",
+        incident_number: data.incident_report_number,
         guard_id: user.id,
         guard_name: user.full_name,
+        badge_number: user.badge_number || "",
         site_id: shift?.site_id || "",
         site_name: shift?.site_name || "",
         shift_id: shift?.id || "",
         location: location,
+        gps_accuracy: location?.accuracy || null,
+        location_captured_at: nowIso,
         reported_at: data.date_time_of_incident,
-        media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))]
+        media: [...data.media, ...data.voice_notes.map(url => ({ type: 'audio', url }))],
+        activity_log: [{
+          timestamp: nowIso,
+          action: "created",
+          by_user_id: user.id,
+          by_user_name: user.full_name,
+          from_status: null,
+          to_status: "reported",
+          notes: `Incident reported by ${user.full_name}`
+        }]
       });
 
-      // Notify admins via in-app notifications + email
+      // Notify admins via backend function (uses asServiceRole to bypass User
+      // RLS — a guard's User.list() only returns themselves, so the previous
+      // inline approach silently sent zero notifications).
       try {
-        const allUsers = await base44.entities.User.list();
-        const admins = allUsers.filter(u =>
-          ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
-        );
-        const notifTitle = `🚨 Incident: ${data.incident_type} — ${user.full_name} @ ${shift?.site_name || 'Unknown Site'}`;
-        const notifMsg = `${data.incident_summary || 'No summary provided.'}\nLocation: ${data.incident_location}\n${location ? `GPS: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : ''}`;
-
-        for (const admin of admins) {
-          base44.entities.Notification.create({
-            recipient_id: admin.id,
-            recipient_name: admin.full_name,
-            type: "incident_assigned",
-            priority: "high",
-            title: notifTitle,
-            message: notifMsg,
-            read: false,
-            related_entity: "incident",
-            related_id: incident.id,
-          }).catch(() => {});
-
-          if (admin.email) {
-            base44.integrations.Core.SendEmail({
-              to: admin.email,
-              subject: notifTitle,
-              body: `Incident Report #${data.incident_report_number}\n\nType: ${data.incident_type}\nSite: ${shift?.site_name}\nGuard: ${user.full_name}\nTime: ${new Date(data.date_time_of_incident).toLocaleString()}\nLocation: ${data.incident_location}\n\nSummary:\n${data.incident_summary}\n\nDetails:\n${data.who_what_when_details}\n\nOfficer Actions:\n${data.officer_actions}\n\nPolice Called: ${data.police_called}${data.police_names_badges ? `\nPolice: ${data.police_names_badges}` : ''}\n\nMedia: ${data.media.length} file(s), ${data.voice_notes.length} voice note(s)\n${location ? `\nGPS: ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : ''}`,
-            }).catch(() => {});
-          }
-        }
+        await base44.functions.invoke('notifyAdminsIncident', {
+          incidentId: incident.id,
+          incidentNumber: data.incident_report_number,
+          guardName: user.full_name,
+          badgeNumber: user.badge_number || '',
+          incidentType: data.incident_type,
+          category: incident.category,
+          priority: incident.priority,
+          siteName: shift?.site_name || 'Unknown Site',
+          incidentTime: data.date_time_of_incident,
+          description: data.incident_summary,
+          location: location,
+          mediaCount: data.media.length
+        });
       } catch (e) {
         console.warn('Admin notification failed:', e);
       }

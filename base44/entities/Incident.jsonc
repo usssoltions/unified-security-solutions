@@ -37,17 +37,28 @@
       "enum": [
         "reported",
         "assigned",
+        "accepted",
         "in_progress",
         "resolved",
-        "closed"
+        "closed",
+        "declined",
+        "reassigned"
       ],
       "default": "reported"
+    },
+    "incident_number": {
+      "type": "string",
+      "description": "Human-readable reference e.g. INC-1234567890"
     },
     "guard_id": {
       "type": "string"
     },
     "guard_name": {
       "type": "string"
+    },
+    "badge_number": {
+      "type": "string",
+      "description": "Reporting guard's badge/employee number"
     },
     "site_id": {
       "type": "string"
@@ -68,6 +79,14 @@
           "type": "number"
         }
       }
+    },
+    "gps_accuracy": {
+      "type": "number",
+      "description": "GPS accuracy in metres at capture time"
+    },
+    "location_captured_at": {
+      "type": "string",
+      "format": "date-time"
     },
     "media": {
       "type": "array",
@@ -90,12 +109,55 @@
     },
     "assigned_to": {
       "type": "string",
-      "description": "Guard ID if reassigned"
+      "description": "User ID of assigned responder"
+    },
+    "assigned_to_name": {
+      "type": "string"
+    },
+    "assigned_by": {
+      "type": "string",
+      "description": "User ID of who assigned"
+    },
+    "assigned_by_name": {
+      "type": "string"
+    },
+    "assigned_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "accepted_by": {
+      "type": "string"
+    },
+    "accepted_by_name": {
+      "type": "string"
+    },
+    "declined_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "declined_by": {
+      "type": "string"
+    },
+    "declined_by_name": {
+      "type": "string"
+    },
+    "decline_reason": {
+      "type": "string"
     },
     "dispatcher_notes": {
       "type": "string"
     },
     "resolution_notes": {
+      "type": "string"
+    },
+    "resolved_by": {
+      "type": "string"
+    },
+    "resolved_by_name": {
       "type": "string"
     },
     "reported_at": {
@@ -108,8 +170,7 @@
     },
     "escalated": {
       "type": "boolean",
-      "default": false,
-      "description": "Whether incident has been escalated"
+      "default": false
     },
     "escalation_reason": {
       "type": "string",
@@ -117,27 +178,54 @@
         "priority",
         "timeout",
         "manual"
-      ],
-      "description": "Reason for escalation"
+      ]
     },
     "escalated_at": {
       "type": "string",
-      "format": "date-time",
-      "description": "When incident was escalated"
+      "format": "date-time"
     },
     "reassigned": {
       "type": "boolean",
-      "default": false,
-      "description": "Whether incident was reassigned"
+      "default": false
     },
     "reassignment_reason": {
-      "type": "string",
-      "description": "Reason for reassignment"
+      "type": "string"
     },
     "notification_sent": {
       "type": "boolean",
-      "default": false,
-      "description": "Whether initial notification was sent to admins"
+      "default": false
+    },
+    "activity_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string",
+            "description": "created, assigned, accepted, declined, resolved, closed, reassigned, escalated, updated"
+          },
+          "by_user_id": {
+            "type": "string"
+          },
+          "by_user_name": {
+            "type": "string"
+          },
+          "from_status": {
+            "type": "string"
+          },
+          "to_status": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
     }
   },
   "required": [
