@@ -2,13 +2,17 @@
   "name": "Asset",
   "type": "object",
   "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
     "asset_name": {
-      "type": "string",
-      "description": "Name of the asset"
+      "type": "string"
     },
     "asset_number": {
-      "type": "string",
-      "description": "Unique asset identifier"
+      "type": "string"
     },
     "category": {
       "type": "string",
@@ -23,8 +27,7 @@
       ]
     },
     "site_id": {
-      "type": "string",
-      "description": "Site where asset is located"
+      "type": "string"
     },
     "site_name": {
       "type": "string"
@@ -50,8 +53,7 @@
       "type": "number"
     },
     "assigned_to": {
-      "type": "string",
-      "description": "Guard ID if assigned"
+      "type": "string"
     },
     "assigned_to_name": {
       "type": "string"
@@ -65,8 +67,7 @@
       "format": "date"
     },
     "service_interval_days": {
-      "type": "number",
-      "description": "Days between services"
+      "type": "number"
     },
     "warranty_expiry": {
       "type": "string",
@@ -110,23 +111,101 @@
   ],
   "rls": {
     "create": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "read": null,
-    "update": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
         {
           "data.assigned_to": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
+        }
+      ]
+    },
+    "update": {
+      "$or": [
         {
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "data.assigned_to": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
         }
       ]
     },
