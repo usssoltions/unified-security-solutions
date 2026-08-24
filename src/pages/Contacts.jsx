@@ -5,9 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Phone, Search, Users, User, Loader2, Radio, MessageSquare } from "lucide-react";
+import { Phone, Search, Users, User, Loader2, MessageSquare } from "lucide-react";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
-import { AvailabilityBadge } from "@/components/ptt/AvailabilitySelector";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -84,9 +83,6 @@ export default function Contacts() {
       );
     })
     .sort((a, b) => {
-      // Online users first
-      if (a.ptt_availability === 'available' && b.ptt_availability !== 'available') return -1;
-      if (b.ptt_availability === 'available' && a.ptt_availability !== 'available') return 1;
       return a.full_name?.localeCompare(b.full_name || '') || 0;
     });
 
@@ -251,7 +247,6 @@ export default function Contacts() {
                           <Badge className={`${getRoleBadgeColor(user.role_type)} text-white text-xs`}>
                             {user.role_type}
                           </Badge>
-                          <AvailabilityBadge availability={user.ptt_availability} />
                         </div>
                       </div>
                     </div>
@@ -279,14 +274,6 @@ export default function Contacts() {
                       >
                         <Phone className="w-4 h-4 mr-2" />
                         Call
-                      </Button>
-                      <Button
-                        onClick={() => navigate(createPageUrl("PTT"))}
-                        variant="outline"
-                        className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                        size="sm"
-                      >
-                        <Radio className="w-4 h-4" />
                       </Button>
                     </div>
                   )}
