@@ -72,9 +72,6 @@ export const PAGE_MODULE_MAP = {
   EstateProperties: "ESTATE",
   EstateVoting: "ESTATE",
 
-  // Client operational pages
-  ClientDashboard: null,
-  ClientReports: null,
+  // Client operational pages — not module-gated (client role sees only their own data via RLS)
   ClientIncidents: null,
-  ResellerPortal: null,
 };
