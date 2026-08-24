@@ -26,8 +26,7 @@ export default function GuardChat({ user, onClose }) {
         m.recipient_id === user.id ||
         m.is_broadcast === true
       );
-    },
-    refetchInterval: 3000
+    }
   });
 
   const { data: supervisors = [] } = useQuery({
@@ -66,6 +65,14 @@ export default function GuardChat({ user, onClose }) {
       queryClient.invalidateQueries(["chatMessages"]);
     }
   });
+
+  // Realtime subscription — replaces 3s refetchInterval polling
+  useEffect(() => {
+    const unsub = base44.entities.ChatMessage.subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ["chatMessages", user.id] });
+    });
+    return () => unsub && unsub();
+  }, [queryClient, user.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

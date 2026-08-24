@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ export default function ControlRoom() {
   const [showReportTemplates, setShowReportTemplates] = useState(false);
   const [user, setUser] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     base44.auth.me().then(setUser);
@@ -39,13 +40,24 @@ export default function ControlRoom() {
     return () => clearInterval(timer);
   }, []);
 
+  // Realtime subscriptions — replaces refetchInterval polling (saved ~300 requests/hour per device)
+  useEffect(() => {
+    const unsubs = [
+      base44.entities.Shift.subscribe(() => queryClient.invalidateQueries({ queryKey: ["activeGuardsControl"] })),
+      base44.entities.Alert.subscribe(() => queryClient.invalidateQueries({ queryKey: ["activeAlertsControl"] })),
+      base44.entities.Incident.subscribe(() => queryClient.invalidateQueries({ queryKey: ["pendingIncidentsControl"] })),
+      base44.entities.AlarmResponse.subscribe(() => queryClient.invalidateQueries({ queryKey: ["alarmResponsesControl"] })),
+      base44.entities.ChatMessage.subscribe(() => queryClient.invalidateQueries({ queryKey: ["unreadMessages"] })),
+    ];
+    return () => unsubs.forEach(u => u && u());
+  }, [queryClient]);
+
   const { data: activeGuards = [] } = useQuery({
     queryKey: ["activeGuardsControl"],
     queryFn: async () => {
       const shifts = await base44.entities.Shift.filter({ status: "active" });
       return Array.isArray(shifts) ? shifts : [];
-    },
-    refetchInterval: 15000
+    }
   });
 
   const { data: activeAlerts = [] } = useQuery({
@@ -54,7 +66,6 @@ export default function ControlRoom() {
       const alerts = await base44.entities.Alert.filter({ status: "active" }, "-created_date", 10);
       return Array.isArray(alerts) ? alerts : [];
     },
-    refetchInterval: 8000,
     initialData: []
   });
 
@@ -66,7 +77,6 @@ export default function ControlRoom() {
       }, "-reported_at", 20);
       return Array.isArray(incidents) ? incidents : [];
     },
-    refetchInterval: 10000,
     initialData: []
   });
 
@@ -78,7 +88,6 @@ export default function ControlRoom() {
       }, "-dispatched_at", 10);
       return Array.isArray(alarms) ? alarms : [];
     },
-    refetchInterval: 8000,
     initialData: []
   });
 
@@ -90,8 +99,7 @@ export default function ControlRoom() {
       const msgs = Array.isArray(allMessages) ? allMessages : [];
       return msgs.filter(m => m.recipient_id === user.id && !(Array.isArray(m.read_by) && m.read_by.includes(user.id))).length;
     },
-    enabled: !!user,
-    refetchInterval: 15000
+    enabled: !!user
   });
 
   const isCritical = activeAlerts.some(a => a.priority === "critical");

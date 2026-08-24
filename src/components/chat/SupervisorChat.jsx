@@ -24,8 +24,7 @@ export default function SupervisorChat({ user, onClose }) {
 
   const { data: messages = [] } = useQuery({
     queryKey: ["chatMessages"],
-    queryFn: async () => base44.entities.ChatMessage.list("-created_date", 200),
-    refetchInterval: 3000
+    queryFn: async () => base44.entities.ChatMessage.list("-created_date", 200)
   });
 
   const { data: guards = [] } = useQuery({
@@ -52,6 +51,14 @@ export default function SupervisorChat({ user, onClose }) {
       setRecordedAudio(null);
     }
   });
+
+  // Realtime subscription — replaces 3s refetchInterval polling
+  useEffect(() => {
+    const unsub = base44.entities.ChatMessage.subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ["chatMessages"] });
+    });
+    return () => unsub && unsub();
+  }, [queryClient]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
