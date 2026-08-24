@@ -8,8 +8,26 @@ import { Badge } from "@/components/ui/badge";
 import { Phone, PhoneOutgoing, Search, Users, User, Loader2, MessageSquare } from "lucide-react";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 import { useLinkusConfig, buildExternalCallUri } from "@/hooks/useLinkusConfig";
+import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
+
+const ROLE_LABELS = {
+  admin: "Administrator",
+  dispatcher: "Dispatcher",
+  guard: "Security Guard",
+  resident: "Resident",
+  estate_manager: "Estate Manager",
+  vendor: "Vendor / Contractor",
+  client: "Client",
+  platform_admin: "Platform Administrator",
+  reseller_admin: "Reseller Administrator",
+  practice_admin: "Practice Administrator",
+  therapist: "Therapist",
+  reception: "Reception",
+  employer_user: "Employer User",
+  supervisor: "Supervisor",
+};
 
 export default function Contacts() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -26,7 +44,7 @@ export default function Contacts() {
     if (!uri) return;
     // For linkus_mobile, try the URI scheme; if the app isn't installed the
     // browser stays put — fall back to system dialler after a short delay.
-    if (linkusConfig.mode === "linkus_mobile" && linkusConfig.fallback_to_dialler) {
+    if (linkusConfig?.mode === "linkus_mobile" && linkusConfig?.fallback_to_dialler) {
       window.location.href = uri;
       setTimeout(() => {
         if (!document.hidden) {
@@ -55,23 +73,16 @@ export default function Contacts() {
   const { data: allUsers = [], isLoading, error, refetch } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
-      console.log('Fetching users for role:', currentUser?.role_type);
-      
       // Try direct entity access first (works for admins and dispatchers)
       try {
         const users = await base44.entities.User.list();
-        console.log('✓ Loaded users via entity access:', users.length);
         return users;
       } catch (entityError) {
-        console.log('Entity access failed, trying backend function...', entityError);
-        
         // Fallback to backend function (works for guards)
         try {
           const { data } = await base44.functions.invoke('getAllUsers');
-          console.log('✓ Loaded users via backend function:', data?.users?.length || 0);
           return data?.users || [];
         } catch (functionError) {
-          console.error('Backend function also failed:', functionError);
           throw new Error('Unable to load user data. Please check your connection and try again.');
         }
       }
@@ -96,15 +107,16 @@ export default function Contacts() {
     .filter(u => {
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
+      const name = getUserDisplayName(u);
       return (
-        u.full_name?.toLowerCase().includes(query) ||
+        name.toLowerCase().includes(query) ||
         u.email?.toLowerCase().includes(query) ||
         u.badge_number?.toLowerCase().includes(query) ||
         u.role_type?.toLowerCase().includes(query)
       );
     })
     .sort((a, b) => {
-      return a.full_name?.localeCompare(b.full_name || '') || 0;
+      return getUserDisplayName(a).localeCompare(getUserDisplayName(b)) || 0;
     });
 
   const initiateCall = (user) => {
@@ -257,16 +269,16 @@ export default function Contacts() {
                       )}
                       <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center">
                         <span className="text-white font-bold text-lg">
-                          {user.full_name?.[0]?.toUpperCase() || "U"}
+                          {getUserInitial(user)}
                         </span>
                       </div>
                       <div>
                         <CardTitle className="text-white text-base mb-1">
-                          {user.full_name}
+                          {getUserDisplayName(user)}
                         </CardTitle>
                         <div className="flex items-center gap-2">
                           <Badge className={`${getRoleBadgeColor(user.role_type)} text-white text-xs`}>
-                            {user.role_type}
+                            {ROLE_LABELS[user.role_type] || user.role_type}
                           </Badge>
                         </div>
                       </div>

@@ -28,12 +28,20 @@ export function useModuleEntitlements(userId, customerId) {
 
 /**
  * Checks if a specific module is enabled for the user.
- * Admins always have access. If no entitlements are configured, all modules
- * are enabled (backward compatibility for existing tenants).
+ *
+ * PRODUCTION POLICY — FAIL CLOSED:
+ *   - Platform Admins always have access to every module.
+ *   - PLATFORM_ADMIN_ONLY modules are NEVER available to non-platform users.
+ *   - For every other user: no explicit entitlement = no module access.
+ *
+ * This prevents unrelated commercial modules from leaking to users whose
+ * tenant has not been set up or licensed.
  */
 export function isModuleEnabled(entitlements, moduleKey, isPlatformAdmin = false) {
   if (isPlatformAdmin) return true;
-  if (!entitlements || entitlements.length === 0) return true;
+  if (moduleKey === "PLATFORM_ADMIN_ONLY") return false;
+  // Fail closed: no entitlements loaded/configured = no commercial module access
+  if (!entitlements || entitlements.length === 0) return false;
   return entitlements.some(
     (e) => e.module_key === moduleKey && e.enabled && (!e.status || e.status === "active")
   );

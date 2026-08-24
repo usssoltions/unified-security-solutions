@@ -34,6 +34,7 @@ import ResellerPortal from './pages/ResellerPortal';
 import EmployerPortal from './pages/EmployerPortal';
 import TenantSetup from './pages/TenantSetup';
 import ProtectedPage from '@/components/ProtectedPage';
+import RoleHomeRedirect from '@/components/RoleHomeRedirect';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -73,8 +74,8 @@ const AuthenticatedApp = () => {
       {user && <IncomingCallHandler user={user} />}
       <Routes>
         <Route path="/" element={
-          <LayoutWrapper currentPageName={mainPageKey}>
-            <MainPage />
+          <LayoutWrapper currentPageName="RoleHomeRedirect">
+            <RoleHomeRedirect />
           </LayoutWrapper>
         } />
         {Object.entries(Pages).map(([path, Page]) => (

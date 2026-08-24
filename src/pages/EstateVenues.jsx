@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,19 +7,32 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building, Plus, X, Users, Clock } from "lucide-react";
+import { Building, Plus, X, Users, Clock, AlertCircle } from "lucide-react";
 
 const EMPTY_FORM = { name: "", description: "", category: "clubhouse", capacity: "", booking_fee: "", deposit_required: "", available_hours_start: "07:00", available_hours_end: "22:00", rules: "", status: "active" };
 
 export default function EstateVenues() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [user, setUser] = useState(null);
   const qc = useQueryClient();
+
+  useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => {});
+  }, []);
 
   const { data: venues = [] } = useQuery({ queryKey: ["all_venues"], queryFn: () => base44.entities.Venue.list(), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Venue.create({ ...data, capacity: Number(data.capacity), booking_fee: Number(data.booking_fee), deposit_required: Number(data.deposit_required) }),
+    mutationFn: (data) => base44.entities.Venue.create({
+      ...data,
+      customer_id: user?.customer_id,
+      reseller_id: user?.reseller_id,
+      site_id: user?.site_id,
+      capacity: Number(data.capacity) || 0,
+      booking_fee: Number(data.booking_fee) || 0,
+      deposit_required: Number(data.deposit_required) || 0,
+    }),
     onSuccess: () => { qc.invalidateQueries(["all_venues", "venues_active"]); setShowForm(false); setForm(EMPTY_FORM); }
   });
 
@@ -29,14 +42,27 @@ export default function EstateVenues() {
   });
 
   const statusColors = { active: "bg-emerald-600", inactive: "bg-slate-600", maintenance: "bg-amber-600" };
+  const hasTenant = !!user?.customer_id;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
       <div className="max-w-4xl mx-auto space-y-4 pb-24">
         <div className="flex items-center justify-between pt-2">
           <h1 className="text-2xl font-bold text-white">Venues ({venues.length})</h1>
-          <Button onClick={() => setShowForm(true)} className="bg-purple-500 hover:bg-purple-600"><Plus className="w-4 h-4 mr-2" />Add Venue</Button>
+          <Button onClick={() => setShowForm(true)} className="bg-purple-500 hover:bg-purple-600" disabled={!hasTenant}><Plus className="w-4 h-4 mr-2" />Add Venue</Button>
         </div>
+
+        {!hasTenant && (
+          <Card className="bg-amber-500/10 border-amber-500/30">
+            <CardContent className="p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-400 font-medium text-sm">Tenant Not Assigned</p>
+                <p className="text-slate-400 text-xs mt-1">Your account has not been assigned to an organisation. Please contact an administrator to complete tenant setup before creating venues.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {showForm && (
           <Card className="bg-slate-800 border-slate-700">

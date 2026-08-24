@@ -10,17 +10,27 @@ import { base44 } from "@/api/base44Client";
  * is NOT confirmed in official Yeastar documentation. The official integration
  * path is the Linkus SDK. System dialler (tel:) is the verified safe fallback.
  */
+const DEFAULT_LINKUS_CONFIG = {
+  mode: "disabled",
+  linkus_package: null,
+  linkus_uri_scheme: "linkusmobile://dial?number=",
+  uri_scheme_verified: false,
+  fallback_to_dialler: true,
+  external_prefix: "0",
+};
+
 export function useLinkusConfig() {
   return useQuery({
     queryKey: ["linkusConfig"],
     queryFn: async () => {
       try {
         const res = await base44.functions.invoke("getLinkusConfig");
-        return res?.data?.config || res?.config || { mode: "disabled" };
+        return { ...DEFAULT_LINKUS_CONFIG, ...(res?.data?.config || res?.config || {}) };
       } catch (_) {
-        return { mode: "disabled" };
+        return DEFAULT_LINKUS_CONFIG;
       }
     },
+    initialData: DEFAULT_LINKUS_CONFIG,
     staleTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,

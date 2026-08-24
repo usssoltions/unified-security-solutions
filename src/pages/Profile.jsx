@@ -6,42 +6,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, User, Mail, Shield, Trash2 } from "lucide-react";
+import { AlertCircle, User, Mail, Shield } from "lucide-react";
 import TelegramConnection from "@/components/telegram/TelegramConnection";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { getUserDisplayName } from "@/lib/userDisplayName";
+
+const ROLE_LABELS = {
+  admin: "Administrator",
+  dispatcher: "Dispatcher",
+  guard: "Security Guard",
+  resident: "Resident",
+  estate_manager: "Estate Manager",
+  vendor: "Vendor / Contractor",
+  client: "Client",
+  platform_admin: "Platform Administrator",
+  reseller_admin: "Reseller Administrator",
+  practice_admin: "Practice Administrator",
+  therapist: "Therapist",
+  reception: "Reception",
+  employer_user: "Employer User",
+};
 
 export default function Profile() {
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
-
   const { data: user, isLoading } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
-
-  const handleDeleteAccount = async () => {
-    if (deleteConfirmation !== "DELETE") return;
-
-    try {
-      // Delete user account
-      await base44.entities.User.delete(user.id);
-      
-      // Logout
-      await base44.auth.logout();
-    } catch (error) {
-      console.error("Failed to delete account:", error);
-      alert("Failed to delete account. Please contact support.");
-    }
-  };
 
   if (isLoading) {
     return (
@@ -75,7 +64,7 @@ export default function Profile() {
               <Label className="text-slate-400">Full Name</Label>
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-slate-500" />
-                <span className="text-white">{user?.display_name || user?.full_name}</span>
+                <span className="text-white">{getUserDisplayName(user)}</span>
               </div>
             </div>
 
@@ -91,8 +80,8 @@ export default function Profile() {
               <Label className="text-slate-400">Role</Label>
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4 text-slate-500" />
-                <Badge className="bg-sky-600 capitalize">
-                  {user?.role_type || user?.role}
+                <Badge className="bg-sky-600">
+                  {ROLE_LABELS[user?.role_type] || user?.role_type || user?.role || "User"}
                 </Badge>
               </div>
             </div>
@@ -109,73 +98,27 @@ export default function Profile() {
         {/* Telegram Notifications */}
         <TelegramConnection user={user} />
 
-        {/* Delete Account */}
-        <Card className="bg-rose-500/10 border-rose-500/20">
+        {/* Account Deactivation Request */}
+        <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
-            <CardTitle className="text-rose-400 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5" />
-              Danger Zone
+            <CardTitle className="text-white flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-slate-400" />
+              Account Management
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Permanently delete your account and all associated data
+              Request account deactivation or contact your administrator
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button
-              onClick={() => setShowDeleteDialog(true)}
-              variant="destructive"
-              className="bg-rose-600 hover:bg-rose-700"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete Account
-            </Button>
+            <p className="text-slate-400 text-sm mb-4">
+              To deactivate or remove your account, please contact your organisation administrator. Account deactivation is managed securely through the User Management module to maintain audit integrity.
+            </p>
+            <a href="mailto:support@base44.com" className="text-sky-400 text-sm hover:underline">
+              Contact support
+            </a>
           </CardContent>
         </Card>
       </div>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent className="bg-slate-800 border-slate-700">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">
-              Are you absolutely sure?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
-              This action cannot be undone. This will permanently delete your
-              account and remove all your data from our servers.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <Label className="text-slate-400 mb-2 block">
-              Type <span className="text-rose-400 font-bold">DELETE</span> to confirm
-            </Label>
-            <Input
-              value={deleteConfirmation}
-              onChange={(e) => setDeleteConfirmation(e.target.value)}
-              placeholder="Type DELETE"
-              className="bg-slate-900 border-slate-700 text-white"
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setShowDeleteDialog(false);
-                setDeleteConfirmation("");
-              }}
-              className="bg-slate-700 text-white hover:bg-slate-600"
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteAccount}
-              disabled={deleteConfirmation !== "DELETE"}
-              className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Delete Account
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

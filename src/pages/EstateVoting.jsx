@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Vote, Plus, CheckCircle, Clock, Loader2, BarChart3 } from "lucide-react";
+import { Vote, Plus, CheckCircle, Clock, Loader2, BarChart3, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import moment from "moment";
 
 export default function EstateVoting() {
@@ -18,6 +19,7 @@ export default function EstateVoting() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [voting, setVoting] = useState(null);
+  const [saveError, setSaveError] = useState(null);
   const [formData, setFormData] = useState({
     title: "", description: "", question_type: "yes_no",
     options: [{ text: "Yes" }, { text: "No" }],
@@ -40,28 +42,31 @@ export default function EstateVoting() {
     }
   };
 
+  const hasTenant = !!user?.customer_id;
+
   const hasVoted = (q) => q.voted_user_ids?.includes(user?.id);
 
   const handleSave = async () => {
-    if (!formData.title) return;
+    if (!formData.title || !hasTenant) return;
     setSaving(true);
     try {
       await base44.entities.VotingQuestion.create({
         ...formData,
         customer_id: user.customer_id,
+        reseller_id: user.reseller_id,
         options: formData.options.map(o => ({ text: o.text, votes: 0 })),
         total_votes: 0,
         voted_user_ids: [],
         status: "open",
         open_date: new Date().toISOString(),
-        created_by_name: user.full_name || user.display_name,
+        created_by_name: getUserDisplayName(user),
       });
       setShowForm(false);
       setFormData({ title: "", description: "", question_type: "yes_no", options: [{ text: "Yes" }, { text: "No" }] });
       await loadData();
     } catch (e) {
       console.error("Failed to create vote:", e);
-      alert("Failed to create vote: " + e.message);
+      setSaveError(e.message || "Failed to create vote. Please ensure your account is assigned to an organisation.");
     } finally {
       setSaving(false);
     }
@@ -83,7 +88,6 @@ export default function EstateVoting() {
       await loadData();
     } catch (e) {
       console.error("Failed to cast vote:", e);
-      alert("Failed to cast vote: " + e.message);
     } finally {
       setVoting(null);
     }
@@ -130,10 +134,22 @@ export default function EstateVoting() {
               <p className="text-slate-400 text-sm">Resident polls &amp; estate decisions</p>
             </div>
           </div>
-          <Button className="bg-sky-500 hover:bg-sky-600" onClick={() => setShowForm(true)}>
+          <Button className="bg-sky-500 hover:bg-sky-600" onClick={() => { setSaveError(null); setShowForm(true); }} disabled={!hasTenant}>
             <Plus className="w-4 h-4 mr-2" /> New Vote
           </Button>
         </div>
+
+        {!hasTenant && (
+          <Card className="bg-amber-500/10 border-amber-500/30 mb-4">
+            <CardContent className="p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-400 font-medium text-sm">Tenant Not Assigned</p>
+                <p className="text-slate-400 text-xs mt-1">Your account has not been assigned to an organisation. Please contact an administrator to complete tenant setup before creating votes.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {questions.length === 0 ? (
           <Card className="bg-slate-900 border-slate-800">
@@ -211,6 +227,12 @@ export default function EstateVoting() {
         <DialogContent className="bg-slate-900 border-slate-700 max-w-md">
           <DialogHeader><DialogTitle className="text-white">New Voting Question</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            {saveError && (
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-rose-400 text-sm flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{saveError}</span>
+              </div>
+            )}
             <div>
               <Label className="text-slate-300 text-sm">Title *</Label>
               <Input value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })}

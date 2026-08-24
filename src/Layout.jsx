@@ -317,13 +317,6 @@ export default function Layout({ children, currentPageName }) {
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Stay Awake", url: createPageUrl("StayAwakeConfiguration"), icon: Zap },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
-        { title: "Medical Dashboard", url: createPageUrl("MedicalDashboard"), icon: Stethoscope },
-        { title: "Patients", url: createPageUrl("MedicalPatients"), icon: Users },
-        { title: "Appointments", url: createPageUrl("MedicalAppointments"), icon: Calendar },
-        { title: "Employers", url: createPageUrl("MedicalEmployers"), icon: Package },
-        { title: "Services", url: createPageUrl("MedicalServices"), icon: Stethoscope },
-        { title: "Sessions", url: createPageUrl("MedicalSessions"), icon: Activity },
-        { title: "Assessment Templates", url: createPageUrl("MedicalAssessmentTemplates"), icon: FileText },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }

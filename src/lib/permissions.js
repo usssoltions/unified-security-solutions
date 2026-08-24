@@ -42,10 +42,7 @@ export const ROLE_PAGES = {
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
-    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalEmployers", "MedicalServices", "MedicalSessions",
-    "MedicalAssessmentTemplates", "Profile",
+    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
   ]),
   admin: P([
     "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
@@ -53,10 +50,7 @@ export const ROLE_PAGES = {
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
-    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalEmployers", "MedicalServices", "MedicalSessions",
-    "MedicalAssessmentTemplates", "Profile",
+    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
   ]),
   resident: P([
     "ResidentDashboard", "ResidentVisitors", "ResidentBookings", "ResidentOrders",
@@ -72,7 +66,8 @@ export const ROLE_PAGES = {
   client: P(["ClientDashboard", "ClientReports", "ClientIncidents", "Profile"]),
   reseller_admin: P(["ResellerPortal", "UserManagement", "Configuration", "Reports", "Profile"]),
   platform_admin: P([
-    "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
+    "ControlRoom", "AdminIncidents", "AdminMaintenance", "PanicManagement",
+    "AccessControl", "AccessHistory", "AccessSettings",
     "Contacts", "CallHistory", "CallRecordings", "Scheduling",
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
@@ -80,7 +75,8 @@ export const ROLE_PAGES = {
     "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
     "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
     "MedicalEmployers", "MedicalServices", "MedicalSessions",
-    "MedicalAssessmentTemplates", "ResellerPortal", "EstateProperties", "EstateVoting",
+    "MedicalAssessmentTemplates", "ResellerPortal", "TenantSetup",
+    "EstateProperties", "EstateVoting",
     "ClientDashboard", "ClientReports", "ClientIncidents",
     "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
     "EstateLevy", "EmployerPortal", "Profile",
@@ -163,13 +159,9 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.SETTINGS_DESTINATIONS, PERMISSIONS.SETTINGS_WORK_TYPES,
     PERMISSIONS.SETTINGS_ACCESS, PERMISSIONS.SETTINGS_PERMISSIONS,
   ),
-  practice_admin: ALL,
-  therapist: set(
-    PERMISSIONS.ACCESS_VIEW,
-  ),
-  reception: set(
-    PERMISSIONS.ACCESS_VIEW,
-  ),
+  practice_admin: set(),
+  therapist: set(),
+  reception: set(),
   employer_user: set(),
 };
 
