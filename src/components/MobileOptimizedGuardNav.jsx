@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { 
   Shield, 
   AlertTriangle, 
@@ -151,7 +152,7 @@ export default function UnifiedMobileNav({
           <div className="flex items-center justify-between p-4 border-b border-slate-700">
             <div>
               <h2 className="text-white font-bold text-lg">Menu</h2>
-              <p className="text-slate-400 text-sm">{user?.full_name}</p>
+              <p className="text-slate-400 text-sm">{getUserDisplayName(user)}</p>
             </div>
             <Button
               variant="ghost"

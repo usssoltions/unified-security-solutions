@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, Send, Mic, StopCircle, Play, X, AlertCircle, Volume2, Phone } from "lucide-react";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function GuardChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -123,7 +124,7 @@ export default function GuardChat({ user, onClose }) {
 
       sendMessageMutation.mutate({
         sender_id: user.id,
-        sender_name: user.full_name,
+        sender_name: getUserDisplayName(user),
         sender_role: user.role_type,
         recipient_id: null,
         is_broadcast: false,
@@ -143,7 +144,7 @@ export default function GuardChat({ user, onClose }) {
 
     sendMessageMutation.mutate({
       sender_id: user.id,
-      sender_name: user.full_name,
+      sender_name: getUserDisplayName(user),
       sender_role: user.role_type,
       recipient_id: null,
       is_broadcast: false,

@@ -3,6 +3,7 @@ import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { incidentMessage } from "@/lib/whatsapp";
 import { base44 } from "@/api/base44Client";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

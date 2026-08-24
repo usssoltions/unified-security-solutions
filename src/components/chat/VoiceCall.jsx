@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
 
 export default function VoiceCall({ caller, recipient, onEnd, isInitiator }) {
   const [callState, setCallState] = useState(isInitiator ? "calling" : "incoming");
@@ -188,11 +189,11 @@ export default function VoiceCall({ caller, recipient, onEnd, isInitiator }) {
         <CardHeader className="text-center border-b border-slate-700">
           <div className="w-24 h-24 mx-auto mb-4 bg-gradient-to-br from-sky-400 to-sky-600 rounded-full flex items-center justify-center">
             <span className="text-white text-3xl font-bold">
-              {(isInitiator ? recipient.full_name : caller.full_name)?.[0]?.toUpperCase() || "U"}
+              {getUserInitial(isInitiator ? recipient : caller)}
             </span>
           </div>
           <CardTitle className="text-white text-xl">
-            {isInitiator ? recipient.full_name : caller.full_name}
+            {getUserDisplayName(isInitiator ? recipient : caller)}
           </CardTitle>
           <p className="text-sm text-slate-400">
             {callState === "calling" && "Calling..."}
