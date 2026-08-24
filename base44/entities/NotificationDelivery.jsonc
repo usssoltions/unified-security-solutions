@@ -1,109 +1,71 @@
 {
   "name": "NotificationDelivery",
   "type": "object",
+  "description": "Delivery audit record for every notification sent through any channel. Tracks success/failure, retries, and provider response. Idempotency key prevents duplicate deliveries for the same event+recipient+channel.",
   "properties": {
+    "event_key": {
+      "type": "string"
+    },
     "notification_id": {
       "type": "string",
-      "description": "Unique notification identifier"
+      "description": "ID of the related Notification entity if in-app"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
     },
     "recipient_id": {
-      "type": "string"
+      "type": "string",
+      "description": "User ID or external recipient ID"
     },
     "recipient_name": {
       "type": "string"
     },
-    "notification_type": {
+    "recipient_address": {
+      "type": "string",
+      "description": "Email, telegram chat ID, or OneSignal player ID"
+    },
+    "channel": {
       "type": "string",
       "enum": [
-        "CALL",
-        "PTT",
-        "PANIC",
-        "INCIDENT",
-        "MAINTENANCE",
-        "SHIFT",
-        "ATTENDANCE",
-        "SYSTEM"
+        "email",
+        "in_app",
+        "push",
+        "telegram"
       ]
     },
-    "priority": {
+    "status": {
       "type": "string",
       "enum": [
-        "critical",
-        "high",
-        "medium",
-        "low"
+        "pending",
+        "sent",
+        "failed",
+        "retrying",
+        "suppressed"
       ],
-      "default": "medium"
+      "default": "pending"
     },
-    "channels": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "channel": {
-            "type": "string",
-            "enum": [
-              "push",
-              "email",
-              "whatsapp",
-              "sms"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "sent",
-              "delivered",
-              "opened",
-              "failed"
-            ]
-          },
-          "sent_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "delivered_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "opened_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "error_message": {
-            "type": "string"
-          }
-        }
-      },
-      "default": []
-    },
-    "message": {
-      "type": "string"
-    },
-    "related_entity": {
-      "type": "string"
-    },
-    "related_id": {
-      "type": "string"
-    },
-    "acknowledged": {
-      "type": "boolean",
-      "default": false
-    },
-    "acknowledged_at": {
+    "send_time": {
       "type": "string",
       "format": "date-time"
     },
-    "acknowledged_by": {
+    "provider_response": {
       "type": "string"
+    },
+    "retries": {
+      "type": "number",
+      "default": 0
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Prevents duplicate deliveries for the same event+recipient+channel"
     }
   },
   "required": [
-    "notification_id",
-    "recipient_id",
-    "notification_type",
-    "message"
+    "event_key",
+    "channel"
   ],
   "rls": {
     "create": {
@@ -122,34 +84,14 @@
       ]
     },
     "read": {
-      "$or": [
-        {
-          "data.recipient_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "update": {
-      "$or": [
-        {
-          "data.recipient_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
       "user_condition": {
