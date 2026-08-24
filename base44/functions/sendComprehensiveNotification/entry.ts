@@ -303,12 +303,13 @@ export default async function(req: Request): Promise<Response> {
     const failed = results.filter(r => r.status === 'failed').length;
     const deduped = results.filter(r => r.status === 'deduped').length;
     const suppressed = results.filter(r => r.suppressed).length;
+    const skipped = results.filter(r => r.status === 'skipped').length;
 
     return Response.json({
       success: true,
       eventKey: evKey,
       totalRecipients: recipients.length,
-      sent, failed, deduped, suppressed,
+      sent, failed, deduped, suppressed, skipped,
       results,
     });
   } catch (error) {
@@ -331,7 +332,7 @@ async function alreadyDelivered(base44, idempotency_key: string): Promise<boolea
   }
 }
 
-async function logDelivery(base44, eventKey, notificationId, recipient, status, scope, channel, idempKey?, providerResponse?) {
+async function logDelivery(base44, eventKey, notificationId, recipient, status, scope, channel, idempKey?, providerResponse?, skipReason?) {
   try {
     await base44.asServiceRole.entities.NotificationDelivery.create({
       event_key: eventKey,
@@ -345,6 +346,7 @@ async function logDelivery(base44, eventKey, notificationId, recipient, status, 
       status,
       send_time: new Date().toISOString(),
       provider_response: providerResponse || undefined,
+      skip_reason: skipReason || undefined,
       retries: 0,
       idempotency_key: idempKey || `${eventKey}:${recipient.id}:${channel}`,
     });
