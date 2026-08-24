@@ -21,6 +21,8 @@ import PanicManagement from './pages/PanicManagement';
 import MedicalDashboard from './pages/MedicalDashboard';
 import MedicalPatients from './pages/MedicalPatients';
 import MedicalAppointments from './pages/MedicalAppointments';
+import MedicalEmployers from './pages/MedicalEmployers';
+import MedicalServices from './pages/MedicalServices';
 import ProtectedPage from '@/components/ProtectedPage';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -152,6 +154,20 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="MedicalAppointments">
             <ProtectedPage pageKey="MedicalAppointments">
               <MedicalAppointments />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/MedicalEmployers" element={
+          <LayoutWrapper currentPageName="MedicalEmployers">
+            <ProtectedPage pageKey="MedicalEmployers">
+              <MedicalEmployers />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/MedicalServices" element={
+          <LayoutWrapper currentPageName="MedicalServices">
+            <ProtectedPage pageKey="MedicalServices">
+              <MedicalServices />
             </ProtectedPage>
           </LayoutWrapper>
         } />

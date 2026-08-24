@@ -65,6 +65,8 @@ export const PAGE_MODULE_MAP = {
   MedicalDashboard: "OCCUPATIONAL_THERAPY",
   MedicalPatients: "OCCUPATIONAL_THERAPY",
   MedicalAppointments: "OCCUPATIONAL_THERAPY",
+  MedicalEmployers: "OCCUPATIONAL_THERAPY",
+  MedicalServices: "OCCUPATIONAL_THERAPY",
 
   // Client operational pages
   ClientIncidents: "OPERATIONS",

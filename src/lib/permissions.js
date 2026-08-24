@@ -36,7 +36,9 @@ export const ROLE_PAGES = {
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
+    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
+    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
+    "MedicalEmployers", "MedicalServices", "Profile",
   ]),
   admin: P([
     "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
@@ -44,7 +46,9 @@ export const ROLE_PAGES = {
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
+    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
+    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
+    "MedicalEmployers", "MedicalServices", "Profile",
   ]),
   resident: P([
     "ResidentDashboard", "ResidentVisitors", "ResidentBookings", "ResidentOrders",
