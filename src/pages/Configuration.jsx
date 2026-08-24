@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,8 +18,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReportSchedulingSettings from "../components/reports/ReportSchedulingSettings";
 import WhatsAppContactsConfig from "../components/configuration/WhatsAppContactsConfig";
 import AutomationToggles from "../components/configuration/AutomationToggles";
+import { base44 } from "@/api/base44Client";
 
 export default function Configuration() {
+  const [user, setUser] = useState(null);
+  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
   // Incident Categories
   const [incidentCategories, setIncidentCategories] = useState([
     { id: 1, value: "fire", label: "Fire", color: "rose" },
@@ -169,9 +172,35 @@ export default function Configuration() {
     }
   };
 
-  const handleSaveConfiguration = () => {
-    // In a real implementation, save to database or configuration entity
-    alert("Configuration saved successfully! (This would save to database in production)");
+  const handleSaveConfiguration = async () => {
+    try {
+      const configs = [
+        { config_key: "incident_categories", config_value: JSON.stringify(incidentCategories), module_key: "SECURITY" },
+        { config_key: "maintenance_categories", config_value: JSON.stringify(maintenanceCategories), module_key: "SECURITY" },
+        { config_key: "alarm_types", config_value: JSON.stringify(alarmTypes), module_key: "SECURITY" },
+        { config_key: "asset_categories", config_value: JSON.stringify(assetCategories), module_key: "SECURITY" },
+      ];
+      for (const cfg of configs) {
+        await base44.entities.SystemConfiguration.filter({ config_key: cfg.config_key }).then(async (existing) => {
+          if (existing[0]) {
+            await base44.entities.SystemConfiguration.update(existing[0].id, {
+              config_value: cfg.config_value,
+              updated_by: user?.id,
+              updated_by_name: user?.display_name || user?.full_name,
+            });
+          } else {
+            await base44.entities.SystemConfiguration.create({
+              ...cfg,
+              updated_by: user?.id,
+              updated_by_name: user?.display_name || user?.full_name,
+            });
+          }
+        });
+      }
+      alert("Configuration saved successfully!");
+    } catch (error) {
+      alert("Failed to save configuration: " + error.message);
+    }
   };
 
   return (

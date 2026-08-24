@@ -6,23 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, Wrench, User, MapPin, Clock, CheckCircle2, XCircle, History, Loader2 } from "lucide-react";
-import PullToRefresh from "../components/PullToRefresh";
+import { AlertTriangle, User, MapPin, Clock, CheckCircle2, XCircle, History, Loader2 } from "lucide-react";
+import PullToRefresh from "@/components/PullToRefresh";
 import ActivityTimeline from "@/components/shared/ActivityTimeline";
 
 export default function AdminIncidents() {
   const [user, setUser] = useState(null);
   const [selectedIncident, setSelectedIncident] = useState(null);
-  const [selectedMaintenance, setSelectedMaintenance] = useState(null);
   const [assigneeId, setAssigneeId] = useState("");
   const [notes, setNotes] = useState("");
-  const [resolveModal, setResolveModal] = useState(null); // { type, id, title }
+  const [resolveModal, setResolveModal] = useState(null);
   const [resolveNotes, setResolveNotes] = useState("");
   const queryClient = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
-  // ── Queries (NO polling — realtime subscription drives updates) ──────────
   const { data: incidents = [] } = useQuery({
     queryKey: ["adminIncidents"],
     queryFn: () => base44.entities.Incident.filter(
@@ -32,16 +30,6 @@ export default function AdminIncidents() {
     enabled: !!user,
   });
 
-  const { data: maintenance = [] } = useQuery({
-    queryKey: ["adminMaintenance"],
-    queryFn: () => base44.entities.MaintenanceRequest.filter(
-      { status: { $in: ["reported", "assigned", "accepted", "in_progress", "declined"] } },
-      "-created_date", 50
-    ),
-    enabled: !!user,
-  });
-
-  // ── Dynamic assignee list (10-min cache to avoid repeated User.list) ─────
   const { data: assignees = [] } = useQuery({
     queryKey: ["assignableUsers"],
     queryFn: async () => {
@@ -62,19 +50,14 @@ export default function AdminIncidents() {
     enabled: !!user,
   });
 
-  // ── Realtime subscriptions (replace 5s polling) ──────────────────────────
   useEffect(() => {
     if (!user) return;
     const unsubI = base44.entities.Incident.subscribe(() => {
       queryClient.invalidateQueries({ queryKey: ["adminIncidents"] });
     });
-    const unsubM = base44.entities.MaintenanceRequest.subscribe(() => {
-      queryClient.invalidateQueries({ queryKey: ["adminMaintenance"] });
-    });
-    return () => { unsubI(); unsubM(); };
+    return () => { unsubI(); };
   }, [user, queryClient]);
 
-  // ── Mutations ────────────────────────────────────────────────────────────
   const assignIncident = useMutation({
     mutationFn: async ({ id, item }) => {
       const assignee = assignees.find(a => a.id === assigneeId);
@@ -106,78 +89,29 @@ export default function AdminIncidents() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["adminIncidents"] }); setSelectedIncident(null); setAssigneeId(""); setNotes(""); }
   });
 
-  const assignMaintenance = useMutation({
-    mutationFn: async ({ id, item }) => {
-      const assignee = assignees.find(a => a.id === assigneeId);
-      if (!assignee) throw new Error("Select an assignee");
+  const resolveIncident = useMutation({
+    mutationFn: async () => {
+      const { id, item } = resolveModal;
       const nowIso = new Date().toISOString();
-      await base44.entities.MaintenanceRequest.update(id, {
-        assigned_to: assignee.id,
-        assigned_to_name: assignee.name,
-        status: "assigned",
-        assigned_by: user.id,
-        assigned_by_name: user.display_name || user.full_name,
-        assigned_at: nowIso,
+      await base44.entities.Incident.update(id, {
+        status: "resolved", resolved_at: nowIso,
+        resolved_by: user.id, resolved_by_name: user.display_name || user.full_name,
+        resolution_notes: resolveNotes,
         activity_log: [...(item.activity_log || []), {
-          timestamp: nowIso, action: "assigned",
+          timestamp: nowIso, action: "resolved",
           by_user_id: user.id, by_user_name: user.display_name || user.full_name,
-          from_status: item.status, to_status: "assigned",
-          notes: `Assigned to ${assignee.name} (${assignee.role})`
+          from_status: item.status, to_status: "resolved", notes: resolveNotes
         }]
       });
-      await base44.functions.invoke("notifyMaintenanceWorkflow", {
-        action: "assigned", maintenanceId: id,
-        requestNumber: item.request_number, performedByUserId: user.id, performedByName: user.display_name || user.full_name,
-        assigneeId: assignee.id, assigneeName: assignee.name,
-        title: item.title, category: item.category, urgency: item.urgency, siteName: item.site_name, location: item.location
+      await base44.functions.invoke("notifyIncidentWorkflow", {
+        action: "resolved", incidentId: id, incidentNumber: item.incident_number,
+        performedByUserId: user.id, performedByName: user.display_name || user.full_name,
+        resolutionNotes: resolveNotes, incidentTitle: item.title, incidentType: item.category,
+        category: item.category, priority: item.priority, siteName: item.site_name, location: item.location
       });
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["adminMaintenance"] }); setSelectedMaintenance(null); setAssigneeId(""); setNotes(""); }
-  });
-
-  const resolveItem = useMutation({
-    mutationFn: async () => {
-      const { type, id, item } = resolveModal;
-      const nowIso = new Date().toISOString();
-      if (type === "incident") {
-        await base44.entities.Incident.update(id, {
-          status: "resolved", resolved_at: nowIso,
-          resolved_by: user.id, resolved_by_name: user.display_name || user.full_name,
-          resolution_notes: resolveNotes,
-          activity_log: [...(item.activity_log || []), {
-            timestamp: nowIso, action: "resolved",
-            by_user_id: user.id, by_user_name: user.display_name || user.full_name,
-            from_status: item.status, to_status: "resolved", notes: resolveNotes
-          }]
-        });
-        await base44.functions.invoke("notifyIncidentWorkflow", {
-          action: "resolved", incidentId: id, incidentNumber: item.incident_number,
-          performedByUserId: user.id, performedByName: user.display_name || user.full_name,
-          resolutionNotes: resolveNotes, incidentTitle: item.title, incidentType: item.category,
-          category: item.category, priority: item.priority, siteName: item.site_name, location: item.location
-        });
-      } else {
-        await base44.entities.MaintenanceRequest.update(id, {
-          status: "completed", completed_at: nowIso,
-          completed_by: user.id, completed_by_name: user.display_name || user.full_name,
-          completion_notes: resolveNotes,
-          activity_log: [...(item.activity_log || []), {
-            timestamp: nowIso, action: "completed",
-            by_user_id: user.id, by_user_name: user.display_name || user.full_name,
-            from_status: item.status, to_status: "completed", notes: resolveNotes
-          }]
-        });
-        await base44.functions.invoke("notifyMaintenanceWorkflow", {
-          action: "completed", maintenanceId: id, requestNumber: item.request_number,
-          performedByUserId: user.id, performedByName: user.display_name || user.full_name,
-          completionNotes: resolveNotes, title: item.title, category: item.category,
-          urgency: item.urgency, siteName: item.site_name, location: item.location
-        });
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["adminIncidents"] });
-      queryClient.invalidateQueries({ queryKey: ["adminMaintenance"] });
       setResolveModal(null); setResolveNotes("");
     }
   });
@@ -186,8 +120,7 @@ export default function AdminIncidents() {
   const statusColors = {
     reported: "bg-slate-500", assigned: "bg-sky-500", accepted: "bg-emerald-500",
     in_progress: "bg-amber-500", resolved: "bg-emerald-600", closed: "bg-slate-600",
-    declined: "bg-rose-600", completed: "bg-emerald-600", cancelled: "bg-slate-600",
-    reassigned: "bg-amber-500"
+    declined: "bg-rose-600", reassigned: "bg-amber-500"
   };
 
   const renderLocation = (loc) => {
@@ -200,23 +133,19 @@ export default function AdminIncidents() {
     );
   };
 
-  const renderCard = (item, type) => {
-    const isIncident = type === "incident";
-    const isSelected = isIncident ? selectedIncident?.id === item.id : selectedMaintenance?.id === item.id;
+  const renderCard = (item) => {
+    const isSelected = selectedIncident?.id === item.id;
     const canAssign = ["reported", "declined"].includes(item.status);
     const canResolve = ["assigned", "accepted", "in_progress"].includes(item.status);
-    const levelField = isIncident ? item.priority : item.urgency;
     return (
       <div key={item.id} className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-semibold truncate">{item.title}</h3>
-            {item.incident_number || item.request_number ? (
-              <p className="text-xs text-slate-500">{isIncident ? item.incident_number : item.request_number}</p>
-            ) : null}
+            {item.incident_number && <p className="text-xs text-slate-500">{item.incident_number}</p>}
           </div>
           <div className="flex flex-col gap-1 items-end">
-            <Badge className={priorityColors[levelField] || "bg-slate-500"}>{levelField}</Badge>
+            <Badge className={priorityColors[item.priority] || "bg-slate-500"}>{item.priority}</Badge>
             <Badge className={statusColors[item.status] || "bg-slate-500"}>{item.status}</Badge>
           </div>
         </div>
@@ -247,17 +176,17 @@ export default function AdminIncidents() {
                 </Select>
                 <Textarea placeholder="Assignment notes (optional)..." value={notes} onChange={e => setNotes(e.target.value)}
                   className="bg-slate-800 border-slate-600 text-white min-h-16" />
-                <Button onClick={() => (isIncident ? assignIncident : assignMaintenance).mutate({ id: item.id, item })}
-                  disabled={!assigneeId || (isIncident ? assignIncident.isPending : assignMaintenance.isPending)}
+                <Button onClick={() => assignIncident.mutate({ id: item.id, item })}
+                  disabled={!assigneeId || assignIncident.isPending}
                   className="w-full bg-emerald-600 hover:bg-emerald-700">
-                  {(isIncident ? assignIncident : assignMaintenance).isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <User className="w-4 h-4 mr-2" />}
+                  {assignIncident.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <User className="w-4 h-4 mr-2" />}
                   Assign
                 </Button>
               </>
             )}
             {canResolve && (
-              <Button onClick={() => setResolveModal({ type, id: item.id, item })} variant="outline" className="w-full border-emerald-600 text-emerald-400">
-                <CheckCircle2 className="w-4 h-4 mr-2" /> {isIncident ? "Resolve" : "Complete"}
+              <Button onClick={() => setResolveModal({ id: item.id, item })} variant="outline" className="w-full border-emerald-600 text-emerald-400">
+                <CheckCircle2 className="w-4 h-4 mr-2" /> Resolve
               </Button>
             )}
             {item.description && (
@@ -279,11 +208,11 @@ export default function AdminIncidents() {
               <p className="text-xs text-slate-400 mb-2 flex items-center gap-1"><History className="w-3 h-3" /> Activity Timeline</p>
               <ActivityTimeline log={item.activity_log} />
             </div>
-            <Button onClick={() => { isIncident ? setSelectedIncident(null) : setSelectedMaintenance(null); setAssigneeId(""); setNotes(""); }}
+            <Button onClick={() => { setSelectedIncident(null); setAssigneeId(""); setNotes(""); }}
               variant="ghost" size="sm" className="w-full text-slate-400"><XCircle className="w-4 h-4 mr-2" /> Close</Button>
           </div>
         ) : (
-          <Button onClick={() => { isIncident ? setSelectedIncident(item) : setSelectedMaintenance(item); setAssigneeId(item.assigned_to || ""); setNotes(""); }}
+          <Button onClick={() => { setSelectedIncident(item); setAssigneeId(item.assigned_to || ""); setNotes(""); }}
             className="w-full mt-3 bg-sky-600 hover:bg-sky-700" size="sm">Manage</Button>
         )}
       </div>
@@ -294,43 +223,35 @@ export default function AdminIncidents() {
 
   return (
     <PullToRefresh onRefresh={async () => {
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ["adminIncidents"] }), queryClient.invalidateQueries({ queryKey: ["adminMaintenance"] })]);
+      await queryClient.invalidateQueries({ queryKey: ["adminIncidents"] });
     }}>
       <div className="min-h-screen p-4 lg:p-6 space-y-6">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-            <AlertTriangle className="w-6 h-6 text-rose-400" /> Incident & Maintenance Queue
+            <AlertTriangle className="w-6 h-6 text-rose-400" /> Incident Queue
           </h1>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader><CardTitle className="text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-rose-400" /> Incidents ({incidents.length})</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {incidents.length === 0 ? <p className="text-slate-400 text-center py-8">No active incidents</p> : incidents.map(i => renderCard(i, "incident"))}
-              </CardContent>
-            </Card>
-            <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader><CardTitle className="text-white flex items-center gap-2"><Wrench className="w-5 h-5 text-amber-400" /> Maintenance ({maintenance.length})</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {maintenance.length === 0 ? <p className="text-slate-400 text-center py-8">No active maintenance</p> : maintenance.map(m => renderCard(m, "maintenance"))}
-              </CardContent>
-            </Card>
-          </div>
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardHeader><CardTitle className="text-white flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-rose-400" /> Active Incidents ({incidents.length})</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {incidents.length === 0 ? <p className="text-slate-400 text-center py-8">No active incidents</p> : incidents.map(i => renderCard(i))}
+            </CardContent>
+          </Card>
         </div>
       </div>
 
       {resolveModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-xl p-5">
-            <h3 className="text-white font-bold text-lg mb-1">{resolveModal.type === "incident" ? "Resolve Incident" : "Complete Maintenance"}</h3>
+            <h3 className="text-white font-bold text-lg mb-1">Resolve Incident</h3>
             <p className="text-slate-400 text-sm mb-3">{resolveModal.item.title}</p>
-            <Textarea placeholder={resolveModal.type === "incident" ? "Resolution notes..." : "Completion notes..."} value={resolveNotes}
+            <Textarea placeholder="Resolution notes..." value={resolveNotes}
               onChange={e => setResolveNotes(e.target.value)} className="bg-slate-800 border-slate-600 text-white min-h-24 mb-3" />
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setResolveModal(null)} className="flex-1 border-slate-600">Cancel</Button>
-              <Button onClick={() => resolveItem.mutate()} disabled={!resolveNotes.trim() || resolveItem.isPending}
+              <Button onClick={() => resolveIncident.mutate()} disabled={!resolveNotes.trim() || resolveIncident.isPending}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                {resolveItem.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                {resolveModal.type === "incident" ? "Resolve" : "Complete"}
+                {resolveIncident.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                Resolve
               </Button>
             </div>
           </div>

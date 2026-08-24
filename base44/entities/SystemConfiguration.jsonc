@@ -1,0 +1,92 @@
+{
+  "name": "SystemConfiguration",
+  "type": "object",
+  "description": "Persisted system configuration per customer/tenant. Stores configurable dropdown lists, category definitions, and module-specific settings as JSON blocks. Replaces local-state-only Configuration with database-backed persistence.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ID. Null for platform-wide defaults."
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Optional site-level override"
+    },
+    "config_key": {
+      "type": "string",
+      "description": "Configuration block key: incident_categories, maintenance_categories, alarm_types, asset_categories, access_settings, calling_config, etc."
+    },
+    "config_value": {
+      "type": "string",
+      "description": "JSON-encoded configuration value (array of objects, key-value map, etc.)"
+    },
+    "module_key": {
+      "type": "string",
+      "description": "Module this config belongs to: SECURITY, ESTATE, MEDICAL, PLATFORM, ACCESS, etc."
+    },
+    "updated_by": {
+      "type": "string"
+    },
+    "updated_by_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "config_key",
+    "config_value"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

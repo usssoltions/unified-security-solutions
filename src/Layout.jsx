@@ -272,7 +272,8 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
         { title: "Incident Queue", url: createPageUrl("AdminIncidents"), icon: AlertTriangle },
-        { title: "Panic Management", url: createPageUrl("PanicManagement"), icon: Zap },
+        { title: "Maintenance Queue", url: createPageUrl("AdminMaintenance"), icon: Wrench },
+        { title: "Panic Queue", url: createPageUrl("PanicManagement"), icon: Zap },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "Access History", url: createPageUrl("AccessHistory"), icon: FileText },
         { title: "Access Settings", url: createPageUrl("AccessSettings"), icon: Sliders },
@@ -322,7 +323,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Vendors", url: createPageUrl("EstateVendors"), icon: Package },
         { title: "Levy Management", url: createPageUrl("EstateLevy"), icon: Sliders },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
-        { title: "Panic Management", url: createPageUrl("PanicManagement"), icon: Zap },
+        { title: "Panic Queue", url: createPageUrl("PanicManagement"), icon: Zap },
         { title: "Security", url: createPageUrl("ControlRoom"), icon: Shield },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
