@@ -1,7 +1,7 @@
 {
   "name": "Appointment",
   "type": "object",
-  "description": "Medical module: Patient appointment. Supports calendar views (day/week/month/list/therapist). Prevents double-booking via server-side availability check. Employer portal users can see their own employees' appointments.",
+  "description": "Medical module: Patient appointment. Supports calendar views and server-side conflict validation.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -10,8 +10,7 @@
       "type": "string"
     },
     "appointment_number": {
-      "type": "string",
-      "description": "Human-readable reference"
+      "type": "string"
     },
     "patient_id": {
       "type": "string"
@@ -38,8 +37,7 @@
       "type": "string"
     },
     "location_id": {
-      "type": "string",
-      "description": "Practice location if multi-location"
+      "type": "string"
     },
     "location_name": {
       "type": "string"
@@ -94,8 +92,7 @@
       "type": "string"
     },
     "rescheduled_from_id": {
-      "type": "string",
-      "description": "Previous appointment ID if rescheduled"
+      "type": "string"
     },
     "reschedule_reason": {
       "type": "string"
@@ -105,16 +102,14 @@
     },
     "arrival_time": {
       "type": "string",
-      "format": "date-time",
-      "description": "Actual patient arrival timestamp \u2014 NOT scheduled time"
+      "format": "date-time"
     },
     "arrival_verified": {
       "type": "boolean",
       "default": false
     },
     "session_id": {
-      "type": "string",
-      "description": "Linked Session entity once session started"
+      "type": "string"
     },
     "check_in_user_id": {
       "type": "string"
@@ -127,8 +122,7 @@
       "items": {
         "type": "string"
       },
-      "default": [],
-      "description": "Which reminders have been sent (e.g., 24h, 2h)"
+      "default": []
     },
     "notifications_sent": {
       "type": "boolean",
@@ -151,10 +145,28 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         },
         {
-          "data.employer_id": "{{user.employer_id}}"
+          "$and": [
+            {
+              "data.employer_id": "{{user.data.employer_id}}"
+            },
+            {
+              "data.employer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -166,10 +178,28 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         },
         {
-          "data.employer_id": "{{user.employer_id}}"
+          "$and": [
+            {
+              "data.employer_id": "{{user.data.employer_id}}"
+            },
+            {
+              "data.employer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -181,7 +211,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
