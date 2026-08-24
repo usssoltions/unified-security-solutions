@@ -2,20 +2,23 @@
   "name": "CallHistory",
   "type": "object",
   "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
     "call_id": {
-      "type": "string",
-      "description": "Unique call identifier"
+      "type": "string"
     },
     "caller_id": {
-      "type": "string",
-      "description": "User ID who initiated the call"
+      "type": "string"
     },
     "caller_name": {
       "type": "string"
     },
     "receiver_id": {
-      "type": "string",
-      "description": "User ID who received the call"
+      "type": "string"
     },
     "receiver_name": {
       "type": "string"
@@ -40,8 +43,7 @@
             "type": "string"
           }
         }
-      },
-      "description": "For group calls"
+      }
     },
     "duration_seconds": {
       "type": "number",
@@ -66,13 +68,11 @@
       "format": "date-time"
     },
     "recording_url": {
-      "type": "string",
-      "description": "URL to the call recording"
+      "type": "string"
     },
     "has_recording": {
       "type": "boolean",
-      "default": false,
-      "description": "Whether this call has a recording"
+      "default": false
     }
   },
   "required": [
@@ -85,21 +85,26 @@
     "create": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.caller_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
     "read": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.caller_id": "{{user.id}}"
         },
         {
@@ -107,17 +112,17 @@
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
     "update": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.caller_id": "{{user.id}}"
         },
         {
@@ -125,11 +130,6 @@
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
