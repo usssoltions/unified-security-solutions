@@ -3,8 +3,12 @@ import { base44 } from "@/api/base44Client";
 
 /**
  * Fetches the Linkus external-calling configuration (server-side SystemConfiguration).
- * Returns { mode, linkus_package, linkus_uri_scheme, fallback_to_dialler, external_prefix }
+ * Returns { mode, linkus_package, linkus_uri_scheme, uri_scheme_verified, fallback_to_dialler, external_prefix }
  * mode: "disabled" | "linkus_mobile" | "system_dialler"
+ *
+ * uri_scheme_verified: false by default — the `linkusmobile://dial?number=` scheme
+ * is NOT confirmed in official Yeastar documentation. The official integration
+ * path is the Linkus SDK. System dialler (tel:) is the verified safe fallback.
  */
 export function useLinkusConfig() {
   return useQuery({
@@ -43,4 +47,13 @@ export function buildExternalCallUri(config, rawPhone) {
     return `tel:${number}`;
   }
   return null;
+}
+
+/**
+ * Returns true if the Linkus URI scheme is confirmed working on the device.
+ * Until an admin verifies it, the frontend should show a warning and rely on
+ * the system dialler fallback.
+ */
+export function isLinkusUriVerified(config) {
+  return Boolean(config?.uri_scheme_verified);
 }

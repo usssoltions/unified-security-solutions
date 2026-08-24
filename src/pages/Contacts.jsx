@@ -302,7 +302,9 @@ export default function Contacts() {
                           variant="outline"
                           size="sm"
                           className="border-sky-600/50 text-sky-400 hover:bg-sky-500/10"
-                          title={linkusConfig.mode === "linkus_mobile" ? "Call via Linkus" : "Call via system dialler"}
+                          title={linkusConfig.mode === "linkus_mobile"
+                            ? (linkusConfig.uri_scheme_verified ? "Call via Linkus" : "Call via Linkus (URI unverified — will fall back to system dialler)")
+                            : "Call via system dialler"}
                         >
                           <PhoneOutgoing className="w-4 h-4" />
                         </Button>

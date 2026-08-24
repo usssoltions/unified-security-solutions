@@ -5,13 +5,23 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  *
  * Modes:
  *  - disabled: USS internal calling only
- *  - linkus_mobile: Opens Yeastar Linkus Mobile Client app
- *  - system_dialler: Opens system phone dialler with the number
+ *  - linkus_mobile: Attempts to open Yeastar Linkus Mobile Client via a URI scheme.
+ *  - system_dialler: Opens system phone dialler with the number (VERIFIED safe fallback)
  *
- * The actual Linkus URI scheme is the official Yeastar format:
- *   linkusmobile://dial?number=<phone>
+ * IMPORTANT — LINKUS URI VERIFICATION STATUS:
+ *   The `linkusmobile://dial?number=` URI scheme is NOT confirmed in any official
+ *   Yeastar documentation as a supported deep-link / custom URL scheme.
+ *   The official Yeastar third-party integration path is the Linkus SDK
+ *   (https://help.yeastar.com/en/p-series-linkus-cloud-edition/linkus-sdk-guide/).
+ *   The `uri_scheme_verified` flag is therefore false by default.
  *
- * If Linkus is not installed, the frontend falls back to system dialler (tel:).
+ *   System dialler (tel:) is the verified safe fallback and is always retained.
+ *
+ *   If a customer confirms the URI works on their device with their installed
+ *   Linkus app, an admin may set uri_scheme_verified=true in SystemConfiguration
+ *   to suppress the frontend warning.
+ *
+ * If Linkus app / URI is not available, the frontend falls back to system dialler (tel:).
  */
 export default async function(req: Request): Promise<Response> {
   try {
@@ -29,8 +39,9 @@ export default async function(req: Request): Promise<Response> {
 
     let config = {
       mode: 'disabled', // disabled | linkus_mobile | system_dialler
-      linkus_package: 'com.yeastar.linkusmobile',
+      linkus_package: 'com.yeastar.linkus', // actual Google Play package name
       linkus_uri_scheme: 'linkusmobile://dial?number=',
+      uri_scheme_verified: false, // NOT confirmed in official Yeastar docs
       fallback_to_dialler: true,
       external_prefix: '0', // Prefix for external numbers
     };

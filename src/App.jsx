@@ -32,6 +32,7 @@ import ClientReports from './pages/ClientReports';
 import ClientIncidents from './pages/ClientIncidents';
 import ResellerPortal from './pages/ResellerPortal';
 import EmployerPortal from './pages/EmployerPortal';
+import TenantSetup from './pages/TenantSetup';
 import ProtectedPage from '@/components/ProtectedPage';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -240,6 +241,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="EmployerPortal">
             <ProtectedPage pageKey="EmployerPortal">
               <EmployerPortal />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/TenantSetup" element={
+          <LayoutWrapper currentPageName="TenantSetup">
+            <ProtectedPage pageKey="TenantSetup">
+              <TenantSetup />
             </ProtectedPage>
           </LayoutWrapper>
         } />

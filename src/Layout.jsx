@@ -424,6 +424,7 @@ export default function Layout({ children, currentPageName }) {
       return [
         { title: "Control Room", url: createPageUrl("ControlRoom"), icon: Radio, isRoot: true },
         { title: "Reseller Portal", url: createPageUrl("ResellerPortal"), icon: Building2 },
+        { title: "Tenant Setup", url: createPageUrl("TenantSetup"), icon: Building2 },
         { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
         { title: "Reports", url: createPageUrl("Reports"), icon: FileText },

@@ -78,6 +78,10 @@
     "whatsapp": {
       "type": "string"
     },
+    "telegram_chat_id": {
+      "type": "string",
+      "description": "Telegram chat ID for this user, used by the central notification engine to deliver Telegram messages. Set by an admin or via a Telegram bot setup flow."
+    },
     "unit_number": {
       "type": "string"
     },
