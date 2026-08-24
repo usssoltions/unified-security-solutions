@@ -79,6 +79,7 @@ export default async function(req: Request): Promise<Response> {
           email: u.email || undefined,
           pushToken: u.push_token || undefined,
           telegramChatId: u.telegram_chat_id || undefined,
+          telegramNotificationsEnabled: u.telegram_notifications_enabled !== false,
           customerId: u.customer_id, resellerId: u.reseller_id,
         });
       }
@@ -120,6 +121,7 @@ export default async function(req: Request): Promise<Response> {
               email: u.email || undefined,
               pushToken: u.push_token || undefined,
               telegramChatId: u.telegram_chat_id || undefined,
+              telegramNotificationsEnabled: u.telegram_notifications_enabled !== false,
               customerId: u.customer_id, resellerId: u.reseller_id,
             });
           }
@@ -258,30 +260,40 @@ export default async function(req: Request): Promise<Response> {
       }
 
       // --- TELEGRAM ---
-      if (channels.telegram && r.telegramChatId && TG_BOT_TOKEN) {
+      if (channels.telegram) {
         const idempKey = `${evKey}:${r.kind}:${r.id}:telegram`;
-        try {
-          if (await alreadyDelivered(base44, idempKey)) {
-            results.push({ recipient: r.id, channel: 'telegram', status: 'deduped' });
-          } else {
-            const tgResp = await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: r.telegramChatId,
-                text: buildTelegramText(safeTitle, safeMessage, priority),
-                parse_mode: 'HTML',
-                disable_web_page_preview: true,
-              }),
-            });
-            const tgResult = await tgResp.json();
-            if (!tgResult.ok) throw new Error(tgResult.description || 'Telegram send failed');
-            await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'telegram', idempKey, JSON.stringify({ message_id: tgResult.result?.message_id }));
-            results.push({ recipient: r.id, channel: 'telegram', status: 'sent' });
+        // Skip if no chat_id, bot not configured, or user disabled Telegram
+        if (!r.telegramChatId || !TG_BOT_TOKEN) {
+          const reason = !r.telegramChatId ? 'NO_TELEGRAM_CHAT_ID' : 'BOT_NOT_CONFIGURED';
+          await logDelivery(base44, evKey, notificationId, r, 'skipped', recipientScope, 'telegram', null, null, reason);
+          results.push({ recipient: r.id, channel: 'telegram', status: 'skipped', reason });
+        } else if (r.kind === 'user' && r.telegramNotificationsEnabled === false) {
+          await logDelivery(base44, evKey, notificationId, r, 'skipped', recipientScope, 'telegram', null, null, null, 'TELEGRAM_DISABLED');
+          results.push({ recipient: r.id, channel: 'telegram', status: 'skipped', reason: 'TELEGRAM_DISABLED' });
+        } else {
+          try {
+            if (await alreadyDelivered(base44, idempKey)) {
+              results.push({ recipient: r.id, channel: 'telegram', status: 'deduped' });
+            } else {
+              const tgResp = await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: r.telegramChatId,
+                  text: buildTelegramText(safeTitle, safeMessage, priority),
+                  parse_mode: 'HTML',
+                  disable_web_page_preview: true,
+                }),
+              });
+              const tgResult = await tgResp.json();
+              if (!tgResult.ok) throw new Error(tgResult.description || 'Telegram send failed');
+              await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'telegram', idempKey, JSON.stringify({ message_id: tgResult.result?.message_id }));
+              results.push({ recipient: r.id, channel: 'telegram', status: 'sent' });
+            }
+          } catch (e) {
+            await logDelivery(base44, evKey, notificationId, r, 'failed', recipientScope, 'telegram', null, e.message);
+            results.push({ recipient: r.id, channel: 'telegram', status: 'failed', error: e.message });
           }
-        } catch (e) {
-          await logDelivery(base44, evKey, notificationId, r, 'failed', recipientScope, 'telegram', null, e.message);
-          results.push({ recipient: r.id, channel: 'telegram', status: 'failed', error: e.message });
         }
       }
     }
