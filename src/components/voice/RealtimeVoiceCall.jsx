@@ -29,6 +29,7 @@ export default function RealtimeVoiceCall({
   const remoteAudios = useRef({});
   const callId = useRef(incomingCallId);
   const pollingInterval = useRef(null);
+  const signalingUnsub = useRef(null);
   const durationInterval = useRef(null);
   const ringtoneInterval = useRef(null);
   const audioContext = useRef(null);
@@ -37,7 +38,7 @@ export default function RealtimeVoiceCall({
   const mediaRecorder = useRef(null);
   const recordedChunks = useRef([]);
 
-  const rtcConfig = {
+  const [rtcConfig, setRtcConfig] = useState({
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -46,7 +47,14 @@ export default function RealtimeVoiceCall({
       { urls: 'stun:stun4.l.google.com:19302' }
     ],
     iceCandidatePoolSize: 10
-  };
+  });
+
+  // Fetch TURN server config from backend (credentials stored as secrets)
+  useEffect(() => {
+    base44.functions.invoke('getRtcConfig').then(({ data }) => {
+      if (data?.iceServers) setRtcConfig(data);
+    }).catch(() => {});
+  }, []);
 
   const callParticipants = isGroupCall ? participants : [targetUser];
 
@@ -588,32 +596,36 @@ export default function RealtimeVoiceCall({
     }
   };
 
-  const startPolling = () => {
-    if (pollingInterval.current) {
-      clearInterval(pollingInterval.current);
-    }
+  const fetchSignalingMessages = async () => {
+    try {
+      const { data } = await base44.functions.invoke('rtcSignaling', {
+        action: 'poll_messages'
+      });
 
-    console.log('▶ Starting polling for call:', callId.current);
-
-    pollingInterval.current = setInterval(async () => {
-      try {
-        const { data } = await base44.functions.invoke('rtcSignaling', {
-          action: 'poll_messages'
-        });
-
-        if (data?.messages && data.messages.length > 0) {
-          console.log(`📨 Received ${data.messages.length} messages`);
-          for (const message of data.messages) {
-            if (message.callId === callId.current) {
-              console.log('→ Processing message:', message.type, 'from:', message.from);
-              await handleSignalingMessage(message);
-            }
+      if (data?.messages && data.messages.length > 0) {
+        console.log(`📨 Received ${data.messages.length} messages`);
+        for (const message of data.messages) {
+          if (message.callId === callId.current) {
+            console.log('→ Processing message:', message.type, 'from:', message.from);
+            await handleSignalingMessage(message);
           }
         }
-      } catch (error) {
-        console.error('Polling error:', error);
       }
-    }, 300); // Faster polling for quicker connection
+    } catch (error) {
+      console.error('Signaling fetch error:', error);
+    }
+  };
+
+  const startPolling = () => {
+    console.log('▶ Starting realtime subscription for call:', callId.current);
+    // Initial fetch for any pending messages that arrived before subscription
+    fetchSignalingMessages();
+    // Realtime subscription replaces 300ms polling (saves ~12,000 requests/hour)
+    signalingUnsub.current = base44.entities.SignalingMessage.subscribe((event) => {
+      if (event.type !== 'create') return;
+      if (event.data?.to_user_id !== currentUser?.id) return;
+      fetchSignalingMessages();
+    });
   };
 
   const handleSignalingMessage = async (message) => {
@@ -935,6 +947,10 @@ export default function RealtimeVoiceCall({
   const cleanup = () => {
     stopRingtone();
     stopRingbackTone();
+    if (signalingUnsub.current) {
+      signalingUnsub.current();
+      signalingUnsub.current = null;
+    }
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
     }

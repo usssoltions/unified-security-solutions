@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MessageCircle, Send, Mic, StopCircle, X, Users, Radio, Volume2, Phone } from "lucide-react";
-import VoiceCall from "./VoiceCall";
+import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 
 export default function SupervisorChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -152,11 +152,9 @@ export default function SupervisorChat({ user, onClose }) {
 
   if (activeCall) {
     return (
-      <VoiceCall
-        caller={activeCall.caller}
-        recipient={activeCall.recipient}
-        isInitiator={activeCall.isInitiator}
-        onEnd={() => setActiveCall(null)}
+      <RealtimeVoiceCall
+        targetUser={activeCall.recipient}
+        onClose={() => setActiveCall(null)}
       />
     );
   }

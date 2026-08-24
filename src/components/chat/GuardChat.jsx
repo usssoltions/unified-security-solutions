@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, Send, Mic, StopCircle, Play, X, AlertCircle, Volume2, Phone } from "lucide-react";
-import VoiceCall from "./VoiceCall";
+import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 
 export default function GuardChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -170,11 +170,9 @@ export default function GuardChat({ user, onClose }) {
 
   if (activeCall) {
     return (
-      <VoiceCall
-        caller={activeCall.caller}
-        recipient={activeCall.recipient}
-        isInitiator={activeCall.isInitiator}
-        onEnd={() => setActiveCall(null)}
+      <RealtimeVoiceCall
+        targetUser={activeCall.recipient}
+        onClose={() => setActiveCall(null)}
       />
     );
   }
