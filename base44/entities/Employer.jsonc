@@ -117,7 +117,7 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "data.customer_id": "{{user.data.customer_id}}"
         }
       ]
     },
@@ -129,10 +129,10 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "data.customer_id": "{{user.data.customer_id}}"
         },
         {
-          "data.id": "{{user.employer_id}}"
+          "data.id": "{{user.data.employer_id}}"
         }
       ]
     },
@@ -144,7 +144,7 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "data.customer_id": "{{user.data.customer_id}}"
         }
       ]
     },

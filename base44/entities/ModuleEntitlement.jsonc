@@ -74,7 +74,7 @@
           }
         },
         {
-          "data.reseller_id": "{{user.reseller_id}}"
+          "data.reseller_id": "{{user.data.reseller_id}}"
         }
       ]
     },
@@ -86,10 +86,10 @@
           }
         },
         {
-          "data.reseller_id": "{{user.reseller_id}}"
+          "data.reseller_id": "{{user.data.reseller_id}}"
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "data.customer_id": "{{user.data.customer_id}}"
         }
       ]
     },
@@ -101,7 +101,7 @@
           }
         },
         {
-          "data.reseller_id": "{{user.reseller_id}}"
+          "data.reseller_id": "{{user.data.reseller_id}}"
         }
       ]
     },
