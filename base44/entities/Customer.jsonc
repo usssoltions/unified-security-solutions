@@ -1,0 +1,112 @@
+{
+  "name": "Customer",
+  "type": "object",
+  "description": "A customer/tenant organization. Can be a security company, estate, medical practice, factory, business park, or corporate client. May belong to a reseller or be directly managed by the platform (reseller_id = null).",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "legal_name": {
+      "type": "string"
+    },
+    "registration_number": {
+      "type": "string"
+    },
+    "vat_number": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string",
+      "description": "Reseller ID if this customer belongs to a reseller. Null for direct platform-managed customers."
+    },
+    "customer_type": {
+      "type": "string",
+      "enum": [
+        "security",
+        "estate",
+        "medical",
+        "industrial",
+        "business_park",
+        "corporate",
+        "other"
+      ],
+      "default": "security"
+    },
+    "logo_url": {
+      "type": "string"
+    },
+    "primary_color": {
+      "type": "string"
+    },
+    "accent_color": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "website": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "customer_type"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

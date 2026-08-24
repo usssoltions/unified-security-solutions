@@ -19,9 +19,34 @@
         "dispatcher",
         "resident",
         "vendor",
-        "client"
+        "client",
+        "platform_admin",
+        "reseller_admin",
+        "practice_admin",
+        "therapist",
+        "reception",
+        "employer_user"
       ],
       "default": "resident"
+    },
+    "reseller_id": {
+      "type": "string",
+      "description": "Reseller ID if this user belongs to a reseller organization. Null for direct platform-managed or security-only users."
+    },
+    "customer_id": {
+      "type": "string",
+      "description": "Customer/tenant ID this user belongs to. Used for tenant isolation and module entitlement scoping."
+    },
+    "module_context": {
+      "type": "string",
+      "enum": [
+        "security",
+        "estate",
+        "medical",
+        "platform"
+      ],
+      "default": "security",
+      "description": "Primary module context for this user. Determines which navigation, dashboard, and terminology set they see."
     },
     "display_name": {
       "type": "string",

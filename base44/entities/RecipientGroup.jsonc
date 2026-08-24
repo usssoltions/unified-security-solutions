@@ -1,0 +1,116 @@
+{
+  "name": "RecipientGroup",
+  "type": "object",
+  "description": "A named group of notification recipients (internal users and/or external recipients) for targeted report/notification distribution. Example: 'Daily Access Report' may contain a site manager, client rep, security company manager, trustee, and external email.",
+  "properties": {
+    "reseller_id": {
+      "type": "string"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "member_type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "external_recipient"
+            ]
+          },
+          "member_id": {
+            "type": "string"
+          },
+          "member_name": {
+            "type": "string"
+          },
+          "channel_preference": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "email",
+                "in_app",
+                "push",
+                "telegram"
+              ]
+            },
+            "default": [
+              "email"
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "customer_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

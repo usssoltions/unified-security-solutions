@@ -1,0 +1,114 @@
+{
+  "name": "ModuleEntitlement",
+  "type": "object",
+  "description": "Records which commercial modules are licensed for a customer or site. Navigation and backend access are gated by these entitlements \u2014 never rely on UI hiding alone.",
+  "properties": {
+    "reseller_id": {
+      "type": "string"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Optional: scope entitlement to a specific site/location"
+    },
+    "module_key": {
+      "type": "string",
+      "enum": [
+        "ACCESS",
+        "PATROL",
+        "OPERATIONS",
+        "ESTATE",
+        "OCCUPATIONAL_THERAPY",
+        "COMPLETE_SECURITY",
+        "NOTIFICATION_CORE",
+        "REPORTING_CORE",
+        "CALLING",
+        "MESSAGING",
+        "BARKODER_CORE"
+      ]
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "licence_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "licence_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "licence_limit": {
+      "type": "number",
+      "description": "Quantity limit (e.g., max sites, max users, max devices)"
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Module-specific configuration JSON"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "expired",
+        "suspended",
+        "pending"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "customer_id",
+    "module_key",
+    "enabled"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

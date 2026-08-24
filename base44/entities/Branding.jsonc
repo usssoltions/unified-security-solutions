@@ -1,0 +1,128 @@
+{
+  "name": "Branding",
+  "type": "object",
+  "description": "White-label branding configuration. One record per customer or reseller. Controls app name, logos, colors, email/report branding, login screen, and support contact info. No code forks needed for rebranding.",
+  "properties": {
+    "reseller_id": {
+      "type": "string",
+      "description": "If customer_id is null, this is reseller-level or platform-level branding"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "app_name": {
+      "type": "string",
+      "description": "Application name shown in headers, emails, reports"
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Customer-facing product name"
+    },
+    "logo_url": {
+      "type": "string"
+    },
+    "secondary_logo_url": {
+      "type": "string"
+    },
+    "favicon_url": {
+      "type": "string"
+    },
+    "login_title": {
+      "type": "string"
+    },
+    "login_subtitle": {
+      "type": "string"
+    },
+    "primary_color": {
+      "type": "string"
+    },
+    "accent_color": {
+      "type": "string"
+    },
+    "email_header_color": {
+      "type": "string"
+    },
+    "email_footer_text": {
+      "type": "string"
+    },
+    "telegram_sender_name": {
+      "type": "string"
+    },
+    "report_header_text": {
+      "type": "string"
+    },
+    "pdf_footer_text": {
+      "type": "string"
+    },
+    "support_name": {
+      "type": "string"
+    },
+    "support_email": {
+      "type": "string"
+    },
+    "support_phone": {
+      "type": "string"
+    },
+    "privacy_text": {
+      "type": "string"
+    },
+    "footer_text": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "app_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "name": "NotificationTemplate",
+  "type": "object",
+  "description": "Configurable notification templates per module. Each template defines the subject/body for a specific event_key and channel. Templates support customer branding placeholders. Versioned for assessment history integrity.",
+  "properties": {
+    "reseller_id": {
+      "type": "string"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "module_key": {
+      "type": "string",
+      "description": "SECURITY, ESTATE, MEDICAL, PLATFORM"
+    },
+    "event_key": {
+      "type": "string",
+      "description": "PANIC_ACTIVATED, INCIDENT_CREATED, APPOINTMENT_CONFIRMED, SESSION_COMPLETED, etc."
+    },
+    "name": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "email",
+        "in_app",
+        "push",
+        "telegram"
+      ]
+    },
+    "subject_template": {
+      "type": "string"
+    },
+    "body_template": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "version": {
+      "type": "number",
+      "default": 1
+    }
+  },
+  "required": [
+    "event_key",
+    "channel",
+    "body_template"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

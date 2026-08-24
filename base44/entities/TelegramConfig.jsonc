@@ -1,0 +1,96 @@
+{
+  "name": "TelegramConfig",
+  "type": "object",
+  "description": "Telegram Bot configuration per customer or reseller. The bot token is stored as a secret reference (never the actual token in the entity). Supports user chats, external recipient chats, groups, and channels.",
+  "properties": {
+    "reseller_id": {
+      "type": "string"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "bot_token_secret_ref": {
+      "type": "string",
+      "description": "Reference to the secret name storing the bot token. The actual token is never stored in the entity."
+    },
+    "bot_username": {
+      "type": "string"
+    },
+    "default_chat_id": {
+      "type": "string"
+    },
+    "last_test_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_test_status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed"
+      ]
+    },
+    "last_error": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

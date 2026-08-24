@@ -1,0 +1,100 @@
+{
+  "name": "PlatformAuditLog",
+  "type": "object",
+  "description": "Platform-level audit trail for security-sensitive operations: user profile changes, permission changes, module entitlement changes, support access, configuration changes, and medical record access where required. Sensitive clinical values are NOT copied into audit logs.",
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "description": "user.login, user.logout, user.created, user.updated, user.deleted, permission.changed, module.licensed, support.access, config.changed, patient.viewed, report.shared, etc."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User who performed the action"
+    },
+    "user_name": {
+      "type": "string"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "module_key": {
+      "type": "string"
+    },
+    "entity_name": {
+      "type": "string",
+      "description": "Entity affected"
+    },
+    "entity_id": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string"
+    },
+    "old_values": {
+      "type": "string",
+      "description": "JSON of previous values (sensitive values redacted)"
+    },
+    "new_values": {
+      "type": "string",
+      "description": "JSON of new values (sensitive values redacted)"
+    },
+    "ip_address": {
+      "type": "string"
+    },
+    "user_agent": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_type",
+    "user_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
