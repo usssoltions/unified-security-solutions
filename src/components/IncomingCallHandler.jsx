@@ -113,10 +113,10 @@ export default function IncomingCallHandler({ user }) {
     };
     navigator.serviceWorker?.addEventListener("message", handleSWMessage);
 
-    // ── 4. Poll for voice_call notifications (foreground) ────────
-    console.log("[IncomingCallHandler] 🔄 Starting notification polling (2s interval) for user:", user.id);
-    const pollInterval = setInterval(async () => {
-      if (incomingCallRef.current) return; // skip while call active
+    // ── 4. ONE initial check for already-active incoming calls (race condition) ──
+    // Solves: call notification created just before subscription connected.
+    // Does NOT poll permanently — this is a single fetch on mount.
+    (async () => {
       try {
         const notifications = await base44.entities.Notification.filter({
           recipient_id: user.id,
@@ -125,58 +125,53 @@ export default function IncomingCallHandler({ user }) {
         });
 
         if (notifications.length > 0) {
-          console.log("[IncomingCallHandler] 📨 Polling found", notifications.length, "unread voice_call notifications");
-
-          // Dedup: group by related_id (callId), trigger only for the first
-          const seenCallIds = new Set();
-          const toMarkRead = [];
-
+          console.log("[IncomingCallHandler] 📨 Initial check found", notifications.length, "unread voice_call notifications");
           for (const n of notifications) {
             const cid = n.related_id;
-            if (!seenCallIds.has(cid)) {
-              seenCallIds.add(cid);
-              if (!processedCallIds.current.has(cid)) {
-                const callerName = n.message
-                  .replace(" is calling you", "")
-                  .replace(" is calling (Group Call)", "")
-                  .replace(". Tap to answer.", "");
-                console.log("[IncomingCallHandler] 📞 Triggering from polling — callId:", cid, "caller:", callerName);
-                triggerIncomingCall({
-                  callId: cid,
-                  caller: { full_name: callerName || "Incoming", badge_number: "Incoming" },
-                });
-              }
+            if (cid && !processedCallIds.current.has(cid)) {
+              const callerName = n.message
+                .replace(" is calling you", "")
+                .replace(" is calling (Group Call)", "")
+                .replace(". Tap to answer.", "");
+              console.log("[IncomingCallHandler] 📞 Triggering from initial check — callId:", cid, "caller:", callerName);
+              triggerIncomingCall({
+                callId: cid,
+                caller: { full_name: callerName || "Incoming", badge_number: "Incoming" },
+              });
             }
-            toMarkRead.push(n.id);
+            await base44.entities.Notification.update(n.id, { read: true }).catch(() => {});
           }
-
-          // Mark ALL voice_call notifications for this call as read (dedup fix)
-          for (const id of toMarkRead) {
-            await base44.entities.Notification.update(id, { read: true }).catch(() => {});
-          }
-          console.log("[IncomingCallHandler] ✅ Marked", toMarkRead.length, "notifications as read");
         }
       } catch (e) {
-        console.error("[IncomingCallHandler] ❌ Polling error:", e.message);
+        console.error("[IncomingCallHandler] ❌ Initial check error:", e.message);
       }
-    }, 2000);
+    })();
 
-    // ── 5. Poll for call-ended signals while call is active ──────
-    const callEndPoll = setInterval(async () => {
-      if (!incomingCallRef.current) return;
-      try {
-        const { data } = await base44.functions.invoke("rtcSignaling", { action: "poll_messages" });
-        if (data?.messages) {
-          const endMsg = data.messages.find(
-            (m) => m.callId === incomingCallRef.current.callId && m.type === "call_ended"
-          );
-          if (endMsg) {
-            console.log("[IncomingCallHandler] 📵 Call ended signal received for:", incomingCallRef.current.callId);
-            setIncomingCall(null);
-          }
-        }
-      } catch (e) {}
-    }, 2000);
+    // ── 5. Realtime subscription for incoming call notifications ──────────────
+    // Replaces the previous 2-second permanent polling (40 req/hr/device).
+    // The subscription fires immediately when a voice_call Notification is
+    // created for this user — zero idle traffic.
+    console.log("[IncomingCallHandler] 📡 Subscribing to Notification realtime events for user:", user.id);
+    const unsubNotifications = base44.entities.Notification.subscribe((event) => {
+      if (event.type !== 'create') return;
+      const n = event.data;
+      if (!n || n.recipient_id !== user.id) return;
+      if (n.related_entity !== 'voice_call') return;
+      const cid = n.related_id;
+      if (!cid) return;
+
+      const callerName = n.message
+        .replace(" is calling you", "")
+        .replace(" is calling (Group Call)", "")
+        .replace(". Tap to answer.", "");
+      console.log("[IncomingCallHandler] 📞 Realtime call notification — callId:", cid, "caller:", callerName);
+      triggerIncomingCall({
+        callId: cid,
+        caller: { full_name: callerName || "Incoming", badge_number: "Incoming" },
+      });
+      // Mark as read so it doesn't retrigger
+      base44.entities.Notification.update(n.id, { read: true }).catch(() => {});
+    });
 
     // Cleanup — only runs when user changes (login/logout) or component unmounts
     return () => {
@@ -184,8 +179,7 @@ export default function IncomingCallHandler({ user }) {
         activeInstanceId = null;
         console.log("[IncomingCallHandler] ❌ Unmounting — global call listener STOPPED at", new Date().toISOString());
       }
-      clearInterval(pollInterval);
-      clearInterval(callEndPoll);
+      unsubNotifications();
       window.removeEventListener("popstate", checkUrlParams);
       window.removeEventListener("incoming-call", handleWindowEvent);
       navigator.serviceWorker?.removeEventListener("message", handleSWMessage);

@@ -54,7 +54,10 @@ export default function Layout({ children, currentPageName }) {
   // Phase 7: Module entitlement-driven navigation + white-label branding
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
   const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
-  const isAdmin = user?.role === "admin";
+  // ONLY platform admins (no customer_id, no reseller_id) bypass module
+  // entitlement restrictions. Customer admins and reseller admins must only
+  // see modules their tenant is licensed for.
+  const isPlatformAdmin = user?.role === "admin" && !user?.customer_id && !user?.reseller_id;
 
   // Apply white-label branding colors to CSS variables
   useEffect(() => {
@@ -372,13 +375,13 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const allNavItems = getNavigationItems();
-  const navigationItems = isAdmin
+  const navigationItems = isPlatformAdmin
     ? allNavItems
     : allNavItems.filter(item => {
         const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
         const moduleKey = PAGE_MODULE_MAP[pageName];
         if (!moduleKey) return true;
-        return isModuleEnabled(entitlements, moduleKey, false);
+        return isModuleEnabled(entitlements, moduleKey, isPlatformAdmin);
       });
   const rootUrl = navigationItems.find(item => item.isRoot)?.url;
   const isRootPage = navigationItems.some(item => item.isRoot && location.pathname === item.url);

@@ -30,6 +30,7 @@ export default function RealtimeVoiceCall({
   const callId = useRef(incomingCallId);
   const pollingInterval = useRef(null);
   const signalingUnsub = useRef(null);
+  const callStatusRef = useRef(callStatus);
   const durationInterval = useRef(null);
   const ringtoneInterval = useRef(null);
   const audioContext = useRef(null);
@@ -78,6 +79,7 @@ export default function RealtimeVoiceCall({
 
 
   useEffect(() => {
+    callStatusRef.current = callStatus;
     if (callStatus === 'connected' && !callStartTime.current) {
       callStartTime.current = new Date().toISOString();
       durationInterval.current = setInterval(() => {
@@ -208,7 +210,7 @@ export default function RealtimeVoiceCall({
         await initiateOutgoingCall();
       } else {
         // For incoming calls, just wait for answer
-        startPolling();
+        startSignaling();
       }
     } catch (error) {
       console.error('Error initializing call:', error);
@@ -267,7 +269,7 @@ export default function RealtimeVoiceCall({
       await Promise.all(notificationPromises);
       console.log('[RealtimeVoiceCall] ✓ All call notifications sent');
 
-      startPolling();
+      startSignaling();
       console.log('✓ Polling started, waiting for answer...');
     } catch (error) {
       console.error('Error initiating call:', error);
@@ -596,32 +598,67 @@ export default function RealtimeVoiceCall({
     }
   };
 
-  const startPolling = () => {
+  const startSignaling = () => {
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
     }
 
-    console.log('▶ Starting polling for call:', callId.current);
+    console.log('▶ Starting realtime signaling for call:', callId.current);
 
+    // Primary: realtime subscription on SignalingMessage entity.
+    // Fires immediately when a signaling message is created for this user.
+    // Zero idle traffic — no polling when app is idle.
+    signalingUnsub.current = base44.entities.SignalingMessage.subscribe((event) => {
+      if (event.type !== 'create') return;
+      const m = event.data;
+      if (!m || m.to_user_id !== currentUser?.id) return;
+      if (m.call_id !== callId.current) return;
+
+      let parsed = null;
+      try { parsed = m.payload ? JSON.parse(m.payload) : null; } catch (_) {}
+
+      const message = {
+        type: m.type,
+        from: m.from_user_id,
+        callId: m.call_id,
+        offer: m.type === 'offer' ? parsed : undefined,
+        answer: m.type === 'answer' ? parsed : undefined,
+        candidate: m.type === 'candidate' ? parsed : undefined,
+      };
+
+      console.log('→ Realtime signaling message:', message.type, 'from:', message.from);
+      handleSignalingMessage(message);
+
+      // Delete the message so it's not re-delivered
+      base44.entities.SignalingMessage.delete(m.id).catch(() => {});
+    });
+
+    // Fallback: slow reconciliation poll ONLY during active call setup.
+    // Catches messages missed during subscription initialization.
+    // Stops immediately when connected/failed/ended — does NOT run when idle.
     pollingInterval.current = setInterval(async () => {
+      if (callStatusRef.current === 'connected' || callStatusRef.current === 'failed' || callStatusRef.current === 'error') {
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+        return;
+      }
       try {
         const { data } = await base44.functions.invoke('rtcSignaling', {
           action: 'poll_messages'
         });
 
         if (data?.messages && data.messages.length > 0) {
-          console.log(`📨 Received ${data.messages.length} messages`);
           for (const message of data.messages) {
             if (message.callId === callId.current) {
-              console.log('→ Processing message:', message.type, 'from:', message.from);
+              console.log('→ Fallback poll message:', message.type, 'from:', message.from);
               await handleSignalingMessage(message);
             }
           }
         }
       } catch (error) {
-        console.error('Polling error:', error);
+        console.error('Fallback poll error:', error);
       }
-    }, 300); // Faster polling for quicker connection
+    }, 2000); // 2s slow reconciliation — NOT 300ms. Only during active setup.
   };
 
   const handleSignalingMessage = async (message) => {
@@ -943,6 +980,10 @@ export default function RealtimeVoiceCall({
   const cleanup = () => {
     stopRingtone();
     stopRingbackTone();
+    if (signalingUnsub.current) {
+      signalingUnsub.current();
+      signalingUnsub.current = null;
+    }
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
     }

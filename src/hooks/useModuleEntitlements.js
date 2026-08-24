@@ -31,8 +31,8 @@ export function useModuleEntitlements(userId, customerId) {
  * Admins always have access. If no entitlements are configured, all modules
  * are enabled (backward compatibility for existing tenants).
  */
-export function isModuleEnabled(entitlements, moduleKey, isAdmin = false) {
-  if (isAdmin) return true;
+export function isModuleEnabled(entitlements, moduleKey, isPlatformAdmin = false) {
+  if (isPlatformAdmin) return true;
   if (!entitlements || entitlements.length === 0) return true;
   return entitlements.some(
     (e) => e.module_key === moduleKey && e.enabled && (!e.status || e.status === "active")

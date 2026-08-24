@@ -27,12 +27,12 @@ const P = (arr) => new Set(arr);
 export const ROLE_PAGES = {
   guard: P([
     "GuardShift", "GuardMyShifts", "Contacts", "CallHistory", "CallRecordings",
-    "PTTRecordings", "PTT", "GuardIncidents", "GuardMaintenance", "GuardPatrol",
+    "GuardIncidents", "GuardMaintenance", "GuardPatrol",
     "AccessControl", "QRScanner", "StartOfShift", "StartOfShiftHistory", "Profile",
   ]),
   dispatcher: P([
     "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
-    "PTT", "PTTRecordings", "Contacts", "CallHistory", "CallRecordings", "Scheduling",
+    "Contacts", "CallHistory", "CallRecordings", "Scheduling",
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
@@ -43,7 +43,7 @@ export const ROLE_PAGES = {
   ]),
   admin: P([
     "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
-    "PTT", "PTTRecordings", "Contacts", "CallHistory", "CallRecordings", "Scheduling",
+    "Contacts", "CallHistory", "CallRecordings", "Scheduling",
     "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
     "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
