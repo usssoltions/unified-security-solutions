@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -10,26 +10,73 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Home, Users, Building, CreditCard, Ticket, Calendar, Megaphone,
-  AlertTriangle, TrendingUp, CheckCircle2, Clock, Bell, Shield,
-  Plus, X, ShoppingBag, Car, Settings
+  Users, Building, CreditCard, Ticket, Calendar, Megaphone,
+  Plus, X, ShoppingBag, Car, Settings, Shield, Loader2, AlertCircle
 } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
 
 export default function EstateManagerDashboard() {
   const [user, setUser] = useState(null);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({ title: "", body: "", category: "news", priority: "normal", target_audience: "all" });
   const qc = useQueryClient();
+  const { withTenant } = useTenantContext();
 
-  useEffect(() => { base44.auth.me().then(setUser); }, []);
+  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
-  const { data: residents = [] } = useQuery({ queryKey: ["all_residents"], queryFn: () => base44.entities.Resident.list(), initialData: [] });
-  const { data: tickets = [] } = useQuery({ queryKey: ["all_tickets"], queryFn: () => base44.entities.ServiceTicket.list("-created_date", 50), initialData: [] });
-  const { data: bookings = [] } = useQuery({ queryKey: ["all_bookings"], queryFn: () => base44.entities.VenueBooking.list("-created_date", 50), initialData: [] });
-  const { data: orders = [] } = useQuery({ queryKey: ["all_orders"], queryFn: () => base44.entities.Order.list("-created_date", 50), initialData: [] });
-  const { data: levyAccounts = [] } = useQuery({ queryKey: ["all_levy"], queryFn: () => base44.entities.LevyAccount.list(), initialData: [] });
-  const { data: announcements = [] } = useQuery({ queryKey: ["all_announcements"], queryFn: () => base44.entities.Announcement.list("-created_date", 20), initialData: [] });
-  const { data: accessLogs = [] } = useQuery({ queryKey: ["access_logs_today"], queryFn: () => base44.entities.AccessLog.list("-timestamp", 30), initialData: [] });
+  const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
+  const platformAdmin = isPlatformAdminUser(user);
+  const hasAccess = platformAdmin || isModuleEnabled(entitlements, "ACCESS", false);
+  const hasOperations = platformAdmin || isModuleEnabled(entitlements, "OPERATIONS", false);
+
+  const tenantFilter = user?.customer_id ? { customer_id: user.customer_id } : {};
+
+  const residentsQ = useQuery({
+    queryKey: ["estate_residents", user?.customer_id],
+    queryFn: () => base44.entities.Resident.filter(tenantFilter),
+    enabled: !!user,
+  });
+  const ticketsQ = useQuery({
+    queryKey: ["estate_tickets", user?.customer_id],
+    queryFn: () => base44.entities.ServiceTicket.filter(tenantFilter, "-created_date", 50),
+    enabled: !!user,
+  });
+  const bookingsQ = useQuery({
+    queryKey: ["estate_bookings", user?.customer_id],
+    queryFn: () => base44.entities.VenueBooking.filter(tenantFilter, "-created_date", 50),
+    enabled: !!user,
+  });
+  const ordersQ = useQuery({
+    queryKey: ["estate_orders", user?.customer_id],
+    queryFn: () => base44.entities.Order.filter(tenantFilter, "-created_date", 50),
+    enabled: !!user,
+  });
+  const levyQ = useQuery({
+    queryKey: ["estate_levy", user?.customer_id],
+    queryFn: () => base44.entities.LevyAccount.filter(tenantFilter),
+    enabled: !!user,
+  });
+  const announcementsQ = useQuery({
+    queryKey: ["estate_announcements", user?.customer_id],
+    queryFn: () => base44.entities.Announcement.filter(tenantFilter, "-created_date", 20),
+    enabled: !!user,
+  });
+  const accessQ = useQuery({
+    queryKey: ["estate_access_today", user?.customer_id],
+    queryFn: () => base44.entities.AccessLog.filter(tenantFilter, "-timestamp", 30),
+    enabled: !!user && hasAccess,
+  });
+
+  const residents = residentsQ.data || [];
+  const tickets = ticketsQ.data || [];
+  const bookings = bookingsQ.data || [];
+  const orders = ordersQ.data || [];
+  const levyAccounts = levyQ.data || [];
+  const announcements = announcementsQ.data || [];
+  const accessLogs = accessQ.data || [];
 
   const openTickets = tickets.filter(t => !["resolved", "closed"].includes(t.status));
   const pendingBookings = bookings.filter(b => b.status === "pending");
@@ -37,32 +84,51 @@ export default function EstateManagerDashboard() {
   const pendingOrders = orders.filter(o => o.status === "pending");
 
   const announceMutation = useMutation({
-    mutationFn: (data) => base44.entities.Announcement.create({ ...data, published: true, published_at: new Date().toISOString(), created_by: user?.id, created_by_name: user?.full_name }),
-    onSuccess: () => { qc.invalidateQueries(["all_announcements"]); setShowAnnouncement(false); setAnnouncementForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all" }); }
+    mutationFn: (data) => base44.entities.Announcement.create(withTenant({
+      ...data,
+      published: true,
+      published_at: new Date().toISOString(),
+      created_by: user?.id,
+      created_by_name: getUserDisplayName(user),
+    })),
+    onSuccess: () => { qc.invalidateQueries(["estate_announcements"]); setShowAnnouncement(false); setAnnouncementForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all" }); }
   });
 
   const updateBookingMutation = useMutation({
-    mutationFn: ({ id, status, reason }) => base44.entities.VenueBooking.update(id, { status, rejection_reason: reason, approved_by: user?.full_name }),
-    onSuccess: () => qc.invalidateQueries(["all_bookings"])
+    mutationFn: ({ id, status, reason }) => base44.entities.VenueBooking.update(id, { status, rejection_reason: reason, approved_by: getUserDisplayName(user) }),
+    onSuccess: () => qc.invalidateQueries(["estate_bookings"])
   });
 
   const updateTicketMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.ServiceTicket.update(id, data),
-    onSuccess: () => qc.invalidateQueries(["all_tickets"])
+    onSuccess: () => qc.invalidateQueries(["estate_tickets"])
   });
 
   const stats = [
-    { label: "Residents", value: residents.length, color: "text-sky-400", icon: Users },
-    { label: "Open Tickets", value: openTickets.length, color: "text-amber-400", icon: Ticket },
-    { label: "Pending Bookings", value: pendingBookings.length, color: "text-purple-400", icon: Calendar },
-    { label: "Overdue Levies", value: overdueAccounts.length, color: "text-rose-400", icon: CreditCard },
+    { label: "Residents", value: residents.length, color: "text-sky-400", icon: Users, loading: residentsQ.isLoading },
+    { label: "Open Tickets", value: openTickets.length, color: "text-amber-400", icon: Ticket, loading: ticketsQ.isLoading },
+    { label: "Pending Bookings", value: pendingBookings.length, color: "text-purple-400", icon: Calendar, loading: bookingsQ.isLoading },
+    { label: "Overdue Levies", value: overdueAccounts.length, color: "text-rose-400", icon: CreditCard, loading: levyQ.isLoading },
   ];
+
+  // Entitlement-aware quick links — Access/Security only show when licensed
+  const quickLinks = [
+    { label: "Residents", to: "/EstateResidents", icon: Users, color: "bg-sky-600", show: true },
+    { label: "Venues", to: "/EstateVenues", icon: Building, color: "bg-purple-600", show: true },
+    { label: "Vendors", to: "/EstateVendors", icon: ShoppingBag, color: "bg-orange-600", show: true },
+    { label: "Levies", to: "/EstateLevy", icon: CreditCard, color: "bg-emerald-600", show: true },
+    { label: "Access", to: "/AccessControl", icon: Car, color: "bg-amber-600", show: hasAccess },
+    { label: "Security", to: "/ControlRoom", icon: Shield, color: "bg-rose-600", show: hasOperations },
+  ].filter(l => l.show);
 
   const statusColors = {
     open: "bg-amber-600", pending: "bg-amber-600", assigned: "bg-sky-600", in_progress: "bg-purple-600",
     resolved: "bg-emerald-600", closed: "bg-slate-600", approved: "bg-emerald-600", rejected: "bg-rose-600",
     low: "bg-slate-600", medium: "bg-amber-600", high: "bg-orange-600", urgent: "bg-rose-600"
   };
+
+  const anyLoading = !user || residentsQ.isLoading || ticketsQ.isLoading;
+  const anyError = residentsQ.isError || ticketsQ.isError || bookingsQ.isError;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -72,12 +138,24 @@ export default function EstateManagerDashboard() {
         <div className="flex items-center justify-between pt-2">
           <div>
             <h1 className="text-2xl font-bold text-white">Estate Manager</h1>
-            <p className="text-slate-400 text-sm">{user?.full_name}</p>
+            <p className="text-slate-400 text-sm">{user ? getUserDisplayName(user) : <Loader2 className="w-3 h-3 inline animate-spin" />}</p>
           </div>
           <Button onClick={() => setShowAnnouncement(true)} className="bg-sky-500 hover:bg-sky-600">
             <Megaphone className="w-4 h-4 mr-2" /> Announce
           </Button>
         </div>
+
+        {anyError && (
+          <Card className="bg-rose-950/40 border-rose-800">
+            <CardContent className="p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-rose-300 font-medium text-sm">Some dashboard data failed to load</p>
+                <p className="text-slate-400 text-xs mt-1">Your tenant data is still protected. Try refreshing; if this persists, contact support.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -85,31 +163,32 @@ export default function EstateManagerDashboard() {
             <Card key={s.label} className="bg-slate-800/50 border-slate-700">
               <CardContent className="p-4">
                 <s.icon className={`w-5 h-5 ${s.color} mb-2`} />
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                {s.loading ? (
+                  <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+                ) : (
+                  <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                )}
                 <p className="text-slate-400 text-xs mt-1">{s.label}</p>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        {/* Quick Links */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-          {[
-            { label: "Residents", to: "/EstateResidents", icon: Users, color: "bg-sky-600" },
-            { label: "Venues", to: "/EstateVenues", icon: Building, color: "bg-purple-600" },
-            { label: "Vendors", to: "/EstateVendors", icon: ShoppingBag, color: "bg-orange-600" },
-            { label: "Levies", to: "/EstateLevy", icon: CreditCard, color: "bg-emerald-600" },
-            { label: "Access", to: "/AccessControl", icon: Car, color: "bg-amber-600" },
-            { label: "Security", to: "/ControlRoom", icon: Shield, color: "bg-rose-600" },
-          ].map(l => (
-            <Link key={l.label} to={l.to}>
-              <div className="flex flex-col items-center gap-2">
-                <div className={`w-12 h-12 rounded-xl ${l.color} flex items-center justify-center shadow`}><l.icon className="w-5 h-5 text-white" /></div>
-                <span className="text-xs text-slate-400">{l.label}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {/* Quick Links (entitlement-aware) */}
+        {quickLinks.length > 0 && (
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+            {quickLinks.map(l => (
+              <Link key={l.label} to={l.to}>
+                <div className="flex flex-col items-center gap-2">
+                  <div className={`w-12 h-12 rounded-xl ${l.color} flex items-center justify-center shadow`}>
+                    <l.icon className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="text-xs text-slate-400">{l.label}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Announcement Form */}
         {showAnnouncement && (
@@ -166,6 +245,7 @@ export default function EstateManagerDashboard() {
           </TabsList>
 
           <TabsContent value="tickets" className="space-y-3 mt-4">
+            {ticketsQ.isLoading && <LoadingRow />}
             {openTickets.map(t => (
               <Card key={t.id} className="bg-slate-800/50 border-slate-700">
                 <CardContent className="p-4">
@@ -182,7 +262,7 @@ export default function EstateManagerDashboard() {
                   </div>
                   {t.status === "open" && (
                     <div className="flex gap-2 mt-3">
-                      <Button size="sm" className="bg-sky-600 hover:bg-sky-700 flex-1" onClick={() => updateTicketMutation.mutate({ id: t.id, data: { status: "in_progress", assigned_to_name: user?.full_name } })}>
+                      <Button size="sm" className="bg-sky-600 hover:bg-sky-700 flex-1" onClick={() => updateTicketMutation.mutate({ id: t.id, data: { status: "in_progress", assigned_to_name: getUserDisplayName(user) } })}>
                         Assign to Me
                       </Button>
                       <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 flex-1" onClick={() => updateTicketMutation.mutate({ id: t.id, data: { status: "resolved", resolution_notes: "Resolved by estate manager", resolved_at: new Date().toISOString() } })}>
@@ -193,10 +273,11 @@ export default function EstateManagerDashboard() {
                 </CardContent>
               </Card>
             ))}
-            {openTickets.length === 0 && <p className="text-slate-400 text-center py-8">No open tickets</p>}
+            {!ticketsQ.isLoading && openTickets.length === 0 && <EmptyRow text="No open tickets" />}
           </TabsContent>
 
           <TabsContent value="bookings" className="space-y-3 mt-4">
+            {bookingsQ.isLoading && <LoadingRow />}
             {bookings.filter(b => ["pending", "approved"].includes(b.status)).map(b => (
               <Card key={b.id} className="bg-slate-800/50 border-slate-700">
                 <CardContent className="p-4">
@@ -204,7 +285,7 @@ export default function EstateManagerDashboard() {
                     <div>
                       <p className="text-white font-semibold">{b.venue_name}</p>
                       <p className="text-slate-400 text-xs">{b.resident_name} · Unit {b.unit_number}</p>
-                      <p className="text-slate-400 text-sm">{b.booking_date} · {b.start_time}–{b.end_time}</p>
+                      <p className="text-slate-400 text-sm">{b.start_datetime ? new Date(b.start_datetime).toLocaleString() : `${b.booking_date || ""} · ${b.start_time || ""}–${b.end_time || ""}`}</p>
                       <p className="text-slate-400 text-xs">{b.purpose}</p>
                     </div>
                     <Badge className={statusColors[b.status]}>{b.status}</Badge>
@@ -218,11 +299,13 @@ export default function EstateManagerDashboard() {
                 </CardContent>
               </Card>
             ))}
-            {pendingBookings.length === 0 && bookings.filter(b => b.status === "approved").length === 0 && <p className="text-slate-400 text-center py-8">No bookings</p>}
+            {!bookingsQ.isLoading && pendingBookings.length === 0 && bookings.filter(b => b.status === "approved").length === 0 && <EmptyRow text="No bookings" />}
           </TabsContent>
 
           <TabsContent value="access" className="space-y-2 mt-4">
-            {accessLogs.map(log => (
+            {!hasAccess && <EmptyRow text="Access module not licensed for this tenant" />}
+            {hasAccess && accessQ.isLoading && <LoadingRow />}
+            {hasAccess && accessLogs.map(log => (
               <Card key={log.id} className="bg-slate-800/50 border-slate-700">
                 <CardContent className="p-3 flex items-center justify-between">
                   <div>
@@ -231,14 +314,16 @@ export default function EstateManagerDashboard() {
                   </div>
                   <div className="text-right">
                     <p className={`text-sm font-semibold uppercase ${log.event_type === "entry" ? "text-emerald-400" : log.event_type === "exit" ? "text-amber-400" : "text-rose-400"}`}>{log.event_type}</p>
-                    <p className="text-slate-500 text-xs">{new Date(log.timestamp).toLocaleTimeString()}</p>
+                    <p className="text-slate-500 text-xs">{log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ""}</p>
                   </div>
                 </CardContent>
               </Card>
             ))}
+            {hasAccess && !accessQ.isLoading && accessLogs.length === 0 && <EmptyRow text="No recent access activity" />}
           </TabsContent>
 
           <TabsContent value="announcements" className="space-y-3 mt-4">
+            {announcementsQ.isLoading && <LoadingRow />}
             {announcements.map(a => (
               <Card key={a.id} className="bg-slate-800/50 border-slate-700">
                 <CardContent className="p-4">
@@ -246,7 +331,7 @@ export default function EstateManagerDashboard() {
                     <div>
                       <p className="text-white font-semibold">{a.title}</p>
                       <p className="text-slate-400 text-sm mt-1 line-clamp-3">{a.body}</p>
-                      <p className="text-slate-500 text-xs mt-2">{new Date(a.created_date).toLocaleDateString()} · {a.target_audience}</p>
+                      <p className="text-slate-500 text-xs mt-2">{a.created_date ? new Date(a.created_date).toLocaleDateString() : ""} · {a.target_audience}</p>
                     </div>
                     <div className="flex flex-col gap-1 ml-3">
                       <Badge className={a.priority === "urgent" ? "bg-rose-600" : a.priority === "high" ? "bg-orange-600" : "bg-slate-600"}>{a.category}</Badge>
@@ -255,10 +340,22 @@ export default function EstateManagerDashboard() {
                 </CardContent>
               </Card>
             ))}
-            {announcements.length === 0 && <p className="text-slate-400 text-center py-8">No announcements yet</p>}
+            {!announcementsQ.isLoading && announcements.length === 0 && <EmptyRow text="No announcements yet" />}
           </TabsContent>
         </Tabs>
       </div>
     </div>
   );
+}
+
+function LoadingRow() {
+  return (
+    <div className="flex items-center justify-center py-8 text-slate-500">
+      <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
+    </div>
+  );
+}
+
+function EmptyRow({ text }) {
+  return <p className="text-slate-400 text-center py-8">{text}</p>;
 }

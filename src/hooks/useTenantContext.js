@@ -32,11 +32,13 @@
  */
 import { useMemo } from "react";
 import { useAuth } from "@/lib/AuthContext";
+import { isPlatformAdminUser, isResellerAdminUser } from "@/lib/platformAdmin";
 
 /**
  * Reads tenant context off a user object.
- * Platform admin = role admin AND no reseller_id AND no customer_id.
- * Reseller admin = has reseller_id, no customer_id.
+ * Platform admin = explicit capability (role_type === "platform_admin" OR
+ *   admin_level === "platform"). Never inferred from a missing tenant.
+ * Reseller admin = explicit reseller capability.
  * Customer user = has customer_id (reseller_id may or may not be set).
  *
  * @param {object|null|undefined} user
@@ -45,10 +47,8 @@ import { useAuth } from "@/lib/AuthContext";
 export function getTenantContextFromUser(user) {
   const reseller_id = user?.reseller_id || null;
   const customer_id = user?.customer_id || null;
-  const isPlatformAdmin =
-    user?.role === "admin" && !reseller_id && !customer_id;
-  const isResellerAdmin =
-    !!reseller_id && !customer_id && user?.role_type !== "customer_user";
+  const isPlatformAdmin = isPlatformAdminUser(user);
+  const isResellerAdmin = isResellerAdminUser(user);
   const hasTenant = !!reseller_id || !!customer_id;
   return { reseller_id, customer_id, isPlatformAdmin, isResellerAdmin, hasTenant };
 }

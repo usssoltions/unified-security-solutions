@@ -26,6 +26,7 @@ import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitle
 import { useBranding } from "@/hooks/useBranding";
 import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
 
 
 const TabStateContext = React.createContext({ tabStates: {}, updateTabState: () => {}, navigateToTab: () => {} });
@@ -55,10 +56,10 @@ export default function Layout({ children, currentPageName }) {
   // Phase 7: Module entitlement-driven navigation + white-label branding
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
   const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
-  // ONLY platform admins (no customer_id, no reseller_id) bypass module
-  // entitlement restrictions. Customer admins and reseller admins must only
-  // see modules their tenant is licensed for.
-  const isPlatformAdmin = user?.role === "admin" && !user?.customer_id && !user?.reseller_id;
+  // Platform Admin authority is EXPLICIT (role_type === "platform_admin" OR
+  // admin_level === "platform"), never inferred from a missing tenant
+  // assignment. Legacy unmigrated Base44 admins are NOT platform admins.
+  const isPlatformAdmin = isPlatformAdminUser(user);
 
   // Apply white-label branding colors to CSS variables
   useEffect(() => {
