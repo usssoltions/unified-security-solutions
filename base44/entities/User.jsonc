@@ -29,13 +29,31 @@
       ],
       "default": "resident"
     },
+    "admin_level": {
+      "type": "string",
+      "enum": [
+        "platform",
+        "reseller",
+        "customer",
+        null
+      ],
+      "description": "Admin scope: platform (sees all tenants), reseller (sees own reseller's customers), customer (sees own tenant only). Null for non-admin users. Used by RLS to determine who bypasses tenant isolation."
+    },
     "reseller_id": {
       "type": "string",
-      "description": "Reseller ID if this user belongs to a reseller organization. Null for direct platform-managed or security-only users."
+      "description": "Reseller ID if this user belongs to a reseller organization."
     },
     "customer_id": {
       "type": "string",
-      "description": "Customer/tenant ID this user belongs to. Used for tenant isolation and module entitlement scoping."
+      "description": "Customer/tenant ID this user belongs to. Used for tenant isolation."
+    },
+    "employer_id": {
+      "type": "string",
+      "description": "Employer ID for employer portal users (medical module)."
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Primary site ID for site-scoped users."
     },
     "module_context": {
       "type": "string",
@@ -46,11 +64,10 @@
         "platform"
       ],
       "default": "security",
-      "description": "Primary module context for this user. Determines which navigation, dashboard, and terminology set they see."
+      "description": "Primary module context for navigation and terminology."
     },
     "display_name": {
-      "type": "string",
-      "description": "Admin-editable display name. The platform-managed full_name field is read-only and cannot be updated via the SDK, so User Management edits this field and the app shows (display_name || full_name) everywhere a person's name appears."
+      "type": "string"
     },
     "badge_number": {
       "type": "string"
@@ -65,8 +82,7 @@
       "type": "string"
     },
     "security_pin": {
-      "type": "string",
-      "description": "4-digit PIN used for clock-in verification."
+      "type": "string"
     },
     "is_clocked_in": {
       "type": "boolean",
@@ -84,13 +100,11 @@
     },
     "stay_awake_enabled": {
       "type": "boolean",
-      "default": false,
-      "description": "Whether the stay-awake alertness check is active for this guard."
+      "default": false
     },
     "stay_awake_interval_minutes": {
       "type": "number",
-      "default": 30,
-      "description": "Minutes between stay-awake checks."
+      "default": 30
     },
     "patrol_reminder_enabled": {
       "type": "boolean",

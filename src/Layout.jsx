@@ -366,8 +366,17 @@ export default function Layout({ children, currentPageName }) {
     if (role === "client") {
       return [
         { title: "Dashboard", url: createPageUrl("ClientDashboard"), icon: BarChart3, isRoot: true },
-        { title: "Reports", url: createPageUrl("ClientReports"), icon: Shield },
+        { title: "Reports", url: createPageUrl("ClientReports"), icon: FileText },
         { title: "Incidents", url: createPageUrl("ClientIncidents"), icon: AlertTriangle },
+        { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
+      ];
+    }
+    if (role === "reseller_admin") {
+      return [
+        { title: "Reseller Portal", url: createPageUrl("ResellerPortal"), icon: Building2, isRoot: true },
+        { title: "User Management", url: createPageUrl("UserManagement"), icon: Users },
+        { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
+        { title: "Reports", url: createPageUrl("Reports"), icon: FileText },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }

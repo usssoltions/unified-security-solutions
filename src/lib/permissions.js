@@ -64,6 +64,7 @@ export const ROLE_PAGES = {
   ]),
   vendor: P(["VendorPortal", "Profile"]),
   client: P(["ClientDashboard", "ClientReports", "ClientIncidents", "Profile"]),
+  reseller_admin: P(["ResellerPortal", "UserManagement", "Configuration", "Reports", "Profile"]),
 };
 
 /* Pages that are safe for every authenticated user (shared utility pages) */

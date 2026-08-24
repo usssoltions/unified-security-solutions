@@ -73,5 +73,8 @@ export const PAGE_MODULE_MAP = {
   EstateVoting: "ESTATE",
 
   // Client operational pages
-  ClientIncidents: "OPERATIONS",
+  ClientDashboard: null,
+  ClientReports: null,
+  ClientIncidents: null,
+  ResellerPortal: null,
 };
