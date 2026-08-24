@@ -4,6 +4,7 @@ import { incidentMessage } from "@/lib/whatsapp";
 import { base44 } from "@/api/base44Client";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { getTenantContextFromUser } from "@/hooks/useTenantContext";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -152,7 +153,10 @@ Officer Signature: Signed
       };
 
       const nowIso = new Date().toISOString();
+      const { reseller_id: _resellerId, customer_id: _customerId } = getTenantContextFromUser(user);
       const incident = await base44.entities.Incident.create({
+        customer_id: _customerId,
+        reseller_id: _resellerId,
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
         category: aiSuggestions?.recommended_category || categoryMap[data.incident_type] || "other",

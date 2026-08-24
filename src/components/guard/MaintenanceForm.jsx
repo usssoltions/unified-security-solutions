@@ -4,6 +4,7 @@ import { maintenanceMessage } from "@/lib/whatsapp";
 import { base44 } from "@/api/base44Client";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { getTenantContextFromUser } from "@/hooks/useTenantContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,7 +109,10 @@ Officer Signature: Signed
 
       const nowIso = new Date().toISOString();
       const requestNumber = `MNT-${Date.now()}`;
+      const { reseller_id: _resellerId, customer_id: _customerId } = getTenantContextFromUser(user);
       const maintenanceRequest = await base44.entities.MaintenanceRequest.create({
+        customer_id: _customerId,
+        reseller_id: _resellerId,
         title: `Maintenance: ${data.maintenance_type}`,
         description: reportContent,
         category: "other",

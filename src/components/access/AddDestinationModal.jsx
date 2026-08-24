@@ -5,8 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { X, Loader2 } from "lucide-react";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function AddDestinationModal({ open, onClose, onCreated }) {
+  const { withTenant } = useTenantContext();
   const [form, setForm] = useState({
     name: "", contact_person: "", telephone: "", email: "", address: "", unit: "", notes: "",
   });
@@ -19,7 +21,7 @@ export default function AddDestinationModal({ open, onClose, onCreated }) {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      await base44.entities.Destination.create({ ...form, active: true });
+      await base44.entities.Destination.create(withTenant({ ...form, active: true }));
       onCreated?.();
       setForm({ name: "", contact_person: "", telephone: "", email: "", address: "", unit: "", notes: "" });
       onClose?.();

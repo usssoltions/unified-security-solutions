@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Ban, User, Car, Plus, Search, Trash2, Power, PowerOff } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { getTenantContextFromUser } from "@/hooks/useTenantContext";
 
 const REASONS = [
   { value: "trespassing", label: "Trespassing" },
@@ -53,7 +54,10 @@ export default function BlacklistManager() {
     if (!value) return;
     setBusy(true);
     try {
+      const { reseller_id: _resellerId, customer_id: _customerId } = getTenantContextFromUser(user);
       await base44.entities.BlacklistEntry.create({
+        customer_id: _customerId,
+        reseller_id: _resellerId,
         entry_type: kind,
         name: form.name.trim(),
         identifier_type: kind === "person" ? "sa_id" : "vehicle_registration",

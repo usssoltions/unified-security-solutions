@@ -8,8 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Loader2, Package } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function AssetForm({ asset, onClose, onSuccess }) {
+  const { withTenant } = useTenantContext();
   const [formData, setFormData] = useState(asset || {
     asset_name: "",
     asset_number: "",
@@ -84,7 +86,7 @@ export default function AssetForm({ asset, onClose, onSuccess }) {
       if (asset) {
         await base44.entities.Asset.update(asset.id, data);
       } else {
-        await base44.entities.Asset.create(data);
+        await base44.entities.Asset.create(withTenant(data));
       }
 
       onSuccess();

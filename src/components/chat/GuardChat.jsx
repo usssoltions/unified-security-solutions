@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { MessageCircle, Send, Mic, StopCircle, Play, X, AlertCircle, Volume2, Phone } from "lucide-react";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { getTenantContextFromUser } from "@/hooks/useTenantContext";
 
 export default function GuardChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -121,8 +122,12 @@ export default function GuardChat({ user, onClose }) {
     try {
       const file = new File([recordedAudio.blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { reseller_id, customer_id } = getTenantContextFromUser(user);
 
       sendMessageMutation.mutate({
+        customer_id,
+        reseller_id,
+        site_id: null,
         sender_id: user.id,
         sender_name: getUserDisplayName(user),
         sender_role: user.role_type,
@@ -141,8 +146,12 @@ export default function GuardChat({ user, onClose }) {
 
   const handleSendMessage = () => {
     if (!message.trim()) return;
+    const { reseller_id, customer_id } = getTenantContextFromUser(user);
 
     sendMessageMutation.mutate({
+      customer_id,
+      reseller_id,
+      site_id: null,
       sender_id: user.id,
       sender_name: getUserDisplayName(user),
       sender_role: user.role_type,

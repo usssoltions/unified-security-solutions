@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MessageCircle, Send, Mic, StopCircle, X, Users, Radio, Volume2, Phone } from "lucide-react";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { getTenantContextFromUser } from "@/hooks/useTenantContext";
 
 export default function SupervisorChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -122,8 +123,11 @@ export default function SupervisorChat({ user, onClose }) {
 
   const handleSendMessage = () => {
     if (!message.trim()) return;
+    const { reseller_id, customer_id } = getTenantContextFromUser(user);
 
     sendMessageMutation.mutate({
+      customer_id,
+      reseller_id,
       sender_id: user.id,
       sender_name: getUserDisplayName(user),
       sender_role: user.role_type,
