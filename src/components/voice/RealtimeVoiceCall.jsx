@@ -596,36 +596,32 @@ export default function RealtimeVoiceCall({
     }
   };
 
-  const fetchSignalingMessages = async () => {
-    try {
-      const { data } = await base44.functions.invoke('rtcSignaling', {
-        action: 'poll_messages'
-      });
+  const startPolling = () => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+    }
 
-      if (data?.messages && data.messages.length > 0) {
-        console.log(`📨 Received ${data.messages.length} messages`);
-        for (const message of data.messages) {
-          if (message.callId === callId.current) {
-            console.log('→ Processing message:', message.type, 'from:', message.from);
-            await handleSignalingMessage(message);
+    console.log('▶ Starting polling for call:', callId.current);
+
+    pollingInterval.current = setInterval(async () => {
+      try {
+        const { data } = await base44.functions.invoke('rtcSignaling', {
+          action: 'poll_messages'
+        });
+
+        if (data?.messages && data.messages.length > 0) {
+          console.log(`📨 Received ${data.messages.length} messages`);
+          for (const message of data.messages) {
+            if (message.callId === callId.current) {
+              console.log('→ Processing message:', message.type, 'from:', message.from);
+              await handleSignalingMessage(message);
+            }
           }
         }
+      } catch (error) {
+        console.error('Polling error:', error);
       }
-    } catch (error) {
-      console.error('Signaling fetch error:', error);
-    }
-  };
-
-  const startPolling = () => {
-    console.log('▶ Starting realtime subscription for call:', callId.current);
-    // Initial fetch for any pending messages that arrived before subscription
-    fetchSignalingMessages();
-    // Realtime subscription replaces 300ms polling (saves ~12,000 requests/hour)
-    signalingUnsub.current = base44.entities.SignalingMessage.subscribe((event) => {
-      if (event.type !== 'create') return;
-      if (event.data?.to_user_id !== currentUser?.id) return;
-      fetchSignalingMessages();
-    });
+    }, 300); // Faster polling for quicker connection
   };
 
   const handleSignalingMessage = async (message) => {
@@ -947,10 +943,6 @@ export default function RealtimeVoiceCall({
   const cleanup = () => {
     stopRingtone();
     stopRingbackTone();
-    if (signalingUnsub.current) {
-      signalingUnsub.current();
-      signalingUnsub.current = null;
-    }
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
     }
