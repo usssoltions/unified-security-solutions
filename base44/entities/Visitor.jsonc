@@ -2,6 +2,16 @@
   "name": "Visitor",
   "type": "object",
   "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ID for multi-tenant isolation"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
     "resident_id": {
       "type": "string"
     },
@@ -15,20 +25,17 @@
       "type": "string"
     },
     "surname": {
-      "type": "string",
-      "description": "Visitor surname (required for expected visitors)"
+      "type": "string"
     },
     "visitor_entry_type": {
       "type": "string",
       "enum": [
         "vehicle",
         "pedestrian"
-      ],
-      "description": "Whether this expected visitor arrives by vehicle or on foot. Determines whether vehicle_registration is required."
+      ]
     },
     "visitor_id_number": {
-      "type": "string",
-      "description": "SA ID number (from licence or manual). Mandatory for expected visitors."
+      "type": "string"
     },
     "visitor_phone": {
       "type": "string"
@@ -37,17 +44,14 @@
       "type": "string"
     },
     "destination": {
-      "type": "string",
-      "description": "Destination selected by the resident from the configured Destinations. Mandatory for expected visitors; shown to the guard on entry."
+      "type": "string"
     },
     "expected_date": {
       "type": "string",
-      "format": "date",
-      "description": "Date the visitor is expected to arrive."
+      "format": "date"
     },
     "expected_arrival_time": {
-      "type": "string",
-      "description": "Expected arrival time (HH:MM)."
+      "type": "string"
     },
     "first_names": {
       "type": "string"
@@ -80,8 +84,7 @@
       "format": "date"
     },
     "vehicle_classes": {
-      "type": "string",
-      "description": "Comma-separated vehicle class / code list"
+      "type": "string"
     },
     "restrictions": {
       "type": "string"
@@ -129,20 +132,16 @@
       "type": "string"
     },
     "id_scan_url": {
-      "type": "string",
-      "description": "Scanned ID / driver's licence photograph (file URL)"
+      "type": "string"
     },
     "photo_url": {
-      "type": "string",
-      "description": "Person/visitor photo"
+      "type": "string"
     },
     "scan_thumbnail_url": {
-      "type": "string",
-      "description": "Generated thumbnail of the scanned photo"
+      "type": "string"
     },
     "scan_document_type": {
-      "type": "string",
-      "description": "Resolved scan profile id"
+      "type": "string"
     },
     "scan_barcode_type": {
       "type": "string"
@@ -161,8 +160,7 @@
       "format": "date-time"
     },
     "scan_raw_json": {
-      "type": "string",
-      "description": "Complete raw barKoder formattedJSON preserved verbatim"
+      "type": "string"
     },
     "notes": {
       "type": "string"
@@ -192,31 +190,117 @@
     "create": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
           "data.resident_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
-    "read": null,
-    "update": {
+    "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
         {
           "data.resident_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
+        }
+      ]
+    },
+    "update": {
+      "$or": [
         {
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "data.resident_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
         }
       ]
     },
