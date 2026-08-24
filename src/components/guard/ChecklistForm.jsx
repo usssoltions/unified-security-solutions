@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -90,7 +91,7 @@ export default function ChecklistForm({ template, checkpoint, shift, user, locat
         template_id: template.id,
         template_name: template.name,
         guard_id: user.id,
-        guard_name: user.full_name,
+        guard_name: getUserDisplayName(user),
         shift_id: shift.id,
         site_id: checkpoint.site_id,
         checkpoint_id: checkpoint.id,

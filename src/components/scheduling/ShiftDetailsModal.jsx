@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle, Share2, Mail, MessageSquare, Printer, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { buildWhatsAppLink, guardShiftAssignedMessage, shiftScheduleMessage } from "@/lib/whatsapp";
 import { MessageCircle, Send } from "lucide-react";
 
@@ -59,7 +60,7 @@ export default function ShiftDetailsModal({ shift, onClose }) {
 
       const updateData = {
         guard_id: data.guard_id,
-        guard_name: selectedGuard?.full_name || "",
+        guard_name: selectedGuard ? getUserDisplayName(selectedGuard) : "",
         site_id: data.site_id,
         site_name: selectedSite?.name || "",
         start_time: new Date(data.start_time).toISOString(),
@@ -78,7 +79,7 @@ export default function ShiftDetailsModal({ shift, onClose }) {
           title: "✏️ Shift Updated",
           message: `Your shift at ${selectedSite?.name} has been updated. New time: ${new Date(data.start_time).toLocaleString()} - ${new Date(data.end_time).toLocaleTimeString()}`,
           guard_id: selectedGuard.id,
-          guard_name: selectedGuard.full_name,
+          guard_name: getUserDisplayName(selectedGuard),
           shift_id: shift.id,
           status: "active"
         });
@@ -396,7 +397,7 @@ ${shift.notes ? `\nNotes: ${shift.notes}` : ''}
                     <SelectContent>
                       {guards.map((guard) => (
                         <SelectItem key={guard.id} value={guard.id}>
-                          {guard.full_name} - {guard.badge_number || guard.email}
+                          {getUserDisplayName(guard)} - {guard.badge_number || guard.email}
                         </SelectItem>
                       ))}
                     </SelectContent>

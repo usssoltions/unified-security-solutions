@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { FileText, Send, Loader2, Camera, CheckCircle2 } from "lucide-react";
 import SignaturePad from "../components/guard/SignaturePad";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function DailyReport() {
   const [user, setUser] = useState(null);
@@ -111,8 +112,8 @@ CLIENT: ${site?.client_name || 'N/A'}
 SITE: ${activeShift.site_name}
 
 OFFICER / ENTERED BY:
-Officer Name: ${user.full_name}
-Entered By: ${user.full_name}
+Officer Name: ${getUserDisplayName(user)}
+Entered By: ${getUserDisplayName(user)}
 
 DAILY ACTIVITY REPORT:
 Shift/Post: ${report.shift_post}
@@ -135,7 +136,7 @@ PHOTOS: ${report.photos.length} photo(s) attached
         priority: "low",
         status: "reported",
         guard_id: user.id,
-        guard_name: user.full_name,
+        guard_name: getUserDisplayName(user),
         site_id: activeShift.site_id,
         site_name: activeShift.site_name,
         shift_id: activeShift.id,
@@ -173,7 +174,7 @@ PHOTOS: ${report.photos.length} photo(s) attached
           .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type));
 
         const detailedReport = `
-GUARD: ${user.full_name}
+GUARD: ${getUserDisplayName(user)}
 SITE: ${activeShift.site_name}
 CLIENT: ${site?.client_name || 'N/A'}
 SUBMITTED: ${new Date().toLocaleString()}
@@ -199,13 +200,13 @@ PHOTOS: ${report.photos.length} attached
           await base44.functions.invoke('sendComprehensiveNotification', {
             recipientIds: [admin.id],
             type: 'shift_reminder',
-            title: `📊 Daily Activity Report: ${user.full_name} - ${activeShift.site_name}`,
-            message: `Guard ${user.full_name} has submitted their daily activity report for ${activeShift.site_name}.`,
+            title: `📊 Daily Activity Report: ${getUserDisplayName(user)} - ${activeShift.site_name}`,
+            message: `Guard ${getUserDisplayName(user)} has submitted their daily activity report for ${activeShift.site_name}.`,
             priority: 'medium',
             relatedEntity: 'incident',
             relatedId: createdIncident.id,
             metadata: {
-              guard_name: user.full_name,
+              guard_name: getUserDisplayName(user),
               guard_photo: user.profile_photo || null,
               site: activeShift.site_name,
               client: site?.client_name || 'N/A',
@@ -315,9 +316,9 @@ PHOTOS: ${report.photos.length} attached
         <CardContent className="space-y-2 text-sm">
           <div className="grid grid-cols-2 gap-2">
             <span className="text-slate-400">Officer Name:</span>
-            <span className="text-white">{user.full_name}</span>
+            <span className="text-white">{getUserDisplayName(user)}</span>
             <span className="text-slate-400">Entered By:</span>
-            <span className="text-white">{user.full_name}</span>
+            <span className="text-white">{getUserDisplayName(user)}</span>
           </div>
         </CardContent>
       </Card>

@@ -80,7 +80,7 @@ export default function IncidentForm({ user, shift, location, onClose, onSuccess
           category: newIncident.incident_type?.toLowerCase() || 'other',
           priority: 'high',
           status: 'reported',
-          guard_name: user.full_name,
+          guard_name: getUserDisplayName(user),
           site_name: shift?.site_name || '',
           reported_at: new Date().toISOString(),
           created_date: new Date().toISOString(),
@@ -103,7 +103,7 @@ Client: ${shift?.site_name || 'N/A'}
 Site: ${shift?.site_name || 'N/A'}
 
 OFFICER / ENTERED BY
-Officer Name: ${user.full_name}
+Officer Name: ${getUserDisplayName(user)}
 
 OVERVIEW
 Incident Report #: ${data.incident_report_number}
@@ -159,7 +159,7 @@ Officer Signature: Signed
         priority: aiSuggestions?.recommended_priority || "high",
         incident_number: data.incident_report_number,
         guard_id: user.id,
-        guard_name: user.full_name,
+        guard_name: getUserDisplayName(user),
         badge_number: user.badge_number || "",
         site_id: shift?.site_id || "",
         site_name: shift?.site_name || "",
@@ -173,10 +173,10 @@ Officer Signature: Signed
           timestamp: nowIso,
           action: "created",
           by_user_id: user.id,
-          by_user_name: user.full_name,
+          by_user_name: getUserDisplayName(user),
           from_status: null,
           to_status: "reported",
-          notes: `Incident reported by ${user.full_name}`
+          notes: `Incident reported by ${getUserDisplayName(user)}`
         }]
       });
 
@@ -187,7 +187,7 @@ Officer Signature: Signed
         await base44.functions.invoke('notifyAdminsIncident', {
           incidentId: incident.id,
           incidentNumber: data.incident_report_number,
-          guardName: user.full_name,
+          guardName: getUserDisplayName(user),
           badgeNumber: user.badge_number || '',
           incidentType: data.incident_type,
           category: incident.category,
@@ -207,7 +207,7 @@ Officer Signature: Signed
     onSuccess: (incident, data) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       const msg = incidentMessage({
-        guardName: user.full_name,
+        guardName: getUserDisplayName(user),
         siteName: shift?.site_name,
         incidentType: data.incident_type,
         summary: data.incident_summary,

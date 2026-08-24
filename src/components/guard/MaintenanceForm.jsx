@@ -3,6 +3,7 @@ import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { maintenanceMessage } from "@/lib/whatsapp";
 import { base44 } from "@/api/base44Client";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
     who_notified: "",
     email_client: "YES",
     guard_id: user.id,
-    guard_name: user.full_name,
+    guard_name: getUserDisplayName(user),
     site_id: shift?.site_id || "",
     site_name: shift?.site_name || "",
     location: location,
@@ -67,7 +68,7 @@ export default function MaintenanceForm({ user, shift, location, onClose, onSucc
           category: 'other',
           urgency: 'medium',
           status: 'reported',
-          guard_name: user.full_name,
+          guard_name: getUserDisplayName(user),
           site_name: shift?.site_name || '',
           reported_at: new Date().toISOString(),
           created_date: new Date().toISOString()

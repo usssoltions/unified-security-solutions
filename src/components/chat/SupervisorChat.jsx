@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MessageCircle, Send, Mic, StopCircle, X, Users, Radio, Volume2, Phone } from "lucide-react";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function SupervisorChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -103,7 +104,7 @@ export default function SupervisorChat({ user, onClose }) {
 
       sendMessageMutation.mutate({
         sender_id: user.id,
-        sender_name: user.full_name,
+        sender_name: getUserDisplayName(user),
         sender_role: user.role_type,
         recipient_id: selectedGuard,
         is_broadcast: broadcastType !== "specific_user",
@@ -124,7 +125,7 @@ export default function SupervisorChat({ user, onClose }) {
 
     sendMessageMutation.mutate({
       sender_id: user.id,
-      sender_name: user.full_name,
+      sender_name: getUserDisplayName(user),
       sender_role: user.role_type,
       recipient_id: selectedGuard,
       is_broadcast: broadcastType !== "specific_user",
@@ -208,7 +209,7 @@ export default function SupervisorChat({ user, onClose }) {
                 </SelectTrigger>
                 <SelectContent>
                   {guards.map(guard => (
-                    <SelectItem key={guard.id} value={guard.id}>{guard.full_name}</SelectItem>
+                    <SelectItem key={guard.id} value={guard.id}>{getUserDisplayName(guard)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

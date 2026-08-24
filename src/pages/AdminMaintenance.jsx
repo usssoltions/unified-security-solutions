@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Wrench, Search, Filter, Eye, MapPin, Clock, User, Download } from "lucide-react";
 import moment from "moment";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AdminMaintenance() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -176,7 +177,7 @@ export default function AdminMaintenance() {
                 <SelectContent className="bg-slate-900 border-slate-700">
                   <SelectItem value="all" className="text-white">All Guards</SelectItem>
                   {guards.map(guard => (
-                    <SelectItem key={guard.id} value={guard.id} className="text-white">{guard.full_name}</SelectItem>
+                    <SelectItem key={guard.id} value={guard.id} className="text-white">{getUserDisplayName(guard)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

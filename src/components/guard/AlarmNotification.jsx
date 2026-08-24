@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Navigation, Clock, MapPin, Zap, Phone } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AlarmNotification({ user }) {
   const queryClient = useQueryClient();
@@ -82,9 +83,9 @@ export default function AlarmNotification({ user }) {
                 type: "assignment",
                 priority: "high",
                 title: "Guard Arrived On Scene",
-                message: `${user.full_name} has arrived at ${trackingArrival.address}`,
+                message: `${getUserDisplayName(user)} has arrived at ${trackingArrival.address}`,
                 guard_id: user.id,
-                guard_name: user.full_name,
+                guard_name: getUserDisplayName(user),
                 status: "active"
               });
 

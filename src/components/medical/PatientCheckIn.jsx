@@ -10,6 +10,7 @@ import {
   Camera, CheckCircle, XCircle, FileSearch, Loader2, UserCheck, RefreshCw,
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 /**
  * PatientCheckIn — Medical identity verification workflow.
@@ -126,7 +127,7 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
         result,
         failure_reason: result !== "verified" ? reason.trim() : null,
         verifier_id: user.id,
-        verifier_name: user.full_name || user.display_name,
+        verifier_name: getUserDisplayName(user),
         verified_at: new Date().toISOString(),
         scan_data: scanSummary,
       });
@@ -138,7 +139,7 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
           arrival_verified: true,
           arrival_time: new Date().toISOString(),
           check_in_user_id: user.id,
-          check_in_user_name: user.full_name || user.display_name,
+          check_in_user_name: getUserDisplayName(user),
         });
       }
 

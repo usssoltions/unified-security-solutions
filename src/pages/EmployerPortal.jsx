@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Building2, Users, Calendar, FileText, Loader2, Clock, CheckCircle, Phone } from "lucide-react";
 import moment from "moment";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function EmployerPortal() {
   const [user, setUser] = useState(null);
@@ -82,7 +83,7 @@ export default function EmployerPortal() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white">Employer Portal</h1>
-            <p className="text-slate-400 text-sm">{user.display_name || user.full_name}</p>
+            <p className="text-slate-400 text-sm">{getUserDisplayName(user)}</p>
           </div>
         </div>
 

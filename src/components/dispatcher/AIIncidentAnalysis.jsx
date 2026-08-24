@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { X, Sparkles, Loader2, CheckCircle2, Users, AlertTriangle, ClipboardList } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AIIncidentAnalysis({ incident, onClose }) {
   const [analysis, setAnalysis] = useState(null);
@@ -361,13 +362,13 @@ Provide a detailed analysis including:
                           {availableGuards.map(guard => (
                             <Button
                               key={guard.id}
-                              onClick={() => assignToGuard(guard.id, guard.full_name)}
+                              onClick={() => assignToGuard(guard.id, getUserDisplayName(guard))}
                               disabled={assigningGuard}
                               size="sm"
                               variant="outline"
                               className="border-slate-600 hover:bg-sky-500/10 hover:border-sky-500"
                             >
-                              {guard.full_name}
+                              {getUserDisplayName(guard)}
                             </Button>
                           ))}
                         </div>

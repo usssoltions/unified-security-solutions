@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AutoReportGenerator({ user, shift }) {
   // Track which shift IDs we've already generated a report for — prevents duplicate LLM calls
@@ -101,7 +102,7 @@ export default function AutoReportGenerator({ user, shift }) {
 SHIFT DETAILS:
 - Site: ${dataSummary.shift.site}
 - Duration: ${dataSummary.shift.start} to ${dataSummary.shift.end}
-- Guard: ${user.full_name}
+- Guard: ${getUserDisplayName(user)}
 
 ACTIVITY SUMMARY:
 - Patrols Completed: ${patrols.length}
@@ -145,7 +146,7 @@ Generate a professional report with:
         const reportContent = `
 # SHIFT-END REPORT
 **Generated**: ${new Date().toLocaleString()}
-**Guard**: ${user.full_name}
+**Guard**: ${getUserDisplayName(user)}
 **Site**: ${shift.site_name}
 **Shift**: ${dataSummary.shift.start} - ${dataSummary.shift.end}
 
@@ -187,7 +188,7 @@ ${aiReport.ai_insights}
           report_type: "shift_end",
           template_id: template.id,
           guard_id: user.id,
-          guard_name: user.full_name,
+          guard_name: getUserDisplayName(user),
           shift_id: shift.id,
           site_id: shift.site_id,
           site_name: shift.site_name,
@@ -210,7 +211,7 @@ ${aiReport.ai_insights}
           for (const email of template.recipients) {
             await base44.integrations.Core.SendEmail({
               to: email,
-              subject: `Shift Report: ${user.full_name} - ${shift.site_name}`,
+              subject: `Shift Report: ${getUserDisplayName(user)} - ${shift.site_name}`,
               body: reportContent.replace(/\n/g, '<br>').replace(/\*\*/g, '<b>').replace(/\*/g, '</b>')
             });
           }

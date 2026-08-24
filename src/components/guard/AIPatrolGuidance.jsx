@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, Loader2, MapPin, CheckCircle2, Clock, AlertTriangle, Send } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AIPatrolGuidance({ user, shift, location }) {
   const [guidance, setGuidance] = useState(null);
@@ -99,7 +100,7 @@ export default function AIPatrolGuidance({ user, shift, location }) {
 
       await base44.entities.PatrolLog.create({
         guard_id: user.id,
-        guard_name: user.full_name,
+        guard_name: getUserDisplayName(user),
         shift_id: shift.id,
         site_id: shift.site_id,
         checkpoint_id: updatedCheckpoints[checkpointIndex].checkpoint_id,

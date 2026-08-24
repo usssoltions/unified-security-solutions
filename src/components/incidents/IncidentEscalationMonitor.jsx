@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function IncidentEscalationMonitor({ user }) {
   const [lastCheck, setLastCheck] = useState(Date.now());
@@ -150,7 +151,7 @@ export default function IncidentEscalationMonitor({ user }) {
           if (user && (user.current_workload || 0) < 2) {
             availableGuards.push({
               guard_id: user.id,
-              guard_name: user.full_name,
+              guard_name: getUserDisplayName(user),
               workload: user.current_workload || 0,
               shift_id: shift.id
             });

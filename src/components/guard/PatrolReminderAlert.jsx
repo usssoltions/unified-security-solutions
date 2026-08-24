@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Navigation, MapPin, Clock, Sparkles, Volume2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function PatrolReminderAlert({ user, shift, location, onDismiss }) {
   const navigate = useNavigate();
@@ -149,9 +150,9 @@ export default function PatrolReminderAlert({ user, shift, location, onDismiss }
       type: "assignment",
       priority: "low",
       title: "Patrol Reminder Dismissed",
-      message: `${user.full_name} dismissed patrol reminder`,
+      message: `${getUserDisplayName(user)} dismissed patrol reminder`,
       guard_id: user.id,
-      guard_name: user.full_name,
+      guard_name: getUserDisplayName(user),
       shift_id: shift.id,
       status: "acknowledged"
     });

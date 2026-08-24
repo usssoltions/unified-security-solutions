@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { BarChart3, Shield, AlertTriangle, FileText, MapPin, Loader2, TrendingUp, Clock } from "lucide-react";
 import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
 import moment from "moment";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function ClientDashboard() {
   const [user, setUser] = useState(null);
@@ -71,7 +72,7 @@ export default function ClientDashboard() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-            <p className="text-slate-400 text-sm">{user?.display_name || user?.full_name}</p>
+            <p className="text-slate-400 text-sm">{getUserDisplayName(user)}</p>
           </div>
         </div>
 

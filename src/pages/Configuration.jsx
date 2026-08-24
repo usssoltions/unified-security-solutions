@@ -19,6 +19,7 @@ import ReportSchedulingSettings from "../components/reports/ReportSchedulingSett
 import WhatsAppContactsConfig from "../components/configuration/WhatsAppContactsConfig";
 import AutomationToggles from "../components/configuration/AutomationToggles";
 import { base44 } from "@/api/base44Client";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function Configuration() {
   const [user, setUser] = useState(null);
@@ -186,13 +187,13 @@ export default function Configuration() {
             await base44.entities.SystemConfiguration.update(existing[0].id, {
               config_value: cfg.config_value,
               updated_by: user?.id,
-              updated_by_name: user?.display_name || user?.full_name,
+              updated_by_name: getUserDisplayName(user),
             });
           } else {
             await base44.entities.SystemConfiguration.create({
               ...cfg,
               updated_by: user?.id,
-              updated_by_name: user?.display_name || user?.full_name,
+              updated_by_name: getUserDisplayName(user),
             });
           }
         });

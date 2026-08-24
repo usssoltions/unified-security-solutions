@@ -10,6 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifyGuardShift } from "./ShiftNotifier";
 import { buildAdminLinks, loadWhatsAppContacts, shiftScheduleMessage } from "@/lib/whatsapp";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 // Helper function to format ISO date strings for datetime-local input
 const formatDateTimeForInput = (isoString) => {
@@ -78,7 +79,7 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
             return {
               id: `temp-${Date.now()}-${guardId}`,
               guard_id: guardId,
-              guard_name: guard?.full_name,
+              guard_name: guard ? getUserDisplayName(guard) : null,
               site_id: newShift.site_id,
               site_name: site?.name,
               start_time: newShift.start_time,
@@ -113,7 +114,7 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
           const guard = guards.find(g => g.id === guardId);
           const shiftData = {
             guard_id: guardId,
-            guard_name: guard?.full_name || null,
+            guard_name: guard ? getUserDisplayName(guard) : null,
             site_id: shiftsData.site_id,
             site_name: site?.name || "",
             start_time: shiftsData.start_time,
@@ -169,7 +170,7 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
       const site = sites.find(s => s.id === formData.site_id);
       const dataToSend = {
         ...formData,
-        guard_name: guard?.full_name || null,
+        guard_name: guard ? getUserDisplayName(guard) : null,
         site_name: site?.name || ""
       };
       createShiftMutation.mutate(dataToSend);

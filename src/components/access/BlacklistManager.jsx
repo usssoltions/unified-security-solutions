@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Ban, User, Car, Plus, Search, Trash2, Power, PowerOff } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 const REASONS = [
   { value: "trespassing", label: "Trespassing" },
@@ -63,7 +64,7 @@ export default function BlacklistManager() {
         active: true,
         expiry_date: form.expiry_date || "",
         added_by_id: user?.id,
-        added_by_name: user?.full_name,
+        added_by_name: getUserDisplayName(user),
       });
       setForm({ name: "", identifier: "", reason: "other", severity: "medium", notes: "", expiry_date: "" });
       refresh();
@@ -81,7 +82,7 @@ export default function BlacklistManager() {
       await base44.entities.BlacklistEntry.update(entry.id, {
         active: nowActive,
         deactivated_by_id: nowActive ? "" : (user?.id || ""),
-        deactivated_by_name: nowActive ? "" : (user?.full_name || ""),
+        deactivated_by_name: nowActive ? "" : getUserDisplayName(user),
         deactivated_at: nowActive ? "" : new Date().toISOString(),
       });
       refresh();

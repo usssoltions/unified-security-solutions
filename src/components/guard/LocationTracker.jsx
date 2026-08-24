@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { saveOffline, isOnline } from '@/lib/offlineDB';
 import { cacheLastKnownLocation } from '@/lib/panicService';
+import { getUserDisplayName } from '@/lib/userDisplayName';
 
 /**
  * Haversine distance in metres between two {lat,lng} points.
@@ -70,7 +71,7 @@ export default function LocationTracker({ user, shift, enabled }) {
 
       const record = {
         guard_id: user.id,
-        guard_name: user.full_name,
+        guard_name: getUserDisplayName(user),
         badge_number: user.badge_number,
         shift_id: shift.id,
         location: currentPos,

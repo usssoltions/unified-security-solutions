@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Megaphone, Plus, X, Send, Eye, Trash2, Globe, Users } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AnnouncementManagement() {
   const [user, setUser] = useState(null);
@@ -32,7 +33,7 @@ export default function AnnouncementManagement() {
       return await base44.entities.Announcement.create({
         ...data,
         created_by: user.id,
-        created_by_name: user.full_name,
+        created_by_name: getUserDisplayName(user),
         published: true,
         published_at: new Date().toISOString()
       });

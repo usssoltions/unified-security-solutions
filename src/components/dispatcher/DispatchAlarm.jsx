@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { X, Send, Loader2, AlertOctagon, MapPin } from "lucide-react";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { dispatchMessage, guardAlarmDispatchMessage, buildWhatsAppLink } from "@/lib/whatsapp";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -112,7 +113,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
             guardsList.push({
               ...shift,
               guard_id: shift.guard_id,
-              guard_full_name: user.full_name || shift.guard_name,
+              guard_full_name: getUserDisplayName(user) || shift.guard_name,
               guard_location: {
                 lat: parseFloat(user.last_location.lat),
                 lng: parseFloat(user.last_location.lng)
@@ -264,7 +265,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
       const alarm = await base44.entities.AlarmResponse.create({
         ...alarmPayload,
         dispatched_by: currentUser.id,
-        dispatched_by_name: currentUser.full_name,
+        dispatched_by_name: getUserDisplayName(currentUser),
         dispatched_at: new Date().toISOString(),
         status: "dispatched"
       });
@@ -316,7 +317,7 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
             const guardPhone = guardUser.whatsapp || guardUser.phone;
             if (guardPhone) {
               setGuardWaLink({
-                name: guardUser.full_name,
+                name: getUserDisplayName(guardUser),
                 link: buildWhatsAppLink(guardPhone, guardMsg),
               });
             }

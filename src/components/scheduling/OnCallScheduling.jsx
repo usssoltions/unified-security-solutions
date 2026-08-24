@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Phone, Plus, Shield, Clock, MapPin, User, Edit2, Trash2 } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function OnCallScheduling({ user }) {
   const queryClient = useQueryClient();
@@ -58,8 +59,8 @@ export default function OnCallScheduling({ user }) {
 
       const scheduleData = {
         ...data,
-        guard_name: guard?.full_name,
-        backup_guard_name: backup?.full_name || null,
+        guard_name: getUserDisplayName(guard),
+        backup_guard_name: backup ? getUserDisplayName(backup) : null,
         status: "scheduled"
       };
 
@@ -72,7 +73,7 @@ export default function OnCallScheduling({ user }) {
       // Notify guard
       await base44.entities.Notification.create({
         recipient_id: data.guard_id,
-        recipient_name: guard.full_name,
+        recipient_name: getUserDisplayName(guard),
         type: "system",
         priority: "high",
         title: "📞 On-Call Assignment",
@@ -163,7 +164,7 @@ export default function OnCallScheduling({ user }) {
                       <SelectContent>
                         {guards.map(guard => (
                           <SelectItem key={guard.id} value={guard.id}>
-                            {guard.full_name}
+                            {getUserDisplayName(guard)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -263,7 +264,7 @@ export default function OnCallScheduling({ user }) {
                         <SelectItem value={null}>None</SelectItem>
                         {guards.filter(g => g.id !== formData.guard_id).map(guard => (
                           <SelectItem key={guard.id} value={guard.id}>
-                            {guard.full_name}
+                            {getUserDisplayName(guard)}
                           </SelectItem>
                         ))}
                       </SelectContent>

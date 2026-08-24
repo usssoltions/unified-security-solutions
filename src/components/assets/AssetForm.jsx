@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Loader2, Package } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AssetForm({ asset, onClose, onSuccess }) {
   const [formData, setFormData] = useState(asset || {
@@ -74,7 +75,7 @@ export default function AssetForm({ asset, onClose, onSuccess }) {
       const data = {
         ...formData,
         site_name: site?.name || "",
-        assigned_to_name: guard?.full_name || "",
+        assigned_to_name: getUserDisplayName(guard) || "",
         purchase_cost: formData.purchase_cost ? parseFloat(formData.purchase_cost) : 0,
         current_value: formData.current_value ? parseFloat(formData.current_value) : 0,
         service_interval_days: formData.service_interval_days ? parseInt(formData.service_interval_days) : null
@@ -213,7 +214,7 @@ export default function AssetForm({ asset, onClose, onSuccess }) {
                     <SelectItem value={null}>Unassigned</SelectItem>
                     {guards.map((guard) => (
                       <SelectItem key={guard.id} value={guard.id}>
-                        {guard.full_name}
+                        {getUserDisplayName(guard)}
                       </SelectItem>
                     ))}
                   </SelectContent>

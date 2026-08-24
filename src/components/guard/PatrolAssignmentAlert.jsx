@@ -7,6 +7,7 @@ import { Bell, Navigation, CheckCircle2, MapPin, Clock, AlertTriangle } from "lu
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function PatrolAssignmentAlert({ user }) {
   const queryClient = useQueryClient();
@@ -135,7 +136,7 @@ export default function PatrolAssignmentAlert({ user }) {
         type: "status_change",
         priority: "medium",
         title: "Patrol Route Accepted",
-        message: `${user.full_name} has accepted the patrol route: ${currentPatrol.name}`,
+        message: `${getUserDisplayName(user)} has accepted the patrol route: ${currentPatrol.name}`,
         read: false,
         related_entity: "patrol",
         related_id: patrolId,

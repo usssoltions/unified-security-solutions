@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, Clock, CheckCircle2, AlertTriangle, TrendingUp, Award } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 const COLORS = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
 
@@ -73,7 +74,7 @@ export default function GuardPerformanceMetrics({ guards = [], incidents = [], s
 
       return {
         guard_id: guard.id,
-        guard_name: guard.full_name,
+        guard_name: getUserDisplayName(guard),
         total_incidents: guardIncidents.length,
         resolved_incidents: resolvedIncidents.length,
         resolution_rate: resolutionRate,

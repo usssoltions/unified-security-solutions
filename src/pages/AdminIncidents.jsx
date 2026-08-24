@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertTriangle, User, MapPin, Clock, CheckCircle2, XCircle, History, Loader2 } from "lucide-react";
 import PullToRefresh from "@/components/PullToRefresh";
 import ActivityTimeline from "@/components/shared/ActivityTimeline";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AdminIncidents() {
   const [user, setUser] = useState(null);
@@ -41,7 +42,7 @@ export default function AdminIncidents() {
         .filter(u => ["guard", "supervisor", "dispatcher", "admin", "estate_manager"].includes(u.role_type))
         .map(u => ({
           id: u.id,
-          name: u.display_name || u.full_name,
+          name: getUserDisplayName(u),
           role: u.role_type,
           onDuty: onDutyMap[u.id] || null,
         }));
@@ -68,19 +69,19 @@ export default function AdminIncidents() {
         assigned_to_name: assignee.name,
         status: "assigned",
         assigned_by: user.id,
-        assigned_by_name: user.display_name || user.full_name,
+        assigned_by_name: getUserDisplayName(user),
         assigned_at: nowIso,
         dispatcher_notes: notes || undefined,
         activity_log: [...(item.activity_log || []), {
           timestamp: nowIso, action: "assigned",
-          by_user_id: user.id, by_user_name: user.display_name || user.full_name,
+          by_user_id: user.id, by_user_name: getUserDisplayName(user),
           from_status: item.status, to_status: "assigned",
           notes: `Assigned to ${assignee.name} (${assignee.role})`
         }]
       });
       await base44.functions.invoke("notifyIncidentWorkflow", {
         action: "assigned", incidentId: id,
-        incidentNumber: item.incident_number, performedByUserId: user.id, performedByName: user.display_name || user.full_name,
+        incidentNumber: item.incident_number, performedByUserId: user.id, performedByName: getUserDisplayName(user),
         assigneeId: assignee.id, assigneeName: assignee.name,
         incidentTitle: item.title, incidentType: item.category, category: item.category,
         priority: item.priority, siteName: item.site_name, location: item.location
@@ -95,17 +96,17 @@ export default function AdminIncidents() {
       const nowIso = new Date().toISOString();
       await base44.entities.Incident.update(id, {
         status: "resolved", resolved_at: nowIso,
-        resolved_by: user.id, resolved_by_name: user.display_name || user.full_name,
+        resolved_by: user.id, resolved_by_name: getUserDisplayName(user),
         resolution_notes: resolveNotes,
         activity_log: [...(item.activity_log || []), {
           timestamp: nowIso, action: "resolved",
-          by_user_id: user.id, by_user_name: user.display_name || user.full_name,
+          by_user_id: user.id, by_user_name: getUserDisplayName(user),
           from_status: item.status, to_status: "resolved", notes: resolveNotes
         }]
       });
       await base44.functions.invoke("notifyIncidentWorkflow", {
         action: "resolved", incidentId: id, incidentNumber: item.incident_number,
-        performedByUserId: user.id, performedByName: user.display_name || user.full_name,
+        performedByUserId: user.id, performedByName: getUserDisplayName(user),
         resolutionNotes: resolveNotes, incidentTitle: item.title, incidentType: item.category,
         category: item.category, priority: item.priority, siteName: item.site_name, location: item.location
       });

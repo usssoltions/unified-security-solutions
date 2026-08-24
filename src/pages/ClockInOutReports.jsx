@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, MapPin, Calendar, User, Download, Filter, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import moment from "moment";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function ClockInOutReports() {
   const [dateFrom, setDateFrom] = useState(moment().subtract(7, 'days').format('YYYY-MM-DD'));
@@ -199,7 +200,7 @@ export default function ClockInOutReports() {
                 <SelectItem value="all" className="text-white">All Guards</SelectItem>
                 {guards.map(guard => (
                   <SelectItem key={guard.id} value={guard.id} className="text-white">
-                    {guard.full_name}
+                    {getUserDisplayName(guard)}
                   </SelectItem>
                 ))}
               </SelectContent>

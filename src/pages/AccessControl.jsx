@@ -13,6 +13,7 @@ import {
   MapPin, Calendar, Clock, IdCard, AlertCircle, Home,
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import VisitorCard from "@/components/access/VisitorCard";
 import PurposeStep from "@/components/access/PurposeStep";
 import StepCard from "@/components/access/StepCard";
@@ -211,7 +212,7 @@ export default function AccessControl() {
               province: disc.province || "",
               raw_scan_json: scan.result?.formattedJSONRaw || scan.result?.textualData || "",
               scan_timestamp: new Date().toISOString(),
-              scanned_by_id: user?.id, scanned_by_name: user?.full_name,
+              scanned_by_id: user?.id, scanned_by_name: getUserDisplayName(user),
               related_visitor_id: pendingVisitor?.id || "",
             });
           } catch (e) { console.warn("[access] vehicle disc create failed", e?.message || e); }
@@ -324,7 +325,7 @@ export default function AccessControl() {
         exit_time: now,
         exit_gate: gate,
         exit_guard_id: user?.id,
-        exit_guard_name: user?.full_name,
+        exit_guard_name: getUserDisplayName(user),
         exit_scan_method: sm,
         exit_location: gps,
         exit_notes: manual ? "Manually exited from live log" : "",
@@ -429,7 +430,7 @@ export default function AccessControl() {
         time_on_site_minutes: null,
         timestamp: now,
         guard_id: user?.id,
-        guard_name: user?.full_name,
+        guard_name: getUserDisplayName(user),
         flagged: isDenied,
         flag_reason: isBlacklisted ? `Blacklisted: ${blacklist.reason}` : (denied ? "QR not recognised" : ""),
         blacklist_match_id: isBlacklisted ? blacklist.id : "",

@@ -9,6 +9,7 @@ import { Sparkles, FileText, Loader2, Download, TrendingUp, AlertTriangle, Check
 import ReportDisplay from "../components/reports/ReportDisplay";
 import ReportHistory from "../components/reports/ReportHistory";
 import AutomatedReportScheduler from "../components/reports/AutomatedReportScheduler";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function AIReports() {
   const [reportType, setReportType] = useState("guard"); // guard, site, overall, monthly_incidents, monthly_maintenance
@@ -228,7 +229,7 @@ export default function AIReports() {
 
       // Generate AI report
       const entityName = reportType === "guard" 
-        ? guards.find(g => g.id === selectedEntity)?.full_name
+        ? getUserDisplayName(guards.find(g => g.id === selectedEntity))
         : reportType === "site"
         ? sites.find(s => s.id === selectedEntity)?.name
         : "All Operations";
@@ -352,7 +353,7 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
         if (currentUser?.role_type === 'guard') {
           await base44.functions.invoke('notifyAdminsDailyReport', {
             guardId: currentUser.id,
-            guardName: currentUser.full_name,
+            guardName: getUserDisplayName(currentUser),
             reportData: {
               id: report.id,
               summary: report.ai_analysis?.executive_summary || 'Daily activity report generated'
@@ -439,7 +440,7 @@ Be specific, data-driven, and professional. Include percentages, trends, and act
                   <SelectContent>
                     {guards.map(guard => (
                       <SelectItem key={guard.id} value={guard.id}>
-                        {guard.full_name}
+                        {getUserDisplayName(guard)}
                       </SelectItem>
                     ))}
                   </SelectContent>

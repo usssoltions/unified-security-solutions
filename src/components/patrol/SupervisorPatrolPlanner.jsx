@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Plus, Sparkles, Send, Trash2, ArrowUp, ArrowDown, Loader2 } from "lucide-react";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function SupervisorPatrolPlanner({ user, onClose }) {
   const [formData, setFormData] = useState({
@@ -57,7 +58,7 @@ export default function SupervisorPatrolPlanner({ user, onClose }) {
         assigned_to_name: assignedGuard?.guard_name,
         shift_id: assignedGuard?.id,
         created_by: user.id,
-        created_by_name: user.full_name,
+        created_by_name: getUserDisplayName(user),
         status: "pending"
       });
 
