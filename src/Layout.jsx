@@ -6,7 +6,8 @@ import { base44 } from "@/api/base44Client";
 import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
   Menu, X, LogOut, Bell, Package, Sliders, RefreshCw, Sparkles, Zap,
-  FileText, Mic, Clock, ArrowLeft, UserCircle, Wrench, QrCode, MessageCircle, ShirtIcon
+  FileText, Mic, Clock, ArrowLeft, UserCircle, Wrench, QrCode, MessageCircle, ShirtIcon,
+  Stethoscope
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,9 @@ import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
 import BackgroundNotificationManager from "@/components/BackgroundNotificationManager";
 import ThemeProvider from "@/components/ThemeProvider";
+import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
+import { useBranding } from "@/hooks/useBranding";
+import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
 
 
 const TabStateContext = React.createContext({ tabStates: {}, updateTabState: () => {}, navigateToTab: () => {} });
@@ -46,6 +50,19 @@ export default function Layout({ children, currentPageName }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
   const [retryCount, setRetryCount] = useState(0);
+
+  // Phase 7: Module entitlement-driven navigation + white-label branding
+  const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const isAdmin = user?.role === "admin";
+
+  // Apply white-label branding colors to CSS variables
+  useEffect(() => {
+    if (!branding) return;
+    const root = document.documentElement;
+    if (branding.primary_color) root.style.setProperty("--brand-primary", branding.primary_color);
+    if (branding.accent_color) root.style.setProperty("--brand-accent", branding.accent_color);
+  }, [branding]);
 
   useEffect(() => {
     sessionStorage.setItem('guard_session_active', 'true');
@@ -297,6 +314,9 @@ export default function Layout({ children, currentPageName }) {
         { title: "Assets", url: createPageUrl("AssetManagement"), icon: Package },
         { title: "Stay Awake", url: createPageUrl("StayAwakeConfiguration"), icon: Zap },
         { title: "Configuration", url: createPageUrl("Configuration"), icon: Sliders },
+        { title: "Medical Dashboard", url: createPageUrl("MedicalDashboard"), icon: Stethoscope },
+        { title: "Patients", url: createPageUrl("MedicalPatients"), icon: Users },
+        { title: "Appointments", url: createPageUrl("MedicalAppointments"), icon: Calendar },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
@@ -345,7 +365,15 @@ export default function Layout({ children, currentPageName }) {
     return [];
   };
 
-  const navigationItems = getNavigationItems();
+  const allNavItems = getNavigationItems();
+  const navigationItems = isAdmin
+    ? allNavItems
+    : allNavItems.filter(item => {
+        const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
+        const moduleKey = PAGE_MODULE_MAP[pageName];
+        if (!moduleKey) return true;
+        return isModuleEnabled(entitlements, moduleKey, false);
+      });
   const rootUrl = navigationItems.find(item => item.isRoot)?.url;
   const isRootPage = navigationItems.some(item => item.isRoot && location.pathname === item.url);
   const canGoBack = !isRootPage && window.history.length > 1;
@@ -412,14 +440,14 @@ export default function Layout({ children, currentPageName }) {
                   {!canGoBack && (
                     <div className="lg:hidden">
                       <h1 className="font-bold text-white text-base leading-tight">
-                        {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
+                        {branding?.app_name || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
                       </h1>
                       <p className="text-xs text-slate-400">{roleLabel}</p>
                     </div>
                   )}
                   <div className="hidden lg:block">
                     <h1 className="font-bold text-white text-base leading-tight">
-                      {["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard"}
+                      {branding?.app_name || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
                     </h1>
                     <p className="text-xs text-slate-400">{roleLabel}</p>
                   </div>
