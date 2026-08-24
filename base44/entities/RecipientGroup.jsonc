@@ -55,6 +55,31 @@
     "active": {
       "type": "boolean",
       "default": true
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "enabled_channels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "email",
+          "in_app",
+          "push",
+          "telegram"
+        ]
+      },
+      "default": [
+        "email"
+      ]
+    },
+    "event_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
     }
   },
   "required": [

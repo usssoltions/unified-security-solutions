@@ -149,6 +149,30 @@
         }
       },
       "default": []
+    },
+    "telegram_connected": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether Telegram notifications are connected for this user."
+    },
+    "telegram_connected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "telegram_username": {
+      "type": "string",
+      "description": "Telegram @username (display only, not authoritative identity)."
+    },
+    "telegram_first_name": {
+      "type": "string"
+    },
+    "telegram_last_name": {
+      "type": "string"
+    },
+    "telegram_notifications_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "User-level toggle for Telegram delivery. When false, Telegram is skipped even if connected."
     }
   },
   "required": []

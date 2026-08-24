@@ -45,6 +45,77 @@
     },
     "notes": {
       "type": "string"
+    },
+    "telephone": {
+      "type": "string",
+      "description": "Phone/WhatsApp number for manual wa.me distribution."
+    },
+    "whatsapp_number": {
+      "type": "string",
+      "description": "WhatsApp number (manual wa.me workflow only)."
+    },
+    "telegram_connected": {
+      "type": "boolean",
+      "default": false
+    },
+    "telegram_connected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "telegram_username": {
+      "type": "string"
+    },
+    "role_title": {
+      "type": "string"
+    },
+    "email_enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "telegram_enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "whatsapp_manual_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "reports_enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "notifications_enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "report_preferences": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "daily_access",
+          "weekly_analysis",
+          "monthly_comparison",
+          "incident_summary",
+          "maintenance_summary"
+        ]
+      },
+      "default": []
+    },
+    "notification_preferences": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "email",
+          "telegram",
+          "whatsapp",
+          "in_app"
+        ]
+      },
+      "default": [
+        "email"
+      ]
     }
   },
   "required": [
