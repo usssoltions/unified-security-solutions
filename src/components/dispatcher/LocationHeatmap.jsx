@@ -1,9 +1,10 @@
 import React, { useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Circle } from "react-leaflet";
 
 export default function LocationHeatmap({ guards }) {
+  const queryClient = useQueryClient();
   const { data: historicalLocations } = useQuery({
     queryKey: ["historicalLocations"],
     queryFn: async () => {
@@ -15,9 +16,17 @@ export default function LocationHeatmap({ guards }) {
         return [];
       }
     },
-    refetchInterval: 60000, // Refresh every minute
     initialData: []
   });
+
+  // Realtime subscription for location updates (replaces 60s polling).
+  useEffect(() => {
+    const unsub = base44.entities.LocationTracking.subscribe(() => {
+      queryClient.invalidateQueries(["historicalLocations"]);
+    });
+    return () => unsub();
+  }, []);
+
 
   // Group locations by proximity to create clusters
   const locationClusters = React.useMemo(() => {

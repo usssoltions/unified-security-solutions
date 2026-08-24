@@ -1,11 +1,12 @@
-import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Clock, MapPin } from "lucide-react";
 
 export default function ActiveGuardsPanel() {
+  const queryClient = useQueryClient();
   const { data: activeGuards = [] } = useQuery({
     queryKey: ["activeGuards"],
     queryFn: async () => {
@@ -14,11 +15,16 @@ export default function ActiveGuardsPanel() {
       });
       return Array.isArray(shifts) ? shifts : [];
     },
-    refetchInterval: 5000, // Real-time sync
     initialData: [],
-    staleTime: 0,
-    cacheTime: 0
   });
+
+  // Realtime subscription for shift updates (replaces 5s polling).
+  useEffect(() => {
+    const unsub = base44.entities.Shift.subscribe(() => {
+      queryClient.invalidateQueries(["activeGuards"]);
+    });
+    return () => unsub();
+  }, [queryClient]);
 
   const calculateDuration = (clockInTime) => {
     if (!clockInTime) return "0h 0m";

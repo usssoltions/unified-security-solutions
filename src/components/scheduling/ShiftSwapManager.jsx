@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,8 +50,16 @@ export default function ShiftSwapManager({ user }) {
       );
     },
     enabled: !!user,
-    refetchInterval: 10000
   });
+
+  // Realtime subscription for swap request updates (replaces 10s polling).
+  useEffect(() => {
+    if (!user) return;
+    const unsub = base44.entities.ShiftSwapRequest.subscribe(() => {
+      queryClient.invalidateQueries(['swapRequests', user.id]);
+    });
+    return () => unsub();
+  }, [user, queryClient]);
 
   const createSwapMutation = useMutation({
     mutationFn: async (data) => {

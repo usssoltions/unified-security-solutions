@@ -51,7 +51,6 @@ export default function UnifiedMobileNav({
     if (role === "dispatcher" || role === "admin") {
       return [
         { title: "Control", url: createPageUrl("ControlRoom"), icon: Radio, color: "text-sky-400" },
-        { title: "PTT", url: createPageUrl("PTT"), icon: MessageCircle, color: "text-purple-400" },
         { title: "Shifts", url: createPageUrl("Scheduling"), icon: Calendar, color: "text-emerald-400" },
         { title: "Sites", url: createPageUrl("SiteManagement"), icon: MapPin, color: "text-amber-400" }
       ];

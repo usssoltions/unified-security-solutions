@@ -390,6 +390,10 @@ export default function AccessControl() {
       }
 
       const log = {
+        customer_id: user?.customer_id || "",
+        reseller_id: user?.reseller_id || "",
+        site_id: user?.site_id || "",
+        site_name: user?.site_name || "",
         event_type: isDenied ? "denied" : "entry",
         status: isBlacklisted ? "blacklisted" : (denied ? "denied" : "inside"),
         person_type: personType,

@@ -90,6 +90,23 @@ export default function ResidentBookings() {
       if (conflicting.length > 0) {
         throw new Error(`${conflicting.length} booking(s) conflict with existing reservations. Please pick an available slot.`);
       }
+      // Server-side collision validation for each cart item.
+      for (const c of cart) {
+        try {
+          const { data: collision } = await base44.functions.invoke('checkVenueCollision', {
+            venue_id: c.venue.id,
+            booking_date: c.booking_date,
+            start_time: c.start_time,
+            end_time: c.end_time,
+          });
+          if (collision?.has_collision) {
+            throw new Error(`${c.venue.name} is already booked for this time slot.`);
+          }
+        } catch (e) {
+          if (e.message?.includes('already booked')) throw e;
+          // If collision check fails (network/permission), fall through to client-side guard.
+        }
+      }
       const payload = cart.map((c) => ({
         venue_id: c.venue.id,
         venue_name: c.venue.name,
@@ -106,6 +123,7 @@ export default function ResidentBookings() {
         deposit: c.venue.deposit_required,
         status: "pending",
         payment_status: "unpaid",
+        collision_checked: true,
       }));
       return await base44.entities.VenueBooking.bulkCreate(payload);
     },

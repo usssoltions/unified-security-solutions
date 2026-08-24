@@ -80,17 +80,6 @@ Deno.serve(async (req) => {
       results.notifications = `Error: ${error.message}`;
     }
 
-    // Clear PTT Messages
-    try {
-      const pttMessages = await base44.asServiceRole.entities.PTTMessage.list();
-      for (const msg of pttMessages) {
-        await base44.asServiceRole.entities.PTTMessage.delete(msg.id);
-      }
-      results.pttMessages = `Deleted ${pttMessages.length} PTT messages`;
-    } catch (error) {
-      results.pttMessages = `Error: ${error.message}`;
-    }
-
     // Clear Call History
     try {
       const callHistory = await base44.asServiceRole.entities.CallHistory.list();

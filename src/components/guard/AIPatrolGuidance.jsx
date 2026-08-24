@@ -23,8 +23,16 @@ export default function AIPatrolGuidance({ user, shift, location }) {
       return (Array.isArray(plans) && plans.length > 0) ? plans[0] : null;
     },
     enabled: !!user && !!shift,
-    refetchInterval: 10000
   });
+
+  // Realtime subscription for patrol plan updates (replaces 10s polling).
+  useEffect(() => {
+    if (!user || !shift) return;
+    const unsub = base44.entities.PatrolPlan.subscribe(() => {
+      queryClient.invalidateQueries(["assignedPatrolPlan", user.id, shift.id]);
+    });
+    return () => unsub();
+  }, [user, shift, queryClient]);
 
   const { data: siteIncidents = [] } = useQuery({
     queryKey: ["siteIncidents", shift?.site_id],

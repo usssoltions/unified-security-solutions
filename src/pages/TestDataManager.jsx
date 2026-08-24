@@ -65,7 +65,7 @@ export default function TestDataManager() {
           <CardContent className="space-y-4">
             <Alert className="bg-rose-900/30 border-rose-500/50">
               <AlertDescription className="text-rose-200">
-                ⚠️ This will permanently delete all incidents, maintenance requests, alarms, alerts, notifications, PTT messages, and call history. Active shifts will be kept.
+                ⚠️ This will permanently delete all incidents, maintenance requests, alarms, alerts, notifications, and call history. Active shifts will be kept.
               </AlertDescription>
             </Alert>
 

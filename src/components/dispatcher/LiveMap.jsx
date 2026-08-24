@@ -119,10 +119,8 @@ export default function LiveMap({ activeGuards }) {
       setGuardsWithLocation(enriched);
     };
 
+    // Initial fetch only — realtime subscription below handles all updates.
     fetchLocations();
-    const interval = setInterval(fetchLocations, 5000); // Update every 5 seconds
-    
-    return () => clearInterval(interval);
   }, [activeGuards]);
 
   // Real-time subscription for location updates

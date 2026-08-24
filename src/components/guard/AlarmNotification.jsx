@@ -24,13 +24,19 @@ export default function AlarmNotification({ user }) {
       return alarms || [];
     },
     enabled: !!user,
-    refetchInterval: 3000, // Real-time sync every 3 seconds
     retry: 3,
     retryDelay: 1000,
     initialData: [],
-    staleTime: 0, // Always fetch fresh data
-    cacheTime: 0 // Don't cache old alarms
   });
+
+  // Realtime subscription for alarm updates (replaces 3s polling).
+  useEffect(() => {
+    if (!user) return;
+    const unsub = base44.entities.AlarmResponse.subscribe((event) => {
+      queryClient.invalidateQueries(["activeAlarms", user.id]);
+    });
+    return () => unsub();
+  }, [user, queryClient]);
 
   useEffect(() => {
     if (Array.isArray(activeAlarms) && activeAlarms.length > 0) {

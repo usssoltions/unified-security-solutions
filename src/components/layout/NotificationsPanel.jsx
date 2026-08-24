@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -32,9 +32,15 @@ export default function NotificationsPanel({ user, onClose }) {
     },
     enabled: !!user,
     initialData: [],
-    refetchInterval: 10000,
-    retry: 1
   });
+
+  // Realtime subscription for alert updates (replaces 10s polling).
+  useEffect(() => {
+    const unsub = base44.entities.Alert.subscribe(() => {
+      queryClient.invalidateQueries(["userAlerts", user?.id]);
+    });
+    return () => unsub();
+  }, [user, queryClient]);
 
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (alertId) => {

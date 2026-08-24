@@ -10,7 +10,8 @@ import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
  *   1. URL params (push notification click-through)
  *   2. Window events (from OneSignal SDK / service worker)
  *   3. Service worker messages
- *   4. Polling for voice_call notifications (foreground, every 2s)
+ *   4. One initial check for already-active calls (race condition guard)
+ *   5. Realtime Notification subscription (zero idle traffic)
  *
  * Only unmounts when the user logs out (AuthContext sets user=null).
  */

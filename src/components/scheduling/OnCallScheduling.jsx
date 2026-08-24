@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,8 +41,15 @@ export default function OnCallScheduling({ user }) {
   const { data: onCallSchedules = [] } = useQuery({
     queryKey: ['onCallSchedules'],
     queryFn: () => base44.entities.OnCallSchedule.list('-start_time'),
-    refetchInterval: 30000
   });
+
+  // Realtime subscription for on-call schedule updates (replaces 30s polling).
+  useEffect(() => {
+    const unsub = base44.entities.OnCallSchedule.subscribe(() => {
+      queryClient.invalidateQueries(['onCallSchedules']);
+    });
+    return () => unsub();
+  }, [queryClient]);
 
   const createScheduleMutation = useMutation({
     mutationFn: async (data) => {

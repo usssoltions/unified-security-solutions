@@ -40,8 +40,16 @@ export default function ClockInOut({ user, location }) {
       return todayShift || null;
     },
     enabled: !!user,
-    refetchInterval: 10000
   });
+
+  // Realtime subscription for shift updates (replaces 10s polling).
+  useEffect(() => {
+    if (!user) return;
+    const unsub = base44.entities.Shift.subscribe(() => {
+      queryClient.invalidateQueries(["assignedShift", user.id]);
+    });
+    return () => unsub();
+  }, [user, queryClient]);
 
   const { data: assignedSite } = useQuery({
     queryKey: ["assignedSite", assignedShift?.site_id],

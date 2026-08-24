@@ -20,9 +20,16 @@ export default function GuardTrainingView({ user }) {
       assigned_to: user.id,
       status: { $in: ["pending", "in_progress"] }
     }, "-created_date"),
-    refetchInterval: 10000,
     initialData: []
   });
+
+  // Realtime subscription for training assignment updates (replaces 10s polling).
+  useEffect(() => {
+    const unsub = base44.entities.TrainingAssignment.subscribe(() => {
+      queryClient.invalidateQueries(["myTrainings", user.id]);
+    });
+    return () => unsub();
+  }, [user, queryClient]);
 
   const { data: completedCount = 0 } = useQuery({
     queryKey: ["completedTrainings", user.id],
