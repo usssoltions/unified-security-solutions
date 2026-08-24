@@ -43,7 +43,8 @@
         "sent",
         "failed",
         "retrying",
-        "suppressed"
+        "suppressed",
+        "skipped"
       ],
       "default": "pending"
     },
@@ -61,6 +62,10 @@
     "idempotency_key": {
       "type": "string",
       "description": "Prevents duplicate deliveries for the same event+recipient+channel"
+    },
+    "skip_reason": {
+      "type": "string",
+      "description": "Reason the channel was skipped (e.g. NO_TELEGRAM_CHAT_ID, TELEGRAM_DISABLED, NO_EMAIL, NO_PUSH_TOKEN)."
     }
   },
   "required": [
