@@ -20,6 +20,12 @@ export const ROLE_HOME = {
   estate_manager: "EstateManagerDashboard",
   vendor: "VendorPortal",
   client: "ClientDashboard",
+  platform_admin: "ControlRoom",
+  reseller_admin: "ResellerPortal",
+  practice_admin: "MedicalDashboard",
+  therapist: "MedicalSessions",
+  reception: "MedicalAppointments",
+  employer_user: "EmployerPortal",
 };
 
 const P = (arr) => new Set(arr);
@@ -65,6 +71,35 @@ export const ROLE_PAGES = {
   vendor: P(["VendorPortal", "Profile"]),
   client: P(["ClientDashboard", "ClientReports", "ClientIncidents", "Profile"]),
   reseller_admin: P(["ResellerPortal", "UserManagement", "Configuration", "Reports", "Profile"]),
+  platform_admin: P([
+    "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
+    "Contacts", "CallHistory", "CallRecordings", "Scheduling",
+    "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
+    "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
+    "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
+    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
+    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
+    "MedicalEmployers", "MedicalServices", "MedicalSessions",
+    "MedicalAssessmentTemplates", "ResellerPortal", "EstateProperties", "EstateVoting",
+    "ClientDashboard", "ClientReports", "ClientIncidents",
+    "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
+    "EstateLevy", "EmployerPortal", "Profile",
+  ]),
+  practice_admin: P([
+    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
+    "MedicalEmployers", "MedicalServices", "MedicalSessions",
+    "MedicalAssessmentTemplates", "UserManagement", "Configuration", "Reports",
+    "EmployerPortal", "Profile",
+  ]),
+  therapist: P([
+    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
+    "MedicalSessions", "MedicalAssessmentTemplates", "Profile",
+  ]),
+  reception: P([
+    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
+    "MedicalEmployers", "Profile",
+  ]),
+  employer_user: P(["EmployerPortal", "Profile"]),
 };
 
 /* Pages that are safe for every authenticated user (shared utility pages) */
@@ -122,6 +157,20 @@ export const ROLE_PERMISSIONS = {
   resident: set(),
   vendor: set(),
   client: set(),
+  platform_admin: ALL,
+  reseller_admin: set(
+    PERMISSIONS.ACCESS_VIEW, PERMISSIONS.ACCESS_VIEW_HISTORY,
+    PERMISSIONS.SETTINGS_DESTINATIONS, PERMISSIONS.SETTINGS_WORK_TYPES,
+    PERMISSIONS.SETTINGS_ACCESS, PERMISSIONS.SETTINGS_PERMISSIONS,
+  ),
+  practice_admin: ALL,
+  therapist: set(
+    PERMISSIONS.ACCESS_VIEW,
+  ),
+  reception: set(
+    PERMISSIONS.ACCESS_VIEW,
+  ),
+  employer_user: set(),
 };
 
 /* ------------------------------------------------------------------ */
