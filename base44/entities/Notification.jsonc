@@ -2,9 +2,14 @@
   "name": "Notification",
   "type": "object",
   "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
     "recipient_id": {
-      "type": "string",
-      "description": "User ID of recipient"
+      "type": "string"
     },
     "recipient_name": {
       "type": "string"
@@ -55,16 +60,13 @@
       "format": "date-time"
     },
     "related_entity": {
-      "type": "string",
-      "description": "Entity type (incident, maintenance, etc)"
+      "type": "string"
     },
     "related_id": {
-      "type": "string",
-      "description": "ID of related entity"
+      "type": "string"
     },
     "action_url": {
-      "type": "string",
-      "description": "Deep link to action"
+      "type": "string"
     },
     "sent_via": {
       "type": "array",
@@ -73,7 +75,7 @@
         "enum": [
           "push",
           "email",
-          "sms",
+          "telegram",
           "in_app"
         ]
       },
@@ -92,45 +94,45 @@
     "create": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.recipient_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
     "read": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.recipient_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
     "update": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.recipient_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
