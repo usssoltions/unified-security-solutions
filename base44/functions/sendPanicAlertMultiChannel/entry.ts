@@ -18,10 +18,17 @@ Deno.serve(async (req) => {
     const panicGuardName = user.display_name || user.full_name || guardName;
     const panicId = `panic_${Date.now()}_${panicGuardId}`;
     
-    // Get all admins and supervisors
-    const allUsers = await base44.asServiceRole.entities.User.filter({});
-    const recipients = allUsers.filter(u => 
-      u.role_type === 'admin' || 
+    // Tenant-scoped admin/supervisor recipients — a panic never alerts the wrong tenant.
+    const isPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const userQuery = isPlatformSender
+      ? {}
+      : (user.customer_id
+          ? { customer_id: user.customer_id }
+          : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
+    const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
+    const recipients = allUsers.filter(u =>
+      u.role_type === 'admin' ||
       u.role_type === 'supervisor' ||
       u.role_type === 'dispatcher'
     );

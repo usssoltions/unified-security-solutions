@@ -16,9 +16,17 @@ Deno.serve(async (req) => {
     const now = new Date();
     const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
-    // Fetch incidents created in the last 5 minutes that haven't been notified
-    const allIncidents = await base44.asServiceRole.entities.Incident.list('-created_date', 100);
-    
+    // Tenant-scoped: Platform Admins (explicit) process all tenants; a customer
+    // admin only processes incidents in their own scope.
+    const isPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const incidentQuery = isPlatformSender
+      ? {}
+      : (user.customer_id
+          ? { customer_id: user.customer_id }
+          : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: '__none__' }));
+    const allIncidents = await base44.asServiceRole.entities.Incident.filter(incidentQuery, '-created_date', 100);
+
     const recentIncidents = allIncidents.filter(incident => {
       const createdDate = new Date(incident.created_date);
       const notificationSent = incident.notification_sent === true;
@@ -35,11 +43,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get all admin users
-    const allUsers = await base44.asServiceRole.entities.User.filter({});
-    const adminUsers = allUsers.filter(u => 
-      u.role_type === 'admin' || 
-      u.role_type === 'dispatcher' || 
+    // Tenant-scoped admin recipients (matches the incident scope above).
+    const allUsers = await base44.asServiceRole.entities.User.filter(incidentQuery);
+    const adminUsers = allUsers.filter(u =>
+      u.role_type === 'admin' ||
+      u.role_type === 'dispatcher' ||
       u.role_type === 'supervisor'
     );
 

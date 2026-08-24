@@ -32,6 +32,19 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Panic not found' }, { status: 404 });
     }
 
+    // Tenant scope for recipient resolution — a panic lifecycle notification
+    // only reaches management in the panic's own tenant. Platform admins
+    // (explicit) notify across all tenants.
+    const panicPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const panicTenantFilter = panicPlatformSender
+      ? {}
+      : (panic.customer_id
+          ? { customer_id: panic.customer_id }
+          : (panic.reseller_id
+              ? { reseller_id: panic.reseller_id }
+              : { id: user.id }));
+
     const nowIso = new Date().toISOString();
     const userName = user.display_name || user.full_name;
     const isOperational = OPERATIONAL_ROLES.includes(user.role_type);
@@ -103,8 +116,8 @@ Deno.serve(async (req) => {
         logEntry.from_status = panic.status;
         logEntry.to_status = 'accepted';
         logEntry.notes = `Accepted by ${userName}`;
-        // Notify operational roles + originator
-        const allUsers = await base44.asServiceRole.entities.User.filter({});
+        // Notify operational roles + originator (panic-tenant-scoped)
+        const allUsers = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
         notifyUserIds = allUsers.filter(u => OPERATIONAL_ROLES.includes(u.role_type)).map(u => u.id);
         notifyUserIds.push(panic.user_id);
         notifyTitle = `✓ PANIC accepted — ${userName} is responding`;
@@ -128,8 +141,7 @@ Deno.serve(async (req) => {
         logEntry.from_status = panic.status;
         logEntry.to_status = 'resolved';
         logEntry.notes = resolutionNotes;
-        // Notify originator + operational roles
-        const allUsersResolve = await base44.asServiceRole.entities.User.filter({});
+        const allUsersResolve = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
         notifyUserIds = allUsersResolve.filter(u => OPERATIONAL_ROLES.includes(u.role_type)).map(u => u.id);
         if (!notifyUserIds.includes(panic.user_id)) notifyUserIds.push(panic.user_id);
         notifyTitle = `✓ PANIC resolved — ${panic.user_name}`;
@@ -150,8 +162,7 @@ Deno.serve(async (req) => {
         logEntry.from_status = panic.status;
         logEntry.to_status = 'cancelled';
         logEntry.notes = 'Cancelled by activator/management';
-        // Notify operational roles
-        const allUsersCancel = await base44.asServiceRole.entities.User.filter({});
+        const allUsersCancel = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
         notifyUserIds = allUsersCancel.filter(u => OPERATIONAL_ROLES.includes(u.role_type)).map(u => u.id);
         notifyTitle = `PANIC cancelled — ${panic.user_name}`;
         notifyMessage = `The PANIC alert from ${panic.user_name} has been cancelled.`;
@@ -169,8 +180,7 @@ Deno.serve(async (req) => {
         logEntry.from_status = panic.status;
         logEntry.to_status = panic.status;
         logEntry.notes = `Escalation #${updateFields.escalation_count} — panic remains unacknowledged`;
-        // Re-notify all operational roles
-        const allUsersEsc = await base44.asServiceRole.entities.User.filter({});
+        const allUsersEsc = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
         notifyUserIds = allUsersEsc.filter(u => OPERATIONAL_ROLES.includes(u.role_type)).map(u => u.id);
         notifyTitle = `🚨 PANIC UNACKNOWLEDGED — ESCALATION #${updateFields.escalation_count}`;
         notifyMessage = `PANIC alert from ${panic.user_name} at ${panic.site_name || 'unknown site'} remains UNACKNOWLEDGED. This is escalation #${updateFields.escalation_count}. RESPOND IMMEDIATELY.`;
@@ -185,9 +195,9 @@ Deno.serve(async (req) => {
 
     await base44.asServiceRole.entities.PanicAlert.update(panicId, updateFields);
 
-    // Dispatch notifications to relevant parties
+    // Dispatch notifications to relevant parties (panic-tenant-scoped lookup)
     if (notifyUserIds.length > 0) {
-      const allUsers = await base44.asServiceRole.entities.User.filter({});
+      const allUsers = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
       const targets = allUsers.filter(u => notifyUserIds.includes(u.id));
 
       await Promise.allSettled(targets.map(async (target) => {

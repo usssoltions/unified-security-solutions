@@ -24,8 +24,16 @@ Deno.serve(async (req) => {
 
     const { maintenanceId, guardName, maintenanceType, siteName, details, location } = await req.json();
 
-    const allUsers = await base44.asServiceRole.entities.User.filter({});
-    const admins = allUsers.filter((u) =>
+    // Tenant-scoped management recipients (see notifyAdminsIncident rationale).
+    const isPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const userQuery = isPlatformSender
+      ? {}
+      : (user.customer_id
+          ? { customer_id: user.customer_id }
+          : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
+    const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
+    const admins = (allUsers || []).filter((u) =>
       u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor'
     );
 

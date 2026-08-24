@@ -32,7 +32,17 @@ Deno.serve(async (req) => {
       incidentTime, description, location, mediaCount
     } = await req.json();
 
-    const allUsers = await base44.asServiceRole.entities.User.list();
+    // Tenant-scoped management recipients. Platform admins (explicit capability)
+    // notify across all tenants; everyone else only reaches users in their own
+    // customer/reseller scope so incident alerts never leak across tenants.
+    const isPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const userQuery = isPlatformSender
+      ? {}
+      : (user.customer_id
+          ? { customer_id: user.customer_id }
+          : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
+    const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
     const recipients = (allUsers || []).filter((u) =>
       u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor' || u.role_type === 'management'
     );

@@ -52,6 +52,8 @@ Deno.serve(async (req) => {
       notification_sent: false,
       escalated: false,
       escalation_count: 0,
+      customer_id: user.customer_id || undefined,
+      reseller_id: user.reseller_id || undefined,
       activity_log: [{
         timestamp: nowIso,
         action: 'activated',
@@ -63,10 +65,17 @@ Deno.serve(async (req) => {
       }]
     });
 
-    // 2. Find recipients — scoped by role (operational management roles only).
-    //    asServiceRole bypasses User RLS so we always find ALL recipients
-    //    regardless of the activator's role (the root cause of the Incident bug).
-    const allUsers = await base44.asServiceRole.entities.User.filter({});
+    // 2. Find recipients — scoped by role AND tenant. Platform admins (explicit)
+    //    notify across all tenants; everyone else only reaches management in
+    //    their own customer/reseller scope so a panic never alerts the wrong tenant.
+    const isPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const userQuery = isPlatformSender
+      ? {}
+      : (user.customer_id
+          ? { customer_id: user.customer_id }
+          : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
+    const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
     const recipients = allUsers.filter(u =>
       ['admin', 'dispatcher', 'supervisor', 'estate_manager', 'management'].includes(u.role_type)
     );

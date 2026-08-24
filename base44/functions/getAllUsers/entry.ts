@@ -10,13 +10,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only admins / dispatchers may list all user accounts.
+    // Only admins / dispatchers may list user accounts.
     if (!['admin', 'dispatcher'].includes(user.role_type)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Use service role to get all users (caller is authorized as admin/dispatcher)
-    const users = await base44.asServiceRole.entities.User.list();
+    // Tenant-scoped: Platform Admins (explicit) see all tenants; everyone else
+    // only sees users in their own customer/reseller scope.
+    const isPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const userQuery = isPlatformSender
+      ? {}
+      : (user.customer_id
+          ? { customer_id: user.customer_id }
+          : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
+    const users = await base44.asServiceRole.entities.User.filter(userQuery);
 
     return Response.json({ users });
   } catch (error) {

@@ -148,7 +148,8 @@ export default async function(req: Request): Promise<Response> {
     // ---- Tenant guard -----------------------------------------------------
     // Suppress cross-tenant delivery. Platform admins (no customer_id) may
     // send to any tenant — they are the system-level notifier.
-    const isPlatformSender = !callerScope.customer_id && (caller.role === 'admin' || caller.role_type === 'platform_admin');
+    const isPlatformSender =
+      caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
 
     // ---- Privacy: module-safe preview text --------------------------------
     // Telegram previews and push lock-screen text must not leak sensitive data.

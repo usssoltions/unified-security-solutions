@@ -37,7 +37,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing action or maintenanceId' }, { status: 400 });
     }
 
-    const allUsers = await base44.asServiceRole.entities.User.list();
+    // Tenant-scoped user fetch (see notifyIncidentWorkflow for rationale).
+    const isPlatformSender =
+      user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    const userQuery = isPlatformSender
+      ? {}
+      : (user.customer_id
+          ? { customer_id: user.customer_id }
+          : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
+    const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
     const managementRoles = ['admin', 'dispatcher', 'supervisor', 'management'];
     const management = (allUsers || []).filter((u) => managementRoles.includes(u.role_type));
 
