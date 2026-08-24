@@ -1,16 +1,25 @@
 {
   "name": "AccessLog",
   "type": "object",
-  "description": "Permanent, searchable audit record of every access entry, exit and denial. A single record represents the full entry\u2192exit lifecycle: it is created on entry with status 'inside' and UPDATED on exit (not duplicated).",
+  "description": "Permanent audit record of every access entry, exit and denial. A single record represents the full entry\u2192exit lifecycle.",
   "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ID for multi-tenant isolation"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
     "event_type": {
       "type": "string",
       "enum": [
         "entry",
         "exit",
         "denied"
-      ],
-      "description": "Latest event on this record. Entry records start as 'entry' and flip to 'exit' when the visitor leaves."
+      ]
     },
     "status": {
       "type": "string",
@@ -22,8 +31,7 @@
         "override_approved",
         "overridden"
       ],
-      "default": "inside",
-      "description": "Lifecycle status. 'inside' = currently on site; 'exited' = has left; 'denied' = refused entry; 'blacklisted' = blocked by blacklist; 'override_approved'/'overridden' = supervisor overrode a block."
+      "default": "inside"
     },
     "person_type": {
       "type": "string",
@@ -43,8 +51,7 @@
       "type": "string"
     },
     "person_phone": {
-      "type": "string",
-      "description": "Visitor / person contact number, captured on entry so it is available in Access History & Data Hub for follow-up and dispute resolution."
+      "type": "string"
     },
     "visitor_id": {
       "type": "string"
@@ -53,8 +60,7 @@
       "type": "string"
     },
     "gate_name": {
-      "type": "string",
-      "description": "Entry gate"
+      "type": "string"
     },
     "site_name": {
       "type": "string"
@@ -128,8 +134,7 @@
       "type": "string"
     },
     "parsed_json": {
-      "type": "string",
-      "description": "Verbatim barKoder formattedJSON for the entry scan"
+      "type": "string"
     },
     "confidence": {
       "type": "number"
@@ -146,8 +151,7 @@
         "lng": {
           "type": "number"
         }
-      },
-      "description": "Entry GPS"
+      }
     },
     "entry_time": {
       "type": "string",
@@ -162,19 +166,16 @@
     },
     "timestamp": {
       "type": "string",
-      "format": "date-time",
-      "description": "Record creation time (= entry time)"
+      "format": "date-time"
     },
     "guard_id": {
-      "type": "string",
-      "description": "Entry guard"
+      "type": "string"
     },
     "guard_name": {
       "type": "string"
     },
     "exit_gate": {
-      "type": "string",
-      "description": "Gate used to exit"
+      "type": "string"
     },
     "exit_guard_id": {
       "type": "string"
@@ -208,8 +209,7 @@
       "type": "string"
     },
     "override_approved_by": {
-      "type": "string",
-      "description": "Supervisor user id who overrode a block"
+      "type": "string"
     },
     "override_approved_by_name": {
       "type": "string"
@@ -222,8 +222,7 @@
       "type": "string"
     },
     "blacklist_match_id": {
-      "type": "string",
-      "description": "BlacklistEntry id that matched, if any"
+      "type": "string"
     },
     "notes": {
       "type": "string"
@@ -247,21 +246,73 @@
     "create": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
           "data.guard_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
+        }
+      ]
+    },
+    "read": {
+      "$or": [
         {
           "user_condition": {
             "role": "admin"
           }
-        }
-      ]
-    },
-    "read": null,
-    "update": {
-      "$or": [
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
         {
           "data.guard_id": "{{user.id}}"
         },
@@ -270,11 +321,48 @@
         },
         {
           "created_by_id": "{{user.id}}"
-        },
+        }
+      ]
+    },
+    "update": {
+      "$or": [
         {
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "data.guard_id": "{{user.id}}"
+        },
+        {
+          "data.exit_guard_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
         }
       ]
     },
