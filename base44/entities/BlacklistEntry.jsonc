@@ -1,19 +1,27 @@
 {
   "name": "BlacklistEntry",
   "type": "object",
-  "description": "A person or vehicle barred from entering the estate. Matched against scans at the gate; a match blocks entry unless a supervisor overrides it (Phase D).",
+  "description": "A person or vehicle barred from entering. Matched against scans at the gate; a match blocks entry unless a supervisor overrides it.",
   "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ID for multi-tenant isolation"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
     "entry_type": {
       "type": "string",
       "enum": [
         "person",
         "vehicle"
-      ],
-      "description": "Whether this blacklist record targets a person (by ID/licence) or a vehicle (by registration)."
+      ]
     },
     "name": {
-      "type": "string",
-      "description": "Person full name, or vehicle owner / label for vehicle entries."
+      "type": "string"
     },
     "identifier_type": {
       "type": "string",
@@ -22,12 +30,10 @@
         "driver_licence",
         "passport",
         "vehicle_registration"
-      ],
-      "description": "Which scanned identifier this entry is matched on."
+      ]
     },
     "identifier_value": {
-      "type": "string",
-      "description": "The ID number, driver's licence number, passport number, or vehicle registration to match. Normalised uppercase, no spaces."
+      "type": "string"
     },
     "reason": {
       "type": "string",
@@ -54,18 +60,15 @@
       "default": "medium"
     },
     "notes": {
-      "type": "string",
-      "description": "Free-text context / incident reference."
+      "type": "string"
     },
     "active": {
       "type": "boolean",
-      "default": true,
-      "description": "An inactive entry is kept for history but no longer blocks entry."
+      "default": true
     },
     "expiry_date": {
       "type": "string",
-      "format": "date",
-      "description": "Optional date after which the entry auto-deactivates."
+      "format": "date"
     },
     "photo_url": {
       "type": "string"
@@ -96,15 +99,103 @@
   ],
   "rls": {
     "create": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
     },
-    "read": null,
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
     "update": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
     },
     "delete": {
       "user_condition": {
