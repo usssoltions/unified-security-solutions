@@ -38,7 +38,8 @@ export const ROLE_PAGES = {
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
     "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
     "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalEmployers", "MedicalServices", "Profile",
+    "MedicalEmployers", "MedicalServices", "MedicalSessions",
+    "MedicalAssessmentTemplates", "Profile",
   ]),
   admin: P([
     "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
@@ -48,7 +49,8 @@ export const ROLE_PAGES = {
     "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
     "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
     "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalEmployers", "MedicalServices", "Profile",
+    "MedicalEmployers", "MedicalServices", "MedicalSessions",
+    "MedicalAssessmentTemplates", "Profile",
   ]),
   resident: P([
     "ResidentDashboard", "ResidentVisitors", "ResidentBookings", "ResidentOrders",
@@ -57,7 +59,8 @@ export const ROLE_PAGES = {
   ]),
   estate_manager: P([
     "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
-    "EstateLevy", "AccessControl", "PanicManagement", "ControlRoom", "Profile",
+    "EstateLevy", "EstateProperties", "EstateVoting",
+    "AccessControl", "PanicManagement", "ControlRoom", "Profile",
   ]),
   vendor: P(["VendorPortal", "Profile"]),
   client: P(["ClientDashboard", "ClientReports", "ClientIncidents", "Profile"]),

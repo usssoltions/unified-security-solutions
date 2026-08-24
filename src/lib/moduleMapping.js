@@ -67,6 +67,10 @@ export const PAGE_MODULE_MAP = {
   MedicalAppointments: "OCCUPATIONAL_THERAPY",
   MedicalEmployers: "OCCUPATIONAL_THERAPY",
   MedicalServices: "OCCUPATIONAL_THERAPY",
+  MedicalSessions: "OCCUPATIONAL_THERAPY",
+  MedicalAssessmentTemplates: "OCCUPATIONAL_THERAPY",
+  EstateProperties: "ESTATE",
+  EstateVoting: "ESTATE",
 
   // Client operational pages
   ClientIncidents: "OPERATIONS",

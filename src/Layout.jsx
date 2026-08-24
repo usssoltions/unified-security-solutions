@@ -7,7 +7,7 @@ import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
   Menu, X, LogOut, Bell, Package, Sliders, RefreshCw, Sparkles, Zap,
   FileText, Mic, Clock, ArrowLeft, UserCircle, Wrench, QrCode, MessageCircle, ShirtIcon,
-  Stethoscope
+  Stethoscope, Building2, Vote, Activity
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -319,6 +319,8 @@ export default function Layout({ children, currentPageName }) {
         { title: "Appointments", url: createPageUrl("MedicalAppointments"), icon: Calendar },
         { title: "Employers", url: createPageUrl("MedicalEmployers"), icon: Package },
         { title: "Services", url: createPageUrl("MedicalServices"), icon: Stethoscope },
+        { title: "Sessions", url: createPageUrl("MedicalSessions"), icon: Activity },
+        { title: "Assessment Templates", url: createPageUrl("MedicalAssessmentTemplates"), icon: FileText },
         { title: "Profile", url: createPageUrl("Profile"), icon: UserCircle }
       ];
     }
@@ -344,6 +346,8 @@ export default function Layout({ children, currentPageName }) {
         { title: "Venues", url: createPageUrl("EstateVenues"), icon: MapPin },
         { title: "Vendors", url: createPageUrl("EstateVendors"), icon: Package },
         { title: "Levy Management", url: createPageUrl("EstateLevy"), icon: Sliders },
+        { title: "Properties", url: createPageUrl("EstateProperties"), icon: Building2 },
+        { title: "Voting", url: createPageUrl("EstateVoting"), icon: Vote },
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "Panic Queue", url: createPageUrl("PanicManagement"), icon: Zap },
         { title: "Security", url: createPageUrl("ControlRoom"), icon: Shield },

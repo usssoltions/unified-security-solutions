@@ -1,0 +1,152 @@
+{
+  "name": "Property",
+  "type": "object",
+  "description": "Estate module: Property/unit within an estate. Tracks ownership, occupancy, levy status, and property details for estate management.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "unit_number": {
+      "type": "string",
+      "description": "Stand/house/unit number"
+    },
+    "address": {
+      "type": "string"
+    },
+    "property_type": {
+      "type": "string",
+      "enum": [
+        "house",
+        "townhouse",
+        "apartment",
+        "vacant_stand",
+        "commercial",
+        "other"
+      ],
+      "default": "house"
+    },
+    "owner_name": {
+      "type": "string"
+    },
+    "owner_email": {
+      "type": "string"
+    },
+    "owner_phone": {
+      "type": "string"
+    },
+    "tenant_name": {
+      "type": "string"
+    },
+    "tenant_email": {
+      "type": "string"
+    },
+    "tenant_phone": {
+      "type": "string"
+    },
+    "occupancy_status": {
+      "type": "string",
+      "enum": [
+        "owner_occupied",
+        "tenant_occupied",
+        "vacant",
+        "unlisted"
+      ],
+      "default": "owner_occupied"
+    },
+    "levy_amount": {
+      "type": "number"
+    },
+    "levy_status": {
+      "type": "string",
+      "enum": [
+        "current",
+        "arrears",
+        "paid_advance"
+      ],
+      "default": "current"
+    },
+    "bedrooms": {
+      "type": "number"
+    },
+    "bathrooms": {
+      "type": "number"
+    },
+    "floor_area_sqm": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "archived"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "customer_id",
+    "unit_number"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.reseller_id": "{{user.reseller_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

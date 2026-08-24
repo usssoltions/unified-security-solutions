@@ -23,6 +23,10 @@ import MedicalPatients from './pages/MedicalPatients';
 import MedicalAppointments from './pages/MedicalAppointments';
 import MedicalEmployers from './pages/MedicalEmployers';
 import MedicalServices from './pages/MedicalServices';
+import MedicalSessions from './pages/MedicalSessions';
+import MedicalAssessmentTemplates from './pages/MedicalAssessmentTemplates';
+import EstateProperties from './pages/EstateProperties';
+import EstateVoting from './pages/EstateVoting';
 import ProtectedPage from '@/components/ProtectedPage';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -168,6 +172,34 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="MedicalServices">
             <ProtectedPage pageKey="MedicalServices">
               <MedicalServices />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/MedicalSessions" element={
+          <LayoutWrapper currentPageName="MedicalSessions">
+            <ProtectedPage pageKey="MedicalSessions">
+              <MedicalSessions />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/MedicalAssessmentTemplates" element={
+          <LayoutWrapper currentPageName="MedicalAssessmentTemplates">
+            <ProtectedPage pageKey="MedicalAssessmentTemplates">
+              <MedicalAssessmentTemplates />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/EstateProperties" element={
+          <LayoutWrapper currentPageName="EstateProperties">
+            <ProtectedPage pageKey="EstateProperties">
+              <EstateProperties />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/EstateVoting" element={
+          <LayoutWrapper currentPageName="EstateVoting">
+            <ProtectedPage pageKey="EstateVoting">
+              <EstateVoting />
             </ProtectedPage>
           </LayoutWrapper>
         } />
