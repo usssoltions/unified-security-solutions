@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, User, Mail, Shield, Trash2 } from "lucide-react";
+import TelegramConnection from "@/components/telegram/TelegramConnection";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -104,6 +105,9 @@ export default function Profile() {
             )}
           </CardContent>
         </Card>
+
+        {/* Telegram Notifications */}
+        <TelegramConnection user={user} />
 
         {/* Delete Account */}
         <Card className="bg-rose-500/10 border-rose-500/20">

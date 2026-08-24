@@ -1,0 +1,118 @@
+{
+  "name": "TelegramEnrollment",
+  "type": "object",
+  "description": "Secure one-time enrollment token for connecting a USS user or ExternalRecipient to Telegram. Token is hashed at rest; plaintext is returned only once at creation. Single-use, short-lived, tenant-scoped.",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "USS User ID to connect (when subject_type is 'user')."
+    },
+    "subject_type": {
+      "type": "string",
+      "enum": [
+        "user",
+        "external_recipient"
+      ],
+      "default": "user"
+    },
+    "external_recipient_id": {
+      "type": "string",
+      "description": "ExternalRecipient ID to connect (when subject_type is 'external_recipient')."
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "token_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the one-time enrollment token. Plaintext is never stored."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "completed",
+        "expired",
+        "revoked"
+      ],
+      "default": "pending"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consumed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "telegram_chat_id": {
+      "type": "string",
+      "description": "Captured from Telegram when /start is received."
+    },
+    "telegram_username": {
+      "type": "string"
+    },
+    "telegram_first_name": {
+      "type": "string"
+    },
+    "telegram_last_name": {
+      "type": "string"
+    },
+    "deep_link": {
+      "type": "string",
+      "description": "The t.me deep link returned to the caller (not sensitive \u2014 token is in URL but must be validated server-side)."
+    }
+  },
+  "required": [
+    "token_hash",
+    "status",
+    "expires_at"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
