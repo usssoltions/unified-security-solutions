@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { X, Loader2, Users, MessageCircle } from "lucide-react";
 import { notifyGuardShift } from "./ShiftNotifier";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -68,7 +69,7 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
               const guard = guards.find(g => g.id === guardId);
               shifts.push({
                 guard_id: guardId,
-                guard_name: guard?.full_name || "",
+                guard_name: guard ? getUserDisplayName(guard) : "",
                 site_id: formData.site_id,
                 site_name: site?.name || "",
                 start_time: startTime.toISOString(),
@@ -311,7 +312,7 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
                         }
                       }}
                     />
-                    <span className="text-sm">{guard.full_name} ({guard.badge_number})</span>
+                    <span className="text-sm">{getUserDisplayName(guard)} ({guard.badge_number})</span>
                   </label>
                 ))}
               </div>

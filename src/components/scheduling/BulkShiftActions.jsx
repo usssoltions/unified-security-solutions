@@ -15,6 +15,7 @@ import {
   Share2
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
@@ -214,7 +215,7 @@ export default function BulkShiftActions({
         if (guard?.email) {
           const guardShifts = selectedShiftData.filter(s => s.guard_id === guardId);
           let guardReport = `🛡️ YOUR SHIFT SCHEDULE\n\n`;
-          guardReport += `Hello ${guard.full_name},\n\n`;
+          guardReport += `Hello ${getUserDisplayName(guard)},\n\n`;
           guardReport += `You have ${guardShifts.length} upcoming shift${guardShifts.length > 1 ? 's' : ''}:\n\n`;
           
           guardShifts.forEach((shift, idx) => {

@@ -12,6 +12,7 @@ import { CheckCircle2, XCircle, RefreshCw, X, Loader2, PenTool } from "lucide-re
 import SignaturePad from "@/components/guard/SignaturePad";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { shiftAckMessage } from "@/lib/whatsapp";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function ShiftAcknowledgeModal({ shift, user, onClose }) {
   const [step, setStep] = useState("choose"); // choose | sign | whatsapp | done
@@ -72,7 +73,7 @@ export default function ShiftAcknowledgeModal({ shift, user, onClose }) {
           shiftId: shift.id,
           siteName: shift.site_name,
           startTime: shift.start_time,
-          guardName: user.full_name,
+          guardName: getUserDisplayName(user),
           status,
           notes,
         });
@@ -80,7 +81,7 @@ export default function ShiftAcknowledgeModal({ shift, user, onClose }) {
 
       // Build WhatsApp message
       const msg = shiftAckMessage({
-        guardName: user.full_name,
+        guardName: getUserDisplayName(user),
         siteName: shift.site_name,
         startTime: shift.start_time,
         status,

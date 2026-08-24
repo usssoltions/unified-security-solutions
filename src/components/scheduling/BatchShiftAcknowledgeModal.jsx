@@ -12,6 +12,7 @@ import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   CheckCircle2, XCircle, RefreshCw, X, Loader2, PenTool, MapPin, Clock
@@ -75,8 +76,8 @@ export default function BatchShiftAcknowledgeModal({ shifts, user, onClose }) {
         await base44.entities.Notification.create({
           type: "shift_reminder",
           priority: "high",
-          title: `Shifts ${status.replace("_", " ")} (batch) — ${user.full_name}`,
-          message: `${user.full_name} has ${status.replace("_", " ")} ${selectedShifts.length} shift(s):\n${lines}${notes ? `\n\nNote: ${notes}` : ""}`,
+          title: `Shifts ${status.replace("_", " ")} (batch) — ${getUserDisplayName(user)}`,
+          message: `${getUserDisplayName(user)} has ${status.replace("_", " ")} ${selectedShifts.length} shift(s):\n${lines}${notes ? `\n\nNote: ${notes}` : ""}`,
           read: false,
           related_entity: "shift",
           related_id: selectedShifts[0]?.id || null,
@@ -87,7 +88,7 @@ export default function BatchShiftAcknowledgeModal({ shifts, user, onClose }) {
         .map(s => `• ${s.site_name} — ${fmtDate(s.start_time)} ${fmtTime(s.start_time)}`)
         .join("\n");
       setWaMessage(
-        `*Shift Acknowledgement (Batch)*\nGuard: ${user.full_name}\nResponse: ${status.replace("_", " ").toUpperCase()}\nShifts (${selectedShifts.length}):\n${lines}${notes ? `\n\nNote: ${notes}` : ""}`
+        `*Shift Acknowledgement (Batch)*\nGuard: ${getUserDisplayName(user)}\nResponse: ${status.replace("_", " ").toUpperCase()}\nShifts (${selectedShifts.length}):\n${lines}${notes ? `\n\nNote: ${notes}` : ""}`
       );
       setStep("whatsapp");
     } catch (err) {
