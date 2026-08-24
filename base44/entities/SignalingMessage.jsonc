@@ -1,15 +1,16 @@
 {
   "name": "SignalingMessage",
   "type": "object",
-  "description": "Persistent store for WebRTC signaling messages (offers/answers/ICE candidates/call events) so the rtcSignaling function works reliably across serverless invocations. The previous in-memory Map was lost on every cold start, which broke voice calls.",
+  "description": "Persistent store for WebRTC signaling messages so rtcSignaling works reliably across serverless invocations.",
   "properties": {
+    "customer_id": {
+      "type": "string"
+    },
     "to_user_id": {
-      "type": "string",
-      "description": "Recipient user id (the user who should receive this message)."
+      "type": "string"
     },
     "from_user_id": {
-      "type": "string",
-      "description": "Sender user id."
+      "type": "string"
     },
     "type": {
       "type": "string",
@@ -25,8 +26,7 @@
       "type": "string"
     },
     "payload": {
-      "type": "string",
-      "description": "JSON-stringified offer / answer / ICE candidate (empty for call_answered / call_ended)."
+      "type": "string"
     }
   },
   "required": [
@@ -37,21 +37,26 @@
     "create": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.from_user_id": "{{user.id}}"
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
     "read": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.from_user_id": "{{user.id}}"
         },
         {
@@ -59,17 +64,17 @@
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
     "update": {
       "$or": [
         {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
           "data.from_user_id": "{{user.id}}"
         },
         {
@@ -77,11 +82,6 @@
         },
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
