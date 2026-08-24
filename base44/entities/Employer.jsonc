@@ -1,0 +1,157 @@
+{
+  "name": "Employer",
+  "type": "object",
+  "description": "Medical module: Corporate client / employer that refers employees for occupational therapy, RFA, FCE, and work-ability services. Employer portal users see only their own employer's data. Tenant-isolated by customer_id (practice).",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Medical practice/tenant ID this employer belongs to"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "registration_number": {
+      "type": "string"
+    },
+    "vat_number": {
+      "type": "string"
+    },
+    "physical_address": {
+      "type": "string"
+    },
+    "postal_address": {
+      "type": "string"
+    },
+    "industry": {
+      "type": "string"
+    },
+    "primary_contact_name": {
+      "type": "string"
+    },
+    "primary_contact_email": {
+      "type": "string"
+    },
+    "primary_contact_phone": {
+      "type": "string"
+    },
+    "primary_contact_mobile": {
+      "type": "string"
+    },
+    "billing_email": {
+      "type": "string"
+    },
+    "billing_address": {
+      "type": "string"
+    },
+    "departments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "contact": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "uploaded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "default": []
+    },
+    "notification_preferences": {
+      "type": "object",
+      "description": "Configurable notification preferences: appointment_confirmations, appointment_changes, arrival, completion, report_ready, report_release \u2014 each with channel toggles"
+    },
+    "communication_permissions": {
+      "type": "object",
+      "description": "What employer may receive and through which channels"
+    },
+    "reporting_permissions": {
+      "type": "object",
+      "description": "Which report types this employer is authorised to receive"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "company_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.id": "{{user.employer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

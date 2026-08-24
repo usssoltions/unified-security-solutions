@@ -1,0 +1,179 @@
+{
+  "name": "Patient",
+  "type": "object",
+  "description": "Medical module: Patient record. Identity, employer, contact, referral information. Tenant-isolated by customer_id (practice). Employer portal users see only their own employer's patients. Clinical data is stored in separate ClinicalNote/Assessment entities, not here.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Medical practice/tenant ID"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "employer_id": {
+      "type": "string",
+      "description": "Employer ID if this patient is an employee referral. Null for private/self-referred patients."
+    },
+    "first_names": {
+      "type": "string"
+    },
+    "surname": {
+      "type": "string"
+    },
+    "preferred_name": {
+      "type": "string"
+    },
+    "sa_id_number": {
+      "type": "string"
+    },
+    "date_of_birth": {
+      "type": "string",
+      "format": "date"
+    },
+    "gender": {
+      "type": "string",
+      "enum": [
+        "male",
+        "female",
+        "other",
+        "unspecified"
+      ],
+      "default": "unspecified"
+    },
+    "mobile": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "employee_number": {
+      "type": "string"
+    },
+    "department": {
+      "type": "string"
+    },
+    "job_title": {
+      "type": "string"
+    },
+    "occupation": {
+      "type": "string"
+    },
+    "supervisor_name": {
+      "type": "string"
+    },
+    "supervisor_contact": {
+      "type": "string"
+    },
+    "medical_aid_name": {
+      "type": "string"
+    },
+    "medical_aid_number": {
+      "type": "string"
+    },
+    "referral_source": {
+      "type": "string",
+      "description": "employer, self, gp, other"
+    },
+    "referral_notes": {
+      "type": "string"
+    },
+    "referral_document_url": {
+      "type": "string"
+    },
+    "emergency_contact_name": {
+      "type": "string"
+    },
+    "emergency_contact_phone": {
+      "type": "string"
+    },
+    "id_scan_url": {
+      "type": "string",
+      "description": "Scanned ID document photo (file URL)"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "Realtime person photo captured during registration"
+    },
+    "identity_verified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether identity verification has been completed"
+    },
+    "identity_verification_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "verified",
+        "failed",
+        "manual_review"
+      ],
+      "default": "pending"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "archived"
+      ],
+      "default": "active"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "first_names",
+    "surname"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.employer_id": "{{user.employer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

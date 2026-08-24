@@ -1,0 +1,194 @@
+{
+  "name": "Appointment",
+  "type": "object",
+  "description": "Medical module: Patient appointment. Supports calendar views (day/week/month/list/therapist). Prevents double-booking via server-side availability check. Employer portal users can see their own employees' appointments.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "appointment_number": {
+      "type": "string",
+      "description": "Human-readable reference"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "employer_id": {
+      "type": "string"
+    },
+    "employer_name": {
+      "type": "string"
+    },
+    "service_id": {
+      "type": "string"
+    },
+    "service_name": {
+      "type": "string"
+    },
+    "therapist_id": {
+      "type": "string"
+    },
+    "therapist_name": {
+      "type": "string"
+    },
+    "location_id": {
+      "type": "string",
+      "description": "Practice location if multi-location"
+    },
+    "location_name": {
+      "type": "string"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_minutes": {
+      "type": "number"
+    },
+    "booking_source": {
+      "type": "string",
+      "enum": [
+        "reception",
+        "employer_portal",
+        "self_referral",
+        "phone",
+        "other"
+      ],
+      "default": "reception"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "awaiting_confirmation",
+        "confirmed",
+        "scheduled",
+        "arrived",
+        "in_session",
+        "session_completed",
+        "report_pending",
+        "report_completed",
+        "no_show",
+        "cancelled",
+        "rescheduled"
+      ],
+      "default": "requested"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "referral_notes": {
+      "type": "string"
+    },
+    "referral_document_url": {
+      "type": "string"
+    },
+    "rescheduled_from_id": {
+      "type": "string",
+      "description": "Previous appointment ID if rescheduled"
+    },
+    "reschedule_reason": {
+      "type": "string"
+    },
+    "cancellation_reason": {
+      "type": "string"
+    },
+    "arrival_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Actual patient arrival timestamp \u2014 NOT scheduled time"
+    },
+    "arrival_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Linked Session entity once session started"
+    },
+    "check_in_user_id": {
+      "type": "string"
+    },
+    "check_in_user_name": {
+      "type": "string"
+    },
+    "reminders_sent": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Which reminders have been sent (e.g., 24h, 2h)"
+    },
+    "notifications_sent": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_id",
+    "patient_id",
+    "service_id",
+    "start_time",
+    "end_time"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.employer_id": "{{user.employer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.employer_id": "{{user.employer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

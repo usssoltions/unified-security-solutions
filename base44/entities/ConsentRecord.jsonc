@@ -1,0 +1,122 @@
+{
+  "name": "ConsentRecord",
+  "type": "object",
+  "description": "Medical module: Configurable consent/purpose records for POPIA compliance. Stores consent type, text/version, patient, capture details, and withdrawal. Actual legal consent wording must be supplied/approved by the Practice \u2014 not invented by the platform.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "consent_type": {
+      "type": "string",
+      "enum": [
+        "patient_processing",
+        "employer_communication",
+        "report_sharing",
+        "photography",
+        "identity_verification",
+        "treatment_service"
+      ],
+      "default": "patient_processing"
+    },
+    "consent_text_version": {
+      "type": "string",
+      "description": "Version of the consent text presented to the patient"
+    },
+    "consent_text_hash": {
+      "type": "string",
+      "description": "Hash of the consent text for integrity verification"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "refused",
+        "withdrawn"
+      ],
+      "default": "accepted"
+    },
+    "captured_by_id": {
+      "type": "string"
+    },
+    "captured_by_name": {
+      "type": "string"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature_data": {
+      "type": "string",
+      "description": "Patient signature if required"
+    },
+    "withdrawn_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "If consent was later withdrawn"
+    },
+    "withdrawn_reason": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "patient_id",
+    "consent_type",
+    "result"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

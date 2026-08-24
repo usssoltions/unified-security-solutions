@@ -1,0 +1,120 @@
+{
+  "name": "PatientIdentityVerification",
+  "type": "object",
+  "description": "Medical module: Identity verification record. Documents the document used, realtime photo, verification result, and verifier. Human-assisted identity verification \u2014 NOT biometric facial recognition.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "sa_id",
+        "drivers_licence",
+        "passport",
+        "manual"
+      ]
+    },
+    "document_scan_url": {
+      "type": "string",
+      "description": "Scanned document photo"
+    },
+    "document_photo_url": {
+      "type": "string",
+      "description": "Photo extracted from the scanned document"
+    },
+    "realtime_photo_url": {
+      "type": "string",
+      "description": "Realtime person photo captured during verification"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "failed",
+        "manual_review"
+      ],
+      "default": "manual_review"
+    },
+    "failure_reason": {
+      "type": "string"
+    },
+    "verifier_id": {
+      "type": "string"
+    },
+    "verifier_name": {
+      "type": "string"
+    },
+    "verified_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "location_name": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "scan_data": {
+      "type": "string",
+      "description": "Parsed scan data summary (not full raw barcode)"
+    }
+  },
+  "required": [
+    "customer_id",
+    "patient_id",
+    "result"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

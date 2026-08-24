@@ -1,0 +1,179 @@
+{
+  "name": "MedicalReport",
+  "type": "object",
+  "description": "Medical module: Generated professional report. Distinguishes internal clinical report from employer-approved (released) report. Sharing is explicitly approved and audited. Employer portal users see only released reports for their employer.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "report_number": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "assessment_id": {
+      "type": "string"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "employer_id": {
+      "type": "string"
+    },
+    "employer_name": {
+      "type": "string"
+    },
+    "service_id": {
+      "type": "string"
+    },
+    "service_name": {
+      "type": "string"
+    },
+    "therapist_id": {
+      "type": "string"
+    },
+    "therapist_name": {
+      "type": "string"
+    },
+    "assessment_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "report_type": {
+      "type": "string",
+      "enum": [
+        "internal_clinical",
+        "employer_release",
+        "patient_copy",
+        "legal"
+      ],
+      "default": "internal_clinical"
+    },
+    "findings": {
+      "type": "string"
+    },
+    "recommendations": {
+      "type": "string"
+    },
+    "work_capacity": {
+      "type": "string"
+    },
+    "restrictions": {
+      "type": "string"
+    },
+    "return_to_work_recommendations": {
+      "type": "string"
+    },
+    "accommodation_recommendations": {
+      "type": "string"
+    },
+    "follow_up": {
+      "type": "string"
+    },
+    "signature_data": {
+      "type": "string",
+      "description": "Therapist signature"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "Generated PDF file URL"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "pending_approval",
+        "approved",
+        "released",
+        "archived"
+      ],
+      "default": "draft"
+    },
+    "shared_with_employer": {
+      "type": "boolean",
+      "default": false
+    },
+    "shared_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "shared_by_id": {
+      "type": "string"
+    },
+    "shared_by_name": {
+      "type": "string"
+    },
+    "shared_recipient_name": {
+      "type": "string"
+    },
+    "shared_version": {
+      "type": "number",
+      "default": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "generated_by_id": {
+      "type": "string"
+    },
+    "generated_by_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "patient_id",
+    "session_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

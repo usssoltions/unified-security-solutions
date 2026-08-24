@@ -33,7 +33,6 @@ export default function Layout({ children, currentPageName }) {
     maintenance: { url: createPageUrl("GuardMaintenance"), root: createPageUrl("GuardMaintenance") },
     qr: { url: createPageUrl("QRScanner"), root: createPageUrl("QRScanner") },
     control: { url: createPageUrl("ControlRoom"), root: createPageUrl("ControlRoom") },
-    ptt: { url: createPageUrl("PTT"), root: createPageUrl("PTT") },
     scheduling: { url: createPageUrl("Scheduling"), root: createPageUrl("Scheduling") },
     sites: { url: createPageUrl("SiteManagement"), root: createPageUrl("SiteManagement") }
   });
@@ -187,7 +186,6 @@ export default function Layout({ children, currentPageName }) {
       [createPageUrl("GuardMaintenance")]: "maintenance",
       [createPageUrl("QRScanner")]: "qr",
       [createPageUrl("ControlRoom")]: "control",
-      [createPageUrl("PTT")]: "ptt",
       [createPageUrl("Scheduling")]: "scheduling",
       [createPageUrl("SiteManagement")]: "sites"
     };
@@ -262,8 +260,6 @@ export default function Layout({ children, currentPageName }) {
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
-        { title: "PTT Recordings", url: createPageUrl("PTTRecordings"), icon: Radio },
-        { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
         { title: "Incidents", url: createPageUrl("GuardIncidents"), icon: AlertTriangle },
         { title: "Maintenance", url: createPageUrl("GuardMaintenance"), icon: MapPin },
         { title: "AI Patrol", url: createPageUrl("GuardPatrol"), icon: Shield },
@@ -280,8 +276,6 @@ export default function Layout({ children, currentPageName }) {
         { title: "Access Control", url: createPageUrl("AccessControl"), icon: QrCode },
         { title: "Access History", url: createPageUrl("AccessHistory"), icon: FileText },
         { title: "Access Settings", url: createPageUrl("AccessSettings"), icon: Sliders },
-        { title: "PTT Radio", url: createPageUrl("PTT"), icon: Mic },
-        { title: "PTT Recordings", url: createPageUrl("PTTRecordings"), icon: Radio },
         { title: "Contacts", url: createPageUrl("Contacts"), icon: Users },
         { title: "Call History", url: createPageUrl("CallHistory"), icon: Clock },
         { title: "Call Recordings", url: createPageUrl("CallRecordings"), icon: Mic },
@@ -368,7 +362,6 @@ export default function Layout({ children, currentPageName }) {
     if (role === "dispatcher" || role === "admin") {
       return [
         { title: "Control", tab: "control", icon: Radio, color: "text-sky-400" },
-        { title: "PTT", tab: "ptt", icon: MessageCircle, color: "text-purple-400" },
         { title: "Shifts", tab: "scheduling", icon: Calendar, color: "text-emerald-400" },
         { title: "Sites", tab: "sites", icon: MapPin, color: "text-amber-400" }
       ];

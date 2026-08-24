@@ -1,0 +1,135 @@
+{
+  "name": "ClinicalNote",
+  "type": "object",
+  "description": "Medical module: Therapist clinical notes. Restricted access \u2014 reception and employer portal users cannot view. Amendment history preserved; unrestricted deletion not permitted. Audited.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "therapist_id": {
+      "type": "string"
+    },
+    "therapist_name": {
+      "type": "string"
+    },
+    "note_type": {
+      "type": "string",
+      "enum": [
+        "assessment",
+        "observation",
+        "intervention",
+        "goal",
+        "follow_up",
+        "general"
+      ],
+      "default": "general"
+    },
+    "content": {
+      "type": "string",
+      "description": "Clinical note text"
+    },
+    "amendment_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "edited_by_id": {
+            "type": "string"
+          },
+          "edited_by_name": {
+            "type": "string"
+          },
+          "previous_content": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "created_at_note": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_restricted": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, only the author and practice admin can view"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "customer_id",
+    "patient_id",
+    "therapist_id",
+    "content"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

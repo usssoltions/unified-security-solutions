@@ -83,8 +83,6 @@ import GuardShift from './pages/GuardShift';
 import Home from './pages/Home';
 import NotificationPreferences from './pages/NotificationPreferences';
 import OneSignalTest from './pages/OneSignalTest';
-import PTT from './pages/PTT';
-import PTTRecordings from './pages/PTTRecordings';
 import PatrolChecklists from './pages/PatrolChecklists';
 import PatrolMonitoring from './pages/PatrolMonitoring';
 import Profile from './pages/Profile';
@@ -146,8 +144,6 @@ export const PAGES = {
     "Home": Home,
     "NotificationPreferences": NotificationPreferences,
     "OneSignalTest": OneSignalTest,
-    "PTT": PTT,
-    "PTTRecordings": PTTRecordings,
     "PatrolChecklists": PatrolChecklists,
     "PatrolMonitoring": PatrolMonitoring,
     "Profile": Profile,

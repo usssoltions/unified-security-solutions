@@ -1,0 +1,176 @@
+{
+  "name": "OperationalTask",
+  "type": "object",
+  "description": "Operations module: Task assigned to Control Room or management. Examples: Check guard, Contact site, Verify patrol, Follow up incident, Review alarm, Confirm shift, Contact customer. Supervisor verification supported.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ID for multi-tenant isolation"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "site_name": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "check_guard",
+        "contact_site",
+        "verify_patrol",
+        "follow_up_incident",
+        "review_alarm",
+        "confirm_shift",
+        "contact_customer",
+        "other"
+      ],
+      "default": "other"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "default": "medium"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "User ID assigned to complete the task"
+    },
+    "assigned_to_name": {
+      "type": "string"
+    },
+    "assigned_by": {
+      "type": "string",
+      "description": "User ID who created the task"
+    },
+    "assigned_by_name": {
+      "type": "string"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "acknowledged",
+        "in_progress",
+        "awaiting",
+        "completed",
+        "overdue"
+      ],
+      "default": "new"
+    },
+    "completion_notes_required": {
+      "type": "boolean",
+      "default": false
+    },
+    "completion_notes": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_by": {
+      "type": "string"
+    },
+    "completed_by_name": {
+      "type": "string"
+    },
+    "verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Supervisor who verified completion"
+    },
+    "verified_by_name": {
+      "type": "string"
+    },
+    "verified_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "related_entity": {
+      "type": "string",
+      "description": "Entity type if related (incident, maintenance, shift, etc.)"
+    },
+    "related_id": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "title",
+    "task_type"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.assigned_to": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        },
+        {
+          "data.assigned_to": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

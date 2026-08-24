@@ -1,0 +1,144 @@
+{
+  "name": "MedicalService",
+  "type": "object",
+  "description": "Medical module: Configurable service offered by a practice. Each service can define duration, required documents, assessment template, availability, reminder rules, and employer visibility.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "e.g., Occupational Therapy, RFA, FCE, Work Assessment, Ergonomics"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "clinical",
+        "work_ability",
+        "pre_work_screening",
+        "other"
+      ],
+      "default": "clinical"
+    },
+    "description": {
+      "type": "string"
+    },
+    "default_duration_minutes": {
+      "type": "number",
+      "default": 60
+    },
+    "price": {
+      "type": "number"
+    },
+    "required_documents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Document types required for this service (referral, ID, etc.)"
+    },
+    "assessment_template_id": {
+      "type": "string",
+      "description": "Default assessment template for this service"
+    },
+    "employer_visible": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether employers can request this service via the portal"
+    },
+    "reminder_rules": {
+      "type": "object",
+      "description": "Configurable reminder intervals (e.g., 24h, 2h before)"
+    },
+    "notification_rules": {
+      "type": "object"
+    },
+    "available_days": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ]
+      },
+      "default": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri"
+      ]
+    },
+    "available_hours_start": {
+      "type": "string"
+    },
+    "available_hours_end": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "sort_order": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "customer_id",
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

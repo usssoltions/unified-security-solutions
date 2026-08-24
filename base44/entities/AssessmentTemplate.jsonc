@@ -1,0 +1,170 @@
+{
+  "name": "AssessmentTemplate",
+  "type": "object",
+  "description": "Medical module: Configurable assessment template with sections, questions, question types, scoring, and required fields. Versioned \u2014 historical assessments store the template version used so results remain interpretable after template changes.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "service_id": {
+      "type": "string",
+      "description": "Service this template is associated with"
+    },
+    "service_name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "question_type": {
+                  "type": "string",
+                  "enum": [
+                    "short_text",
+                    "long_text",
+                    "number",
+                    "yes_no",
+                    "single_choice",
+                    "multiple_choice",
+                    "scale",
+                    "date",
+                    "time",
+                    "measurement",
+                    "clinical_note",
+                    "calculated_score"
+                  ]
+                },
+                "required": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Choices for single/multiple choice"
+                },
+                "scale_min": {
+                  "type": "number"
+                },
+                "scale_max": {
+                  "type": "number"
+                },
+                "scoring_weight": {
+                  "type": "number",
+                  "description": "Weight for calculated scores"
+                },
+                "notes": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "default": []
+    },
+    "recommendation_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "default": []
+    },
+    "version": {
+      "type": "number",
+      "default": 1
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "customer_id",
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

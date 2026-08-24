@@ -1,0 +1,175 @@
+{
+  "name": "Session",
+  "type": "object",
+  "description": "Medical module: Clinical session linked to an appointment. Records actual session start/completion times (NOT scheduled times). Contains assessment reference and is the basis for report generation. Clinical \u2014 employer portal users cannot access.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "appointment_id": {
+      "type": "string"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "employer_id": {
+      "type": "string"
+    },
+    "employer_name": {
+      "type": "string"
+    },
+    "service_id": {
+      "type": "string"
+    },
+    "service_name": {
+      "type": "string"
+    },
+    "therapist_id": {
+      "type": "string"
+    },
+    "therapist_name": {
+      "type": "string"
+    },
+    "assessment_id": {
+      "type": "string",
+      "description": "Linked Assessment entity"
+    },
+    "assessment_template_id": {
+      "type": "string"
+    },
+    "assessment_template_version": {
+      "type": "number",
+      "description": "Template version used for this session's assessment"
+    },
+    "actual_start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Actual session start timestamp \u2014 NOT scheduled time"
+    },
+    "actual_end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Actual session completion timestamp"
+    },
+    "duration_minutes": {
+      "type": "number",
+      "description": "Calculated from actual start/end"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "in_progress"
+    },
+    "findings": {
+      "type": "string",
+      "description": "Therapist findings summary"
+    },
+    "recommendations": {
+      "type": "string"
+    },
+    "work_capacity": {
+      "type": "string",
+      "description": "Work capacity assessment result"
+    },
+    "restrictions": {
+      "type": "string"
+    },
+    "return_to_work_plan": {
+      "type": "string"
+    },
+    "accommodation_recommendations": {
+      "type": "string"
+    },
+    "follow_up_required": {
+      "type": "boolean",
+      "default": false
+    },
+    "follow_up_notes": {
+      "type": "string"
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "completion_user_id": {
+      "type": "string"
+    },
+    "completion_user_name": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "customer_id",
+    "appointment_id",
+    "patient_id",
+    "therapist_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.customer_id": "{{user.customer_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
