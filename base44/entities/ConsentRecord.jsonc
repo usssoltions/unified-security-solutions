@@ -1,7 +1,7 @@
 {
   "name": "ConsentRecord",
   "type": "object",
-  "description": "Medical module: Configurable consent/purpose records for POPIA compliance. Stores consent type, text/version, patient, capture details, and withdrawal. Actual legal consent wording must be supplied/approved by the Practice \u2014 not invented by the platform.",
+  "description": "Medical module: Configurable consent/purpose records for POPIA compliance.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -28,12 +28,10 @@
       "default": "patient_processing"
     },
     "consent_text_version": {
-      "type": "string",
-      "description": "Version of the consent text presented to the patient"
+      "type": "string"
     },
     "consent_text_hash": {
-      "type": "string",
-      "description": "Hash of the consent text for integrity verification"
+      "type": "string"
     },
     "result": {
       "type": "string",
@@ -55,13 +53,11 @@
       "format": "date-time"
     },
     "signature_data": {
-      "type": "string",
-      "description": "Patient signature if required"
+      "type": "string"
     },
     "withdrawn_at": {
       "type": "string",
-      "format": "date-time",
-      "description": "If consent was later withdrawn"
+      "format": "date-time"
     },
     "withdrawn_reason": {
       "type": "string"
@@ -85,7 +81,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -97,7 +102,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -109,7 +123,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
