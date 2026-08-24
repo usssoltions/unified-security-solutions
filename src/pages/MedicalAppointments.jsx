@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import moment from "moment";
+import PatientCheckIn from "@/components/medical/PatientCheckIn";
 
 export default function MedicalAppointments() {
   const [user, setUser] = useState(null);
@@ -23,6 +24,7 @@ export default function MedicalAppointments() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [checkInAppointment, setCheckInAppointment] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [formData, setFormData] = useState({
     patient_id: "", service_id: "", therapist_id: "",
@@ -224,11 +226,10 @@ export default function MedicalAppointments() {
                     <div className="flex gap-2 mt-3 pt-3 border-t border-slate-800">
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="border-amber-600/50 text-amber-400 hover:bg-amber-500/10 text-xs h-8"
-                        onClick={() => updateStatus(apt.id, "arrived")}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-xs h-8"
+                        onClick={() => setCheckInAppointment(apt)}
                       >
-                        <UserCheck className="w-3 h-3 mr-1" /> Arrived
+                        <UserCheck className="w-3 h-3 mr-1" /> Check-In
                       </Button>
                       <Button
                         size="sm"
@@ -383,6 +384,15 @@ export default function MedicalAppointments() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {checkInAppointment && user && (
+        <PatientCheckIn
+          appointment={checkInAppointment}
+          user={user}
+          onClose={() => setCheckInAppointment(null)}
+          onVerified={() => loadData()}
+        />
+      )}
     </div>
   );
 }

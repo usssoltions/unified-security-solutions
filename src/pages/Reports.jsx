@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,19 +36,29 @@ export default function Reports() {
     queryKey: ["incidents"],
     queryFn: async () => base44.entities.Incident.list("-reported_at", 100),
     initialData: [],
-    refetchInterval: 5000,
-    staleTime: 0,
-    cacheTime: 0
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: maintenance = [] } = useQuery({
     queryKey: ["maintenance"],
     queryFn: async () => base44.entities.MaintenanceRequest.list("-reported_at", 100),
     initialData: [],
-    refetchInterval: 5000,
-    staleTime: 0,
-    cacheTime: 0
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
+
+  // Realtime subscriptions — replaces the previous 5s polling (720 redundant
+  // requests/hour per device). Invalidates the query cache on entity events.
+  useEffect(() => {
+    const unsubIncidents = base44.entities.Incident.subscribe((event) => {
+      queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    });
+    const unsubMaintenance = base44.entities.MaintenanceRequest.subscribe((event) => {
+      queryClient.invalidateQueries({ queryKey: ["maintenance"] });
+    });
+    return () => { unsubIncidents(); unsubMaintenance(); };
+  }, [queryClient]);
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, entityType, newStatus, notes }) => {

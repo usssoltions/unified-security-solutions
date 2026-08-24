@@ -68,9 +68,8 @@ export default function Scheduling() {
       return Array.isArray(data) ? data : [];
     },
     initialData: [],
-    refetchInterval: 10000,
-    staleTime: 0,
-    cacheTime: 0
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: guards = [] } = useQuery({
@@ -80,9 +79,8 @@ export default function Scheduling() {
       return Array.isArray(users) ? users : [];
     },
     initialData: [],
-    refetchInterval: 30000,
-    staleTime: 0,
-    cacheTime: 0
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: sites = [] } = useQuery({
@@ -92,10 +90,17 @@ export default function Scheduling() {
       return Array.isArray(data) ? data : [];
     },
     initialData: [],
-    refetchInterval: 30000,
-    staleTime: 0,
-    cacheTime: 0
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
+
+  // Realtime — invalidates cache on entity events (replaces 10s/30s polling)
+  useEffect(() => {
+    const unsubShifts = base44.entities.Shift.subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+    });
+    return () => unsubShifts();
+  }, [queryClient]);
 
   const shiftsArray = Array.isArray(shifts) ? shifts : [];
   const filteredShifts = shiftsArray.filter(shift => {

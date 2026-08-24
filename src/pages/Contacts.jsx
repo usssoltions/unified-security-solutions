@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Phone, Search, Users, User, Loader2, MessageSquare } from "lucide-react";
+import { Phone, PhoneOutgoing, Search, Users, User, Loader2, MessageSquare } from "lucide-react";
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
+import { useLinkusConfig, buildExternalCallUri } from "@/hooks/useLinkusConfig";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -17,6 +18,26 @@ export default function Contacts() {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [isGroupCallMode, setIsGroupCallMode] = useState(false);
   const navigate = useNavigate();
+  const { data: linkusConfig } = useLinkusConfig();
+
+  const getUserPhone = (u) => u?.phone || u?.mobile_number || u?.contact_number || "";
+  const handleExternalCall = (u) => {
+    const uri = buildExternalCallUri(linkusConfig, getUserPhone(u));
+    if (!uri) return;
+    // For linkus_mobile, try the URI scheme; if the app isn't installed the
+    // browser stays put — fall back to system dialler after a short delay.
+    if (linkusConfig.mode === "linkus_mobile" && linkusConfig.fallback_to_dialler) {
+      window.location.href = uri;
+      setTimeout(() => {
+        if (!document.hidden) {
+          const phone = getUserPhone(u);
+          window.location.href = `tel:${phone.startsWith("0") ? phone : "0" + phone}`;
+        }
+      }, 2000);
+    } else {
+      window.location.href = uri;
+    }
+  };
 
   useEffect(() => {
     loadUser();
@@ -275,6 +296,17 @@ export default function Contacts() {
                         <Phone className="w-4 h-4 mr-2" />
                         Call
                       </Button>
+                      {linkusConfig?.mode !== "disabled" && getUserPhone(user) && (
+                        <Button
+                          onClick={() => handleExternalCall(user)}
+                          variant="outline"
+                          size="sm"
+                          className="border-sky-600/50 text-sky-400 hover:bg-sky-500/10"
+                          title={linkusConfig.mode === "linkus_mobile" ? "Call via Linkus" : "Call via system dialler"}
+                        >
+                          <PhoneOutgoing className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </CardContent>

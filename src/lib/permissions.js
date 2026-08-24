@@ -23,8 +23,8 @@ export const ROLE_HOME = {
   platform_admin: "ControlRoom",
   reseller_admin: "ResellerPortal",
   practice_admin: "MedicalDashboard",
-  therapist: "MedicalSessions",
-  reception: "MedicalAppointments",
+  therapist: "MedicalDashboard",
+  reception: "MedicalDashboard",
   employer_user: "EmployerPortal",
 };
 
