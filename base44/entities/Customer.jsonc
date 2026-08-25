@@ -114,10 +114,10 @@
         {
           "$and": [
             {
-              "data.id": "{{user.data.customer_id}}"
+              "id": "{{user.data.customer_id}}"
             },
             {
-              "data.id": {
+              "id": {
                 "$ne": null
               }
             }
