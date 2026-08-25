@@ -8,95 +8,23 @@
  * Permissions) and Phase 12 (route/backend enforcement).
  */
 import { createPageUrl } from "@/utils";
+import {
+  ROUTE_REGISTRY, getRoleHomeKey, getRolePageKeys,
+} from "@/lib/routeRegistry";
 
 /* ------------------------------------------------------------------ */
-/* Role → allowed page keys                                            */
+/* Role → allowed page keys (derived from the unified route registry)  */
 /* ------------------------------------------------------------------ */
-export const ROLE_HOME = {
-  admin: "ControlRoom",
-  dispatcher: "ControlRoom",
-  guard: "GuardShift",
-  resident: "ResidentDashboard",
-  estate_manager: "EstateManagerDashboard",
-  vendor: "VendorPortal",
-  client: "ClientDashboard",
-  platform_admin: "ControlRoom",
-  reseller_admin: "ResellerPortal",
-  practice_admin: "MedicalDashboard",
-  therapist: "MedicalDashboard",
-  reception: "MedicalDashboard",
-  employer_user: "EmployerPortal",
-};
+export const ROLE_HOME = Object.keys(ROUTE_REGISTRY).reduce((acc, role) => {
+  const home = getRoleHomeKey(role);
+  if (home) acc[role] = home;
+  return acc;
+}, {});
 
-const P = (arr) => new Set(arr);
-
-export const ROLE_PAGES = {
-  guard: P([
-    "GuardShift", "GuardMyShifts", "Contacts", "CallHistory", "CallRecordings",
-    "GuardIncidents", "GuardMaintenance", "GuardPatrol",
-    "AccessControl", "QRScanner", "StartOfShift", "StartOfShiftHistory", "Profile",
-  ]),
-  dispatcher: P([
-    "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
-    "Contacts", "CallHistory", "CallRecordings", "Scheduling",
-    "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
-    "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
-    "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
-  ]),
-  admin: P([
-    "ControlRoom", "AdminIncidents", "PanicManagement", "AccessControl", "AccessHistory", "AccessSettings",
-    "Contacts", "CallHistory", "CallRecordings", "Scheduling",
-    "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
-    "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
-    "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory", "Profile",
-  ]),
-  resident: P([
-    "ResidentDashboard", "ResidentVisitors", "ResidentBookings", "ResidentOrders",
-    "ResidentLaundry", "ResidentIncidents", "ResidentMaintenance",
-    "ResidentTickets", "ResidentPayments", "ResidentAnnouncements", "Profile",
-  ]),
-  estate_manager: P([
-    "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
-    "EstateLevy", "EstateProperties", "EstateVoting",
-    "AccessControl", "PanicManagement", "ControlRoom", "Profile",
-  ]),
-  vendor: P(["VendorPortal", "Profile"]),
-  client: P(["ClientDashboard", "ClientReports", "ClientIncidents", "Profile"]),
-  reseller_admin: P(["ResellerPortal", "UserManagement", "Configuration", "Reports", "Profile"]),
-  platform_admin: P([
-    "ControlRoom", "AdminIncidents", "AdminMaintenance", "PanicManagement",
-    "AccessControl", "AccessHistory", "AccessSettings",
-    "Contacts", "CallHistory", "CallRecordings", "Scheduling",
-    "ClockInOutReports", "SiteManagement", "PatrolDashboard", "PatrolAnalytics",
-    "SiteMapDashboard", "PayrollSummary", "DataHub", "Reports", "Analytics",
-    "GuardActivity", "AIReports", "UserManagement", "AssetManagement",
-    "StayAwakeConfiguration", "Configuration", "StartOfShiftHistory",
-    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalEmployers", "MedicalServices", "MedicalSessions",
-    "MedicalAssessmentTemplates", "ResellerPortal", "TenantSetup",
-    "EstateProperties", "EstateVoting",
-    "ClientDashboard", "ClientReports", "ClientIncidents",
-    "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
-    "EstateLevy", "EmployerPortal", "Profile",
-  ]),
-  practice_admin: P([
-    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalEmployers", "MedicalServices", "MedicalSessions",
-    "MedicalAssessmentTemplates", "UserManagement", "Configuration", "Reports",
-    "EmployerPortal", "Profile",
-  ]),
-  therapist: P([
-    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalSessions", "MedicalAssessmentTemplates", "Profile",
-  ]),
-  reception: P([
-    "MedicalDashboard", "MedicalPatients", "MedicalAppointments",
-    "MedicalEmployers", "Profile",
-  ]),
-  employer_user: P(["EmployerPortal", "Profile"]),
-};
+export const ROLE_PAGES = Object.keys(ROUTE_REGISTRY).reduce((acc, role) => {
+  acc[role] = getRolePageKeys(role);
+  return acc;
+}, {});
 
 /* Pages that are safe for every authenticated user (shared utility pages) */
 const PUBLIC_PAGES = new Set(["AndroidDownload"]);
