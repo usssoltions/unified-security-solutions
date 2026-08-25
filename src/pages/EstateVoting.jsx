@@ -10,7 +10,6 @@ import { Vote, Plus, CheckCircle, Clock, Loader2, BarChart3, AlertCircle } from 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getUserDisplayName } from "@/lib/userDisplayName";
-import moment from "moment";
 
 export default function EstateVoting() {
   const [user, setUser] = useState(null);
@@ -19,7 +18,10 @@ export default function EstateVoting() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [voting, setVoting] = useState(null);
+  const [voteError, setVoteError] = useState(null);
   const [saveError, setSaveError] = useState(null);
+  // Per-question multi-select buffer: { [questionId]: Set<optionIndex> }
+  const [multiSelect, setMultiSelect] = useState({});
   const [formData, setFormData] = useState({
     title: "", description: "", question_type: "yes_no",
     options: [{ text: "Yes" }, { text: "No" }],
@@ -43,8 +45,8 @@ export default function EstateVoting() {
   };
 
   const hasTenant = !!user?.customer_id;
-
   const hasVoted = (q) => q.voted_user_ids?.includes(user?.id);
+  const isClosed = (q) => q.status === "closed" || (q.close_date && new Date(q.close_date) < new Date());
 
   const handleSave = async () => {
     if (!formData.title || !hasTenant) return;
@@ -65,32 +67,42 @@ export default function EstateVoting() {
       setFormData({ title: "", description: "", question_type: "yes_no", options: [{ text: "Yes" }, { text: "No" }] });
       await loadData();
     } catch (e) {
-      console.error("Failed to create vote:", e);
       setSaveError(e.message || "Failed to create vote. Please ensure your account is assigned to an organisation.");
     } finally {
       setSaving(false);
     }
   };
 
-  const castVote = async (question, optionIdx) => {
+  const castVote = async (question, optionIndices) => {
     if (hasVoted(question) || question.status !== "open") return;
     setVoting(question.id);
+    setVoteError(null);
     try {
-      const options = question.options.map((o, i) => ({
-        ...o,
-        votes: (o.votes || 0) + (i === optionIdx ? 1 : 0),
-      }));
-      await base44.entities.VotingQuestion.update(question.id, {
-        options,
-        total_votes: (question.total_votes || 0) + 1,
-        voted_user_ids: [...(question.voted_user_ids || []), user.id],
+      const res = await base44.functions.invoke("castVote", {
+        question_id: question.id,
+        option_indices: Array.isArray(optionIndices) ? optionIndices : [optionIndices],
       });
-      await loadData();
+      // Replace the updated question in-state from the server response.
+      const updated = res?.data?.question;
+      if (updated) {
+        setQuestions(prev => prev.map(q => q.id === updated.id ? updated : q));
+      } else {
+        await loadData();
+      }
+      setMultiSelect(prev => { const n = { ...prev }; delete n[question.id]; return n; });
     } catch (e) {
-      console.error("Failed to cast vote:", e);
+      setVoteError(e?.response?.data?.error || e.message || "Failed to cast vote.");
     } finally {
       setVoting(null);
     }
+  };
+
+  const toggleMulti = (qId, idx) => {
+    setMultiSelect(prev => {
+      const cur = new Set(prev[qId] || []);
+      if (cur.has(idx)) cur.delete(idx); else cur.add(idx);
+      return { ...prev, [qId]: cur };
+    });
   };
 
   const closeVote = async (q) => {
@@ -151,6 +163,15 @@ export default function EstateVoting() {
           </Card>
         )}
 
+        {voteError && (
+          <Card className="bg-rose-500/10 border-rose-500/30 mb-4">
+            <CardContent className="p-3 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span className="text-rose-400 text-sm">{voteError}</span>
+            </CardContent>
+          </Card>
+        )}
+
         {questions.length === 0 ? (
           <Card className="bg-slate-900 border-slate-800">
             <CardContent className="py-12 text-center">
@@ -163,6 +184,9 @@ export default function EstateVoting() {
             {questions.map(q => {
               const voted = hasVoted(q);
               const total = q.total_votes || 0;
+              const multi = q.question_type === "multiple_choice";
+              const selected = multiSelect[q.id] || new Set();
+              const canSubmitMulti = multi && selected.size > 0 && !voted && q.status === "open";
               return (
                 <Card key={q.id} className="bg-slate-900 border-slate-800">
                   <CardContent className="p-4">
@@ -177,15 +201,40 @@ export default function EstateVoting() {
                       }`}>{q.status}</Badge>
                     </div>
 
-                    {q.status === "open" && !voted ? (
+                    {q.close_date && (
+                      <p className="text-slate-500 text-xs flex items-center gap-1 mb-2">
+                        <Clock className="w-3 h-3" /> Closes {new Date(q.close_date).toLocaleString()}
+                      </p>
+                    )}
+
+                    {q.status === "open" && !voted && !isClosed(q) ? (
                       <div className="space-y-2 mt-3">
-                        {q.options?.map((opt, idx) => (
-                          <button key={idx} onClick={() => castVote(q, idx)} disabled={voting === q.id}
-                            className="w-full flex items-center gap-3 p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-all text-left active:scale-[0.99] disabled:opacity-50">
-                            <div className="w-6 h-6 rounded-full border-2 border-slate-600 flex items-center justify-center shrink-0" />
-                            <span className="text-slate-200 text-sm">{opt.text}</span>
-                          </button>
-                        ))}
+                        {q.options?.map((opt, idx) => {
+                          const isSelected = selected.has(idx);
+                          return (
+                            <button key={idx}
+                              onClick={() => multi ? toggleMulti(q.id, idx) : castVote(q, idx)}
+                              disabled={voting === q.id}
+                              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left active:scale-[0.99] disabled:opacity-50 ${
+                                isSelected ? "bg-sky-500/20 border border-sky-500/40" : "bg-slate-800/50 hover:bg-slate-800"
+                              }`}>
+                              <div className={`w-6 h-6 ${multi ? "rounded-md" : "rounded-full"} border-2 flex items-center justify-center shrink-0 ${
+                                isSelected ? "border-sky-500 bg-sky-500" : "border-slate-600"
+                              }`}>
+                                {isSelected && <CheckCircle className="w-4 h-4 text-white" />}
+                              </div>
+                              <span className="text-slate-200 text-sm">{opt.text}</span>
+                            </button>
+                          );
+                        })}
+                        {multi && (
+                          <Button size="sm" className="bg-sky-500 hover:bg-sky-600 w-full"
+                            disabled={!canSubmitMulti || voting === q.id}
+                            onClick={() => castVote(q, Array.from(selected))}>
+                            {voting === q.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                            Submit {selected.size} vote(s)
+                          </Button>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-2 mt-3">
