@@ -198,7 +198,9 @@ export const EXTRA_ALLOWED_PAGES = {
     "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
     "EstateLevy", "EstateProperties", "EstateVoting",
     "ClientDashboard", "ClientReports", "ClientIncidents", "EmployerPortal",
+    "ResellerManagement",
   ],
+  reseller_admin: ["ResellerManagement"],
 };
 
 /**

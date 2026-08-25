@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   Building2, Plus, Loader2, MapPin, Database, Play, AlertTriangle,
   CheckCircle2, ArrowRight, RefreshCw, FileText, Shield, UserCog,
 } from "lucide-react";
+// ArrowRight already imported above (used by migration action + reseller links).
 import { useToast } from "@/components/ui/use-toast";
 import LegacyUserMigration from "@/components/tenant/LegacyUserMigration";
 
@@ -198,10 +200,16 @@ export default function TenantSetupManager({ user }) {
                 <p className="text-slate-500 text-sm text-center py-6">No resellers yet. Create one if you have partner organizations.</p>
               ) : (
                 resellers.map(r => (
-                  <div key={r.id} className="flex items-center justify-between bg-slate-800/40 p-3 rounded-lg">
-                    <div><p className="text-white text-sm font-medium">{r.name}</p><p className="text-slate-500 text-xs">{r.legal_name || "—"} • {r.support_email || "no email"}</p></div>
+                  <Link key={r.id} to={`/ResellerManagement?id=${r.id}`} className="flex items-center justify-between bg-slate-800/40 p-3 rounded-lg hover:bg-slate-800 hover:border-sky-500/40 border border-transparent transition-colors group">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-medium group-hover:text-sky-400 flex items-center gap-1.5">
+                        {r.name}
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-sky-400 transition-colors" />
+                      </p>
+                      <p className="text-slate-500 text-xs truncate">{r.legal_name || "—"} • {r.support_email || "no email"}</p>
+                    </div>
                     <Badge className={r.status === "active" ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-500/20 text-slate-400"}>{r.status}</Badge>
-                  </div>
+                  </Link>
                 ))
               )}
             </CardContent>

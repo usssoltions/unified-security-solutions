@@ -33,6 +33,7 @@ import ClientIncidents from './pages/ClientIncidents';
 import ResellerPortal from './pages/ResellerPortal';
 import EmployerPortal from './pages/EmployerPortal';
 import TenantSetup from './pages/TenantSetup';
+import ResellerManagement from './pages/ResellerManagement';
 import ProtectedPage from '@/components/ProtectedPage';
 import RoleHomeRedirect from '@/components/RoleHomeRedirect';
 
@@ -249,6 +250,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="TenantSetup">
             <ProtectedPage pageKey="TenantSetup">
               <TenantSetup />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/ResellerManagement" element={
+          <LayoutWrapper currentPageName="ResellerManagement">
+            <ProtectedPage pageKey="ResellerManagement">
+              <ResellerManagement />
             </ProtectedPage>
           </LayoutWrapper>
         } />
