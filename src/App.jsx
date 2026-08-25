@@ -9,6 +9,7 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import OnboardingFailed from '@/components/OnboardingFailed';
 import IncomingCallHandler from '@/components/IncomingCallHandler';
 import AndroidDownload from '@/pages/AndroidDownload';
 import AccessHistory from '@/pages/AccessHistory';
@@ -61,6 +62,10 @@ const AuthenticatedApp = () => {
   if (authError) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
+    } else if (authError.type === 'onboarding_failed') {
+      // Fail-closed: a non-platform user whose tenant scope could not be
+      // resolved. No unscoped app access, no platform/customer fallback.
+      return <OnboardingFailed message={authError.message} />;
     } else if (authError.type === 'auth_required') {
       // Redirect to login automatically
       navigateToLogin();

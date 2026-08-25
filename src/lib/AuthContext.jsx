@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
+import { isPlatformAdminUser } from '@/lib/platformAdmin';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 
 const AuthContext = createContext();
@@ -89,28 +90,53 @@ export const AuthProvider = ({ children }) => {
 
   const checkUserAuth = async () => {
     try {
-      // Now check if the user is authenticated
+      // Deterministic login sequence:
+      //   authenticate → load user → apply pending tenant scope (server-side)
+      //   → reload user if scoped → confirm scope → expose to app.
+      // isLoadingAuth stays TRUE throughout, so role-based routing NEVER sees
+      // an unscoped user (fixes the first-login "Reseller not found" race where
+      // ResellerPortal mounted before the invitation scope was applied).
       setIsLoadingAuth(true);
       let currentUser = await base44.auth.me();
+
+      // Non-platform users only: resolve any queued invitation scope BEFORE the
+      // app routes. applyMyPendingScope is server-side and email-bound — the
+      // caller can only consume a scope an admin already queued for THEIR email,
+      // never accepts scope from the browser, and is idempotent.
+      if (!isPlatformAdminUser(currentUser) && currentUser?.email) {
+        const hasScope = currentUser?.reseller_id || currentUser?.customer_id || currentUser?.admin_level;
+        const hasRole = !!currentUser?.role_type;
+        // Only an unscoped, unroleed account (a fresh signup awaiting its
+        // invitation scope) needs the apply step. Already-onboarded users skip
+        // the extra call.
+        if (!hasScope && !hasRole) {
+          try {
+            const res = await base44.functions.invoke('applyMyPendingScope', {});
+            const d = res?.data || res;
+            if (d?.applied) {
+              currentUser = await base44.auth.me();
+            }
+          } catch (_) { /* swallow; fail-closed check below */ }
+
+          // Fail closed: a non-platform user whose tenant scope could not be
+          // applied/resolved gets NO unscoped app access — no platform/default
+          // customer fallback, no reseller guessing, no self-selection.
+          const stillNoScope = !currentUser?.reseller_id && !currentUser?.customer_id && !currentUser?.admin_level;
+          const stillNoRole = !currentUser?.role_type;
+          if (stillNoScope && stillNoRole) {
+            setAuthError({
+              type: 'onboarding_failed',
+              message: 'Your account setup could not be completed. Please contact your administrator.'
+            });
+            setIsLoadingAuth(false);
+            return;
+          }
+        }
+      }
+
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
-
-      // Apply any queued tenant scoping for THIS user (e.g. an invited Reseller
-      // Admin who just accepted). Runs once per browser session, server-side.
-      // Only consumes a scope an admin already queued for this email — no
-      // self-escalation. Refreshes the user so role-based routing sees scoping.
-      if (currentUser?.email && !sessionStorage.getItem('uss_scope_applied')) {
-        sessionStorage.setItem('uss_scope_applied', '1');
-        try {
-          const res = await base44.functions.invoke('applyMyPendingScope', {});
-          const d = res?.data || res;
-          if (d?.applied) {
-            currentUser = await base44.auth.me();
-            setUser(currentUser);
-          }
-        } catch (_) { /* non-fatal: will retry on next login */ }
-      }
     } catch (error) {
       console.error('User auth check failed:', error);
       setIsLoadingAuth(false);
