@@ -1,0 +1,102 @@
+{
+  "name": "ResellerEntitlement",
+  "type": "object",
+  "description": "Records which commercial USS modules a reseller is authorised to offer/provision to its customers. Platform Admin grants these; a reseller can never enable a module USS has not authorised here. Customer module allocation is limited to the modules enabled on the reseller's ResellerEntitlement records. module_key is a free string (no enum) so future modules are supported without schema changes.",
+  "properties": {
+    "reseller_id": {
+      "type": "string",
+      "description": "Reseller this licence applies to."
+    },
+    "module_key": {
+      "type": "string",
+      "description": "Module key, e.g. ACCESS, PATROL, OPERATIONS, ESTATE, OCCUPATIONAL_THERAPY, CALLING, REPORTING_CORE, NOTIFICATION_CORE, COMPLETE_SECURITY, MESSAGING, BARKODER_CORE. Free string to support future modules."
+    },
+    "module_label": {
+      "type": "string",
+      "description": "Human-readable module name for display."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "expired",
+        "pending"
+      ],
+      "default": "active"
+    },
+    "licence_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "licence_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "licence_limit": {
+      "type": "number",
+      "description": "Quantity cap (e.g. max customers, sites or users the reseller may provision under this module)."
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Module-specific licence configuration JSON."
+    },
+    "notes": {
+      "type": "string"
+    },
+    "granted_by": {
+      "type": "string",
+      "description": "Platform Admin user id who granted/last modified this licence."
+    },
+    "granted_by_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "reseller_id",
+    "module_key",
+    "enabled"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
