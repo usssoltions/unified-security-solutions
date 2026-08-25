@@ -69,14 +69,39 @@
           }
         },
         {
-          "data.id": "{{user.data.reseller_id}}"
+          "$and": [
+            {
+              "data.id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
     "update": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
     },
     "delete": {
       "user_condition": {
