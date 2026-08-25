@@ -31,6 +31,8 @@ export default function EstateVenues() {
     initialData: [],
   });
 
+  const [editingVenue, setEditingVenue] = useState(null);
+
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Venue.create({
       ...data,
@@ -44,10 +46,49 @@ export default function EstateVenues() {
     onSuccess: () => { qc.invalidateQueries(["all_venues"]); setShowForm(false); setForm(EMPTY_FORM); }
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Venue.update(id, {
+      ...data,
+      capacity: Number(data.capacity) || 0,
+      booking_fee: Number(data.booking_fee) || 0,
+      deposit_required: Number(data.deposit_required) || 0,
+    }),
+    onSuccess: () => { qc.invalidateQueries(["all_venues"]); setShowForm(false); setForm(EMPTY_FORM); setEditingVenue(null); }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.Venue.delete(id),
+    onSuccess: () => qc.invalidateQueries(["all_venues"])
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }) => base44.entities.Venue.update(id, { status }),
     onSuccess: () => qc.invalidateQueries(["all_venues"])
   });
+
+  const openEdit = (v) => {
+    setEditingVenue(v);
+    setForm({
+      name: v.name || "", description: v.description || "", category: v.category || "clubhouse",
+      capacity: v.capacity ?? "", booking_fee: v.booking_fee ?? "", deposit_required: v.deposit_required ?? "",
+      available_hours_start: v.available_hours_start || "07:00", available_hours_end: v.available_hours_end || "22:00",
+      rules: v.rules || "", status: v.status || "active",
+    });
+    setShowForm(true);
+  };
+
+  const closeForm = () => { setShowForm(false); setForm(EMPTY_FORM); setEditingVenue(null); };
+
+  const submitForm = () => {
+    if (editingVenue) updateMutation.mutate({ id: editingVenue.id, data: form });
+    else createMutation.mutate(form);
+  };
+
+  const handleDelete = (v) => {
+    if (window.confirm(`Delete venue "${v.name}"? This cannot be undone.`)) deleteMutation.mutate(v.id);
+  };
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
 
   const updateBookingMutation = useMutation({
     mutationFn: ({ id, status, notes }) => base44.entities.VenueBooking.update(id, {
@@ -74,7 +115,7 @@ export default function EstateVenues() {
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Building className="w-6 h-6 text-purple-400" /> Venues
           </h1>
-          <Button onClick={() => setShowForm(true)} className="bg-purple-500 hover:bg-purple-600" disabled={!hasTenant}>
+          <Button onClick={() => { setEditingVenue(null); setForm(EMPTY_FORM); setShowForm(true); }} className="bg-purple-500 hover:bg-purple-600" disabled={!hasTenant}>
             <Plus className="w-4 h-4 mr-2" /> Add Venue
           </Button>
         </div>
@@ -104,8 +145,8 @@ export default function EstateVenues() {
               <Card className="bg-slate-800 border-slate-700">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-white">Add Venue</CardTitle>
-                    <Button variant="ghost" size="icon" onClick={() => setShowForm(false)}><X /></Button>
+                    <CardTitle className="text-white">{editingVenue ? "Edit Venue" : "Add Venue"}</CardTitle>
+                    <Button variant="ghost" size="icon" onClick={closeForm}><X /></Button>
                   </div>
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-3">
@@ -125,8 +166,8 @@ export default function EstateVenues() {
                   <Input type="time" value={form.available_hours_start} onChange={e => setForm({ ...form, available_hours_start: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
                   <Input type="time" value={form.available_hours_end} onChange={e => setForm({ ...form, available_hours_end: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
                   <Textarea placeholder="Rules & conditions" value={form.rules} onChange={e => setForm({ ...form, rules: e.target.value })} className="bg-slate-900 border-slate-700 text-white col-span-2" rows={2} />
-                  <Button className="col-span-2 bg-purple-500 hover:bg-purple-600" onClick={() => createMutation.mutate(form)} disabled={!form.name || createMutation.isPending}>
-                    {createMutation.isPending ? "Adding..." : "Add Venue"}
+                  <Button className="col-span-2 bg-purple-500 hover:bg-purple-600" onClick={submitForm} disabled={!form.name || isSaving}>
+                    {isSaving ? (editingVenue ? "Saving..." : "Adding...") : (editingVenue ? "Save Changes" : "Add Venue")}
                   </Button>
                 </CardContent>
               </Card>
@@ -152,6 +193,8 @@ export default function EstateVenues() {
                     <div className="flex gap-2 mt-3">
                       {v.status !== "active" && <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 flex-1" onClick={() => updateStatusMutation.mutate({ id: v.id, status: "active" })}>Activate</Button>}
                       {v.status === "active" && <Button size="sm" variant="outline" className="border-amber-500 text-amber-400 flex-1" onClick={() => updateStatusMutation.mutate({ id: v.id, status: "maintenance" })}>Maintenance</Button>}
+                      <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 flex-1" onClick={() => openEdit(v)}>Edit</Button>
+                      <Button size="sm" variant="outline" className="border-rose-500/40 text-rose-400 flex-1" onClick={() => handleDelete(v)} disabled={deleteMutation.isPending}>Delete</Button>
                     </div>
                   </CardContent>
                 </Card>
