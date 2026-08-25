@@ -58,14 +58,14 @@
   "rls": {
     "create": {
       "user_condition": {
-        "admin_level": "platform"
+        "role": "admin"
       }
     },
     "read": {
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
@@ -86,7 +86,7 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
@@ -105,7 +105,7 @@
     },
     "delete": {
       "user_condition": {
-        "admin_level": "platform"
+        "role": "admin"
       }
     }
   }
