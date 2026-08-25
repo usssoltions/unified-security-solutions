@@ -21,7 +21,11 @@ export default async function(req: Request): Promise<Response> {
     const base44 = createClientFromRequest(req);
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ applied: false });
-    const email = caller.email;
+    // Safe normalisation: match the pending record by a normalised email so
+    // case/whitespace differences between the invitation and the signup email
+    // never prevent the scope from applying. The caller can only consume a
+    // scope queued for THEIR email — no cross-user application.
+    const email = (caller.email || '').trim().toLowerCase();
     if (!email) return Response.json({ applied: false });
 
     const pending = await base44.asServiceRole.entities.PendingTenantScope.filter({

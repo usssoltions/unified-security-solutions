@@ -30,7 +30,11 @@ export default async function(req: Request): Promise<Response> {
     if (!caller) return Response.json({ error: 'Authentication required', code: 'auth_required' }, { status: 401 });
 
     const body = await req.json();
-    const { action, email, role_type, reseller_id, customer_id, display_name, phone, status } = body;
+    const { action, email: rawEmail, role_type, reseller_id, customer_id, display_name, phone, status } = body;
+    // Normalise the email once (trim + lowercase) so the pending scope, the
+    // existing-user lookup, the invitation, and applyMyPendingScope's lookup
+    // all key on the exact same value regardless of how the admin typed it.
+    const email = (rawEmail || '').trim().toLowerCase();
 
     if (action !== 'invite') {
       return Response.json({ error: 'Only action "invite" is supported', code: 'bad_action' }, { status: 400 });
