@@ -170,6 +170,7 @@ export const ROUTE_REGISTRY = {
     { title: "Control Room", pageKey: "ControlRoom", icon: Radio, isRoot: true },
     { title: "Reseller Portal", pageKey: "ResellerPortal", icon: Building2 },
     { title: "Tenant Setup", pageKey: "TenantSetup", icon: Building2 },
+    { title: "Sites", pageKey: "SiteManagement", icon: MapPin },
     { title: "User Management", pageKey: "UserManagement", icon: Users },
     { title: "Configuration", pageKey: "Configuration", icon: Sliders },
     { title: "Reports", pageKey: "Reports", icon: FileText },
