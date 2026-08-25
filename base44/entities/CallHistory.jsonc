@@ -86,7 +86,7 @@
       "$or": [
         {
           "user_condition": {
-            "role": "admin"
+            "admin_level": "platform"
           }
         },
         {
@@ -101,7 +101,7 @@
       "$or": [
         {
           "user_condition": {
-            "role": "admin"
+            "admin_level": "platform"
           }
         },
         {
@@ -119,7 +119,7 @@
       "$or": [
         {
           "user_condition": {
-            "role": "admin"
+            "admin_level": "platform"
           }
         },
         {
@@ -135,7 +135,7 @@
     },
     "delete": {
       "user_condition": {
-        "role": "admin"
+        "admin_level": "platform"
       }
     }
   }
