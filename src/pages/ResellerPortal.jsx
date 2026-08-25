@@ -42,6 +42,15 @@ export default function ResellerPortal() {
     }
   };
 
+  // Auto-run the diagnostic once when ?diag=1 so results are captured without
+  // needing a click — they persist to PlatformAuditLog for server-side review.
+  useEffect(() => {
+    if (!diag || !user) return;
+    if (isPlatformAdminUser(user)) return; // only meaningful for reseller admin
+    runDiag();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diag, user]);
+
   useEffect(() => {
     let cancelled = false;
     base44.auth.me()

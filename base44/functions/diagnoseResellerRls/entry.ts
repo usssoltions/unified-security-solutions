@@ -176,5 +176,21 @@ export default async function(req: Request): Promise<Response> {
     out.site_get_unrelated = { error: 'discover failed: ' + String(e?.message || e) };
   }
 
+  // Persist the full diagnostic result to PlatformAuditLog so it can be
+  // retrieved server-side without the caller having to copy/paste. Create is
+  // permitted for the caller (data.user_id == user.id / created_by_id).
+  try {
+    await base44.entities.PlatformAuditLog.create({
+      event_type: 'rls.diagnostic',
+      user_id: caller.id,
+      user_name: caller.display_name || caller.full_name || caller.email,
+      reseller_id: caller.reseller_id || undefined,
+      customer_id: caller.customer_id || undefined,
+      action: 'reseller_rls_diagnostic',
+      new_values: JSON.stringify(out),
+      notes: `Reseller RLS diagnostic for ${caller.email}`,
+    });
+  } catch (_) { /* best-effort capture */ }
+
   return Response.json(out);
 }
