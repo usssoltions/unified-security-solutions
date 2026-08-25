@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
-  const [needsReauth, setNeedsReauth] = useState(false);
+
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
 
   useEffect(() => {
@@ -135,18 +135,12 @@ export const AuthProvider = ({ children }) => {
             return;
           }
 
-          // The session token was issued at signup BEFORE the invitation scope
-          // existed, and RLS resolves tenant fields (reseller_id/customer_id)
-          // from the token. Without a fresh token, entity reads such as
-          // Reseller.get are denied with the stale token → "Reseller not
-          // found". Force a re-authentication so a fresh token carries the
-          // applied scope; the pending scope is already consumed, so the next
-          // login proceeds straight to the portal.
-          if (applied) {
-            setNeedsReauth(true);
-            setIsLoadingAuth(false);
-            return;
-          }
+          // Membership RLS uses {{user.id}}, which IS present in every session
+          // token, so reseller reads work immediately after applyMyPendingScope
+          // adds the caller to the Reseller's members — no re-auth needed. The
+          // previous forced re-auth was based on the false assumption that a
+          // fresh token would expose custom user fields (reseller_id) to RLS;
+          // empirical token inspection proved it does not.
         }
       }
 
@@ -196,8 +190,7 @@ export const AuthProvider = ({ children }) => {
       appPublicSettings,
       logout,
       navigateToLogin,
-      checkAppState,
-      needsReauth
+      checkAppState
     }}>
       {children}
     </AuthContext.Provider>

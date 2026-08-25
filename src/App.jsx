@@ -10,7 +10,6 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import OnboardingFailed from '@/components/OnboardingFailed';
-import ReauthOnboarding from '@/components/ReauthOnboarding';
 import IncomingCallHandler from '@/components/IncomingCallHandler';
 import AndroidDownload from '@/pages/AndroidDownload';
 import AccessHistory from '@/pages/AccessHistory';
@@ -48,7 +47,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   : <>{children}</>;
 
 const AuthenticatedApp = () => {
-  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin, needsReauth } = useAuth();
+  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin } = useAuth();
 
   // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -72,13 +71,6 @@ const AuthenticatedApp = () => {
       navigateToLogin();
       return null;
     }
-  }
-
-  // A freshly-invited tenant admin whose scope was just applied needs a fresh
-  // token (RLS reads tenant fields from the token). Show a transitional screen
-  // and force re-authentication before exposing the app — no unscoped access.
-  if (needsReauth) {
-    return <ReauthOnboarding />;
   }
 
   // Render the main app — IncomingCallHandler is OUTSIDE Routes so it

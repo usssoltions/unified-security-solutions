@@ -48,6 +48,26 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ applied: false });
     }
 
+    // Reseller-only membership RLS: add the authenticated caller's own user
+    // id to the intended Reseller's `members` array BEFORE scoping the user,
+    // so a membership failure fails closed (user stays unscoped → no app
+    // access). The reseller is resolved server-side from the pending scope;
+    // the client cannot supply an arbitrary target. Idempotent + deduped.
+    // Customer/Site membership is a later phase — only reseller scoping here.
+    if (scope.admin_level === 'reseller' && scope.reseller_id) {
+      try {
+        const reseller: any = await base44.asServiceRole.entities.Reseller.get(scope.reseller_id);
+        const existing: string[] = Array.isArray(reseller?.members) ? reseller.members : [];
+        if (!existing.includes(caller.id)) {
+          existing.push(caller.id);
+          await base44.asServiceRole.entities.Reseller.update(scope.reseller_id, { members: existing });
+        }
+      } catch (e: any) {
+        // Fail closed: membership could not be established → do not scope.
+        return Response.json({ applied: false, reason: 'membership_failed' });
+      }
+    }
+
     await base44.asServiceRole.entities.User.update(caller.id, updates);
 
     await base44.asServiceRole.entities.PendingTenantScope.update(scope.id, {
