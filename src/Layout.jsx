@@ -26,6 +26,7 @@ import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitle
 import { useBranding } from "@/hooks/useBranding";
 import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
+import { resolveBrand, hexToRgba } from "@/lib/branding";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { getNavItems } from "@/lib/routeRegistry";
 
@@ -61,6 +62,7 @@ export default function Layout({ children, currentPageName }) {
   // admin_level === "platform"), never inferred from a missing tenant
   // assignment. Legacy unmigrated Base44 admins are NOT platform admins.
   const isPlatformAdmin = isPlatformAdminUser(user);
+  const brand = resolveBrand(branding);
 
   // Apply white-label branding colors to CSS variables
   useEffect(() => {
@@ -339,26 +341,34 @@ export default function Layout({ children, currentPageName }) {
                       <ArrowLeft className="w-5 h-5" />
                     </button>
                   ) : (
-                    <div className="w-9 h-9 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-500/30 lg:hidden">
+                    brand.logoUrl ? (
+                      <img src={brand.logoUrl} alt={brand.appName || "Logo"} className="w-9 h-9 rounded-xl object-contain bg-slate-900/60 lg:hidden" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg lg:hidden" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})`, boxShadow: `0 10px 15px -3px ${hexToRgba(brand.primary, 0.3)}` }}>
+                        <Shield className="w-5 h-5 text-white" />
+                      </div>
+                    )
+                  )}
+
+                  {brand.logoUrl ? (
+                    <img src={brand.logoUrl} alt={brand.appName || "Logo"} className="w-9 h-9 rounded-xl object-contain bg-slate-900/60 hidden lg:block" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-xl hidden lg:flex items-center justify-center shadow-lg" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})`, boxShadow: `0 10px 15px -3px ${hexToRgba(brand.primary, 0.3)}` }}>
                       <Shield className="w-5 h-5 text-white" />
                     </div>
                   )}
-
-                  <div className="w-9 h-9 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl hidden lg:flex items-center justify-center shadow-lg shadow-sky-500/30">
-                    <Shield className="w-5 h-5 text-white" />
-                  </div>
                   
                   {!canGoBack && (
                     <div className="lg:hidden">
                       <h1 className="font-bold text-white text-base leading-tight">
-                        {branding?.app_name || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
+                        {brand.appName || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
                       </h1>
                       <p className="text-xs text-slate-400">{roleLabel}</p>
                     </div>
                   )}
                   <div className="hidden lg:block">
                     <h1 className="font-bold text-white text-base leading-tight">
-                      {branding?.app_name || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
+                      {brand.appName || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
                     </h1>
                     <p className="text-xs text-slate-400">{roleLabel}</p>
                   </div>
@@ -384,7 +394,7 @@ export default function Layout({ children, currentPageName }) {
                   </button>
 
                   <div className="hidden md:flex items-center gap-2 bg-slate-800/80 rounded-xl px-3 py-2">
-                    <div className="w-7 h-7 bg-gradient-to-br from-sky-400 to-blue-600 rounded-lg flex items-center justify-center">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})` }}>
                       <span className="text-white font-bold text-xs">{getUserInitial(user)}</span>
                     </div>
                     <div>
@@ -405,7 +415,7 @@ export default function Layout({ children, currentPageName }) {
               <aside className="hidden lg:flex flex-col w-64 bg-slate-900/60 backdrop-blur-lg border-r border-slate-700/50 min-h-screen shrink-0">
                 <div className="p-4 border-b border-slate-700/50">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})` }}>
                       <span className="text-white font-bold">{getUserInitial(user)}</span>
                     </div>
                     <div>
@@ -415,20 +425,20 @@ export default function Layout({ children, currentPageName }) {
                   </div>
                 </div>
                 <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                  {navigationItems.map((item) => (
-                    <Link
-                      key={item.title}
-                      to={item.url}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium ${
-                        location.pathname === item.url
-                          ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
-                          : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                      }`}
-                    >
-                      <item.icon className="w-4 h-4 shrink-0" />
-                      {item.title}
-                    </Link>
-                  ))}
+                  {navigationItems.map((item) => {
+                    const active = location.pathname === item.url;
+                    return (
+                      <Link
+                        key={item.title}
+                        to={item.url}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium border border-transparent ${active ? "" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"}`}
+                        style={active ? { color: brand.primary, backgroundColor: hexToRgba(brand.primary, 0.18), borderColor: hexToRgba(brand.primary, 0.35) } : undefined}
+                      >
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        {item.title}
+                      </Link>
+                    );
+                  })}
                 </nav>
                 {user.role_type === "guard" && user.is_clocked_in && (
                   <div className="p-4 border-t border-slate-700/50">
@@ -458,7 +468,7 @@ export default function Layout({ children, currentPageName }) {
                 <div className="absolute top-0 left-0 bottom-0 w-72 bg-slate-900 border-r border-slate-700 flex flex-col">
                   <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})` }}>
                         <span className="text-white font-bold">{getUserInitial(user)}</span>
                       </div>
                       <div>
@@ -471,21 +481,21 @@ export default function Layout({ children, currentPageName }) {
                     </button>
                   </div>
                   <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                    {navigationItems.map((item) => (
-                      <Link
-                        key={item.title}
-                        to={item.url}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-medium ${
-                          location.pathname === item.url
-                            ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
-                            : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                        }`}
-                      >
-                        <item.icon className="w-4 h-4 shrink-0" />
-                        {item.title}
-                      </Link>
-                    ))}
+                    {navigationItems.map((item) => {
+                      const active = location.pathname === item.url;
+                      return (
+                        <Link
+                          key={item.title}
+                          to={item.url}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-sm font-medium border border-transparent ${active ? "" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
+                          style={active ? { color: brand.primary, backgroundColor: hexToRgba(brand.primary, 0.18), borderColor: hexToRgba(brand.primary, 0.35) } : undefined}
+                        >
+                          <item.icon className="w-4 h-4 shrink-0" />
+                          {item.title}
+                        </Link>
+                      );
+                    })}
                   </nav>
                   <div className="p-4 border-t border-slate-700">
                     <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-3 text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors text-sm font-medium">

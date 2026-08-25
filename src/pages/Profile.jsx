@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, User, Mail, Shield } from "lucide-react";
+import { AlertCircle, User, Mail, Shield, Headphones, Phone, Globe } from "lucide-react";
 import TelegramConnection from "@/components/telegram/TelegramConnection";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { useBranding } from "@/hooks/useBranding";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
 
 const ROLE_LABELS = {
   admin: "Administrator",
@@ -31,6 +33,8 @@ export default function Profile() {
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const isPlatformAdmin = isPlatformAdminUser(user);
 
   if (isLoading) {
     return (
@@ -98,6 +102,53 @@ export default function Profile() {
         {/* Telegram Notifications */}
         <TelegramConnection user={user} />
 
+        {/* Support & Branding */}
+        {(branding?.support_name || branding?.support_email || branding?.support_phone || branding?.website) && (
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Headphones className="w-5 h-5 text-sky-400" />
+                Support
+              </CardTitle>
+              <CardDescription className="text-slate-400">
+                Contact your service provider
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {branding.support_name && (
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span className="text-white">{branding.support_name}</span>
+                </div>
+              )}
+              {branding.support_email && (
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-slate-500 shrink-0" />
+                  <a href={`mailto:${branding.support_email}`} className="text-sky-400 hover:underline">
+                    {branding.support_email}
+                  </a>
+                </div>
+              )}
+              {branding.support_phone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+                  <a href={`tel:${branding.support_phone}`} className="text-sky-400 hover:underline">
+                    {branding.support_phone}
+                  </a>
+                </div>
+              )}
+              {branding.website && (
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-slate-500 shrink-0" />
+                  <a href={branding.website} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
+                    {branding.website}
+                  </a>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Account Deactivation Request */}
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
@@ -113,9 +164,17 @@ export default function Profile() {
             <p className="text-slate-400 text-sm mb-4">
               To deactivate or remove your account, please contact your organisation administrator. Account deactivation is managed securely through the User Management module to maintain audit integrity.
             </p>
-            <a href="mailto:support@base44.com" className="text-sky-400 text-sm hover:underline">
-              Contact support
-            </a>
+            {branding?.support_email ? (
+              <a href={`mailto:${branding.support_email}`} className="text-sky-400 text-sm hover:underline">
+                Contact {branding.support_name || "support"}
+              </a>
+            ) : isPlatformAdmin ? (
+              <a href="mailto:support@base44.com" className="text-sky-400 text-sm hover:underline">
+                Contact support
+              </a>
+            ) : (
+              <span className="text-slate-500 text-sm">Contact your organisation administrator.</span>
+            )}
           </CardContent>
         </Card>
       </div>

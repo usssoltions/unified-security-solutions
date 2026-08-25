@@ -15,6 +15,7 @@ import ResellerCustomers from "@/components/reseller/ResellerCustomers";
 import ResellerSites from "@/components/reseller/ResellerSites";
 import ResellerUsers from "@/components/reseller/ResellerUsers";
 import ResellerModules from "@/components/reseller/ResellerModules";
+import ResellerBranding from "@/components/reseller/ResellerBranding";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: Building2 },
@@ -188,22 +189,13 @@ export default function ResellerConsole({ resellerId, viewer, viewAs }) {
       )}
 
       {tab === "branding" && (
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader><CardTitle className="text-white text-sm flex items-center gap-2"><Palette className="w-4 h-4 text-sky-400" /> White-label Branding</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="App / business name" value={edit.name} onChange={(v) => setEdit({ ...edit, name: v })} disabled={readOnly} />
-            <Field label="Logo URL" value={edit.logo_url} onChange={(v) => setEdit({ ...edit, logo_url: v })} disabled={readOnly} />
-            <Field label="Primary color" value={edit.primary_color} onChange={(v) => setEdit({ ...edit, primary_color: v })} disabled={readOnly} />
-            <Field label="Accent color" value={edit.accent_color} onChange={(v) => setEdit({ ...edit, accent_color: v })} disabled={readOnly} />
-            <Field label="Support name" value={edit.support_name} onChange={(v) => setEdit({ ...edit, support_name: v })} disabled={readOnly} />
-            <Field label="Support email" value={edit.support_email} onChange={(v) => setEdit({ ...edit, support_email: v })} disabled={readOnly} />
-            <Field label="Support phone" value={edit.support_phone} onChange={(v) => setEdit({ ...edit, support_phone: v })} disabled={readOnly} />
-            <Field label="Website" value={edit.website} onChange={(v) => setEdit({ ...edit, website: v })} disabled={readOnly} />
-            {!readOnly && <Button onClick={() => saveReseller(edit)} disabled={saving} className="bg-sky-500 hover:bg-sky-600 sm:col-span-2">
-              {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />} Save Branding
-            </Button>}
-          </CardContent>
-        </Card>
+        <ResellerBranding
+          edit={edit}
+          setEdit={setEdit}
+          onSave={saveReseller}
+          saving={saving}
+          readOnly={readOnly}
+        />
       )}
 
       {tab === "devices" && (

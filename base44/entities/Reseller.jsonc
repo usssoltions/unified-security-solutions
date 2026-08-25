@@ -1,7 +1,7 @@
 {
   "name": "Reseller",
   "type": "object",
-  "description": "A reseller/partner organization that manages multiple customer tenants. Security companies may operate as resellers, providing USS solutions to their own clients. Tenant isolation is enforced via a `members` array of authorised User IDs (membership RLS), NOT via {{user.data.reseller_id}} \u2014 the platform session token does not carry custom User fields, so {{user.data.*}} resolves to null in RLS. `members` is managed server-side only; reseller admins cannot edit it directly.",
+  "description": "A reseller/partner organization that manages multiple customer tenants. Security companies may operate as resellers, providing USS solutions to their own clients. Tenant isolation is enforced via a `members` array of authorised User IDs (membership RLS), NOT via {{user.data.reseller_id}} \u2014 the platform session token does not carry custom User fields, so {{user.data.*}} resolves to null in RLS. `members` is managed server-side only; reseller admins cannot edit it directly. White-label branding (app_name, logo_url, primary_color, accent_color, support_*) lives directly on this entity and is inherited by all customers belonging to the reseller.",
   "properties": {
     "name": {
       "type": "string"
@@ -15,14 +15,21 @@
     "vat_number": {
       "type": "string"
     },
+    "app_name": {
+      "type": "string",
+      "description": "White-label application / business name shown in the reseller's branded app header and branded surfaces. Distinct from the reseller's trading name. When blank, the platform default product name is used."
+    },
     "logo_url": {
-      "type": "string"
+      "type": "string",
+      "description": "Reseller logo file URL (uploaded via the Branding editor). Inherited by the reseller's customers. Null/empty falls back to the platform default mark."
     },
     "primary_color": {
-      "type": "string"
+      "type": "string",
+      "description": "Reseller primary brand colour (hex). Applied to active navigation, branded headers and primary accents. Must NOT override semantic safety/status colours. Validated to a hex value before use."
     },
     "accent_color": {
-      "type": "string"
+      "type": "string",
+      "description": "Reseller accent / action colour (hex). Applied to primary action buttons, links and highlights. Must NOT override semantic safety/status colours. Validated to a hex value before use."
     },
     "support_name": {
       "type": "string"
