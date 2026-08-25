@@ -111,10 +111,12 @@ export const AuthProvider = ({ children }) => {
         // invitation scope) needs the apply step. Already-onboarded users skip
         // the extra call.
         if (!hasScope && !hasRole) {
+          let applied = false;
           try {
             const res = await base44.functions.invoke('applyMyPendingScope', {});
             const d = res?.data || res;
-            if (d?.applied) {
+            applied = !!d?.applied;
+            if (applied) {
               currentUser = await base44.auth.me();
             }
           } catch (_) { /* swallow; fail-closed check below */ }
@@ -129,6 +131,19 @@ export const AuthProvider = ({ children }) => {
               type: 'onboarding_failed',
               message: 'Your account setup could not be completed. Please contact your administrator.'
             });
+            setIsLoadingAuth(false);
+            return;
+          }
+
+          // The session token was issued at signup BEFORE the invitation scope
+          // existed, and RLS resolves tenant fields (reseller_id/customer_id)
+          // from the token. Without a fresh token, entity reads such as
+          // Reseller.get are denied with the stale token → "Reseller not
+          // found". Force a re-authentication so a fresh token carries the
+          // applied scope; the pending scope is already consumed, so the next
+          // login proceeds straight to the portal.
+          if (applied) {
+            setNeedsReauth(true);
             setIsLoadingAuth(false);
             return;
           }
