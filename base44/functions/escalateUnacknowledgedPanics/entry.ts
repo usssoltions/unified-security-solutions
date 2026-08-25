@@ -1,27 +1,30 @@
 /**
  * escalateUnacknowledgedPanics
  *
- * THE SINGLE CENTRAL ESCALATION MECHANISM — replaces the previous client-side
- * 60-second polling monitor (PanicEscalationMonitor) which only worked when a
- * supervisor's browser was open. Uses asServiceRole for cross-user notification
- * dispatch. Requires an authenticated caller: admins can trigger bulk
- * escalation sweeps; any authenticated user can escalate their own panic.
+ * THE SINGLE CENTRAL ESCALATION MECHANISM (backend-authoritative — works with
+ * no browser open). Uses asServiceRole for cross-user notification dispatch.
  *
- * Can be called two ways:
- * 1. By scheduled automation (no body) → bulk-checks all active panics.
- * 2. By the activator's client-side 2-minute timer (body: { panicId }) →
- *    escalates one specific panic. This is the PRIMARY (event-driven) path
- *    when the app is open; the scheduled run is the FALLBACK.
+ * Called two ways:
+ *  1. Scheduled automation (no body) → bulk-checks all ACTIVE panics.
+ *     Bulk sweeps require a Platform Admin caller.
+ *  2. Activator's client-side 2-minute timer ({ panicId }) → escalates one
+ *     specific panic (PRIMARY event-driven path while the app is open).
  *
  * Escalation levels:
  *   Level 1 at 2 minutes (120s) unacknowledged
- *   Level 2 at 5 minutes (300s) unacknowledged
+ *   Level 2 at 5 minutes (300s) unacknowledged  (MAX)
  *
- * Idempotency: the escalation_count field is the idempotency key. Before
- * escalating, we re-fetch the panic to verify escalation_count hasn't changed
- * since the list was fetched — this prevents concurrent executions (scheduled
- * + client timer firing at the same time) from double-escalating. A panic
- * that is acknowledged/resolved/cancelled is never escalated.
+ * HARDENING (emergency-safety):
+ *   - Before EVERY escalation action the CURRENT panic is re-fetched and
+ *     verified eligible: status MUST be exactly 'active'. Acknowledged,
+ *     assigned, accepted, resolved or cancelled panics are NEVER escalated.
+ *   - Idempotency: escalation_count is the idempotency key. A level already
+ *     sent is never re-sent; once MAX_ESCALATION_LEVEL is reached no further
+ *     escalation occurs.
+ *   - Escalation notifications are TENANT-SCOPED: a customer/reseller panic
+ *     only alerts operational roles inside that tenant. A platform-level
+ *     panic (no tenant) alerts all operational roles.
+ *   - Every escalation is recorded in PlatformAuditLog.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { buildPanicEmail } from '../../shared/panicEmailTemplate.ts';
@@ -30,7 +33,42 @@ const LEVEL_1_THRESHOLD = 120; // 2 minutes
 const LEVEL_2_THRESHOLD = 300; // 5 minutes
 const MAX_ESCALATION_LEVEL = 2;
 
-const OPERATIONAL_ROLES = ['admin', 'dispatcher', 'supervisor', 'estate_manager', 'management'];
+const OPERATIONAL_ROLES = ['admin', 'platform_admin', 'dispatcher', 'supervisor', 'estate_manager', 'management', 'practice_admin'];
+
+function isPlatformAdminCaller(user) {
+  return !!user && (
+    user.role_type === 'admin' ||
+    user.role_type === 'platform_admin' ||
+    user.admin_level === 'platform'
+  );
+}
+
+/** Tenant filter for escalation recipients — never leak across tenants. */
+function panicRecipientFilter(panic) {
+  if (panic.customer_id) return { customer_id: panic.customer_id };
+  if (panic.reseller_id) return { reseller_id: panic.reseller_id };
+  return {}; // platform-level panic → all operational roles
+}
+
+async function auditEscalation(base44, caller, panic, level, secondsSinceActivation) {
+  try {
+    await base44.asServiceRole.entities.PlatformAuditLog.create({
+      event_type: 'panic.escalated',
+      user_id: caller?.id || 'system',
+      user_name: caller?.display_name || caller?.full_name || 'System (Auto-Escalation)',
+      customer_id: panic.customer_id || null,
+      reseller_id: panic.reseller_id || null,
+      module_key: 'OPERATIONS',
+      entity_name: 'PanicAlert',
+      entity_id: panic.id,
+      action: 'escalated',
+      new_values: `level=${level}`,
+      notes: `Escalation #${level} — unacknowledged after ${Math.round(secondsSinceActivation)}s`,
+    });
+  } catch (e) {
+    console.error('Escalation audit log failed:', e);
+  }
+}
 
 Deno.serve(async (req) => {
   try {
@@ -44,14 +82,15 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { panicId } = body;
 
-    // Bulk check (no panicId) is admin-only — only admins can trigger a
-    // system-wide escalation sweep.
-    if (!panicId && callerUser.role_type !== 'admin') {
-      return Response.json({ error: 'Forbidden — bulk escalation requires admin role' }, { status: 403 });
+    const platformCaller = isPlatformAdminCaller(callerUser);
+
+    // Bulk check (no panicId) is Platform-Admin-only.
+    if (!panicId && !platformCaller) {
+      return Response.json({ error: 'Forbidden — bulk escalation requires Platform Admin role' }, { status: 403 });
     }
 
-    // Specific panic: a non-admin may only escalate their OWN panic.
-    if (panicId && callerUser.role_type !== 'admin') {
+    // Specific panic: a non-platform caller may only escalate their OWN panic.
+    if (panicId && !platformCaller) {
       const ownedPanic = await base44.asServiceRole.entities.PanicAlert.get(panicId);
       if (!ownedPanic || ownedPanic.user_id !== callerUser.id) {
         return Response.json({ error: 'Forbidden — you can only escalate your own panic' }, { status: 403 });
@@ -64,17 +103,17 @@ Deno.serve(async (req) => {
 
     let panicsToCheck;
     if (panicId) {
-      // Specific panic (from client-side timer)
       const panic = await base44.asServiceRole.entities.PanicAlert.get(panicId);
       panicsToCheck = panic ? [panic] : [];
     } else {
-      // Bulk check (from scheduled automation)
+      // Bulk: only ACTIVE panics (acknowledged/resolved/cancelled excluded).
       panicsToCheck = await base44.asServiceRole.entities.PanicAlert.filter({ status: 'active' });
     }
 
     checkedCount = panicsToCheck.length;
 
     for (const panic of panicsToCheck) {
+      // HARD GUARD: only 'active' (unacknowledged) panics escalate.
       if (panic.status !== 'active') continue;
 
       const currentLevel = panic.escalation_count || 0;
@@ -97,17 +136,17 @@ Deno.serve(async (req) => {
 
       if (!shouldEscalate) continue;
 
-      // Idempotency guard: re-fetch to verify escalation_count hasn't changed
-      // since the list was fetched (prevents concurrent double-escalation).
+      // Idempotency + staleness guard: re-fetch the CURRENT record and
+      // re-verify it is still active at the expected escalation level.
       const freshPanic = await base44.asServiceRole.entities.PanicAlert.get(panic.id);
-      if (!freshPanic || freshPanic.status !== 'active') continue;
-      if ((freshPanic.escalation_count || 0) !== currentLevel) continue;
+      if (!freshPanic) continue;
+      if (freshPanic.status !== 'active') continue;            // acknowledged/resolved/cancelled → STOP
+      if ((freshPanic.escalation_count || 0) !== currentLevel) continue; // level changed → skip
 
       const nowIso = new Date().toISOString();
       const callerName = callerUser?.display_name || callerUser?.full_name || 'System (Auto-Escalation)';
       const callerId = callerUser?.id || 'system';
 
-      // Update the panic with the new escalation level
       await base44.asServiceRole.entities.PanicAlert.update(panic.id, {
         escalated: true,
         escalated_at: nowIso,
@@ -123,9 +162,11 @@ Deno.serve(async (req) => {
         }]
       });
 
-      // Send escalation notifications to all operational roles
-      const allUsers = await base44.asServiceRole.entities.User.filter({});
-      const recipients = allUsers.filter(u => OPERATIONAL_ROLES.includes(u.role_type));
+      await auditEscalation(base44, callerUser, freshPanic, newLevel, secondsSinceActivation);
+
+      // TENANT-SCOPED escalation notifications (no cross-tenant leak).
+      const recipients = await base44.asServiceRole.entities.User.filter(panicRecipientFilter(freshPanic));
+      const operationalRecipients = recipients.filter(u => OPERATIONAL_ROLES.includes(u.role_type));
 
       const googleMapsUrl = freshPanic.location?.lat && freshPanic.location?.lng
         ? `https://www.google.com/maps?q=${freshPanic.location.lat},${freshPanic.location.lng}`
@@ -142,7 +183,7 @@ Deno.serve(async (req) => {
       const escalationTitle = `🚨 PANIC UNACKNOWLEDGED — ESCALATION #${newLevel}`;
       const escalationMsg = `PANIC alert from ${freshPanic.user_name} at ${freshPanic.site_name || 'unknown site'} remains UNACKNOWLEDGED. This is escalation #${newLevel}. RESPOND IMMEDIATELY.${googleMapsUrl ? ` Location: ${googleMapsUrl}` : ''}`;
 
-      await Promise.allSettled(recipients.map(async (recipient) => {
+      await Promise.allSettled(operationalRecipients.map(async (recipient) => {
         try {
           await base44.asServiceRole.entities.Notification.create({
             recipient_id: recipient.id,
@@ -171,12 +212,12 @@ Deno.serve(async (req) => {
         }
       }));
 
-      // Send push notification via OneSignal directly
+      // Send push notification via OneSignal directly (tenant-scoped players).
       try {
         const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');
         const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
         if (ONESIGNAL_APP_ID && ONESIGNAL_API_KEY) {
-          const playerIds = recipients.map(u => u.onesignal_player_id).filter(Boolean);
+          const playerIds = operationalRecipients.map(u => u.onesignal_player_id).filter(Boolean);
           if (playerIds.length > 0) {
             await fetch('https://onesignal.com/api/v1/notifications', {
               method: 'POST',
