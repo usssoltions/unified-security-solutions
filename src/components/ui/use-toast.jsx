@@ -1,8 +1,14 @@
 // Inspired by react-hot-toast library
 import { useState, useEffect, createContext, useContext } from "react";
 
-const TOAST_LIMIT = 20;
-const TOAST_REMOVE_DELAY = 1000000;
+// Stacking is capped so a burst of actions can never fill the screen. A
+// single success toast replaces any existing success toast (it never stacks
+// with another success). Errors may still stack a little but auto-dismiss
+// slower and keep their dismiss button.
+const TOAST_LIMIT = 3;
+const TOAST_REMOVE_DELAY = 500;
+const TOAST_SUCCESS_DURATION = 2200;
+const TOAST_ERROR_DURATION = 6000;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -44,12 +50,42 @@ const clearFromRemoveQueue = (toastId) => {
   }
 };
 
+// Auto-dismiss timer (separate from the remove queue, which only handles the
+// exit-animation delay after a toast is already closed).
+const autoDismissTimeouts = new Map();
+
+const scheduleAutoDismiss = (toastId, duration) => {
+  clearAutoDismiss(toastId);
+  const timeout = setTimeout(() => {
+    autoDismissTimeouts.delete(toastId);
+    dispatch({ type: actionTypes.DISMISS_TOAST, toastId });
+  }, duration);
+  autoDismissTimeouts.set(toastId, timeout);
+};
+
+const clearAutoDismiss = (toastId) => {
+  const t = autoDismissTimeouts.get(toastId);
+  if (t) {
+    clearTimeout(t);
+    autoDismissTimeouts.delete(toastId);
+  }
+};
+
 export const reducer = (state, action) => {
   switch (action.type) {
     case actionTypes.ADD_TOAST:
       return {
         ...state,
-        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+        // Non-destructive (success) toasts replace existing non-destructive
+        // toasts so only one success toast is ever visible. Destructive
+        // (error) toasts stack up to TOAST_LIMIT so the user can read each.
+        toasts:
+          action.toast.variant === "destructive"
+            ? [action.toast, ...state.toasts].slice(0, TOAST_LIMIT)
+            : [
+                action.toast,
+                ...state.toasts.filter((t) => t.variant === "destructive"),
+              ].slice(0, TOAST_LIMIT),
       };
 
     case actionTypes.UPDATE_TOAST:
@@ -63,12 +99,13 @@ export const reducer = (state, action) => {
     case actionTypes.DISMISS_TOAST: {
       const { toastId } = action;
 
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
+      // ! Side effects !
       if (toastId) {
+        clearAutoDismiss(toastId);
         addToRemoveQueue(toastId);
       } else {
         state.toasts.forEach((toast) => {
+          clearAutoDismiss(toast.id);
           addToRemoveQueue(toast.id);
         });
       }
@@ -87,11 +124,13 @@ export const reducer = (state, action) => {
     }
     case actionTypes.REMOVE_TOAST:
       if (action.toastId === undefined) {
+        autoDismissTimeouts.forEach((_, id) => clearAutoDismiss(id));
         return {
           ...state,
           toasts: [],
         };
       }
+      clearAutoDismiss(action.toastId);
       return {
         ...state,
         toasts: state.toasts.filter((t) => t.id !== action.toastId),
@@ -112,6 +151,10 @@ function dispatch(action) {
 
 function toast({ ...props }) {
   const id = genId();
+  const variant = props.variant || "default";
+  const duration =
+    props.duration ??
+    (variant === "destructive" ? TOAST_ERROR_DURATION : TOAST_SUCCESS_DURATION);
 
   const update = (props) =>
     dispatch({
@@ -127,12 +170,16 @@ function toast({ ...props }) {
     toast: {
       ...props,
       id,
+      variant,
+      duration,
       open: true,
       onOpenChange: (open) => {
         if (!open) dismiss();
       },
     },
   });
+
+  scheduleAutoDismiss(id, duration);
 
   return {
     id,
@@ -161,4 +208,4 @@ function useToast() {
   };
 }
 
-export { useToast, toast }; 
+export { useToast, toast };

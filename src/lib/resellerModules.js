@@ -21,7 +21,7 @@ export const RESELLER_MODULES = [
   { key: "REPORTING_CORE",         label: "Reporting & Analytics",  description: "Reports, analytics, data hub, payroll, AI reports." },
   { key: "NOTIFICATION_CORE",      label: "Notification Engine",     description: "Multi-channel notifications (email, push, Telegram, in-app)." },
   { key: "MESSAGING",              label: "Messaging",              description: "In-app chat and messaging." },
-  { key: "BARKODER_CORE",          label: "Barkoder Scanning",       description: "Barcode/QR document scanning core." },
+  { key: "BARKODER_CORE",          label: "SecureScan Engine",       description: "Barcode/QR document scanning core." },
 ];
 
 /** Map module_key -> {label, description} for quick lookup. */
