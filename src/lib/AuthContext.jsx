@@ -91,10 +91,26 @@ export const AuthProvider = ({ children }) => {
     try {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
-      const currentUser = await base44.auth.me();
+      let currentUser = await base44.auth.me();
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
+
+      // Apply any queued tenant scoping for THIS user (e.g. an invited Reseller
+      // Admin who just accepted). Runs once per browser session, server-side.
+      // Only consumes a scope an admin already queued for this email — no
+      // self-escalation. Refreshes the user so role-based routing sees scoping.
+      if (currentUser?.email && !sessionStorage.getItem('uss_scope_applied')) {
+        sessionStorage.setItem('uss_scope_applied', '1');
+        try {
+          const res = await base44.functions.invoke('applyMyPendingScope', {});
+          const d = res?.data || res;
+          if (d?.applied) {
+            currentUser = await base44.auth.me();
+            setUser(currentUser);
+          }
+        } catch (_) { /* non-fatal: will retry on next login */ }
+      }
     } catch (error) {
       console.error('User auth check failed:', error);
       setIsLoadingAuth(false);
