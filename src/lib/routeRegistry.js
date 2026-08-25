@@ -168,6 +168,7 @@ export const ROUTE_REGISTRY = {
   ],
   platform_admin: [
     { title: "Control Room", pageKey: "ControlRoom", icon: Radio, isRoot: true },
+    { title: "Panic Queue", pageKey: "PanicManagement", icon: Zap },
     { title: "Reseller Portal", pageKey: "ResellerPortal", icon: Building2 },
     { title: "Tenant Setup", pageKey: "TenantSetup", icon: Building2 },
     { title: "Sites", pageKey: "SiteManagement", icon: MapPin },

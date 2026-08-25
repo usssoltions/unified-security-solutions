@@ -53,6 +53,7 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [panicCount, setPanicCount] = useState(0);
   const [retryCount, setRetryCount] = useState(0);
 
   // Phase 7: Module entitlement-driven navigation + white-label branding
@@ -111,11 +112,30 @@ export default function Layout({ children, currentPageName }) {
     });
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') loadNotificationCount();
+      if (document.visibilityState === 'visible') { loadNotificationCount(); loadPanicCount(); }
     };
     document.addEventListener('visibilitychange', onVisible);
 
     return () => { unsub(); document.removeEventListener('visibilitychange', onVisible); };
+  }, [user]);
+
+  // Active panic count: realtime subscription (no polling). Re-counted on
+  // create/update/delete of any PanicAlert and on foreground return.
+  useEffect(() => {
+    if (!user) return;
+    loadPanicCount();
+    const unsub = base44.entities.PanicAlert.subscribe((event) => {
+      if (!event.data) return;
+      if (event.type === 'create' && PANIC_ACTIVE_STATUSES.includes(event.data.status)) {
+        setPanicCount(c => c + 1);
+      } else {
+        // Recompute on update/delete — status transitions (incl. resolve) and
+        // deletions can both change the active count, and the subscription
+        // payload does not reliably carry the prior status.
+        loadPanicCount();
+      }
+    });
+    return unsub;
   }, [user]);
 
   // Keep session alive for ALL roles — ping every 10 min
@@ -168,6 +188,25 @@ export default function Layout({ children, currentPageName }) {
     try {
       const notifications = await base44.entities.Notification.filter({ recipient_id: user.id, read: false });
       setNotificationCount(notifications.length);
+    } catch (e) {}
+  };
+
+  // Active Panic count for the header emergency indicator. RLS scopes what the
+  // user can see: Platform Admin (role "admin") sees all active panics across
+  // the platform; tenant operational users see only their own tenant's.
+  const PANIC_ACTIVE_STATUSES = ["active", "acknowledged", "assigned", "accepted"];
+  const loadPanicCount = async () => {
+    if (!user) return;
+    // Only show the indicator to roles that can manage panics.
+    if (!["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin"].includes(user.role_type)) {
+      setPanicCount(0);
+      return;
+    }
+    try {
+      const counts = await Promise.all(
+        PANIC_ACTIVE_STATUSES.map(s => base44.entities.PanicAlert.filter({ status: s }, "-activated_at", 50).catch(() => []))
+      );
+      setPanicCount(counts.reduce((n, arr) => n + (arr?.length || 0), 0));
     } catch (e) {}
   };
 
@@ -278,8 +317,15 @@ export default function Layout({ children, currentPageName }) {
 
   const getNavigationItems = () => getNavItems(user.role_type);
 
+  // The built-in role "admin" is the USS Platform Admin — it bypasses module
+  // entitlement filtering exactly like an explicit platform_admin, so the
+  // Panic Queue (and every platform tool) is always visible to it. This does
+  // NOT change isPlatformAdminUser (used for branding/entitlements elsewhere)
+  // and does not affect reseller/customer tenant scoping.
+  const bypassEntitlements = isPlatformAdmin || user?.role_type === "admin";
+
   const allNavItems = getNavigationItems();
-  const navigationItems = isPlatformAdmin
+  const navigationItems = bypassEntitlements
     ? allNavItems
     : allNavItems.filter(item => {
         const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
@@ -380,6 +426,21 @@ export default function Layout({ children, currentPageName }) {
                   </button>
 
                   <GlobalPanicButton user={user} />
+
+                  {["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin"].includes(user?.role_type) && (
+                    <button
+                      onClick={() => navigate("/PanicManagement")}
+                      title={panicCount > 0 ? `${panicCount} active panic alert${panicCount > 1 ? "s" : ""} — open Panic Queue` : "Panic Queue"}
+                      className={`relative w-11 h-11 rounded-xl flex items-center justify-center active:scale-95 transition-transform touch-manipulation shrink-0 ${panicCount > 0 ? "bg-red-600/20 border border-red-500/40 text-red-400" : "bg-slate-800 text-slate-200"}`}
+                    >
+                      <Zap className="w-5 h-5" />
+                      {panicCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold animate-pulse">
+                          {panicCount > 9 ? '9+' : panicCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setShowNotifications(true)}

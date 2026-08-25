@@ -29,7 +29,7 @@ function elapsed(activatedAt) {
   return `${secs}s`;
 }
 
-function PanicCard({ panic, user, assignees, onAction }) {
+function PanicCard({ panic, user, assignees, onAction, resellerName, customerName }) {
   const [showAssign, setShowAssign] = useState(false);
   const [showResolve, setShowResolve] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState("");
@@ -103,6 +103,16 @@ function PanicCard({ panic, user, assignees, onAction }) {
           <div>
             <p className="text-slate-500 text-xs">Site</p>
             <p className="text-white font-semibold">{panic.site_name || "Unknown"}</p>
+          </div>
+          <div className="col-span-2 grid grid-cols-2 gap-3 pt-1 border-t border-slate-700/50 mt-1">
+            <div>
+              <p className="text-slate-500 text-xs">Reseller</p>
+              <p className="text-white text-sm">{resellerName || (panic.reseller_id ? "—" : "Platform")}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-xs">Customer</p>
+              <p className="text-white text-sm">{customerName || (panic.customer_id ? "—" : "Platform-level")}</p>
+            </div>
           </div>
           <div>
             <p className="text-slate-500 text-xs">Activated</p>
@@ -299,6 +309,24 @@ export default function PanicManagement() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Resolve reseller/customer names for tenant context on each panic card.
+  // RLS scopes these reads: Platform Admin sees all; tenant users see only
+  // their own tenant records.
+  const { data: resellers = [] } = useQuery({
+    queryKey: ["panicResolvers", "resellers"],
+    queryFn: () => base44.entities.Reseller.list().catch(() => []),
+    enabled: !!user,
+    staleTime: 60 * 1000,
+  });
+  const { data: customers = [] } = useQuery({
+    queryKey: ["panicResolvers", "customers"],
+    queryFn: () => base44.entities.Customer.list().catch(() => []),
+    enabled: !!user,
+    staleTime: 60 * 1000,
+  });
+  const resellerMap = React.useMemo(() => Object.fromEntries(resellers.map(r => [r.id, r.name])), [resellers]);
+  const customerMap = React.useMemo(() => Object.fromEntries(customers.map(c => [c.id, c.name])), [customers]);
+
   const handleAction = async (panicId, action, extra = {}) => {
     await managePanic(panicId, action, extra);
     queryClient.invalidateQueries(["panics"]);
@@ -379,6 +407,8 @@ export default function PanicManagement() {
                 user={user}
                 assignees={assignees}
                 onAction={handleAction}
+                resellerName={resellerMap[panic.reseller_id]}
+                customerName={customerMap[panic.customer_id]}
               />
             ))}
           </AnimatePresence>
