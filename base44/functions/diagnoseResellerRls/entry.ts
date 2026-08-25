@@ -21,7 +21,48 @@ export default async function(req: Request): Promise<Response> {
   }
   if (!caller) return Response.json({ error: 'not authenticated' });
 
+  // Decode the raw JWT payload (no verification — inspection only) to determine
+  // whether the platform actually carries custom User fields (reseller_id,
+  // customer_id, admin_level, role_type) in the session token. RLS resolves
+  // {{user.data.<field>}} from the token; if these are absent from the token,
+  // every {{user.data.*}} RLS rule resolves to null for this caller — the
+  // actual root cause of the reseller/customer/site "not found" denials.
+  let token_claims: any = null;
+  try {
+    const authz = req.headers.get('authorization') || req.headers.get('Authorization') || '';
+    const bearer = authz.startsWith('Bearer ') ? authz.slice(7) : authz;
+    if (bearer) {
+      const parts = bearer.split('.');
+      if (parts.length >= 2) {
+        const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const payloadJson = atob(payloadB64);
+        const payload = JSON.parse(payloadJson);
+        token_claims = {
+          all_keys: Object.keys(payload),
+          has_reseller_id: 'reseller_id' in payload,
+          has_customer_id: 'customer_id' in payload,
+          has_admin_level: 'admin_level' in payload,
+          has_role_type: 'role_type' in payload,
+          role: payload.role,
+          reseller_id: payload.reseller_id ?? null,
+          customer_id: payload.customer_id ?? null,
+          admin_level: payload.admin_level ?? null,
+          role_type: payload.role_type ?? null,
+          data_keys: payload.data ? Object.keys(payload.data) : null,
+          data_reseller_id: payload.data?.reseller_id ?? null,
+        };
+      } else {
+        token_claims = { error: 'token is not a JWT (no dot-separated payload)' };
+      }
+    } else {
+      token_claims = { error: 'no authorization header' };
+    }
+  } catch (e: any) {
+    token_claims = { error: 'decode failed: ' + String(e?.message || e) };
+  }
+
   const out: any = {
+    token_claims,
     caller: {
       id: caller.id,
       email: caller.email,
