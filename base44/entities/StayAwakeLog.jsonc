@@ -67,7 +67,7 @@
         },
         {
           "user_condition": {
-            "role": "admin"
+            "admin_level": "platform"
           }
         }
       ]
@@ -83,14 +83,14 @@
         },
         {
           "user_condition": {
-            "role": "admin"
+            "admin_level": "platform"
           }
         }
       ]
     },
     "delete": {
       "user_condition": {
-        "role": "admin"
+        "admin_level": "platform"
       }
     }
   }
