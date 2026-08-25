@@ -1,7 +1,7 @@
 {
   "name": "Reseller",
   "type": "object",
-  "description": "A reseller/partner organization that manages multiple customer tenants. Security companies may operate as resellers, providing USS solutions to their own clients.",
+  "description": "A reseller/partner organization that manages multiple customer tenants. Security companies may operate as resellers, providing USS solutions to their own clients. Tenant isolation is enforced via a `members` array of authorised User IDs (membership RLS), NOT via {{user.data.reseller_id}} \u2014 the platform session token does not carry custom User fields, so {{user.data.*}} resolves to null in RLS. `members` is managed server-side only; reseller admins cannot edit it directly.",
   "properties": {
     "name": {
       "type": "string"
@@ -50,6 +50,14 @@
     },
     "notes": {
       "type": "string"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User IDs authorised to access this reseller (membership-based RLS). Read access is granted when the authenticated user's {{user.id}} is present in this array. Managed server-side only via applyMyPendingScope / platform admin functions \u2014 reseller admins have no direct write access to this field.",
+      "default": []
     }
   },
   "required": [
@@ -69,39 +77,14 @@
           }
         },
         {
-          "$and": [
-            {
-              "id": "{{user.data.reseller_id}}"
-            },
-            {
-              "id": {
-                "$ne": null
-              }
-            }
-          ]
+          "data.members": "{{user.id}}"
         }
       ]
     },
     "update": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "$and": [
-            {
-              "id": "{{user.data.reseller_id}}"
-            },
-            {
-              "id": {
-                "$ne": null
-              }
-            }
-          ]
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
       "user_condition": {
