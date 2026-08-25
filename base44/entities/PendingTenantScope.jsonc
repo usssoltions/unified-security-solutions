@@ -1,0 +1,136 @@
+{
+  "name": "PendingTenantScope",
+  "type": "object",
+  "description": "Holds tenant scoping (reseller_id / customer_id / role_type / admin_level) for an invited user whose User record does not exist yet (the invitee has not accepted the invitation). A User-create automation (applyPendingTenantScope) consumes these records when the invitee accepts and the User record is created, applying the scoping server-side. One record per email (idempotent). This is NOT a separate invitation system \u2014 the invitation itself is sent via base44.users.inviteUser; this entity only queues the tenant scoping to apply on acceptance.",
+  "properties": {
+    "email": {
+      "type": "string",
+      "description": "Invitee email. Unique per pending scope (upsert by email)."
+    },
+    "role_type": {
+      "type": "string"
+    },
+    "admin_level": {
+      "type": "string",
+      "enum": [
+        "reseller",
+        "customer",
+        "platform"
+      ]
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "applied",
+        "expired"
+      ],
+      "default": "pending"
+    },
+    "invited_by": {
+      "type": "string"
+    },
+    "invited_by_name": {
+      "type": "string"
+    },
+    "applied_user_id": {
+      "type": "string",
+      "description": "The User id the scoping was applied to, once accepted."
+    },
+    "applied_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "email",
+    "role_type",
+    "admin_level",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -58,11 +58,29 @@ export default function ResellerAdminInvite({
         status: form.status,
       });
       const d = res?.data || res;
-      if (!d?.success && d?.error) throw new Error(d.error);
-      toast({ title: "Invitation sent", description: `${form.email} invited as ${form.role_type}` });
-      reset();
-      onDone?.();
-      onClose?.();
+      if (d?.success) {
+        if (d.rescoped) toast({ title: "Existing user re-scoped", description: `${form.email} already existed and was updated to ${form.role_type}.` });
+        else if (d.already_pending) toast({ title: "Invitation already pending", description: `Scoping updated for ${form.email}. No duplicate invite sent.` });
+        else toast({ title: "Invitation sent", description: `${form.email} will be scoped as ${form.role_type} when they accept.` });
+        reset();
+        onDone?.();
+        onClose?.();
+        return;
+      }
+      // Friendly, non-leaking errors
+      const friendly = {
+        invalid_email: "Please enter a valid email address.",
+        permission_denied: "You do not have permission to invite this user.",
+        customer_not_found: "The selected customer could not be found.",
+        bad_customer: "That customer does not belong to the selected reseller.",
+        already_pending: "An invitation is already pending for this email.",
+        invite_service_failed: "The invitation email could not be sent. Please try again.",
+        scope_failed: "The user exists but could not be scoped. Contact support.",
+        invite_pending_scope: "Invitation sent; scoping will apply when the user accepts.",
+        internal_error: "Invitation failed. Please try again.",
+      };
+      const msg = (d?.code && friendly[d.code]) || d?.error || "Invitation failed. Please try again.";
+      throw new Error(msg);
     } catch (e) {
       toast({ title: "Failed to invite", description: e.message, variant: "destructive" });
     } finally {
