@@ -10,9 +10,10 @@ import {
 } from "@/components/ui/select";
 import {
   Building2, Plus, Loader2, MapPin, Database, Play, AlertTriangle,
-  CheckCircle2, ArrowRight, RefreshCw, FileText, Shield,
+  CheckCircle2, ArrowRight, RefreshCw, FileText, Shield, UserCog,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import LegacyUserMigration from "@/components/tenant/LegacyUserMigration";
 
 /**
  * TenantSetupManager — Platform Admin tool to:
@@ -158,7 +159,8 @@ export default function TenantSetupManager({ user }) {
       <div className="flex flex-wrap gap-2">
         <TabButton id="tenants" label="Tenants" icon={Building2} />
         <TabButton id="sites" label="Site Assignment" icon={MapPin} />
-        <TabButton id="migration" label="Migration" icon={Database} />
+        <TabButton id="users" label="User Migration" icon={UserCog} />
+        <TabButton id="migration" label="Data Migration" icon={Database} />
       </div>
 
       {/* ===== TENANTS TAB ===== */}
@@ -282,6 +284,11 @@ export default function TenantSetupManager({ user }) {
             ))}
           </CardContent>
         </Card>
+      )}
+
+      {/* ===== USER MIGRATION TAB ===== */}
+      {activeTab === "users" && (
+        <LegacyUserMigration user={user} />
       )}
 
       {/* ===== MIGRATION TAB ===== */}
