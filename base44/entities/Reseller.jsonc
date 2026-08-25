@@ -71,10 +71,10 @@
         {
           "$and": [
             {
-              "data.id": "{{user.data.reseller_id}}"
+              "id": "{{user.data.reseller_id}}"
             },
             {
-              "data.id": {
+              "id": {
                 "$ne": null
               }
             }
@@ -92,10 +92,10 @@
         {
           "$and": [
             {
-              "data.id": "{{user.data.reseller_id}}"
+              "id": "{{user.data.reseller_id}}"
             },
             {
-              "data.id": {
+              "id": {
                 "$ne": null
               }
             }
