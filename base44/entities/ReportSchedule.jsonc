@@ -72,7 +72,7 @@
   "rls": {
     "create": {
       "user_condition": {
-        "role": "admin"
+        "admin_level": "platform"
       }
     },
     "read": {
@@ -82,19 +82,19 @@
         },
         {
           "user_condition": {
-            "role": "admin"
+            "admin_level": "platform"
           }
         }
       ]
     },
     "update": {
       "user_condition": {
-        "role": "admin"
+        "admin_level": "platform"
       }
     },
     "delete": {
       "user_condition": {
-        "role": "admin"
+        "admin_level": "platform"
       }
     }
   }
