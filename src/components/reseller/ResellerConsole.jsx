@@ -54,30 +54,7 @@ export default function ResellerConsole({ resellerId, viewer, viewAs }) {
     if (!resellerId) return;
     setLoading(true);
     try {
-      // TEMPORARY DIAGNOSTIC: run Reseller.get UNSUPPRESSED so the real RLS
-      // result/error is captured instead of swallowed by .catch(()=>null).
-      // Persisted to PlatformAuditLog for server-side inspection. Remove after
-      // the reseller-admin "Reseller not found" issue is resolved.
-      let r = null;
-      const rGetCapture = { resellerId, ok: false, value: null, error: null, status: null, ts: new Date().toISOString() };
-      try {
-        r = await base44.entities.Reseller.get(resellerId);
-        rGetCapture.ok = !!r;
-        rGetCapture.value = r ? { id: r.id, name: r.name, status: r.status } : null;
-      } catch (e) {
-        rGetCapture.error = String(e?.message || e);
-        rGetCapture.status = e?.status;
-      }
-      try {
-        await base44.entities.PlatformAuditLog.create({
-          event_type: "reseller.get_capture",
-          action: "reseller_get_diagnostic",
-          entity_name: "Reseller",
-          entity_id: resellerId,
-          new_values: JSON.stringify(rGetCapture),
-          notes: `Reseller.get(${resellerId}) -> ${rGetCapture.ok ? "found" : rGetCapture.error ? "error" : "null"}`,
-        });
-      } catch (_) {}
+      const r = await base44.entities.Reseller.get(resellerId).catch(() => null);
 
       const [c, s, ents, logs, uRes] = await Promise.all([
         base44.entities.Customer.filter({ reseller_id: resellerId }).catch(() => []),

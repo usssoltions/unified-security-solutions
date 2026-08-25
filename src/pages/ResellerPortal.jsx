@@ -9,6 +9,11 @@ import ResellerConsole from "@/components/reseller/ResellerConsole";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 
+// NOTE: the temporary RLS diagnostic (?diag=1) instrumentation has been
+// removed after verification — membership-based Reseller RLS is confirmed
+// working (own reseller = allowed, other = 404, list = own only). The
+// diagnoseResellerRls backend function is retained for on-demand use.
+
 /**
  * ResellerPortal — the Reseller Admin's home console.
  *  - Reseller Admin (role_type reseller_admin / admin_level reseller): sees a
@@ -26,30 +31,6 @@ export default function ResellerPortal() {
   const [loading, setLoading] = useState(true);
   const [resellers, setResellers] = useState([]);
   const viewAsId = useMemo(() => new URLSearchParams(window.location.search).get("viewAs"), []);
-  const diag = useMemo(() => new URLSearchParams(window.location.search).get("diag") === "1", []);
-  const [diagRunning, setDiagRunning] = useState(false);
-  const [diagResult, setDiagResult] = useState(null);
-
-  const runDiag = async () => {
-    setDiagRunning(true);
-    try {
-      const res = await base44.functions.invoke("diagnoseResellerRls", {});
-      setDiagResult(res?.data || res);
-    } catch (e) {
-      setDiagResult({ error: String(e?.message || e) });
-    } finally {
-      setDiagRunning(false);
-    }
-  };
-
-  // Auto-run the diagnostic once when ?diag=1 so results are captured without
-  // needing a click — they persist to PlatformAuditLog for server-side review.
-  useEffect(() => {
-    if (!diag || !user) return;
-    if (isPlatformAdminUser(user)) return; // only meaningful for reseller admin
-    runDiag();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diag, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,19 +126,6 @@ export default function ResellerPortal() {
   return (
     <div className="min-h-screen bg-slate-950 p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
-        {diag && (
-          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-amber-300 font-medium text-sm">RLS Diagnostic (temporary — remove after verification)</p>
-              <Button size="sm" variant="outline" onClick={runDiag} disabled={diagRunning} className="border-amber-500/40 text-amber-300">
-                {diagRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : "Run RLS Diagnostic"}
-              </Button>
-            </div>
-            {diagResult && (
-              <pre className="text-xs text-slate-200 bg-slate-950/60 rounded-lg p-3 overflow-auto max-h-96 whitespace-pre-wrap">{JSON.stringify(diagResult, null, 2)}</pre>
-            )}
-          </div>
-        )}
         <ResellerConsole resellerId={user.reseller_id} viewer="reseller" viewAs={false} />
       </div>
     </div>
