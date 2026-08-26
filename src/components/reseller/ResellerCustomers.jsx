@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Loader2, Building2, Package } from "lucide-react";
+import { Plus, Loader2, Building2, Package, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import CustomerModulesModal from "@/components/reseller/CustomerModulesModal";
 
@@ -19,6 +20,7 @@ import CustomerModulesModal from "@/components/reseller/CustomerModulesModal";
  */
 export default function ResellerCustomers({ resellerId, customers, onRefresh, canCreate, resellerLicensedKeys, readOnly }) {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", legal_name: "", customer_type: "security", status: "active" });
@@ -102,11 +104,22 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
         <p className="text-slate-500 text-sm text-center py-8">No customers yet. Create one to begin.</p>
       ) : customers.map((c) => (
         <div key={c.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-800/40 p-3 rounded-lg">
-          <div className="min-w-0">
-            <p className="text-white text-sm font-medium flex items-center gap-2"><Building2 className="w-4 h-4 text-emerald-400" /> {c.name}</p>
-            <p className="text-slate-500 text-xs">{c.customer_type} • {c.legal_name || "—"}</p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Full card is tappable to open Customer Management. The buttons
+              below stop propagation so Modules / Suspend / Activate remain
+              independent actions. */}
+          <button
+            type="button"
+            onClick={() => navigate(`/CustomerManagement?customer=${c.id}`)}
+            className="flex items-center gap-2 min-w-0 text-left active:scale-[0.98] transition-transform flex-1"
+          >
+            <Building2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-white text-sm font-medium truncate">{c.name}</p>
+              <p className="text-slate-500 text-xs truncate">{c.customer_type} • {c.legal_name || "—"}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-600 shrink-0 ml-auto sm:ml-0" />
+          </button>
+          <div className="flex items-center gap-2 shrink-0 pl-6 sm:pl-0">
             {!readOnly && (
               <Button size="sm" variant="outline" className="border-slate-600 text-slate-300" onClick={() => setModulesFor(c)}>
                 <Package className="w-4 h-4 mr-1" /> Modules

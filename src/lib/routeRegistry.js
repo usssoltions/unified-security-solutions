@@ -127,6 +127,16 @@ export const ROUTE_REGISTRY = {
     { title: "Incidents", pageKey: "ClientIncidents", icon: AlertTriangle },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
+  // Customer Administrator — customer-scoped operational dashboard. Lands on
+  // the customer dashboard (core, not module-gated) so login always resolves;
+  // operational module pages they are licensed for are reachable and gated by
+  // ProtectedPage's module-entitlement check.
+  customer_admin: [
+    { title: "Dashboard", pageKey: "ClientDashboard", icon: BarChart3, isRoot: true },
+    { title: "Sites", pageKey: "SiteManagement", icon: MapPin },
+    { title: "User Management", pageKey: "UserManagement", icon: Users },
+    { title: "Profile", pageKey: "Profile", icon: UserCircle },
+  ],
   reseller_admin: [
     { title: "Reseller Portal", pageKey: "ResellerPortal", icon: Building2, isRoot: true },
     { title: "User Management", pageKey: "UserManagement", icon: Users },
@@ -199,9 +209,9 @@ export const EXTRA_ALLOWED_PAGES = {
     "EstateManagerDashboard", "EstateResidents", "EstateVenues", "EstateVendors",
     "EstateLevy", "EstateProperties", "EstateVoting",
     "ClientDashboard", "ClientReports", "ClientIncidents", "EmployerPortal",
-    "ResellerManagement",
+    "ResellerManagement", "CustomerManagement",
   ],
-  reseller_admin: ["ResellerManagement"],
+  reseller_admin: ["ResellerManagement", "CustomerManagement"],
 };
 
 /**

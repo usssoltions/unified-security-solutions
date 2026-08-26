@@ -30,6 +30,7 @@ const ROLE_FALLBACK_PAGES = {
   estate_manager: ["Profile"],
   vendor: ["VendorPortal", "Profile"],
   client: ["ClientDashboard", "Profile"],
+  customer_admin: ["ClientDashboard", "Profile"],
   platform_admin: ["TenantSetup", "ControlRoom", "Profile"],
   reseller_admin: ["ResellerPortal", "Profile"],
   practice_admin: ["MedicalDashboard", "Profile"],
