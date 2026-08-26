@@ -97,6 +97,39 @@ export default function ResellerConsole({ resellerId, viewer, viewAs }) {
     }
   };
 
+  // Branding saves flow through the server-side allowlisted function (not
+  // Reseller.update) so that reseller admins — who have NO direct client-side
+  // Reseller.update permission by RLS — can still edit their own white-label
+  // branding fields. The function authorises via the verified `members`
+  // array (or Platform Admin), accepts ONLY branding fields, and audits.
+  // The Settings tab keeps using saveReseller (Platform-Admin-only by RLS).
+  const saveBranding = async (fields) => {
+    setSaving(true);
+    try {
+      const brandingFields = {
+        app_name: fields.app_name,
+        logo_url: fields.logo_url,
+        primary_color: fields.primary_color,
+        accent_color: fields.accent_color,
+        support_name: fields.support_name,
+        support_email: fields.support_email,
+        support_phone: fields.support_phone,
+        website: fields.website,
+      };
+      const res = await base44.functions.invoke("updateResellerBranding", {
+        reseller_id: resellerId,
+        fields: brandingFields,
+      });
+      const updated = res?.data?.reseller || res?.reseller;
+      if (updated) { setReseller(updated); setEdit(updated); }
+      toast({ title: res?.data?.unchanged ? "No changes" : "Branding saved" });
+    } catch (e) {
+      toast({ title: "Failed", description: e.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-sky-500 animate-spin" /></div>;
   }
@@ -192,7 +225,7 @@ export default function ResellerConsole({ resellerId, viewer, viewAs }) {
         <ResellerBranding
           edit={edit}
           setEdit={setEdit}
-          onSave={saveReseller}
+          onSave={saveBranding}
           saving={saving}
           readOnly={readOnly}
         />
