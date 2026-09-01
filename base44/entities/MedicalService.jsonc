@@ -1,7 +1,7 @@
 {
   "name": "MedicalService",
   "type": "object",
-  "description": "Medical module: Configurable service offered by a practice. Each service can define duration, required documents, assessment template, availability, reminder rules, and employer visibility.",
+  "description": "Medical module: Configurable service offered by a practice. Each service can define duration, required documents, assessment template, availability, reminder rules, and employer visibility. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -103,6 +103,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -113,6 +118,11 @@
     },
     "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -127,6 +137,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -136,9 +151,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
