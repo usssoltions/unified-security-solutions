@@ -127,6 +127,10 @@
     "notifications_sent": {
       "type": "boolean",
       "default": false
+    },
+    "calendar_event_id": {
+      "type": "string",
+      "description": "Google Calendar event id (SHARED connector). Stored so subsequent syncs update the same event instead of creating duplicates. Null when not synced."
     }
   },
   "required": [

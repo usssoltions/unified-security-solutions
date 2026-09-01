@@ -95,7 +95,7 @@ export default function MedicalAppointments() {
       const duration = formData.duration_minutes || service?.default_duration_minutes || 60;
       const end = moment(start).add(duration, "minutes").toISOString();
 
-      await base44.entities.Appointment.create({
+      const created = await base44.entities.Appointment.create({
         customer_id: user.customer_id,
         patient_id: formData.patient_id,
         patient_name: patient ? `${patient.first_names} ${patient.surname}` : "",
@@ -112,6 +112,10 @@ export default function MedicalAppointments() {
         status: "confirmed",
         notes: formData.notes,
       });
+      // Best-effort Google Calendar sync (non-blocking — never breaks appointment creation).
+      if (created?.id) {
+        base44.functions.invoke("syncAppointmentToCalendar", { appointment_id: created.id }).catch(() => {});
+      }
       setShowForm(false);
       setFormData({ patient_id: "", service_id: "", therapist_id: "", date: "", time: "09:00", duration_minutes: 60, notes: "" });
       // Notify the assigned therapist (in-app + push) about the new appointment.
@@ -160,6 +164,10 @@ export default function MedicalAppointments() {
   const updateStatus = async (aptId, newStatus) => {
     try {
       await base44.entities.Appointment.update(aptId, { status: newStatus });
+      // Sync cancellation to Google Calendar (best-effort, non-blocking).
+      if (newStatus === "cancelled") {
+        base44.functions.invoke("syncAppointmentToCalendar", { appointment_id: aptId, action: "delete" }).catch(() => {});
+      }
       // Notify the therapist when a patient arrives.
       if (newStatus === "arrived") {
         const apt = appointments.find(a => a.id === aptId);

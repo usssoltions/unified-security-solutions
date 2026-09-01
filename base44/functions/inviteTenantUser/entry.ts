@@ -23,6 +23,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  *  - If a User with the email already exists (already accepted), scoping is
  *    applied directly to the existing record instead of re-inviting.
  */
+function escHtml(s: string): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
