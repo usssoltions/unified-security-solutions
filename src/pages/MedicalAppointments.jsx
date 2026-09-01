@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Plus, Clock, Loader2, CheckCircle, XCircle, UserCheck } from "lucide-react";
+import { Calendar, Plus, Clock, Loader2, CheckCircle, XCircle, UserCheck, Activity } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import moment from "moment";
+import { useNavigate } from "react-router-dom";
 import PatientCheckIn from "@/components/medical/PatientCheckIn";
 
 export default function MedicalAppointments() {
@@ -25,7 +26,9 @@ export default function MedicalAppointments() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [checkInAppointment, setCheckInAppointment] = useState(null);
+  const [startingSessionId, setStartingSessionId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     patient_id: "", service_id: "", therapist_id: "",
     date: "", time: "09:00", duration_minutes: 60, notes: "",
@@ -102,6 +105,23 @@ export default function MedicalAppointments() {
       alert("Failed to create appointment: " + e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleStartSession = async (apt) => {
+    if (startingSessionId) return; // guard against double-tap
+    setStartingSessionId(apt.id);
+    try {
+      const res = await base44.functions.invoke("startMedicalSession", { appointment_id: apt.id });
+      const session = res?.data?.session;
+      // Open the Clinical Session workspace (Sessions page shows in-progress + complete).
+      if (session) navigate("/MedicalSessions");
+      await loadData();
+    } catch (e) {
+      console.error("Failed to start session:", e);
+      alert("Failed to start session: " + (e?.message || e));
+    } finally {
+      setStartingSessionId(null);
     }
   };
 
@@ -243,20 +263,31 @@ export default function MedicalAppointments() {
                   )}
                   {apt.status === "arrived" && (
                     <div className="flex gap-2 mt-3 pt-3 border-t border-slate-800">
+                      {user?.role_type === "therapist" || user?.role_type === "practice_admin" || user?.role_type === "admin" || user?.role_type === "platform_admin" ? (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-500 hover:bg-emerald-600 text-xs h-8"
+                          disabled={startingSessionId === apt.id}
+                          onClick={() => handleStartSession(apt)}
+                        >
+                          {startingSessionId === apt.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+                          Start Session
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-amber-400">
+                          <UserCheck className="w-3 h-3" /> Patient Arrived — Ready for Therapist
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {apt.status === "in_session" && (user?.role_type === "therapist" || user?.role_type === "practice_admin" || user?.role_type === "admin" || user?.role_type === "platform_admin") && (
+                    <div className="flex gap-2 mt-3 pt-3 border-t border-slate-800">
                       <Button
                         size="sm"
                         className="bg-emerald-500 hover:bg-emerald-600 text-xs h-8"
-                        onClick={() => updateStatus(apt.id, "in_session")}
+                        onClick={() => navigate("/MedicalSessions")}
                       >
-                        <CheckCircle className="w-3 h-3 mr-1" /> Start Session
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-rose-600/50 text-rose-400 hover:bg-rose-500/10 text-xs h-8"
-                        onClick={() => updateStatus(apt.id, "no_show")}
-                      >
-                        <XCircle className="w-3 h-3 mr-1" /> No Show
+                        <Activity className="w-3 h-3 mr-1" /> Resume Session
                       </Button>
                     </div>
                   )}
