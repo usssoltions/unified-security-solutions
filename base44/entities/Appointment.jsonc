@@ -1,7 +1,7 @@
 {
   "name": "Appointment",
   "type": "object",
-  "description": "Medical module: Patient appointment. Supports calendar views and server-side conflict validation.",
+  "description": "Medical module: Patient appointment. Supports calendar views and server-side conflict validation. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -141,6 +141,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -172,6 +177,11 @@
     },
     "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -207,6 +217,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -225,9 +240,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
