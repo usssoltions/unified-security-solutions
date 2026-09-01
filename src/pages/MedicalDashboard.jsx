@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { hasMedicalOversight } from "@/lib/medicalOversight";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, FileText, Activity, Clock, Plus, Stethoscope } from "lucide-react";
@@ -21,13 +22,15 @@ export default function MedicalDashboard() {
     try {
       const u = await base44.auth.me();
       const cid = u.customer_id;
-      if (!cid) { setLoading(false); return; }
+      const oversight = hasMedicalOversight(u);
+      if (!cid && !oversight) { setLoading(false); return; }
+      const scope = oversight ? {} : { customer_id: cid };
 
       const [patients, appointments, sessions, reports] = await Promise.all([
-        base44.entities.Patient.filter({ customer_id: cid }).catch(() => []),
-        base44.entities.Appointment.filter({ customer_id: cid }).catch(() => []),
-        base44.entities.Session.filter({ customer_id: cid, status: "in_progress" }).catch(() => []),
-        base44.entities.MedicalReport.filter({ customer_id: cid }).catch(() => []),
+        base44.entities.Patient.filter(scope).catch(() => []),
+        base44.entities.Appointment.filter(scope).catch(() => []),
+        base44.entities.Session.filter({ ...scope, status: "in_progress" }).catch(() => []),
+        base44.entities.MedicalReport.filter(scope).catch(() => []),
       ]);
 
       const today = moment().format("YYYY-MM-DD");

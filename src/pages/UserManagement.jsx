@@ -19,9 +19,17 @@ export default function UserManagement() {
   const [editingUser, setEditingUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Users via getTenantUsers (server-side) — the built-in User entity only
+  // allows platform admins to list users, so customer/reseller admins and
+  // medical roles (reception, therapist, practice_admin) cannot reach other
+  // users through User.list(). getTenantUsers returns the caller's tenant
+  // users (or all users for platform oversight) with the same scoping rules.
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["allUsers"],
-    queryFn: async () => base44.entities.User.list(),
+    queryFn: async () => {
+      const res = await base44.functions.invoke("getTenantUsers", {});
+      return res?.users || [];
+    },
   });
 
   // Resolve the current user's tenant type so the role set adapts to the
@@ -61,9 +69,14 @@ export default function UserManagement() {
   const filterUsers = (roleValue) => {
     let filtered = users;
     if (roleValue === "all") {
-      // Show only the roles relevant to this tenant type.
-      const roleValues = new Set(roles.map(r => r.value));
-      filtered = users.filter(u => roleValues.has(u.role_type) || (!u.role_type && roleValues.has("admin")));
+      if (isPlatformAdmin) {
+        // Platform oversight sees every user across all tenants/industries.
+        filtered = users;
+      } else {
+        // Show only the roles relevant to this tenant type.
+        const roleValues = new Set(roles.map(r => r.value));
+        filtered = users.filter(u => roleValues.has(u.role_type) || (!u.role_type && roleValues.has("admin")));
+      }
     } else if (roleValue === "admin_no_role") {
       filtered = users.filter(u => u.role_type === "admin" || !u.role_type);
     } else {
@@ -81,7 +94,7 @@ export default function UserManagement() {
   };
 
   const userStats = {
-    total: users.filter(u => roles.some(r => r.value === u.role_type)).length,
+    total: isPlatformAdmin ? users.length : users.filter(u => roles.some(r => r.value === u.role_type)).length,
     ...Object.fromEntries(roles.map(r => [r.value, users.filter(u => u.role_type === r.value).length])),
   };
 

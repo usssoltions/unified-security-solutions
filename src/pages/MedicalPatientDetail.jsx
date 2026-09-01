@@ -98,7 +98,7 @@ export default function MedicalPatientDetail() {
             <div className="flex items-center gap-2 mt-1">
               <Badge className={`${STATUS_COLORS[patient.status] || STATUS_COLORS.active} text-xs`}>{patient.status}</Badge>
               <Badge className={`${STATUS_COLORS[patient.identity_verification_status] || STATUS_COLORS.pending} text-xs`}>
-                ID: {patient.identity_verification_status?.replace(/_/g, " ")}
+                Identity Verification: {(patient.identity_verification_status || "pending").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
               </Badge>
             </div>
           </div>

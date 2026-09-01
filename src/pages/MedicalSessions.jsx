@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { hasMedicalOversight } from "@/lib/medicalOversight";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,10 +23,12 @@ export default function MedicalSessions() {
       const u = await base44.auth.me();
       setUser(u);
       const cid = u.customer_id;
-      if (!cid) { setLoading(false); return; }
+      const oversight = hasMedicalOversight(u);
+      if (!cid && !oversight) { setLoading(false); return; }
+      const scope = oversight ? {} : { customer_id: cid };
       const [sess, apts] = await Promise.all([
-        base44.entities.Session.filter({ customer_id: cid }).catch(() => []),
-        base44.entities.Appointment.filter({ customer_id: cid }).catch(() => []),
+        base44.entities.Session.filter(scope).catch(() => []),
+        base44.entities.Appointment.filter(scope).catch(() => []),
       ]);
       setSessions(sess.sort((a, b) =>
         new Date(b.actual_start_time || b.created_date) - new Date(a.actual_start_time || a.created_date)

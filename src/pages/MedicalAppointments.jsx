@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { hasMedicalOversight } from "@/lib/medicalOversight";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,21 +44,32 @@ export default function MedicalAppointments() {
       const u = await base44.auth.me();
       setUser(u);
       const cid = u.customer_id;
-      if (!cid) { setLoading(false); return; }
+      const oversight = hasMedicalOversight(u);
+      if (!cid && !oversight) { setLoading(false); return; }
+      const scope = oversight ? {} : { customer_id: cid };
 
-      const [apts, pts, svcs, users] = await Promise.all([
-        base44.entities.Appointment.filter({ customer_id: cid }).catch(() => []),
-        base44.entities.Patient.filter({ customer_id: cid, status: "active" }).catch(() => []),
-        base44.entities.MedicalService.filter({ customer_id: cid, active: true }).catch(() => []),
-        base44.entities.User.list().catch(() => []),
+      // Therapists via getTenantUsers (server-side) — the built-in User entity
+      // only allows platform admins to list users, so reception/therapist roles
+      // cannot reach other users through User.list(). getTenantUsers returns the
+      // caller's tenant users (or all users for platform oversight) server-side.
+      const tenantUsersRes = await base44.functions.invoke("getTenantUsers", oversight ? {} : { customer_id: cid }).catch(() => ({}));
+      const tenantUsers = tenantUsersRes?.users || [];
+
+      const [apts, pts, svcs] = await Promise.all([
+        base44.entities.Appointment.filter(scope).catch(() => []),
+        base44.entities.Patient.filter({ ...scope, status: "active" }).catch(() => []),
+        base44.entities.MedicalService.filter({ ...scope, active: true }).catch(() => []),
       ]);
       setAppointments(apts.sort((a, b) => new Date(b.start_time) - new Date(a.start_time)));
       setPatients(pts);
       setServices(svcs);
       // Therapists are scoped to THIS practice (customer_id membership) — only
       // users who belong to the same customer AND hold a clinical role are
-      // selectable, preventing cross-tenant therapist assignment.
-      setTherapists(users.filter(u => u.customer_id === cid && ["therapist", "practice_admin"].includes(u.role_type)));
+      // selectable, preventing cross-tenant therapist assignment. Platform
+      // oversight sees all clinical users across tenants.
+      setTherapists(tenantUsers.filter(u =>
+        ["therapist", "practice_admin"].includes(u.role_type)
+      ));
     } catch (e) {
       console.error("Failed to load appointments:", e);
     } finally {

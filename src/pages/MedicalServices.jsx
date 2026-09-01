@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { hasMedicalOversight } from "@/lib/medicalOversight";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ export default function MedicalServices() {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingService, setEditingService] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: "", category: "clinical", description: "",
@@ -31,8 +33,10 @@ export default function MedicalServices() {
       const u = await base44.auth.me();
       setUser(u);
       const cid = u.customer_id;
-      if (!cid) { setLoading(false); return; }
-      const svcs = await base44.entities.MedicalService.filter({ customer_id: cid }).catch(() => []);
+      const oversight = hasMedicalOversight(u);
+      if (!cid && !oversight) { setLoading(false); return; }
+      const scope = oversight ? {} : { customer_id: cid };
+      const svcs = await base44.entities.MedicalService.filter(scope).catch(() => []);
       setServices(svcs.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
     } catch (e) {
       console.error("Failed to load services:", e);
@@ -41,22 +45,49 @@ export default function MedicalServices() {
     }
   };
 
+  const openEdit = (svc) => {
+    setEditingService(svc);
+    setFormData({
+      name: svc.name || "",
+      category: svc.category || "clinical",
+      description: svc.description || "",
+      default_duration_minutes: svc.default_duration_minutes || 60,
+      price: svc.price != null ? String(svc.price) : "",
+      active: svc.active !== false,
+    });
+    setShowForm(true);
+  };
+
+  const openNew = () => {
+    setEditingService(null);
+    setFormData({ name: "", category: "clinical", description: "", default_duration_minutes: 60, price: "", active: true });
+    setShowForm(true);
+  };
+
   const handleSave = async () => {
     if (!formData.name) return;
     setSaving(true);
     try {
-      await base44.entities.MedicalService.create({
+      const payload = {
         ...formData,
-        customer_id: user.customer_id,
         price: formData.price ? parseFloat(formData.price) : null,
         available_days: ["mon", "tue", "wed", "thu", "fri"],
-      });
+      };
+      if (editingService) {
+        await base44.entities.MedicalService.update(editingService.id, payload);
+      } else {
+        await base44.entities.MedicalService.create({
+          ...payload,
+          customer_id: user.customer_id,
+        });
+      }
       setShowForm(false);
+      setEditingService(null);
       setFormData({ name: "", category: "clinical", description: "", default_duration_minutes: 60, price: "", active: true });
       await loadData();
     } catch (e) {
-      console.error("Failed to create service:", e);
-      alert("Failed to create service: " + e.message);
+      console.error("Failed to save service:", e);
+      alert("Failed to save service: " + e.message);
     } finally {
       setSaving(false);
     }
@@ -99,7 +130,7 @@ export default function MedicalServices() {
               <p className="text-slate-400 text-sm">{services.length} services configured</p>
             </div>
           </div>
-          <Button className="bg-emerald-500 hover:bg-emerald-600" onClick={() => setShowForm(true)}>
+          <Button className="bg-emerald-500 hover:bg-emerald-600" onClick={openNew}>
             <Plus className="w-4 h-4 mr-2" /> Add Service
           </Button>
         </div>
@@ -114,7 +145,7 @@ export default function MedicalServices() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {services.map((svc) => (
-              <Card key={svc.id} className={`bg-slate-900 border-slate-800 ${!svc.active ? "opacity-50" : ""}`}>
+              <Card key={svc.id} className={`bg-slate-900 border-slate-800 hover:border-emerald-500/40 transition-all cursor-pointer ${!svc.active ? "opacity-50" : ""}`} onClick={() => openEdit(svc)}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -161,7 +192,7 @@ export default function MedicalServices() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="bg-slate-900 border-slate-700 max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Add Service</DialogTitle>
+            <DialogTitle className="text-white">{editingService ? "Edit Service" : "Add Service"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -220,12 +251,12 @@ export default function MedicalServices() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowForm(false)} className="border-slate-700 text-slate-300">
+            <Button variant="outline" onClick={() => { setShowForm(false); setEditingService(null); }} className="border-slate-700 text-slate-300">
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving || !formData.name} className="bg-emerald-500 hover:bg-emerald-600">
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Add Service
+              {editingService ? "Save Changes" : "Add Service"}
             </Button>
           </DialogFooter>
         </DialogContent>

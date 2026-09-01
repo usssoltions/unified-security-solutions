@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { hasMedicalOversight } from "@/lib/medicalOversight";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,11 +40,13 @@ export default function MedicalPatients() {
       const u = await base44.auth.me();
       setUser(u);
       const cid = u.customer_id;
-      if (!cid) { setLoading(false); return; }
+      const oversight = hasMedicalOversight(u);
+      if (!cid && !oversight) { setLoading(false); return; }
+      const scope = oversight ? {} : { customer_id: cid };
 
       const [pts, emps] = await Promise.all([
-        base44.entities.Patient.filter({ customer_id: cid }).catch(() => []),
-        base44.entities.Employer.filter({ customer_id: cid, status: "active" }).catch(() => []),
+        base44.entities.Patient.filter(scope).catch(() => []),
+        base44.entities.Employer.filter({ ...scope, status: "active" }).catch(() => []),
       ]);
       setPatients(pts);
       setEmployers(emps);
