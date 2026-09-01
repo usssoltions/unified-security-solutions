@@ -1,7 +1,7 @@
 {
   "name": "AssessmentTemplate",
   "type": "object",
-  "description": "Medical module: Configurable assessment template with sections, questions, question types, scoring, and required fields. Versioned \u2014 historical assessments store the template version used so results remain interpretable after template changes.",
+  "description": "Medical module: Configurable assessment template with sections, questions, question types, scoring, and required fields. Versioned \u2014 historical assessments store the template version used so results remain interpretable after template changes. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -129,6 +129,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -139,6 +144,11 @@
     },
     "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -153,6 +163,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -162,9 +177,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
