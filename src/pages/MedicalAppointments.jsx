@@ -223,9 +223,22 @@ export default function MedicalAppointments() {
                         <Clock className="w-5 h-5 text-emerald-400" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-white font-medium text-sm truncate">
+                        <button
+                          type="button"
+                          onClick={() => apt.patient_id && navigate(`/MedicalPatientDetail?id=${apt.patient_id}`)}
+                          className="text-white font-medium text-sm truncate text-left hover:text-emerald-400 transition-colors block"
+                        >
                           {apt.patient_name || "Unknown Patient"}
-                        </p>
+                        </button>
+                        {apt.employer_id && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/MedicalEmployerDetail?id=${apt.employer_id}`)}
+                            className="text-slate-400 hover:text-emerald-400 transition-colors text-xs truncate block"
+                          >
+                            {apt.employer_name || "Employer"}
+                          </button>
+                        )}
                         <p className="text-slate-400 text-xs truncate">
                           {apt.service_name || "Consultation"}
                           {apt.therapist_name && ` • ${apt.therapist_name}`}

@@ -3,10 +3,11 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, FileText, Activity, Clock, Plus, Stethoscope } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import moment from "moment";
 
 export default function MedicalDashboard() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ patients: 0, appointmentsToday: 0, pendingSessions: 0, reports: 0 });
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
@@ -134,18 +135,23 @@ export default function MedicalDashboard() {
               ) : (
                 <div className="space-y-3">
                   {upcomingAppointments.map((apt) => (
-                    <div key={apt.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
-                      <div>
-                        <p className="text-white text-sm font-medium">{apt.patient_name || "Unknown"}</p>
-                        <p className="text-slate-400 text-xs">{apt.service_name || "Consultation"}</p>
+                    <button
+                      key={apt.id}
+                      type="button"
+                      onClick={() => apt.status === "in_session" ? navigate("/MedicalSessions") : apt.patient_id ? navigate(`/MedicalPatientDetail?id=${apt.patient_id}`) : navigate("/MedicalAppointments")}
+                      className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg text-left hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{apt.patient_name || "Unknown"}</p>
+                        <p className="text-slate-400 text-xs truncate">{apt.service_name || "Consultation"}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0 ml-2">
                         <p className="text-slate-300 text-xs">{moment(apt.start_time).format("MMM D, HH:mm")}</p>
                         <span className={`inline-block px-2 py-0.5 rounded text-xs mt-1 ${statusColors[apt.status] || "bg-slate-500/20 text-slate-400"}`}>
                           {(apt.status || "").replace(/_/g, " ")}
                         </span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -164,18 +170,23 @@ export default function MedicalDashboard() {
               ) : (
                 <div className="space-y-3">
                   {recentAppointments.map((apt) => (
-                    <div key={apt.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
-                      <div>
-                        <p className="text-white text-sm font-medium">{apt.patient_name || "Unknown"}</p>
-                        <p className="text-slate-400 text-xs">{apt.service_name || "Consultation"}</p>
+                    <button
+                      key={apt.id}
+                      type="button"
+                      onClick={() => apt.status === "in_session" ? navigate("/MedicalSessions") : apt.patient_id ? navigate(`/MedicalPatientDetail?id=${apt.patient_id}`) : navigate("/MedicalAppointments")}
+                      className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-lg text-left hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{apt.patient_name || "Unknown"}</p>
+                        <p className="text-slate-400 text-xs truncate">{apt.service_name || "Consultation"}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0 ml-2">
                         <p className="text-slate-300 text-xs">{moment(apt.start_time).format("MMM D, HH:mm")}</p>
                         <span className={`inline-block px-2 py-0.5 rounded text-xs mt-1 ${statusColors[apt.status] || "bg-slate-500/20 text-slate-400"}`}>
                           {(apt.status || "").replace(/_/g, " ")}
                         </span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
