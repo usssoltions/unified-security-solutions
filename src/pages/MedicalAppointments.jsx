@@ -54,7 +54,10 @@ export default function MedicalAppointments() {
       setAppointments(apts.sort((a, b) => new Date(b.start_time) - new Date(a.start_time)));
       setPatients(pts);
       setServices(svcs);
-      setTherapists(users.filter(u => u.role_type === "admin" || u.role_type === "dispatcher" || u.role_type === "therapist"));
+      // Therapists are scoped to THIS practice (customer_id membership) — only
+      // users who belong to the same customer AND hold a clinical role are
+      // selectable, preventing cross-tenant therapist assignment.
+      setTherapists(users.filter(u => u.customer_id === cid && ["therapist", "practice_admin"].includes(u.role_type)));
     } catch (e) {
       console.error("Failed to load appointments:", e);
     } finally {

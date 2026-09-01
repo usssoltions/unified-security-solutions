@@ -13,7 +13,7 @@
 import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
   Clock, Mic, QrCode, Wrench, Zap, FileText, Sliders, Package, Sparkles,
-  UserCircle, ShirtIcon, Bell, Building2, Vote, Stethoscope, Activity,
+  UserCircle, ShirtIcon, Bell, Building2, Vote, Stethoscope, Activity, Gauge,
 } from "lucide-react";
 
 export const ROUTE_REGISTRY = {
@@ -185,6 +185,7 @@ export const ROUTE_REGISTRY = {
     { title: "User Management", pageKey: "UserManagement", icon: Users },
     { title: "Configuration", pageKey: "Configuration", icon: Sliders },
     { title: "Reports", pageKey: "Reports", icon: FileText },
+    { title: "Diagnostics", pageKey: "PlatformDiagnostics", icon: Gauge },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
 };
@@ -210,8 +211,12 @@ export const EXTRA_ALLOWED_PAGES = {
     "EstateLevy", "EstateProperties", "EstateVoting",
     "ClientDashboard", "ClientReports", "ClientIncidents", "EmployerPortal",
     "ResellerManagement", "CustomerManagement",
+    "MedicalPatientDetail", "MedicalEmployerDetail", "PlatformDiagnostics",
   ],
   reseller_admin: ["ResellerManagement", "CustomerManagement"],
+  practice_admin: ["MedicalPatientDetail", "MedicalEmployerDetail"],
+  therapist: ["MedicalPatientDetail", "MedicalEmployerDetail"],
+  reception: ["MedicalPatientDetail", "MedicalEmployerDetail"],
 };
 
 /**

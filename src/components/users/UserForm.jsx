@@ -8,13 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, UserPlus, Lock, Mail } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { SECURITY_ROLES, MEDICAL_ROLES, ROLE_DESCRIPTIONS, isMedicalRoleSet } from "@/lib/roleCatalog";
 
-export default function UserForm({ user, onClose, onSuccess }) {
+export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSuccess }) {
   const queryClient = useQueryClient();
+  const isMedical = isMedicalRoleSet(roles);
   const [formData, setFormData] = useState({
     display_name: user?.display_name || user?.full_name || "",
     email: user?.email || "",
-    role_type: user?.role_type || "guard",
+    role_type: user?.role_type || roles[0]?.value || "guard",
     badge_number: user?.badge_number || "",
     phone: user?.phone || "",
     security_pin: user?.security_pin || "",
@@ -22,7 +24,7 @@ export default function UserForm({ user, onClose, onSuccess }) {
   });
 
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("guard");
+  const [inviteRole, setInviteRole] = useState(roles[0]?.value || "guard");
   const [inviteStatus, setInviteStatus] = useState(null);
 
   const updateUserMutation = useMutation({
@@ -101,13 +103,9 @@ export default function UserForm({ user, onClose, onSuccess }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="dispatcher">Dispatcher / Supervisor</SelectItem>
-                  <SelectItem value="guard">Security Guard</SelectItem>
-                  <SelectItem value="client">Client</SelectItem>
-                  <SelectItem value="estate_manager">Estate Manager</SelectItem>
-                  <SelectItem value="resident">Resident</SelectItem>
-                  <SelectItem value="vendor">Vendor</SelectItem>
+                  {roles.map(r => (
+                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -187,13 +185,9 @@ export default function UserForm({ user, onClose, onSuccess }) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="dispatcher">Dispatcher / Supervisor</SelectItem>
-                    <SelectItem value="guard">Security Guard</SelectItem>
-                    <SelectItem value="client">Client</SelectItem>
-                    <SelectItem value="estate_manager">Estate Manager</SelectItem>
-                    <SelectItem value="resident">Resident</SelectItem>
-                    <SelectItem value="vendor">Vendor</SelectItem>
+                    {roles.map(r => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -246,13 +240,12 @@ export default function UserForm({ user, onClose, onSuccess }) {
             <div className="p-4 bg-slate-900/50 rounded-lg">
               <p className="text-sm font-semibold text-slate-300 mb-2">Role Descriptions:</p>
               <ul className="text-xs text-slate-400 space-y-1">
-                <li><strong className="text-sky-400">Admin:</strong> Full system access</li>
-                <li><strong className="text-purple-400">Dispatcher/Supervisor:</strong> Control room, shifts, operations</li>
-                <li><strong className="text-emerald-400">Security Guard:</strong> Field operations, clock in/out, incidents</li>
-                <li><strong className="text-amber-400">Client:</strong> View reports and incidents for their sites</li>
-                <li><strong className="text-teal-400">Estate Manager:</strong> Manage residents, venues, vendors, levies</li>
-                <li><strong className="text-indigo-400">Resident:</strong> Visitors, bookings, orders, payments</li>
-                <li><strong className="text-orange-400">Vendor:</strong> Manage menu items and orders</li>
+                {(isMedical ? MEDICAL_ROLES : SECURITY_ROLES).map(r => {
+                  const d = ROLE_DESCRIPTIONS[r.value];
+                  return d ? (
+                    <li key={r.value}><strong className={`text-${d.color}-400`}>{d.label}:</strong> {d.text}</li>
+                  ) : null;
+                })}
               </ul>
             </div>
 

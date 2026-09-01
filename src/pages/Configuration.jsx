@@ -23,7 +23,18 @@ import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function Configuration() {
   const [user, setUser] = useState(null);
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
+  const [customerType, setCustomerType] = useState(null);
+  useEffect(() => {
+    base44.auth.me().then((u) => {
+      setUser(u);
+      if (u?.customer_id) {
+        base44.entities.Customer.get(u.customer_id)
+          .then((c) => setCustomerType(c?.customer_type))
+          .catch(() => setCustomerType(null));
+      }
+    }).catch(() => {});
+  }, []);
+  const isMedical = customerType === "medical";
   // Incident Categories
   const [incidentCategories, setIncidentCategories] = useState([
     { id: 1, value: "fire", label: "Fire", color: "rose" },
@@ -253,6 +264,7 @@ export default function Configuration() {
             <Settings className="w-4 h-4 mr-2" />
             Reports
           </TabsTrigger>
+          {!isMedical && (<>
           <TabsTrigger value="incidents" className="data-[state=active]:bg-slate-700">
             <AlertTriangle className="w-4 h-4 mr-2" />
             Incidents
@@ -269,6 +281,7 @@ export default function Configuration() {
             <Package className="w-4 h-4 mr-2" />
             Assets
           </TabsTrigger>
+          </>)}
           <TabsTrigger value="priorities" className="data-[state=active]:bg-slate-700">
             <Shield className="w-4 h-4 mr-2" />
             Priorities
@@ -289,6 +302,8 @@ export default function Configuration() {
         </TabsContent>
 
         {/* Incident Categories */}
+        {!isMedical && (<>
+        {/* Incident Categories */}
         <TabsContent value="incidents">
           <Card className="bg-slate-800/50 border-slate-700">
             <CardHeader>
@@ -297,9 +312,9 @@ export default function Configuration() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-end">
-                <Button 
+                <Button
                   type="button"
-                  onClick={() => handleAddCategory('incident')} 
+                  onClick={() => handleAddCategory('incident')}
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -342,9 +357,9 @@ export default function Configuration() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-end">
-                <Button 
+                <Button
                   type="button"
-                  onClick={() => handleAddCategory('maintenance')} 
+                  onClick={() => handleAddCategory('maintenance')}
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -386,9 +401,9 @@ export default function Configuration() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-end">
-                <Button 
+                <Button
                   type="button"
-                  onClick={() => handleAddCategory('alarm')} 
+                  onClick={() => handleAddCategory('alarm')}
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -440,9 +455,9 @@ export default function Configuration() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-end">
-                <Button 
+                <Button
                   type="button"
-                  onClick={() => handleAddCategory('asset')} 
+                  onClick={() => handleAddCategory('asset')}
                   className="bg-sky-600 hover:bg-sky-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -474,6 +489,7 @@ export default function Configuration() {
             </CardContent>
           </Card>
         </TabsContent>
+        </>)}
 
         {/* Priority Levels */}
         <TabsContent value="priorities">

@@ -26,6 +26,9 @@ import MedicalEmployers from './pages/MedicalEmployers';
 import MedicalServices from './pages/MedicalServices';
 import MedicalSessions from './pages/MedicalSessions';
 import MedicalAssessmentTemplates from './pages/MedicalAssessmentTemplates';
+import MedicalPatientDetail from './pages/MedicalPatientDetail';
+import MedicalEmployerDetail from './pages/MedicalEmployerDetail';
+import PlatformDiagnostics from './pages/PlatformDiagnostics';
 import EstateProperties from './pages/EstateProperties';
 import EstateVoting from './pages/EstateVoting';
 import ClientDashboard from './pages/ClientDashboard';
@@ -200,6 +203,27 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="MedicalAssessmentTemplates">
             <ProtectedPage pageKey="MedicalAssessmentTemplates">
               <MedicalAssessmentTemplates />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/MedicalPatientDetail" element={
+          <LayoutWrapper currentPageName="MedicalPatientDetail">
+            <ProtectedPage pageKey="MedicalPatientDetail">
+              <MedicalPatientDetail />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/MedicalEmployerDetail" element={
+          <LayoutWrapper currentPageName="MedicalEmployerDetail">
+            <ProtectedPage pageKey="MedicalEmployerDetail">
+              <MedicalEmployerDetail />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/PlatformDiagnostics" element={
+          <LayoutWrapper currentPageName="PlatformDiagnostics">
+            <ProtectedPage pageKey="PlatformDiagnostics">
+              <PlatformDiagnostics />
             </ProtectedPage>
           </LayoutWrapper>
         } />

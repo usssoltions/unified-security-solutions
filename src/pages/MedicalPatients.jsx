@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import {
 import moment from "moment";
 
 export default function MedicalPatients() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [patients, setPatients] = useState([]);
   const [employers, setEmployers] = useState([]);
@@ -148,7 +150,7 @@ export default function MedicalPatients() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredPatients.map((patient) => (
-              <Card key={patient.id} className="bg-slate-900 border-slate-800 hover:border-emerald-500/30 transition-all">
+              <Card key={patient.id} onClick={() => navigate(`/MedicalPatientDetail?id=${patient.id}`)} className="bg-slate-900 border-slate-800 hover:border-emerald-500/30 transition-all cursor-pointer">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">

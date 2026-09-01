@@ -94,6 +94,8 @@ export const PAGE_MODULE_MAP = {
   MedicalServices: "OCCUPATIONAL_THERAPY",
   MedicalSessions: "OCCUPATIONAL_THERAPY",
   MedicalAssessmentTemplates: "OCCUPATIONAL_THERAPY",
+  MedicalPatientDetail: "OCCUPATIONAL_THERAPY",
+  MedicalEmployerDetail: "OCCUPATIONAL_THERAPY",
   EmployerPortal: "OCCUPATIONAL_THERAPY",
 
   // ── Client operational pages — not module-gated (RLS-scoped) ────
@@ -104,6 +106,7 @@ export const PAGE_MODULE_MAP = {
   SystemSetup: "PLATFORM_ADMIN_ONLY",
   TestDataManager: "PLATFORM_ADMIN_ONLY",
   OneSignalTest: "PLATFORM_ADMIN_ONLY",
+  PlatformDiagnostics: "PLATFORM_ADMIN_ONLY",
 
   // ── CORE / SHARED (not mapped — always visible per role) ───────
   // GuardShift, GuardMyShifts, StartOfShift, ShiftHandover,
