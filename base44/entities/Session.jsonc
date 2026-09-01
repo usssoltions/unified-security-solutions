@@ -1,7 +1,7 @@
 {
   "name": "Session",
   "type": "object",
-  "description": "Medical module: Clinical session linked to an appointment. Records actual session start/completion times (NOT scheduled times). Contains assessment reference and is the basis for report generation. Clinical \u2014 employer portal users cannot access.",
+  "description": "Medical module: Clinical session linked to an appointment. Records actual session start/completion times (NOT scheduled times). Contains assessment reference and is the basis for report generation. Clinical \u2014 employer portal users cannot access. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform' may read/create/update across tenants; tenant users are scoped by customer_id.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -134,6 +134,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -144,6 +149,11 @@
     },
     "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -158,6 +168,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -167,9 +182,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
