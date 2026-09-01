@@ -1,7 +1,7 @@
 {
   "name": "Patient",
   "type": "object",
-  "description": "Medical module: Patient record. Identity, employer, contact, referral information. Tenant-isolated by customer_id (practice). Employer portal users see only their own employer's patients. Clinical data is stored in separate ClinicalNote/Assessment entities, not here.",
+  "description": "Medical module: Patient record. Identity, employer, contact, referral information. Tenant-isolated by customer_id (practice). Employer portal users see only their own employer's patients. Clinical data is stored in separate ClinicalNote/Assessment entities, not here. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform' may read/create/update across tenants.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -135,6 +135,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -145,6 +150,11 @@
     },
     "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -162,6 +172,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -171,9 +186,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
