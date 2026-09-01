@@ -1,7 +1,7 @@
 {
   "name": "Employer",
   "type": "object",
-  "description": "Medical module: Corporate client / employer that refers employees for occupational therapy, RFA, FCE, and work-ability services. Employer portal users see only their own employer's data. Tenant-isolated by customer_id (practice).",
+  "description": "Medical module: Corporate client / employer that refers employees for occupational therapy, RFA, FCE, and work-ability services. Employer portal users see only their own employer's data. Tenant-isolated by customer_id (practice). Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -45,6 +45,28 @@
     },
     "billing_address": {
       "type": "string"
+    },
+    "hr_contact_name": {
+      "type": "string",
+      "description": "Optional HR contact person"
+    },
+    "hr_contact_phone": {
+      "type": "string"
+    },
+    "hr_contact_email": {
+      "type": "string"
+    },
+    "claim_reference_number": {
+      "type": "string",
+      "description": "Optional compensation/work-related reference"
+    },
+    "po_number": {
+      "type": "string",
+      "description": "Optional purchase order number"
+    },
+    "billing_reference_number": {
+      "type": "string",
+      "description": "Optional billing/reference number"
     },
     "departments": {
       "type": "array",
@@ -113,6 +135,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -123,6 +150,11 @@
     },
     "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -140,6 +172,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -149,9 +186,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
