@@ -151,6 +151,22 @@ export default async function(req: Request): Promise<Response> {
     const isPlatformSender =
       caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
 
+    // ---- Reseller white-label branding (email sender + template) ----------
+    let brandName = 'USS';
+    let brandColor = '#10b981';
+    let emailFromName: string | undefined = undefined;
+    try {
+      if (callerScope.reseller_id) {
+        const resellers = await base44.asServiceRole.entities.Reseller.filter({ id: callerScope.reseller_id }).catch(() => []);
+        const reseller = resellers && resellers[0];
+        if (reseller) {
+          brandName = reseller.app_name || reseller.name || brandName;
+          brandColor = reseller.primary_color || brandColor;
+          emailFromName = reseller.app_name || reseller.name;
+        }
+      }
+    } catch (_) { /* branding never breaks notifications */ }
+
     // ---- Privacy: module-safe preview text --------------------------------
     // Telegram previews and push lock-screen text must not leak sensitive data.
     const { safeTitle, safeMessage } = buildSafePreview(moduleKey, title, message, metadata);
@@ -215,7 +231,8 @@ export default async function(req: Request): Promise<Response> {
             await base44.asServiceRole.integrations.Core.SendEmail({
               to: r.email,
               subject: `🔔 ${title}`,
-              body: buildEmailHtml(title, message, metadata, priority),
+              from_name: emailFromName || undefined,
+              body: buildEmailHtml(title, message, metadata, priority, brandName, brandColor),
             });
             await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'email', idempKey);
             results.push({ recipient: r.id, channel: 'email', status: 'sent' });
@@ -390,20 +407,20 @@ function esc(s: string): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
 }
 
-function buildEmailHtml(title: string, message: string, metadata: any, priority: string): string {
+function buildEmailHtml(title: string, message: string, metadata: any, priority: string, brandName = 'USS', brandColor = '#10b981'): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">SecureGuard Notification</h1>
+      <div style="background: linear-gradient(135deg, ${esc(brandColor)} 0%, #1e293b 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">${esc(brandName)}</h1>
       </div>
       <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px;">
-        <div style="background: white; padding: 25px; border-radius: 8px; border-left: 4px solid #667eea;">
+        <div style="background: white; padding: 25px; border-radius: 8px; border-left: 4px solid ${esc(brandColor)};">
           <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">${esc(title)}</h2>
           <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 15px 0;">${esc(message)}</p>
           <p style="color: #64748b; font-size: 14px; margin-top: 20px;">Priority: <span style="color: ${priority === 'critical' ? '#dc2626' : priority === 'high' ? '#ea580c' : priority === 'medium' ? '#ca8a04' : '#0284c7'}; font-weight: bold;">${esc(priority).toUpperCase()}</span></p>
         </div>
         <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-          <p style="color: #94a3b8; font-size: 12px; margin: 0;">SecureGuard Security Management System</p>
+          <p style="color: #94a3b8; font-size: 12px; margin: 0;">${esc(brandName)} Management System</p>
         </div>
       </div>
     </div>

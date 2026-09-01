@@ -129,7 +129,7 @@ export default function EmployerPortal() {
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
           {["overview", "appointments", "employees", "reports"].map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${tab === t ? "bg-emerald-500 text-white" : "bg-slate-900 text-slate-400"}`}>
+              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${tab === t ? "bg-emerald-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"}`}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}

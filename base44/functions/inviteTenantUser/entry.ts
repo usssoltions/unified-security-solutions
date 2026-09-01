@@ -89,6 +89,9 @@ export default async function(req: Request): Promise<Response> {
     }
     const effectiveReseller = reseller_id || (customer ? customer.reseller_id : null) || null;
     const callerName = caller.display_name || caller.full_name || caller.email;
+    const moduleLabel = customer?.customer_type
+      ? customer.customer_type.charAt(0).toUpperCase() + customer.customer_type.slice(1)
+      : '';
 
     console.log('[inviteTenantUser] caller', caller.id, 'reseller_id', effectiveReseller, 'role_type', role_type, 'email', email);
 
@@ -113,6 +116,23 @@ export default async function(req: Request): Promise<Response> {
           new_values: JSON.stringify(scopeUpdates), notes: `Re-scoped existing ${email} as ${role_type}`,
         });
       } catch (_) {}
+      // Existing users are registered, so SendEmail reaches them — send a
+      // module/role context email (new invitees get only the platform invite,
+      // since SendEmail to non-registered addresses requires a custom domain).
+      try {
+        const orgName = customer?.name || 'your organization';
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          to: email,
+          subject: `Your access to ${orgName}${moduleLabel ? ` (${moduleLabel})` : ''} has been updated`,
+          body: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+            <h2 style="color:#1e293b">Access updated</h2>
+            <p>Hi ${escHtml(display_name || '')},</p>
+            <p>Your access to <b>${escHtml(orgName)}</b> has been updated to <b>${escHtml(role_type.replace(/_/g, ' '))}</b>${moduleLabel ? ` on the <b>${moduleLabel}</b> module` : ''}.</p>
+            <p>Log in to the app to see your updated workspace.</p>
+            <p style="color:#64748b;font-size:12px">Updated by ${escHtml(callerName)}</p>
+          </div>`,
+        });
+      } catch (_) {}
       return Response.json({ success: true, user_id: existing.id, rescoped: true });
     }
 
@@ -130,7 +150,7 @@ export default async function(req: Request): Promise<Response> {
       status: 'pending',
       invited_by: caller.id,
       invited_by_name: callerName,
-      notes: `Invited as ${role_type}${status ? ` (${status})` : ''}`,
+      notes: `Invited as ${role_type}${moduleLabel ? ` (${moduleLabel})` : ''}${status ? ` (${status})` : ''}`,
     };
 
     if (pending) {

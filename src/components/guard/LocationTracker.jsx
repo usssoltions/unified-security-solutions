@@ -40,16 +40,16 @@ export default function LocationTracker({ user, shift, enabled }) {
 
     const handleSuccess = async (position) => {
       const now = Date.now();
-      // Process at most once per 60s (the watcher fires more often)
-      if (now - lastUpdateRef.current < 60000) return;
+      // Process at most once per 90s (the watcher fires more often)
+      if (now - lastUpdateRef.current < 90000) return;
       lastUpdateRef.current = now;
 
       const coords = position.coords;
       const currentPos = { lat: coords.latitude, lng: coords.longitude };
       // Cache position for instant Panic activation (no extra GPS request needed)
       cacheLastKnownLocation({ lat: currentPos.lat, lng: currentPos.lng, accuracy: coords.accuracy });
-      const moved = distanceMetres(lastPosRef.current, currentPos) > 25;
-      const heartbeatDue = now - lastHeartbeatRef.current > 5 * 60 * 1000;
+      const moved = distanceMetres(lastPosRef.current, currentPos) > 40;
+      const heartbeatDue = now - lastHeartbeatRef.current > 10 * 60 * 1000;
 
       // Skip upload if stationary AND heartbeat not due — eliminates redundant
       // data when a guard sits at a post. Control room still gets a 5-minute

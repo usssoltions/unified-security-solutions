@@ -114,6 +114,23 @@ export default function MedicalAppointments() {
       });
       setShowForm(false);
       setFormData({ patient_id: "", service_id: "", therapist_id: "", date: "", time: "09:00", duration_minutes: 60, notes: "" });
+      // Notify the assigned therapist (in-app + push) about the new appointment.
+      if (formData.therapist_id) {
+        try {
+          await base44.functions.invoke("sendComprehensiveNotification", {
+            recipientIds: [formData.therapist_id],
+            type: "medical_appointment",
+            title: "New appointment assigned",
+            message: `${patient ? `${patient.first_names} ${patient.surname}` : "Patient"} — ${service?.name || "Service"} on ${moment(start).format("MMM D, HH:mm")}`,
+            priority: "medium",
+            moduleKey: "medical",
+            relatedEntity: "Appointment",
+            actionUrl: "/MedicalAppointments",
+            channels: { inApp: true, push: true, email: false, telegram: true },
+            scope: { customer_id: user.customer_id },
+          });
+        } catch (_) {}
+      }
       await loadData();
     } catch (e) {
       console.error("Failed to create appointment:", e);
@@ -143,6 +160,26 @@ export default function MedicalAppointments() {
   const updateStatus = async (aptId, newStatus) => {
     try {
       await base44.entities.Appointment.update(aptId, { status: newStatus });
+      // Notify the therapist when a patient arrives.
+      if (newStatus === "arrived") {
+        const apt = appointments.find(a => a.id === aptId);
+        if (apt?.therapist_id) {
+          try {
+            await base44.functions.invoke("sendComprehensiveNotification", {
+              recipientIds: [apt.therapist_id],
+              type: "medical_appointment",
+              title: "Patient arrived",
+              message: `${apt.patient_name || "Patient"} has arrived for ${apt.service_name || "their appointment"} (${apt.start_time ? moment(apt.start_time).format("MMM D, HH:mm") : ""}).`,
+              priority: "medium",
+              moduleKey: "medical",
+              relatedEntity: "Appointment",
+              actionUrl: "/MedicalAppointments",
+              channels: { inApp: true, push: true, email: false, telegram: true },
+              scope: { customer_id: user.customer_id },
+            });
+          } catch (_) {}
+        }
+      }
       await loadData();
     } catch (e) {
       console.error("Failed to update appointment:", e);
@@ -209,7 +246,7 @@ export default function MedicalAppointments() {
               className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                 filterStatus === tab.key
                   ? "bg-emerald-500 text-white"
-                  : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
               }`}
             >
               {tab.label}
