@@ -43,8 +43,15 @@ export const ROLE_DESCRIPTIONS = {
   employer_user: { label: "Employer Portal User", text: "Refer employees and view authorised reports", color: "amber" },
 };
 
+export const ATTENDANCE_ROLES = [
+  { value: "attendance_staff", label: "Attendance Staff", color: "sky" },
+  { value: "admin", label: "Admin", color: "purple" },
+];
+
 export function getRolesForTenant(customerType) {
-  return customerType === "medical" ? MEDICAL_ROLES : SECURITY_ROLES;
+  if (customerType === "medical") return MEDICAL_ROLES;
+  if (customerType === "attendance") return ATTENDANCE_ROLES;
+  return SECURITY_ROLES;
 }
 
 export function isMedicalRoleSet(roles) {

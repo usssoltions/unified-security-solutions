@@ -1,0 +1,172 @@
+{
+  "name": "AttendanceRecord",
+  "type": "object",
+  "description": "Attendance Register module: One visit = one record. Stores historical snapshots of all fields at visit time so edits to the worker profile do not rewrite history.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "worker_id": {
+      "type": "string",
+      "description": "Reference to AttendanceWorker profile"
+    },
+    "attendance_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of visit YYYY-MM-DD"
+    },
+    "attendance_time": {
+      "type": "string",
+      "description": "HH:MM local time"
+    },
+    "attendance_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Exact ISO timestamp of attendance"
+    },
+    "surname_snapshot": {
+      "type": "string"
+    },
+    "initials_snapshot": {
+      "type": "string"
+    },
+    "id_number_snapshot": {
+      "type": "string"
+    },
+    "id_type_snapshot": {
+      "type": "string"
+    },
+    "company_snapshot": {
+      "type": "string"
+    },
+    "job_description_snapshot": {
+      "type": "string"
+    },
+    "cellphone_snapshot": {
+      "type": "string"
+    },
+    "medical_centre": {
+      "type": "string"
+    },
+    "additional_information": {
+      "type": "string"
+    },
+    "assessment_type": {
+      "type": "string"
+    },
+    "signature_data_url": {
+      "type": "string",
+      "description": "Base64 PNG of the electronic signature"
+    },
+    "captured_by_id": {
+      "type": "string"
+    },
+    "captured_by_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "worker_id",
+    "attendance_date",
+    "id_number_snapshot",
+    "surname_snapshot"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

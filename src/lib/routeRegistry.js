@@ -14,6 +14,7 @@ import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
   Clock, Mic, QrCode, Wrench, Zap, FileText, Sliders, Package, Sparkles,
   UserCircle, ShirtIcon, Bell, Building2, Vote, Stethoscope, Activity, Gauge,
+  ClipboardList,
 } from "lucide-react";
 
 export const ROUTE_REGISTRY = {
@@ -144,6 +145,14 @@ export const ROUTE_REGISTRY = {
     { title: "Reports", pageKey: "Reports", icon: FileText },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
+  attendance_staff: [
+    { title: "Attendance", pageKey: "AttendanceDashboard", icon: ClipboardList, isRoot: true },
+    { title: "Records", pageKey: "AttendanceRecords", icon: FileText },
+    { title: "Workers", pageKey: "AttendanceWorkers", icon: Users },
+    { title: "Reports", pageKey: "AttendanceReports", icon: BarChart3 },
+    { title: "Settings", pageKey: "AttendanceSettings", icon: Sliders },
+    { title: "Profile", pageKey: "Profile", icon: UserCircle },
+  ],
   practice_admin: [
     { title: "Dashboard", pageKey: "MedicalDashboard", icon: Stethoscope, isRoot: true },
     { title: "Patients", pageKey: "MedicalPatients", icon: Users },
@@ -211,8 +220,10 @@ export const EXTRA_ALLOWED_PAGES = {
     "ClientDashboard", "ClientReports", "ClientIncidents", "EmployerPortal",
     "ResellerManagement", "CustomerManagement",
     "MedicalPatientDetail", "MedicalEmployerDetail", "PlatformDiagnostics",
+    "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings",
   ],
   reseller_admin: ["ResellerManagement", "CustomerManagement"],
+  attendance_staff: ["AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
   practice_admin: ["MedicalPatientDetail", "MedicalEmployerDetail"],
   therapist: ["MedicalPatientDetail", "MedicalEmployerDetail"],
   reception: ["MedicalPatientDetail", "MedicalEmployerDetail"],

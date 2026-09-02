@@ -1,0 +1,168 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Users, Search, Download, Loader2, User, IdCard,
+  Building2, Phone, Calendar, ClipboardList, ChevronDown, ChevronUp, Eye
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { generateWorkerIdPdf, downloadBlob } from "@/lib/attendancePdf";
+import { useBranding } from "@/hooks/useBranding";
+import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
+
+export default function AttendanceWorkers() {
+  const [user, setUser] = useState(null);
+  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+
+  const { data: workers = [], isLoading } = useQuery({
+    queryKey: ["att_workers", user?.customer_id],
+    queryFn: () => base44.entities.AttendanceWorker.filter({ customer_id: user.customer_id }, "-created_date", 500),
+    enabled: !!user?.customer_id, staleTime: 30000,
+  });
+
+  const { data: allRecords = [] } = useQuery({
+    queryKey: ["att_records_all", user?.customer_id],
+    queryFn: () => base44.entities.AttendanceRecord.filter({ customer_id: user.customer_id }, "-attendance_timestamp", 2000),
+    enabled: !!user?.customer_id, staleTime: 60000,
+  });
+
+  const recordsByWorker = React.useMemo(() => {
+    const m = {};
+    allRecords.forEach(r => { if (!m[r.worker_id]) m[r.worker_id] = []; m[r.worker_id].push(r); });
+    return m;
+  }, [allRecords]);
+
+  const filtered = workers.filter(w => {
+    const q = search.toLowerCase();
+    if (!q) return true;
+    return [w.surname, w.initials, w.first_names, w.id_number, w.company, w.cellphone]
+      .some(v => (v || "").toLowerCase().includes(q));
+  });
+
+  const handleWorkerPdf = (worker) => {
+    try {
+      const blob = generateWorkerIdPdf(worker, branding);
+      downloadBlob(blob, `id_doc_${worker.id_number}.pdf`);
+    } catch (e) { alert("PDF generation failed."); }
+  };
+
+  const formatDate = d => d ? new Date(d).toLocaleDateString("en-ZA") : "—";
+
+  return (
+    <div className="p-4 max-w-2xl mx-auto space-y-4">
+      <div className="flex items-center gap-3 mb-2">
+        <Link to="/AttendanceDashboard" className="text-slate-400 text-sm hover:text-white">← Dashboard</Link>
+        <h1 className="text-white text-xl font-bold flex-1">Workers / Patients</h1>
+        <span className="text-slate-400 text-sm">{filtered.length}</span>
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, ID, company, cell…"
+          className="bg-slate-900 border-slate-700 text-white pl-9" />
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12">
+          <Users className="w-12 h-12 text-slate-600 mx-auto mb-2" />
+          <p className="text-slate-400">No workers registered yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(w => {
+            const recs = (recordsByWorker[w.id] || []).sort((a, b) =>
+              (b.attendance_timestamp || "").localeCompare(a.attendance_timestamp || ""));
+            const isOpen = expanded === w.id;
+            return (
+              <div key={w.id} className="bg-slate-800/60 rounded-xl border border-slate-700 overflow-hidden">
+                <button className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-slate-800 transition"
+                  onClick={() => setExpanded(isOpen ? null : w.id)}>
+                  <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <User className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold text-sm">{formatDisplayName(w)}</p>
+                    <p className="text-slate-400 text-xs mt-0.5">{w.id_number} · {idTypeLabel(w.id_type)}</p>
+                    <p className="text-slate-400 text-xs">{w.company || "—"}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="outline" className="text-[10px] border-slate-600 text-slate-400">{recs.length} visits</Badge>
+                    {isOpen ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-slate-700 p-4 space-y-4">
+                    {/* Profile details */}
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {[["First Names", w.first_names], ["Cellphone", w.cellphone], ["Job Description", w.job_description]].map(([label, val]) => (
+                        <div key={label}>
+                          <p className="text-slate-500 text-xs">{label}</p>
+                          <p className="text-slate-200">{val || "—"}</p>
+                        </div>
+                      ))}
+                      <div>
+                        <p className="text-slate-500 text-xs">Profile Created</p>
+                        <p className="text-slate-200">{formatDate(w.created_date)}</p>
+                      </div>
+                    </div>
+
+                    {/* ID document */}
+                    <div>
+                      <p className="text-slate-400 text-xs font-semibold mb-2">Identification Document</p>
+                      {w.id_front_url ? (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <img src={w.id_front_url} alt="ID Front" className="h-24 rounded-lg object-cover border border-slate-600" />
+                            {w.id_back_url && <img src={w.id_back_url} alt="ID Back" className="h-24 rounded-lg object-cover border border-slate-600" />}
+                          </div>
+                          {w.id_captured_at && <p className="text-slate-500 text-xs">Captured {formatDate(w.id_captured_at)}</p>}
+                          <Button size="sm" onClick={() => handleWorkerPdf(w)} className="bg-sky-700 hover:bg-sky-600">
+                            <Download className="w-3.5 h-3.5 mr-1.5" /> Download ID PDF
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="text-slate-500 text-xs italic">No document on file.</p>
+                      )}
+                    </div>
+
+                    {/* Attendance history */}
+                    <div>
+                      <p className="text-slate-400 text-xs font-semibold mb-2">Attendance History ({recs.length})</p>
+                      {recs.length === 0 ? (
+                        <p className="text-slate-500 text-xs italic">No attendance records.</p>
+                      ) : (
+                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                          {recs.map(r => (
+                            <div key={r.id} className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/50 rounded-lg px-3 py-2">
+                              <Calendar className="w-3 h-3 shrink-0" />
+                              <span className="text-slate-300">{r.attendance_date ? r.attendance_date.split("-").reverse().join("/") : "—"}</span>
+                              <span>{r.attendance_time}</span>
+                              <span className="text-sky-400">{r.medical_centre}</span>
+                              <span className="text-emerald-400">{r.assessment_type}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

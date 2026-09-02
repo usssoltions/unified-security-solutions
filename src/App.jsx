@@ -39,6 +39,11 @@ import EmployerPortal from './pages/EmployerPortal';
 import TenantSetup from './pages/TenantSetup';
 import ResellerManagement from './pages/ResellerManagement';
 import CustomerManagement from './pages/CustomerManagement';
+import AttendanceDashboard from './pages/AttendanceDashboard';
+import AttendanceRecords from './pages/AttendanceRecords';
+import AttendanceWorkers from './pages/AttendanceWorkers';
+import AttendanceReports from './pages/AttendanceReports';
+import AttendanceSettings from './pages/AttendanceSettings';
 import ProtectedPage from '@/components/ProtectedPage';
 import RoleHomeRedirect from '@/components/RoleHomeRedirect';
 
@@ -294,6 +299,41 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="CustomerManagement">
             <ProtectedPage pageKey="CustomerManagement">
               <CustomerManagement />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/AttendanceDashboard" element={
+          <LayoutWrapper currentPageName="AttendanceDashboard">
+            <ProtectedPage pageKey="AttendanceDashboard">
+              <AttendanceDashboard />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/AttendanceRecords" element={
+          <LayoutWrapper currentPageName="AttendanceRecords">
+            <ProtectedPage pageKey="AttendanceRecords">
+              <AttendanceRecords />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/AttendanceWorkers" element={
+          <LayoutWrapper currentPageName="AttendanceWorkers">
+            <ProtectedPage pageKey="AttendanceWorkers">
+              <AttendanceWorkers />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/AttendanceReports" element={
+          <LayoutWrapper currentPageName="AttendanceReports">
+            <ProtectedPage pageKey="AttendanceReports">
+              <AttendanceReports />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/AttendanceSettings" element={
+          <LayoutWrapper currentPageName="AttendanceSettings">
+            <ProtectedPage pageKey="AttendanceSettings">
+              <AttendanceSettings />
             </ProtectedPage>
           </LayoutWrapper>
         } />

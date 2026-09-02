@@ -101,6 +101,13 @@ export const PAGE_MODULE_MAP = {
   // ── Client operational pages — not module-gated (RLS-scoped) ────
   ClientIncidents: null,
 
+  // ── ATTENDANCE_REGISTER module ──────────────────────────────────
+  AttendanceDashboard: "ATTENDANCE_REGISTER",
+  AttendanceRecords: "ATTENDANCE_REGISTER",
+  AttendanceWorkers: "ATTENDANCE_REGISTER",
+  AttendanceReports: "ATTENDANCE_REGISTER",
+  AttendanceSettings: "ATTENDANCE_REGISTER",
+
   // ── PLATFORM_ADMIN_ONLY ─────────────────────────────────────────
   TenantSetup: "PLATFORM_ADMIN_ONLY",
   SystemSetup: "PLATFORM_ADMIN_ONLY",

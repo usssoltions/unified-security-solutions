@@ -37,6 +37,7 @@ const ROLE_FALLBACK_PAGES = {
   therapist: ["MedicalDashboard", "Profile"],
   reception: ["MedicalDashboard", "Profile"],
   employer_user: ["EmployerPortal", "Profile"],
+  attendance_staff: ["AttendanceDashboard", "Profile"],
 };
 
 function isPageAccessible(user, pageKey, entitlements, platformAdmin) {

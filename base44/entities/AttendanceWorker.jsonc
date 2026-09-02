@@ -1,0 +1,182 @@
+{
+  "name": "AttendanceWorker",
+  "type": "object",
+  "description": "Attendance Register module: Permanent Worker/Patient profile. Deduplication key is id_number + customer_id. Identification-document images belong here, not per attendance record.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant isolation"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "surname": {
+      "type": "string"
+    },
+    "initials": {
+      "type": "string"
+    },
+    "first_names": {
+      "type": "string"
+    },
+    "id_number": {
+      "type": "string",
+      "description": "SA ID / Passport / Driver's Licence number \u2014 deduplication key within tenant"
+    },
+    "id_type": {
+      "type": "string",
+      "enum": [
+        "sa_id",
+        "drivers_licence",
+        "passport",
+        "other"
+      ],
+      "default": "sa_id"
+    },
+    "company": {
+      "type": "string",
+      "description": "Company / Customer"
+    },
+    "job_description": {
+      "type": "string"
+    },
+    "cellphone": {
+      "type": "string"
+    },
+    "id_front_url": {
+      "type": "string",
+      "description": "Identification document front image URL"
+    },
+    "id_back_url": {
+      "type": "string",
+      "description": "Identification document back image URL (cards)"
+    },
+    "id_captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "id_captured_by_id": {
+      "type": "string"
+    },
+    "id_captured_by_name": {
+      "type": "string"
+    },
+    "id_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "created_by_name": {
+      "type": "string"
+    },
+    "updated_by_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "surname",
+    "id_number"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}
