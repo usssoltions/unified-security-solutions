@@ -114,10 +114,12 @@ export async function managePanic(panicId, action, extra = {}) {
 
 /**
  * Trigger backend escalation for a specific panic (if still unacknowledged).
- * Called by the activator's client-side 2-minute timer — the PRIMARY
- * (event-driven) escalation path when the app is open. The backend scheduled
- * automation calling escalateUnacknowledgedPanics is the FALLBACK for when
- * the app is closed. No polling — a single setTimeout.
+ * Called by the activator's client-side 2-minute timer — a SECONDARY
+ * optimization that escalates instantly at the 2-minute mark when the app is
+ * open, at zero credit cost. It is NOT relied upon: the server-side scheduled
+ * sweep (escalateUnacknowledgedPanics, deadline-driven via next_escalation_at)
+ * is the PRIMARY mechanism and escalates regardless of app/browser state.
+ * No polling — a single setTimeout.
  */
 export async function escalatePanic(panicId) {
   try {

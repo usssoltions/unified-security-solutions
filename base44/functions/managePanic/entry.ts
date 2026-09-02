@@ -255,6 +255,11 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Invalid action' }, { status: 400 });
     }
 
+    // Terminal/handled states cancel further deadline-driven escalation so a
+    // handled panic is never escalated by a later sweep.
+    if (['acknowledged', 'resolved', 'cancelled'].includes(updateFields.status)) {
+      updateFields.next_escalation_at = null;
+    }
     updateFields.activity_log = [...(panic.activity_log || []), logEntry];
 
     await base44.asServiceRole.entities.PanicAlert.update(panicId, updateFields);

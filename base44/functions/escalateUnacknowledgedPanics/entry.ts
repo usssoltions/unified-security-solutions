@@ -1,30 +1,47 @@
 /**
  * escalateUnacknowledgedPanics
  *
- * THE SINGLE CENTRAL ESCALATION MECHANISM (backend-authoritative — works with
- * no browser open). Uses asServiceRole for cross-user notification dispatch.
+ * THE server-side, DEADLINE-DRIVEN escalation engine. Runs on the platform
+ * schedule and escalates active panics whose escalation deadline has passed.
+ * Works with NO browser/app open, NO supervisor online, and after the device
+ * loses connectivity — it runs entirely server-side.
+ *
+ * ARCHITECTURE (deadline-driven, idempotent):
+ *   - activatePanic persists next_escalation_at = activated_at + 120s (the
+ *     level-1 deadline) when the panic is created.
+ *   - This sweep iterates active panics. For each one whose next_escalation_at
+ *     <= now (and escalation_count < MAX), it escalates EXACTLY ONE level,
+ *     then advances next_escalation_at to the next deadline
+ *     (level 2 = activated_at + 300s) or clears it once MAX is reached.
+ *   - managePanic CLEARS next_escalation_at on acknowledge/resolve/cancel, so a
+ *     handled panic is never escalated, no matter how many sweeps run.
+ *
+ * PRIMARY vs SECONDARY:
+ *   - This server sweep is the PRIMARY escalation mechanism. It guarantees
+ *     escalation regardless of app/browser/device state.
+ *   - The activator's client-side 2-minute timer (panicService.escalatePanic)
+ *     is a SECONDARY optimization: it escalates instantly at the 2-minute mark
+ *     when the app is open, at zero credit cost. It is NOT relied upon — if it
+ *     never fires (app closed/killed), this sweep still escalates.
+ *
+ * IDEMPOTENCY (a panic is never escalated twice for the same level):
+ *   - escalation_count is the idempotency key. Before EVERY escalation the
+ *     CURRENT record is re-fetched and verified: status MUST be exactly
+ *     'active' AND escalation_count unchanged. Concurrent sweeps / retries
+ *     that find the level already advanced simply skip.
+ *   - Acknowledged / assigned / accepted / resolved / cancelled panics are
+ *     NEVER escalated (status guard + cleared next_escalation_at).
+ *   - Once MAX_ESCALATION_LEVEL is reached, next_escalation_at is cleared and
+ *     no further escalation occurs.
+ *
+ * Escalation notifications are TENANT-SCOPED (no cross-tenant leak) and every
+ * escalation is recorded in PlatformAuditLog.
  *
  * Called two ways:
- *  1. Scheduled automation (no body) → bulk-checks all ACTIVE panics.
- *     Bulk sweeps require a Platform Admin caller.
- *  2. Activator's client-side 2-minute timer ({ panicId }) → escalates one
- *     specific panic (PRIMARY event-driven path while the app is open).
- *
- * Escalation levels:
- *   Level 1 at 2 minutes (120s) unacknowledged
- *   Level 2 at 5 minutes (300s) unacknowledged  (MAX)
- *
- * HARDENING (emergency-safety):
- *   - Before EVERY escalation action the CURRENT panic is re-fetched and
- *     verified eligible: status MUST be exactly 'active'. Acknowledged,
- *     assigned, accepted, resolved or cancelled panics are NEVER escalated.
- *   - Idempotency: escalation_count is the idempotency key. A level already
- *     sent is never re-sent; once MAX_ESCALATION_LEVEL is reached no further
- *     escalation occurs.
- *   - Escalation notifications are TENANT-SCOPED: a customer/reseller panic
- *     only alerts operational roles inside that tenant. A platform-level
- *     panic (no tenant) alerts all operational roles.
- *   - Every escalation is recorded in PlatformAuditLog.
+ *   1. Scheduled automation (no body) → bulk-checks all active panics.
+ *      Bulk sweeps require a Platform Admin caller.
+ *   2. Activator's client-side 2-minute timer ({ panicId }) → escalates one
+ *      specific panic (secondary path while the app is open).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { buildPanicEmail } from '../../shared/panicEmailTemplate.ts';
@@ -121,20 +138,24 @@ Deno.serve(async (req) => {
 
       const activatedAtMs = new Date(panic.activated_at).getTime();
       if (isNaN(activatedAtMs)) continue;
-      const secondsSinceActivation = (now - activatedAtMs) / 1000;
 
-      let shouldEscalate = false;
-      let newLevel = currentLevel;
-
-      if (currentLevel === 0 && secondsSinceActivation >= LEVEL_1_THRESHOLD) {
-        shouldEscalate = true;
-        newLevel = 1;
-      } else if (currentLevel === 1 && secondsSinceActivation >= LEVEL_2_THRESHOLD) {
-        shouldEscalate = true;
-        newLevel = 2;
+      // DEADLINE: explicit next_escalation_at if present, else compute from
+      // activated_at + the threshold for the current level (backward compatible
+      // with panics created before this field existed).
+      let deadlineMs;
+      if (panic.next_escalation_at) {
+        deadlineMs = new Date(panic.next_escalation_at).getTime();
+      } else {
+        const threshold = currentLevel === 0 ? LEVEL_1_THRESHOLD : LEVEL_2_THRESHOLD;
+        deadlineMs = activatedAtMs + threshold * 1000;
       }
+      if (isNaN(deadlineMs) || now < deadlineMs) continue;
 
-      if (!shouldEscalate) continue;
+      const secondsSinceActivation = (now - activatedAtMs) / 1000;
+      let newLevel;
+      if (currentLevel === 0) newLevel = 1;
+      else if (currentLevel === 1) newLevel = 2;
+      else continue;
 
       // Idempotency + staleness guard: re-fetch the CURRENT record and
       // re-verify it is still active at the expected escalation level.
@@ -142,6 +163,11 @@ Deno.serve(async (req) => {
       if (!freshPanic) continue;
       if (freshPanic.status !== 'active') continue;            // acknowledged/resolved/cancelled → STOP
       if ((freshPanic.escalation_count || 0) !== currentLevel) continue; // level changed → skip
+
+      // Advance the deadline: level 2 = activated_at + 300s; clear once MAX.
+      const nextEscalationAt = newLevel < MAX_ESCALATION_LEVEL
+        ? new Date(activatedAtMs + LEVEL_2_THRESHOLD * 1000).toISOString()
+        : null;
 
       const nowIso = new Date().toISOString();
       const callerName = callerUser?.display_name || callerUser?.full_name || 'System (Auto-Escalation)';
@@ -151,6 +177,7 @@ Deno.serve(async (req) => {
         escalated: true,
         escalated_at: nowIso,
         escalation_count: newLevel,
+        next_escalation_at: nextEscalationAt,
         activity_log: [...(freshPanic.activity_log || []), {
           timestamp: nowIso,
           action: 'escalated',

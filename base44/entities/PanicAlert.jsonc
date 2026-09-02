@@ -150,6 +150,11 @@
       "type": "number",
       "default": 0
     },
+    "next_escalation_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Deadline-driven escalation timestamp. Set on activation to activated_at + 120s (level 1). After each escalation, advanced to activated_at + 300s (level 2) or cleared once MAX level is reached. Cleared on acknowledge/resolve/cancel. The server sweep escalates when next_escalation_at <= now."
+    },
     "notification_sent": {
       "type": "boolean",
       "default": false

@@ -52,6 +52,9 @@ Deno.serve(async (req) => {
       notification_sent: false,
       escalated: false,
       escalation_count: 0,
+      // Deadline-driven escalation: level 1 is due 120s after activation.
+      // The server sweep escalates when next_escalation_at <= now.
+      next_escalation_at: new Date(Date.now() + 120000).toISOString(),
       customer_id: user.customer_id || undefined,
       reseller_id: user.reseller_id || undefined,
       activity_log: [{
