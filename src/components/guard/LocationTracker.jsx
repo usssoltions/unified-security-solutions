@@ -19,17 +19,22 @@ function distanceMetres(a, b) {
 }
 
 /**
- * Adaptive GPS tracker — uploads only when the guard has moved >25m OR a
- * 5-minute heartbeat is due, so a guard sitting at a post doesn't generate
- * 60 location records/hour of the same coordinates (was: one per 60s
- * regardless of movement). The control room still confirms the device is
- * active via the heartbeat, and patrol trails remain accurate because a
- * walking guard moves well beyond 25m per minute.
+ * Adaptive GPS tracker — uploads only when the guard has moved >40m OR a
+ * 10-minute heartbeat is due, so a guard sitting at a post doesn't generate
+ * 60 location records/hour of the same coordinates. The control room still
+ * confirms the device is active via the heartbeat, and patrol trails remain
+ * accurate because a walking guard moves well beyond 40m per minute.
+ *
+ * EMERGENCY OVERRIDE: when `emergency` is true (an active Panic belongs to this
+ * guard), the throttle drops to ~10s and every fix is uploaded regardless of
+ * movement — giving the control room a live, high-frequency trail during an
+ * emergency. Normal low-data throttling never blocks useful live location
+ * during a panic.
  *
  * Tracking remains gated on an active shift + clocked-in guard, so off-shift
  * and logged-out guards transmit nothing.
  */
-export default function LocationTracker({ user, shift, enabled }) {
+export default function LocationTracker({ user, shift, enabled, emergency = false }) {
   const watchIdRef = useRef(null);
   const lastUpdateRef = useRef(0);
   const lastPosRef = useRef(null);
@@ -40,8 +45,10 @@ export default function LocationTracker({ user, shift, enabled }) {
 
     const handleSuccess = async (position) => {
       const now = Date.now();
-      // Process at most once per 90s (the watcher fires more often)
-      if (now - lastUpdateRef.current < 90000) return;
+      // Emergency (panic / live tracking) → upload every ~10s regardless of
+      // movement. Normal → 90s throttle.
+      const throttleMs = emergency ? 10000 : 90000;
+      if (now - lastUpdateRef.current < throttleMs) return;
       lastUpdateRef.current = now;
 
       const coords = position.coords;
@@ -51,13 +58,12 @@ export default function LocationTracker({ user, shift, enabled }) {
       const moved = distanceMetres(lastPosRef.current, currentPos) > 40;
       const heartbeatDue = now - lastHeartbeatRef.current > 10 * 60 * 1000;
 
-      // Skip upload if stationary AND heartbeat not due — eliminates redundant
-      // data when a guard sits at a post. Control room still gets a 5-minute
-      // heartbeat confirming the device is active.
-      if (!moved && !heartbeatDue) return;
+      // Skip upload if stationary AND heartbeat not due — UNLESS this is an
+      // emergency, where every fix is uploaded for live tracking.
+      if (!emergency && !moved && !heartbeatDue) return;
 
       lastPosRef.current = currentPos;
-      if (heartbeatDue) lastHeartbeatRef.current = now;
+      if (heartbeatDue || emergency) lastHeartbeatRef.current = now;
 
       const getBattery = async () => {
         try {
@@ -99,7 +105,7 @@ export default function LocationTracker({ user, shift, enabled }) {
     watchIdRef.current = navigator.geolocation.watchPosition(
       handleSuccess,
       () => {},
-      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: emergency ? 5000 : 30000, timeout: 15000 }
     );
 
     return () => {
@@ -108,7 +114,7 @@ export default function LocationTracker({ user, shift, enabled }) {
         watchIdRef.current = null;
       }
     };
-  }, [enabled, user, shift]);
+  }, [enabled, user, shift, emergency]);
 
   return null;
 }

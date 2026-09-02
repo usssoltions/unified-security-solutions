@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import GoogleCalendarConnect from "@/components/medical/GoogleCalendarConnect";
+// (calendar connect UI rendered below the page header)
 import { hasMedicalOversight } from "@/lib/medicalOversight";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -244,6 +246,8 @@ export default function MedicalAppointments() {
             <Plus className="w-4 h-4 mr-2" /> New Appointment
           </Button>
         </div>
+
+        <GoogleCalendarConnect />
 
         {/* Filter tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">

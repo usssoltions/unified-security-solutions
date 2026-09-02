@@ -154,7 +154,6 @@ export const ROUTE_REGISTRY = {
     { title: "Assessment Templates", pageKey: "MedicalAssessmentTemplates", icon: FileText },
     { title: "User Management", pageKey: "UserManagement", icon: Users },
     { title: "Configuration", pageKey: "Configuration", icon: Sliders },
-    { title: "Employer Portal", pageKey: "EmployerPortal", icon: Building2 },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   therapist: [

@@ -148,6 +148,22 @@ export default function GuardShift() {
     refetchOnWindowFocus: false
   });
 
+  // Active panic for this guard — drives the LocationTracker EMERGENCY override
+  // (high-frequency live tracking during a panic). Polled every 15s so the
+  // override engages shortly after a panic is activated.
+  const { data: activePanic } = useQuery({
+    queryKey: ["activePanic", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const panics = await base44.entities.PanicAlert.filter({ user_id: user.id, status: "active" });
+      return panics?.[0] || null;
+    },
+    enabled: !!user,
+    refetchInterval: 15000,
+    staleTime: 10000,
+    refetchOnWindowFocus: true
+  });
+
   const { data: upcomingShifts = [] } = useQuery({
     queryKey: ["upcomingShifts", user?.id],
     queryFn: async () => {
@@ -397,7 +413,7 @@ export default function GuardShift() {
         <OfflineSyncManager />
         <PatrolAssignmentAlert user={user} />
         <AutoReportGenerator user={user} shift={activeShift} />
-        <LocationTracker user={user} shift={activeShift} enabled={!!activeShift && user.is_clocked_in} />
+        <LocationTracker user={user} shift={activeShift} enabled={!!activeShift && user.is_clocked_in} emergency={!!activePanic} />
 
         {/* Header */}
         <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 px-4 py-3">
