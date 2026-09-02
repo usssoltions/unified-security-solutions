@@ -19,7 +19,8 @@ Deno.serve(async (req) => {
     // of the security toggles below, and early-exits inside when nothing is due.
     try {
       const rem = await base44.functions.invoke('sendAppointmentReminders', {});
-      results.appointment_reminders = rem ?? { invoked: true };
+      // invoke returns an Axios-shaped response — keep only the payload
+      results.appointment_reminders = rem?.data !== undefined ? rem.data : { invoked: true };
     } catch (e) {
       results.appointment_reminders = { error: e.message };
     }

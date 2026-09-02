@@ -59,7 +59,9 @@ export default async function(req: Request): Promise<Response> {
     const oldData = body.old_data || null;
 
     // Re-fetch when the automation payload omitted the record (payload_too_large).
-    if (!record && evt.entity_id) {
+    // Never for delete events — the record no longer exists (delete handling
+    // only needs the entity id).
+    if (!record && evt.entity_id && evt.type !== 'delete') {
       if (evt.entity_name === 'Shift') {
         record = await base44.asServiceRole.entities.Shift.get(evt.entity_id);
       } else if (evt.entity_name === 'Site') {
