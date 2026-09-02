@@ -10,17 +10,28 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (user.role_type !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
+    const now = new Date();
+    const results = {};
+
+    // ── 0. Medical Appointment Reminders (shared tick) ──
+    // Deadline-driven idempotent sweep; replaces the retired dedicated 30-minute
+    // reminder automation. Runs on this already-scheduled 2-hour tick regardless
+    // of the security toggles below, and early-exits inside when nothing is due.
+    try {
+      const rem = await base44.functions.invoke('sendAppointmentReminders', {});
+      results.appointment_reminders = rem ?? { invoked: true };
+    } catch (e) {
+      results.appointment_reminders = { error: e.message };
+    }
+
     // Load toggle settings — exit immediately if ALL are disabled
     const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
     const settings = settingsRecs?.[0] || {};
     const anyEnabled = settings.monitor_overdue_patrols || settings.monitor_missed_clockins ||
       settings.monitor_low_battery || settings.generate_scheduled_patrols || settings.send_shift_reminders;
     if (!anyEnabled) {
-      return Response.json({ success: true, skipped: true, reason: 'All monitors disabled' });
+      return Response.json({ success: true, results });
     }
-
-    const now = new Date();
-    const results = {};
 
     // ── 1. Overdue Patrol Monitor ──
     if (settings.monitor_overdue_patrols) {
@@ -189,6 +200,102 @@ Deno.serve(async (req) => {
           results.shift_reminders = { sent: remindersSent };
         }
       } catch (e) { results.shift_reminders = { error: e.message }; }
+    }
+
+    // ── 6. Scheduled Patrol status monitor ──
+    // Moved from the retired hourly patrol automation. Same thresholds (15-min
+    // overdue, 60-min missed) and 10-min pre-patrol alerts; now runs on this
+    // shared 2-hour tick. Gated by the same "Auto-Generate Patrols" toggle that
+    // gated the old hourly run (enabled unless explicitly false).
+    if (!(settings.generate_scheduled_patrols === false)) {
+      try {
+        const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+        const patrolsRaw = await base44.asServiceRole.entities.ScheduledPatrol.list('-scheduled_start', 500);
+        const todayPatrols = patrolsRaw.filter(p => {
+          const d = new Date(p.scheduled_start);
+          return d >= todayStart && d <= todayEnd;
+        });
+
+        if (todayPatrols.length > 0) {
+          const overdueThreshold = 15;
+          const missedThreshold = 60;
+          let markedOverdue = 0;
+          let markedMissed = 0;
+
+          // Supervisors fetched lazily — only when a missed patrol needs notifying
+          let supervisors = null;
+          for (const patrol of todayPatrols) {
+            if (patrol.status !== 'upcoming' && patrol.status !== 'due') continue;
+            const minsLate = (now - new Date(patrol.scheduled_start)) / 60000;
+
+            if (minsLate > missedThreshold) {
+              await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'missed' });
+              markedMissed++;
+              if (patrol.guard_name) {
+                if (!supervisors) {
+                  const allUsers = await base44.asServiceRole.entities.User.list();
+                  supervisors = allUsers.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type)).slice(0, 3);
+                }
+                if (supervisors.length > 0) {
+                  await Promise.all(supervisors.map(sup =>
+                    base44.asServiceRole.entities.Notification.create({
+                      recipient_id: sup.id,
+                      recipient_name: sup.full_name,
+                      type: 'system',
+                      priority: 'high',
+                      title: `⚠️ Missed Patrol — ${patrol.site_name}`,
+                      message: `${patrol.guard_name} missed patrol #${patrol.patrol_number} at ${patrol.site_name}.`,
+                      read: false,
+                      related_entity: 'ScheduledPatrol',
+                      related_id: patrol.id,
+                      sent_via: ['in_app'],
+                    }).catch(() => {})
+                  ));
+                }
+              }
+            } else if (minsLate > overdueThreshold) {
+              await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'overdue' });
+              markedOverdue++;
+            } else if (minsLate >= 0 && patrol.status === 'upcoming') {
+              await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'due' });
+            }
+          }
+
+          // 10-min pre-patrol alerts (in-app only — no integration credit)
+          const alertWindowEnd = new Date(now.getTime() + 10 * 60 * 1000);
+          const dueAlerts = todayPatrols.filter(p =>
+            p.status === 'upcoming' &&
+            p.guard_id &&
+            new Date(p.scheduled_start) >= now &&
+            new Date(p.scheduled_start) <= alertWindowEnd &&
+            !p.alerts_sent?.includes('10min')
+          );
+          for (const patrol of dueAlerts) {
+            await base44.asServiceRole.entities.Notification.create({
+              recipient_id: patrol.guard_id,
+              type: 'patrol_due',
+              priority: 'high',
+              title: '🛡️ Patrol Due in 10 Minutes',
+              message: `Patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString('en-ZA')}.`,
+              read: false,
+              related_entity: 'ScheduledPatrol',
+              related_id: patrol.id,
+              sent_via: ['in_app'],
+            }).catch(() => {});
+            await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, {
+              alerts_sent: [...(patrol.alerts_sent || []), '10min'],
+            }).catch(() => {});
+          }
+
+          results.scheduled_patrol_monitor = {
+            checked: todayPatrols.length,
+            markedOverdue,
+            markedMissed,
+            prePatrolAlerts: dueAlerts.length,
+          };
+        }
+      } catch (e) { results.scheduled_patrol_monitor = { error: e.message }; }
     }
 
     return Response.json({ success: true, results });

@@ -16,11 +16,21 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  * Telegram/push are handled by the notification engine elsewhere; this function
  * keeps to cheap, deterministic channels to minimise integration-credit use.
  *
- * Triggered by a scheduled automation (every 30 min).
+ * Triggered by (no dedicated scheduled automation — zero idle executions):
+ *  - Entity automation on Appointment create/confirm/reschedule (event-driven)
+ *  - The shared 2-hourly runAllMonitors tick (rides an existing schedule)
+ *  - Opportunistic sweep from the clinic Appointments page (throttled)
  */
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Authenticate — all trigger contexts are authenticated (platform identity
+    // for automations, signed-in user for client sweeps).
+    let user = null;
+    try { user = await base44.auth.me(); } catch (_) {}
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
     const now = new Date();
     const reminderWindows = [
       { hoursBefore: 24, key: 'reminder_24h' },
@@ -49,10 +59,12 @@ export default async function(req: Request): Promise<Response> {
       const hoursUntil = (aptTime.getTime() - now.getTime()) / 3600000;
 
       for (const window of reminderWindows) {
-        // Inside the window: due now (≤ hoursBefore) and not past
-        // (hoursUntil > hoursBefore - 0.5). The 0.5h grace + 30-min cron
-        // guarantees each window is caught exactly once.
-        if (!(hoursUntil <= window.hoursBefore && hoursUntil > window.hoursBefore - 0.5)) continue;
+        // Catch window is 2h wide — (hoursBefore-2, hoursBefore], clamped to
+        // hoursUntil > 0 — so the shared 2-hourly sweep always lands inside it.
+        // A window that opens between sweeps is caught by the entity trigger
+        // (created/confirmed/rescheduled) or the clinic's opportunistic sweep.
+        // Never sent twice: reminders_sent is checked first (idempotent).
+        if (!(hoursUntil <= window.hoursBefore && hoursUntil > window.hoursBefore - 2 && hoursUntil > 0)) continue;
 
         const alreadySent = apt.reminders_sent?.includes(window.key);
         if (alreadySent) continue;

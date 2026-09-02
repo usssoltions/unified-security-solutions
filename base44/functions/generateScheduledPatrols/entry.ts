@@ -1,231 +1,282 @@
 /**
- * generateScheduledPatrols
+ * generateScheduledPatrols — EVENT-DRIVEN patrol generation (zero idle cost).
  *
- * Generates ScheduledPatrol records for active sites with patrol_config.enabled = true.
- * Also marks overdue/missed patrols and sends 10-min pre-patrol alerts.
+ * Previously executed hourly by a dedicated scheduled automation (~24 idle
+ * executions/day even with no patrol-enabled sites). That automation is now
+ * retired. This function runs ONLY when real work happens:
  *
- * OPTIMIZED: Exits immediately if no active shifts exist — zero extra calls on idle days.
+ *   Triggers (entity automations):
+ *   - Shift create / update / delete
+ *       → generate patrols for that shift's site+date (idempotent), propagate
+ *         guard reassignment, or clean up the deleted shift's future patrols.
+ *   - Site update (patrol_config / checkpoints changed)
+ *       → rebuild that site's future not-yet-started patrols with the new config.
+ *   - Direct invocation with { site_id } (bulk scheduling in the app —
+ *     bulkCreate skips per-record events) → targeted sweep for that site.
+ *   - Direct invocation with no payload → full recovery sweep (manual lever).
+ *
+ * Behaviour preserved from the previous hourly generator:
+ *   - Per-site patrol_config schedules (time window + frequency)
+ *   - First eligible shift per site+date supplies the guard (same rule)
+ *   - Randomised/AI-optimised checkpoint ordering applied at creation time
+ *   - Duration target, patrol numbering, due/upcoming status
+ *   - Never duplicates: an existing patrol within 5 min of the scheduled time
+ *     is skipped, so repeated events are safe (idempotent)
+ *
+ * Patrol STATUS monitoring (overdue/missed marking + 10-min pre-patrol alerts)
+ * moved to the shared 2-hourly runAllMonitors tick (same thresholds).
  */
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+
+const ELIGIBLE_SHIFT_STATUSES = ['scheduled', 'active', 'accepted'];
 
 function timeToMins(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
+  const parts = String(hhmm || '06:00').split(':').map(Number);
+  return parts[0] * 60 + (parts[1] || 0);
 }
 
-function addMinutes(base, mins) {
-  const d = new Date(base);
-  d.setMinutes(d.getMinutes() + mins);
-  return d;
+function dayKey(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-Deno.serve(async (req) => {
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Authenticate — blocks unauthenticated external invocations.
+    // Authenticate — blocks unauthenticated external invocations. Entity and
+    // scheduled contexts carry the platform identity (same pattern as the
+    // other automation-backed functions).
     let user = null;
     try { user = await base44.auth.me(); } catch (_) {}
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (user.role_type !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
-    // Check if this automation is enabled
-    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
-    const settings = settingsRecs?.[0];
-    // Default to ENABLED when no settings record exists yet, so patrols generate
-    // out of the box. Only skip when an admin has explicitly disabled the toggle.
-    if (settings && settings.generate_scheduled_patrols === false) {
-      return Response.json({ success: true, skipped: true, reason: 'Automation disabled' });
+    let body = {};
+    try { body = await req.json(); } catch (_) {}
+    const evt = body.event || {};
+    let record = body.data || null;
+    const oldData = body.old_data || null;
+
+    // Re-fetch when the automation payload omitted the record (payload_too_large).
+    if (!record && evt.entity_id) {
+      if (evt.entity_name === 'Shift') {
+        record = await base44.asServiceRole.entities.Shift.get(evt.entity_id);
+      } else if (evt.entity_name === 'Site') {
+        record = await base44.asServiceRole.entities.Site.get(evt.entity_id);
+      }
     }
 
     const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+    const audit = {
+      processedAt: now.toISOString(),
+      trigger: evt.entity_name ? `${evt.type || 'update'}:${evt.entity_name}` : (body.site_id ? 'site_sweep' : 'manual_sweep'),
+      patrolsCreated: 0,
+      patrolsRemoved: 0,
+      guardsReassigned: 0,
+      sitesProcessed: 0,
+    };
 
-    // 0a. Fetch patrol-enabled sites first — exit immediately if none
-    const sites = await base44.asServiceRole.entities.Site.filter({ status: 'active' });
-    const patrolSites = sites.filter(s => s.patrol_config?.enabled && s.patrol_config?.schedules?.length > 0);
-
-    if (patrolSites.length === 0) {
-      return Response.json({ success: true, skipped: true, reason: 'No patrol-enabled sites', patrolsCreated: 0 });
+    // ── 1. Shift DELETED → remove its future not-yet-started patrols so no
+    // orphaned obligations linger (and no false "missed patrol" alerts).
+    // Cleanup runs even when the kill switch is off.
+    if (evt.type === 'delete' && evt.entity_name === 'Shift' && evt.entity_id) {
+      const orphans = await base44.asServiceRole.entities.ScheduledPatrol.filter({
+        shift_id: evt.entity_id,
+        status: 'upcoming',
+      });
+      for (const p of orphans) {
+        if (new Date(p.scheduled_start) > now) {
+          await base44.asServiceRole.entities.ScheduledPatrol.delete(p.id).catch(() => {});
+          audit.patrolsRemoved++;
+        }
+      }
+      return Response.json({ success: true, ...audit });
     }
 
-    // 0b. GATE CHECK — only fetch shifts for patrol-enabled sites today
-    const patrolSiteIds = new Set(patrolSites.map(s => s.id));
-    const allShifts = await base44.asServiceRole.entities.Shift.filter({});
-    const todayShifts = allShifts.filter(s => {
-      const d = new Date(s.start_time);
-      return d >= todayStart && d <= todayEnd &&
-        ['scheduled', 'active', 'accepted'].includes(s.status) &&
-        patrolSiteIds.has(s.site_id);
-    });
-
-    if (todayShifts.length === 0) {
-      return Response.json({ success: true, skipped: true, reason: 'No active shifts on patrol sites today', patrolsCreated: 0 });
+    // ── 2. Platform kill switch — the same toggle that gated the retired
+    // hourly run. Enabled unless an admin explicitly set it to false.
+    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
+    const settings = settingsRecs?.[0];
+    if (settings && settings.generate_scheduled_patrols === false) {
+      return Response.json({ success: true, skipped: true, reason: 'Automation disabled', ...audit });
     }
 
-    // 1. Fetch existing scheduled patrols for TODAY only (paginated to avoid loading all history)
-    const todayPatrolsRaw = await base44.asServiceRole.entities.ScheduledPatrol.list('-scheduled_start', 500);
-    const todayPatrols = todayPatrolsRaw.filter(p => {
-      const d = new Date(p.scheduled_start);
-      return d >= todayStart && d <= todayEnd;
-    });
+    // ── 3. Resolve the target site(s) from the event (or sweep scope).
+    let sites = [];
+    let eventShift = null;
 
-    const created = [];
-    const skipped = [];
+    if (record && evt.entity_name === 'Shift') {
+      eventShift = record;
+      if (!ELIGIBLE_SHIFT_STATUSES.includes(record.status)) {
+        return Response.json({ success: true, skipped: true, reason: `Shift status '${record.status}' not eligible`, ...audit });
+      }
+      const site = await base44.asServiceRole.entities.Site.get(record.site_id).catch(() => null);
+      if (!site || site.status !== 'active') {
+        return Response.json({ success: true, skipped: true, reason: 'Site not active', ...audit });
+      }
+      sites = [site];
 
-    for (const site of patrolSites) {
-      const cfg = site.patrol_config;
-      const siteShift = todayShifts.find(s => s.site_id === site.id);
-
-      // Only generate patrols if there's a guard assigned to this site today
-      if (!siteShift) continue;
-
-      for (const schedule of cfg.schedules) {
-        const startMins = timeToMins(schedule.start_time || '06:00');
-        const endMins = timeToMins(schedule.end_time || '18:00');
-        const freqMins = schedule.frequency_minutes || 60;
-
-        let patrolMins = startMins;
-        let patrolNum = 1;
-
-        while (patrolMins <= endMins) {
-          const scheduledStart = new Date(todayStart);
-          scheduledStart.setMinutes(scheduledStart.getMinutes() + patrolMins);
-
-          const alreadyExists = todayPatrols.some(p =>
-            p.site_id === site.id &&
-            Math.abs(new Date(p.scheduled_start) - scheduledStart) < 5 * 60 * 1000
-          );
-
-          if (!alreadyExists) {
-            const checkpoints = (site.checkpoints || []).map(cp => ({
-              checkpoint_id: cp.id,
-              checkpoint_name: cp.name,
-              risk_level: cp.risk_level || 'medium',
-              required: cp.required !== false,
-              completed: false,
-              order: 0,
-            }));
-
-            const riskOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-            const shuffled = cfg.ai_route_optimization
-              ? checkpoints.sort((a, b) =>
-                  (riskOrder[b.risk_level] || 2) + Math.random() * 0.4 -
-                  (riskOrder[a.risk_level] || 2) - Math.random() * 0.4
-                ).map((cp, i) => ({ ...cp, order: i + 1 }))
-              : checkpoints.map((cp, i) => ({ ...cp, order: i + 1 }));
-
-            const patrol = await base44.asServiceRole.entities.ScheduledPatrol.create({
-              site_id: site.id,
-              site_name: site.name,
-              guard_id: siteShift.guard_id,
-              guard_name: siteShift.guard_name,
-              shift_id: siteShift.id,
-              scheduled_start: scheduledStart.toISOString(),
-              scheduled_end: addMinutes(scheduledStart, cfg.duration_target_minutes || 30).toISOString(),
-              status: scheduledStart <= now ? 'due' : 'upcoming',
-              patrol_number: patrolNum,
-              route_checkpoints: shuffled,
-              checkpoints_total: shuffled.length,
-              checkpoints_completed: 0,
-              ai_route_generated: !!cfg.ai_route_optimization,
-            });
-
-            created.push(patrol.id);
-          } else {
-            skipped.push(`${site.name} +${patrolMins - startMins}m`);
+      // Guard reassigned → propagate to this shift's future not-yet-started
+      // patrols (patrols already visible to the previous guard otherwise).
+      if (oldData && record.guard_id && oldData.guard_id !== record.guard_id) {
+        const linked = await base44.asServiceRole.entities.ScheduledPatrol.filter({
+          shift_id: record.id,
+          status: 'upcoming',
+        });
+        for (const p of linked) {
+          if (new Date(p.scheduled_start) > now) {
+            await base44.asServiceRole.entities.ScheduledPatrol.update(p.id, {
+              guard_id: record.guard_id,
+              guard_name: record.guard_name,
+            }).catch(() => {});
+            audit.guardsReassigned++;
           }
-
-          patrolMins += freqMins;
-          patrolNum++;
         }
       }
-    }
-
-    // 3. Mark overdue / missed patrols — only on today's patrols
-    const overdueThreshold = 15;
-    const missedThreshold = 60;
-    let markedOverdue = 0;
-    let markedMissed = 0;
-
-    // Fetch supervisors once for all missed patrol notifications
-    const allUsers = await base44.asServiceRole.entities.User.list();
-    const supervisors = allUsers.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type)).slice(0, 3);
-
-    for (const patrol of todayPatrols) {
-      if (patrol.status !== 'upcoming' && patrol.status !== 'due') continue;
-      const minsLate = (now - new Date(patrol.scheduled_start)) / 60000;
-
-      if (minsLate > missedThreshold) {
-        await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'missed' });
-        markedMissed++;
-
-        if (patrol.guard_name && supervisors.length > 0) {
-          await Promise.all(supervisors.map(sup =>
-            base44.asServiceRole.entities.Notification.create({
-              recipient_id: sup.id,
-              recipient_name: sup.full_name,
-              type: 'system',
-              priority: 'high',
-              title: `⚠️ Missed Patrol — ${patrol.site_name}`,
-              message: `${patrol.guard_name} missed patrol #${patrol.patrol_number} at ${patrol.site_name}.`,
-              read: false,
-              related_entity: 'ScheduledPatrol',
-              related_id: patrol.id,
-              sent_via: ['in_app'],
-            }).catch(() => {})
-          ));
-        }
-      } else if (minsLate > overdueThreshold) {
-        await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'overdue' });
-        markedOverdue++;
-      } else if (minsLate >= 0 && patrol.status === 'upcoming') {
-        await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'due' });
+    } else if (record && evt.entity_name === 'Site') {
+      if (!(record.patrol_config?.enabled && record.patrol_config?.schedules?.length > 0)) {
+        // Auto-Generate Patrols turned OFF for this site → generate nothing new.
+        // Already-generated patrols remain (same semantics as before).
+        return Response.json({ success: true, skipped: true, reason: 'Auto-Generate Patrols disabled for site', ...audit });
       }
+      // Config / routes changed → rebuild this site's future not-yet-started
+      // patrols with the new configuration. Started/completed/missed history is
+      // never touched (scheduled_start > now only).
+      const future = await base44.asServiceRole.entities.ScheduledPatrol.filter({
+        site_id: record.id,
+        status: 'upcoming',
+      });
+      for (const p of future) {
+        if (new Date(p.scheduled_start) > now) {
+          await base44.asServiceRole.entities.ScheduledPatrol.delete(p.id).catch(() => {});
+          audit.patrolsRemoved++;
+        }
+      }
+      sites = [record];
+    } else if (body.site_id) {
+      // Targeted sweep — used after bulk shift creation (bulkCreate skips the
+      // per-record events the entity automations rely on).
+      const site = await base44.asServiceRole.entities.Site.get(body.site_id).catch(() => null);
+      sites = site ? [site] : [];
+    } else {
+      // Full recovery sweep across every patrol-enabled site (manual lever).
+      const allSites = await base44.asServiceRole.entities.Site.filter({ status: 'active' });
+      sites = allSites;
     }
 
-    // 4. Send 10-min pre-patrol alerts (in-app only, no email/push integration call)
-    const alertWindowEnd = new Date(now.getTime() + 10 * 60 * 1000);
-    const dueAlerts = todayPatrols.filter(p =>
-      p.status === 'upcoming' &&
-      p.guard_id &&
-      new Date(p.scheduled_start) >= now &&
-      new Date(p.scheduled_start) <= alertWindowEnd &&
-      !p.alerts_sent?.includes('10min')
+    sites = sites.filter(s =>
+      s && s.status === 'active' &&
+      s.patrol_config?.enabled &&
+      s.patrol_config?.schedules?.length > 0
     );
 
-    for (const patrol of dueAlerts) {
-      // In-app notification only — no push integration credit used
-      await base44.asServiceRole.entities.Notification.create({
-        recipient_id: patrol.guard_id,
-        type: 'patrol_due',
-        priority: 'high',
-        title: '🛡️ Patrol Due in 10 Minutes',
-        message: `Patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString('en-ZA')}.`,
-        read: false,
-        related_entity: 'ScheduledPatrol',
-        related_id: patrol.id,
-        sent_via: ['in_app'],
-      }).catch(() => {});
+    // ── 4. Generate (idempotent — an existing patrol within 5 minutes of the
+    // scheduled time is never duplicated, no matter how often events fire).
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
 
-      await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, {
-        alerts_sent: [...(patrol.alerts_sent || []), '10min'],
-      }).catch(() => {});
+    // One dedup snapshot, reused for all sites (latest scheduled starts first).
+    const existingRaw = sites.length > 0
+      ? await base44.asServiceRole.entities.ScheduledPatrol.list('-scheduled_start', 300)
+      : [];
+
+    for (const site of sites) {
+      const cfg = site.patrol_config;
+
+      // Shifts to generate for: the event's shift, or every future eligible
+      // shift of the site — first shift per date (same rule as the old
+      // generator, which used the first matching shift of the day).
+      const shiftsByDate = new Map();
+      if (eventShift) {
+        shiftsByDate.set(dayKey(eventShift.start_time), eventShift);
+      } else {
+        const siteShifts = await base44.asServiceRole.entities.Shift.filter({ site_id: site.id });
+        for (const s of siteShifts) {
+          if (!ELIGIBLE_SHIFT_STATUSES.includes(s.status)) continue;
+          const st = new Date(s.start_time);
+          if (st < todayStart) continue;
+          const key = dayKey(st);
+          if (!shiftsByDate.has(key)) shiftsByDate.set(key, s);
+        }
+      }
+      if (shiftsByDate.size === 0) continue;
+
+      const sitePatrols = existingRaw.filter(p => p.site_id === site.id);
+
+      for (const shift of shiftsByDate.values()) {
+        const dayStart = new Date(shift.start_time);
+        dayStart.setHours(0, 0, 0, 0);
+
+        for (const schedule of cfg.schedules) {
+          const startMins = timeToMins(schedule.start_time || '06:00');
+          const endMins = timeToMins(schedule.end_time || '18:00');
+          const freqMins = schedule.frequency_minutes || 60;
+
+          let patrolMins = startMins;
+          let patrolNum = 1;
+
+          while (patrolMins <= endMins) {
+            const scheduledStart = new Date(dayStart);
+            scheduledStart.setMinutes(scheduledStart.getMinutes() + patrolMins);
+
+            const alreadyExists = sitePatrols.some(p =>
+              p.site_id === site.id &&
+              Math.abs(new Date(p.scheduled_start) - scheduledStart) < 5 * 60 * 1000
+            );
+
+            if (!alreadyExists) {
+              const checkpoints = (site.checkpoints || []).map(cp => ({
+                checkpoint_id: cp.id,
+                checkpoint_name: cp.name,
+                risk_level: cp.risk_level || 'medium',
+                required: cp.required !== false,
+                completed: false,
+                order: 0,
+              }));
+
+              const riskOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+              const shuffled = cfg.ai_route_optimization
+                ? checkpoints.sort((a, b) =>
+                    (riskOrder[b.risk_level] || 2) + Math.random() * 0.4 -
+                    (riskOrder[a.risk_level] || 2) - Math.random() * 0.4
+                  ).map((cp, i) => ({ ...cp, order: i + 1 }))
+                : checkpoints.map((cp, i) => ({ ...cp, order: i + 1 }));
+
+              const scheduledEnd = new Date(scheduledStart);
+              scheduledEnd.setMinutes(scheduledEnd.getMinutes() + (cfg.duration_target_minutes || 30));
+
+              const patrol = await base44.asServiceRole.entities.ScheduledPatrol.create({
+                site_id: site.id,
+                site_name: site.name,
+                guard_id: shift.guard_id,
+                guard_name: shift.guard_name,
+                shift_id: shift.id,
+                scheduled_start: scheduledStart.toISOString(),
+                scheduled_end: scheduledEnd.toISOString(),
+                status: scheduledStart <= now ? 'due' : 'upcoming',
+                patrol_number: patrolNum,
+                route_checkpoints: shuffled,
+                checkpoints_total: shuffled.length,
+                checkpoints_completed: 0,
+                ai_route_generated: !!cfg.ai_route_optimization,
+              });
+
+              sitePatrols.push(patrol);
+              audit.patrolsCreated++;
+            }
+
+            patrolMins += freqMins;
+            patrolNum++;
+          }
+        }
+      }
+      audit.sitesProcessed++;
     }
 
-    return Response.json({
-      success: true,
-      patrolSitesProcessed: patrolSites.length,
-      patrolsCreated: created.length,
-      patrolsSkipped: skipped.length,
-      markedOverdue,
-      markedMissed,
-      dueAlertsSet: dueAlerts.length,
-    });
-
+    return Response.json({ success: true, ...audit });
   } catch (error) {
     console.error('generateScheduledPatrols error:', error);
     return Response.json({ success: false, error: error.message }, { status: 500 });
   }
-});
+}

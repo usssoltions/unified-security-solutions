@@ -98,6 +98,13 @@ export default function BulkScheduler({ guards, sites, onClose, onSuccess }) {
 
       const createdShifts = await base44.entities.Shift.bulkCreate(shifts);
 
+      // bulkCreate skips per-record side effects, so the Shift entity automation
+      // does NOT fire — run the event-driven patrol generator once for this
+      // site (idempotent: existing patrols are never duplicated).
+      if (createdShifts?.length > 0) {
+        base44.functions.invoke("generateScheduledPatrols", { site_id: formData.site_id }).catch(() => {});
+      }
+
       // Send email + in-app notifications for all guard-assigned shifts
       if (selectedGuards.length > 0) {
         const waLinks = [];

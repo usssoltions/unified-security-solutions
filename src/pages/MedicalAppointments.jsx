@@ -39,6 +39,16 @@ export default function MedicalAppointments() {
 
   useEffect(() => {
     loadData();
+    // Opportunistic reminder sweep (throttled to once per hour per device).
+    // Improves reminder timing during clinic hours without any polling — the
+    // sweep is idempotent and early-exits when nothing is due.
+    try {
+      const lastSweep = sessionStorage.getItem("apt_reminder_sweep_at");
+      if (!lastSweep || Date.now() - Number(lastSweep) > 3600000) {
+        sessionStorage.setItem("apt_reminder_sweep_at", String(Date.now()));
+        base44.functions.invoke("sendAppointmentReminders", {}).catch(() => {});
+      }
+    } catch (_) {}
   }, []);
 
   const loadData = async () => {
