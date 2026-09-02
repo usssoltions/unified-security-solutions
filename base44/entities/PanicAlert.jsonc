@@ -1,7 +1,7 @@
 {
   "name": "PanicAlert",
   "type": "object",
-  "description": "Emergency panic alert with full lifecycle: activated \u2192 acknowledged \u2192 assigned \u2192 accepted \u2192 resolved. Any authenticated user may CREATE their own panic. Platform oversight: the built-in role 'admin' (USS Platform Admin) plus users with admin_level 'platform' / role_type 'platform_admin' may read/update/delete ANY panic across all tenants for emergency oversight. Tenant isolation for reseller/customer operational users is enforced via reseller_id/customer_id matching; the activator and the assigned responder can always access their own panic.",
+  "description": "Emergency panic alert with a simple lifecycle: active \u2192 acknowledged \u2192 resolved (or cancelled). There is NO automatic escalation \u2014 a panic is submitted ONCE, the initial notification is sent immediately, and the Control Room Panic Queue provides visual urgency. initial_notification_sent_at is the durable marker that the single initial notification event occurred (audit + idempotency). The next_escalation_at / escalation_count / escalated fields are retained for historical data only and are no longer used by any active automation. Platform oversight: the built-in role 'admin' (USS Platform Admin) plus users with admin_level 'platform' / role_type 'platform_admin' may read/update/delete ANY panic across all tenants for emergency oversight. Tenant isolation for reseller/customer operational users is enforced via reseller_id/customer_id matching; the activator and the assigned responder can always access their own panic.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -148,16 +148,22 @@
     },
     "escalation_count": {
       "type": "number",
-      "default": 0
+      "default": 0,
+      "description": "DEPRECATED \u2014 retained for historical data. No longer incremented by any active automation."
     },
     "next_escalation_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Deadline-driven escalation timestamp. Set on activation to activated_at + 120s (level 1). After each escalation, advanced to activated_at + 300s (level 2) or cleared once MAX level is reached. Cleared on acknowledge/resolve/cancel. The server sweep escalates when next_escalation_at <= now."
+      "description": "DEPRECATED \u2014 retained for historical data. Set to null on all new panics; no active automation reads it."
     },
     "notification_sent": {
       "type": "boolean",
       "default": false
+    },
+    "initial_notification_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp the ONE-TIME initial panic notification was dispatched. There is NO automatic escalation or re-send; this field is the durable marker that the single initial notification event occurred (audit + idempotency)."
     },
     "activated_at": {
       "type": "string",

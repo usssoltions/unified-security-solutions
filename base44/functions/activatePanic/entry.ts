@@ -52,9 +52,9 @@ Deno.serve(async (req) => {
       notification_sent: false,
       escalated: false,
       escalation_count: 0,
-      // Deadline-driven escalation: level 1 is due 120s after activation.
-      // The server sweep escalates when next_escalation_at <= now.
-      next_escalation_at: new Date(Date.now() + 120000).toISOString(),
+      // NO automatic escalation. next_escalation_at is kept null on new panics;
+      // the field is retained on the entity only for historical data.
+      next_escalation_at: null,
       customer_id: user.customer_id || undefined,
       reseller_id: user.reseller_id || undefined,
       activity_log: [{
@@ -169,9 +169,12 @@ Deno.serve(async (req) => {
       console.error('Push notification dispatch failed:', e);
     }
 
-    // 5. Mark notification_sent and append activity log entry
+    // 5. Mark notification_sent + record the ONE-TIME initial notification
+    //    event. There is no automatic escalation/re-send; this timestamp is
+    //    the durable marker that the single initial notification occurred.
     await base44.asServiceRole.entities.PanicAlert.update(panic.id, {
       notification_sent: successCount > 0,
+      initial_notification_sent_at: nowIso,
       activity_log: [...(panic.activity_log || []), {
         timestamp: new Date().toISOString(),
         action: 'notifications_sent',

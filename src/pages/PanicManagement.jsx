@@ -85,9 +85,6 @@ function PanicCard({ panic, user, assignees, onAction, resellerName, customerNam
         <div className="flex items-center gap-2">
           <AlertTriangle className={`w-5 h-5 ${config.text}`} />
           <span className={`font-bold ${config.text}`}>{config.label}</span>
-          {panic.escalated && (
-            <Badge className="bg-red-600 text-white animate-pulse">ESCALATED</Badge>
-          )}
         </div>
         <span className="text-xs text-slate-400 font-mono">{panic.panic_number}</span>
       </div>

@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, XCircle, Loader2, X } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import {
   activatePanic, updatePanicLocation, requestFreshLocation,
-  hapticFeedback, managePanic, escalatePanic
+  hapticFeedback, managePanic
 } from "@/lib/panicService";
 
 /**
@@ -54,34 +54,9 @@ export default function GlobalPanicButton({ user }) {
     }
   }, [panicState]);
 
-  // Escalation timer — if the panic remains unacknowledged for 2 minutes,
-  // trigger backend escalation. This is the PRIMARY (event-driven) path when
-  // the app is open. A backend scheduled function is the FALLBACK for when
-  // the app is closed. No polling — a single setTimeout.
-  const escalationTimerRef = useRef(null);
-  const panicStateRef = useRef("idle");
-  useEffect(() => { panicStateRef.current = panicState; }, [panicState]);
-
-  useEffect(() => {
-    if (panicState === "activated" && panicId && !escalationTimerRef.current) {
-      escalationTimerRef.current = setTimeout(() => {
-        escalationTimerRef.current = null;
-        if (panicStateRef.current === "activated") {
-          escalatePanic(panicId);
-        }
-      }, 120000); // 2 minutes
-    }
-    if (panicState !== "activated" && escalationTimerRef.current) {
-      clearTimeout(escalationTimerRef.current);
-      escalationTimerRef.current = null;
-    }
-  }, [panicState, panicId]);
-
-  useEffect(() => {
-    return () => {
-      if (escalationTimerRef.current) clearTimeout(escalationTimerRef.current);
-    };
-  }, []);
+  // NOTE: Automatic client-side escalation was removed. A panic is submitted
+  // ONCE; the Control Room Panic Queue provides the visual urgency. No
+  // setTimeout re-sends the panic notification after any delay.
 
   const handlePanicPress = async () => {
     if (lockRef.current) return;
