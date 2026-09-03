@@ -6,6 +6,10 @@
     "name": {
       "type": "string"
     },
+    "app_name": {
+      "type": "string",
+      "description": "Customer-facing application / workspace name (white-label override) shown in branded emails and customer-facing screens. Falls back to the reseller's app_name, then the platform default. Distinct from the trading name."
+    },
     "legal_name": {
       "type": "string"
     },
@@ -33,13 +37,16 @@
       "default": "security"
     },
     "logo_url": {
-      "type": "string"
+      "type": "string",
+      "description": "Customer logo file URL. Customer-level white-label branding override \u2014 wins over the reseller logo when set."
     },
     "primary_color": {
-      "type": "string"
+      "type": "string",
+      "description": "Customer primary brand colour (hex). Customer-level override \u2014 wins over the reseller colour when set."
     },
     "accent_color": {
-      "type": "string"
+      "type": "string",
+      "description": "Customer accent / action colour (hex). Customer-level override \u2014 wins over the reseller colour when set."
     },
     "address": {
       "type": "string"
@@ -48,7 +55,8 @@
       "type": "string"
     },
     "email": {
-      "type": "string"
+      "type": "string",
+      "description": "Primary contact email. Also serves as the customer-level support email in branded customer-facing text."
     },
     "website": {
       "type": "string"

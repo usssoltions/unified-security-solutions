@@ -34,9 +34,9 @@ const TABS = [
 const DEVICE_MODULES = ["ACCESS", "PATROL", "OPERATIONS", "COMPLETE_SECURITY"];
 
 const ROLE_LABEL = {
-  reseller_admin: "Reseller Admin", customer_admin: "Customer Admin", admin: "Admin",
-  estate_manager: "Estate Manager", practice_admin: "Practice Admin", dispatcher: "Dispatcher",
-  guard: "Guard", reception: "Reception", therapist: "Therapist", platform_admin: "Platform Admin",
+  reseller_admin: "Reseller Administrator", customer_admin: "Customer Administrator", admin: "Operations Administrator",
+  estate_manager: "Estate Manager", practice_admin: "Practice Administrator", dispatcher: "Dispatcher",
+  guard: "Security Guard", reception: "Reception", therapist: "Therapist", platform_admin: "Platform Admin",
   attendance_staff: "Attendance Staff",
 };
 
@@ -161,7 +161,7 @@ export default function CustomerConsole({ customerId }) {
     setSaving(true);
     try {
       const upd = {};
-      for (const k of ["name", "legal_name", "registration_number", "vat_number", "address", "phone", "email", "website", "status", "notes"]) {
+      for (const k of ["name", "app_name", "legal_name", "registration_number", "vat_number", "address", "phone", "email", "website", "status", "notes"]) {
         if (edit[k] !== customer[k]) upd[k] = edit[k];
       }
       if (Object.keys(upd).length === 0) { toast({ title: "No changes" }); setSaving(false); return; }
@@ -503,6 +503,7 @@ export default function CustomerConsole({ customerId }) {
               </Select>
             </div>
             <Field label="Name" value={edit.name} onChange={(v) => setEdit({ ...edit, name: v })} />
+            <Field label="Customer-facing app name" value={edit.app_name} onChange={(v) => setEdit({ ...edit, app_name: v })} />
             <Field label="Legal name" value={edit.legal_name} onChange={(v) => setEdit({ ...edit, legal_name: v })} />
             <Field label="Registration number" value={edit.registration_number} onChange={(v) => setEdit({ ...edit, registration_number: v })} />
             <Field label="VAT number" value={edit.vat_number} onChange={(v) => setEdit({ ...edit, vat_number: v })} />

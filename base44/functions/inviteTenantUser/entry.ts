@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { getAllowedRolesForModules } from '../../shared/tenantRoles.ts';
+import { resolveTenantBrand, tenantDisplayName, buildInvitationEmail } from '../../shared/tenantBranding.ts';
 
 /**
  * inviteTenantUser — securely invite a tenant-scoped user and queue the
@@ -93,6 +94,12 @@ async function managePendingInvitation(base44: any, caller: any, body: any, acti
   try {
     await base44.users.inviteUser(scope.email, 'user');
     await base44.asServiceRole.entities.PendingTenantScope.update(scope.id, { sent_at: now, delivery_status: 'sent' });
+    // Branded, module-aware invitation email (best-effort, no duplicate scope).
+    await sendBrandedInvitationEmail(base44, {
+      to: scope.email, customerId: scope.customer_id || null, resellerId: scope.reseller_id || null,
+      roleType: scope.role_type, inviteeName: scope.display_name || [scope.first_name, scope.last_name].filter(Boolean).join(' ') || null,
+      inviterName: callerName, kind: 'resent',
+    });
     try {
       await base44.asServiceRole.entities.PlatformAuditLog.create({
         event_type: 'invitation.resent', user_id: caller.id, user_name: callerName,
@@ -117,6 +124,41 @@ async function managePendingInvitation(base44: any, caller: any, body: any, acti
       success: true, resent: false, delivery_status: 'failed',
       error: 'The invitation email could not be sent. The invitation was kept — you can try again.',
     }, { status: 202 });
+  }
+}
+
+/**
+ * Best-effort branded, module-aware context email (customer → reseller →
+ * platform branding; friendly role display; descriptions from the customer's
+ * ENABLED modules — never generic security wording). Failure is logged and
+ * NEVER fails the invitation itself.
+ */
+async function sendBrandedInvitationEmail(base44: any, opts: {
+  to: string; customerId?: string | null; resellerId?: string | null;
+  roleType: string; inviteeName?: string | null; inviterName?: string | null; kind: string;
+}): Promise<void> {
+  try {
+    const [custRows, resRows, ents] = await Promise.all([
+      opts.customerId ? base44.asServiceRole.entities.Customer.filter({ id: opts.customerId }).catch(() => []) : Promise.resolve([]),
+      opts.resellerId ? base44.asServiceRole.entities.Reseller.filter({ id: opts.resellerId }).catch(() => []) : Promise.resolve([]),
+      opts.customerId ? base44.asServiceRole.entities.ModuleEntitlement.filter({ customer_id: opts.customerId }).catch(() => []) : Promise.resolve([]),
+    ]);
+    const customer = (custRows && custRows[0]) || null;
+    const reseller = (resRows && resRows[0]) || null;
+    const enabledKeys = (ents || [])
+      .filter((e: any) => e.enabled && (!e.status || e.status === 'active'))
+      .map((e: any) => e.module_key);
+    const brand = resolveTenantBrand(customer, reseller);
+    const displayName = tenantDisplayName(customer, reseller);
+    const email = buildInvitationEmail({
+      brand, displayName, role_type: opts.roleType, enabledModuleKeys: enabledKeys,
+      inviteeName: opts.inviteeName, inviterName: opts.inviterName, kind: opts.kind,
+    });
+    console.log('[inviteTenantUser] branded email subject:', email.subject);
+    await base44.asServiceRole.integrations.Core.SendEmail({ to: opts.to, subject: email.subject, body: email.body });
+    console.log('[inviteTenantUser] branded email sent to', opts.to);
+  } catch (e) {
+    console.log('[inviteTenantUser] branded email failed (non-critical)', String(e?.message || e));
   }
 }
 
@@ -203,9 +245,10 @@ export default async function(req: Request): Promise<Response> {
     // mirrored in src/lib/roleCatalog.js), but this is the authoritative
     // check: a manipulated request can never assign a role that belongs to a
     // module the customer has not enabled.
+    let enabledKeys: string[] = [];
     if (customer_id && role_type !== 'reseller_admin') {
       const ents = await base44.asServiceRole.entities.ModuleEntitlement.filter({ customer_id }).catch(() => []);
-      const enabledKeys = (ents || [])
+      enabledKeys = (ents || [])
         .filter((e) => e.enabled && (!e.status || e.status === 'active'))
         .map((e) => e.module_key);
       const allowed = getAllowedRolesForModules(enabledKeys);
@@ -247,23 +290,12 @@ export default async function(req: Request): Promise<Response> {
           new_values: JSON.stringify(scopeUpdates), notes: `Re-scoped existing ${email} as ${role_type}`,
         });
       } catch (_) {}
-      // Existing users are registered, so SendEmail reaches them — send a
-      // module/role context email (new invitees get only the platform invite,
-      // since SendEmail to non-registered addresses requires a custom domain).
-      try {
-        const orgName = customer?.name || 'your organization';
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          to: email,
-          subject: `Your access to ${orgName}${moduleLabel ? ` (${moduleLabel})` : ''} has been updated`,
-          body: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-            <h2 style="color:#1e293b">Access updated</h2>
-            <p>Hi ${escHtml(displayName || '')},</p>
-            <p>Your access to <b>${escHtml(orgName)}</b> has been updated to <b>${escHtml(role_type.replace(/_/g, ' '))}</b>${moduleLabel ? ` on the <b>${moduleLabel}</b> module` : ''}.</p>
-            <p>Log in to the app to see your updated workspace.</p>
-            <p style="color:#64748b;font-size:12px">Updated by ${escHtml(callerName)}</p>
-          </div>`,
-        });
-      } catch (_) {}
+      // Existing users are registered, so SendEmail reaches them — send the
+      // branded, module-aware context email.
+      await sendBrandedInvitationEmail(base44, {
+        to: email, customerId: customer_id || null, resellerId: effectiveReseller,
+        roleType: role_type, inviteeName: displayName, inviterName: callerName, kind: 'updated',
+      });
       return Response.json({ success: true, user_id: existing.id, rescoped: true });
     }
 
@@ -304,6 +336,12 @@ export default async function(req: Request): Promise<Response> {
       await base44.users.inviteUser(email, 'user');
       console.log('[inviteTenantUser] inviteUser ok');
       try { await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: nowIso, delivery_status: 'sent' }); } catch (_) {}
+      // Branded, module-aware invitation email (best-effort; the platform
+      // invitation with the sign-up link has already been dispatched above).
+      await sendBrandedInvitationEmail(base44, {
+        to: email, customerId: customer_id || null, resellerId: effectiveReseller,
+        roleType: role_type, inviteeName: displayName, inviterName: callerName, kind: 'invite',
+      });
     } catch (invErr) {
       const msg = String(invErr?.message || invErr);
       console.log('[inviteTenantUser] inviteUser threw', msg);

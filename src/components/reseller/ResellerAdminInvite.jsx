@@ -9,7 +9,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Loader2, UserPlus, ShieldCheck, Lock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { getInviteRolesForCustomer } from "@/lib/roleCatalog";
+import { getInviteRolesForCustomer, getRoleDescription } from "@/lib/roleCatalog";
 
 /** Friendly, non-leaking messages keyed by the backend error codes. */
 const FRIENDLY_ERRORS = {
@@ -205,6 +205,11 @@ export default function ResellerAdminInvite({
                 {roles.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
               </SelectContent>
             </Select>
+            {form.role_type && !rolesLoading && (
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                {getRoleDescription(form.role_type, enabledModuleKeys || [])}
+              </p>
+            )}
           </div>
           <div><Label className="text-slate-300 text-xs">Status</Label>
             <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>

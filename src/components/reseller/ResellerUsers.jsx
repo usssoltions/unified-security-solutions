@@ -7,9 +7,10 @@ import { useToast } from "@/components/ui/use-toast";
 import ResellerAdminInvite from "@/components/reseller/ResellerAdminInvite";
 
 const ROLE_LABEL = {
-  reseller_admin: "Reseller Admin", customer_admin: "Customer Admin", admin: "Admin",
-  estate_manager: "Estate Manager", practice_admin: "Practice Admin", dispatcher: "Dispatcher",
-  guard: "Guard", reception: "Reception", therapist: "Therapist", platform_admin: "Platform Admin",
+  reseller_admin: "Reseller Administrator", customer_admin: "Customer Administrator", admin: "Operations Administrator",
+  estate_manager: "Estate Manager", practice_admin: "Practice Administrator", dispatcher: "Dispatcher",
+  guard: "Security Guard", reception: "Reception", therapist: "Therapist", platform_admin: "Platform Admin",
+  attendance_staff: "Attendance Staff",
 };
 
 /**

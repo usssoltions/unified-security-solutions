@@ -134,3 +134,55 @@ export function getRolesForTenant(customerType, enabledModuleKeys = []) {
 export function isMedicalRoleSet(roles) {
   return roles === MEDICAL_ROLES;
 }
+
+/* ── Customer-facing role display + module-aware descriptions ──────────
+ * MIRRORED server-side in base44/shared/tenantRoles.ts (role registry) and
+ * base44/shared/tenantBranding.ts (branded emails). Customer-facing wording
+ * is derived from the customer's ENABLED modules — never generic security
+ * terminology where module context is available.
+ */
+export const MODULE_LABELS = {
+  ATTENDANCE_REGISTER: "Attendance Register",
+  OCCUPATIONAL_THERAPY: "Occupational Therapy",
+  ESTATE: "Estate Management",
+  ACCESS: "Access Control",
+  PATROL: "Patrol",
+  OPERATIONS: "Operations",
+  COMPLETE_SECURITY: "Security Operations",
+};
+
+export const MODULE_DESCRIPTIONS = {
+  ATTENDANCE_REGISTER: "Manage attendance records, workers/patients, reports and authorised scanning functions.",
+  OCCUPATIONAL_THERAPY: "Manage patients, appointments, clinical sessions and reports.",
+  ESTATE: "Manage residents, venues, vendors and estate services.",
+  ACCESS: "Manage visitor access, QR scanning and access history.",
+  PATROL: "Manage patrols, checklists and route monitoring.",
+  OPERATIONS: "Manage control room operations, incidents, shifts and sites.",
+  COMPLETE_SECURITY: "Manage security operations, incidents, patrols and shifts.",
+};
+
+const OPERATIONAL_MODULE_ORDER = [
+  "ATTENDANCE_REGISTER", "OCCUPATIONAL_THERAPY", "ESTATE",
+  "ACCESS", "PATROL", "OPERATIONS", "COMPLETE_SECURITY",
+];
+
+/** Friendly display name for a role — never expose raw role keys. */
+export function getRoleDisplay(roleValue) {
+  return INVITE_ROLE_LABELS[roleValue] || (roleValue || "").replace(/_/g, " ");
+}
+
+/** Module-aware role description shown in invitation/onboarding UI. */
+export function getRoleDescription(roleValue, enabledModuleKeys = []) {
+  if (roleValue === "reseller_admin") {
+    return "Administer the reseller organisation, its customers, licences and users.";
+  }
+  const descs = OPERATIONAL_MODULE_ORDER
+    .filter((k) => (enabledModuleKeys || []).includes(k))
+    .map((k) => MODULE_DESCRIPTIONS[k])
+    .filter(Boolean);
+  if (!descs.length) {
+    return "Administrative access to the modules enabled for your organisation.";
+  }
+  if (roleValue === "customer_admin") return descs.join(" ");
+  return descs[0];
+}
