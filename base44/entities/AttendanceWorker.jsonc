@@ -1,7 +1,7 @@
 {
   "name": "AttendanceWorker",
   "type": "object",
-  "description": "Attendance Register module: Permanent Worker/Patient profile. Deduplication key is id_number + customer_id. Identification-document images belong here, not per attendance record.",
+  "description": "Attendance Register module: Permanent Worker/Patient profile. Deduplication key is id_number + customer_id. Identification-document images belong here, not per attendance record. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 session tokens do not reliably expose custom User fields (customer_id/reseller_id), so template-based tenant scoping is unproven on this platform. ALL tenant reads/writes go through the attendanceAccess backend function, which resolves the caller's tenant server-side from their User record (the same proven pattern as getTenantUsers), enforces the ATTENDANCE_REGISTER module licence, and fails closed for unauthorized roles. Direct client access below is restricted to platform admins only \u2014 Customer A can never reach Customer B's workers.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -97,18 +97,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -123,18 +111,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -149,18 +125,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
