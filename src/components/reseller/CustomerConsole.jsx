@@ -149,6 +149,9 @@ export default function CustomerConsole({ customerId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
 
+  const resellerLicensedKeys = resellerEnts
+    .filter((e) => e.enabled && (!e.status || e.status === "active"))
+    .map((e) => e.module_key);
   const activeEntitlements = entitlements.filter((e) => e.enabled && (!e.status || e.status === "active"));
   const activeModuleCount = activeEntitlements.length;
   const devicesApplicable = activeEntitlements.some((e) => DEVICE_MODULES.includes(e.module_key));
@@ -550,8 +553,6 @@ export default function CustomerConsole({ customerId }) {
       )}
     </div>
   );
-
-  function resellerLicensedKeys() {} // placeholder (replaced below)
 }
 
 function Detail({ label, value, full }) {
