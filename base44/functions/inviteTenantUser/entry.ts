@@ -30,6 +30,96 @@ function escHtml(s: string): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
 }
 
+/**
+ * managePendingInvitation — resend / cancel an EXISTING pending invitation
+ * (PendingTenantScope) by id. Reuses the stored record: resend NEVER creates a
+ * duplicate scope; it re-dispatches the platform invitation to the exact
+ * stored email address and updates sent_at / delivery_status. On delivery
+ * failure the record is RETAINED with delivery_status "failed".
+ *
+ * Authorization: Platform Admin, or Reseller Admin owning the invitation's
+ * reseller. A cancelled/applied/expired invitation can no longer be managed.
+ */
+async function managePendingInvitation(base44: any, caller: any, body: any, action: string): Promise<Response> {
+  const { pending_scope_id } = body || {};
+  if (!pending_scope_id) {
+    return Response.json({ error: 'pending_scope_id is required', code: 'missing_scope_id' }, { status: 400 });
+  }
+
+  const rows = await base44.asServiceRole.entities.PendingTenantScope.filter({ id: pending_scope_id }).catch(() => []);
+  const scope = (rows && rows[0]) ? rows[0] : null;
+  if (!scope) {
+    return Response.json({ error: 'Invitation not found', code: 'invitation_not_found' }, { status: 404 });
+  }
+
+  const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin';
+  const isResellerAdmin = caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller';
+  if (!isPlatformAdmin && !isResellerAdmin) {
+    return Response.json({ error: 'You do not have permission to manage invitations', code: 'permission_denied' }, { status: 403 });
+  }
+  if (!isPlatformAdmin) {
+    if (!scope.reseller_id || scope.reseller_id !== caller.reseller_id) {
+      return Response.json({ error: 'That invitation belongs to another reseller', code: 'permission_denied' }, { status: 403 });
+    }
+  }
+  if (scope.status !== 'pending') {
+    return Response.json({
+      error: `That invitation is ${scope.status} and can no longer be ${action === 'resend' ? 'resent' : 'cancelled'}.`,
+      code: 'invitation_not_pending',
+    }, { status: 400 });
+  }
+
+  const callerName = caller.display_name || caller.full_name || caller.email;
+  const now = new Date().toISOString();
+
+  if (action === 'cancel') {
+    await base44.asServiceRole.entities.PendingTenantScope.update(scope.id, {
+      status: 'cancelled',
+      cancelled_at: now,
+      cancelled_by: caller.id,
+    });
+    try {
+      await base44.asServiceRole.entities.PlatformAuditLog.create({
+        event_type: 'invitation.cancelled', user_id: caller.id, user_name: callerName,
+        reseller_id: scope.reseller_id || undefined, customer_id: scope.customer_id || undefined,
+        entity_name: 'PendingTenantScope', entity_id: scope.id,
+        action: 'cancel_invitation', notes: `Cancelled invitation for ${scope.email}`,
+      });
+    } catch (_) {}
+    return Response.json({ success: true, cancelled: true });
+  }
+
+  // ── resend ──
+  try {
+    await base44.users.inviteUser(scope.email, 'user');
+    await base44.asServiceRole.entities.PendingTenantScope.update(scope.id, { sent_at: now, delivery_status: 'sent' });
+    try {
+      await base44.asServiceRole.entities.PlatformAuditLog.create({
+        event_type: 'invitation.resent', user_id: caller.id, user_name: callerName,
+        reseller_id: scope.reseller_id || undefined, customer_id: scope.customer_id || undefined,
+        entity_name: 'PendingTenantScope', entity_id: scope.id,
+        action: 'resend_invitation', notes: `Re-sent invitation to ${scope.email}`,
+      });
+    } catch (_) {}
+    return Response.json({ success: true, resent: true, delivery_status: 'sent', sent_at: now });
+  } catch (invErr) {
+    const msg = String(invErr?.message || invErr);
+    console.log('[inviteTenantUser] resend threw', msg);
+    if (/already|exists|pending|invited/i.test(msg)) {
+      // The platform already has an invitation outstanding for this email —
+      // treat as re-sent; NO duplicate invitation or scope is created.
+      await base44.asServiceRole.entities.PendingTenantScope.update(scope.id, { sent_at: now, delivery_status: 'sent' });
+      return Response.json({ success: true, resent: true, delivery_status: 'sent', sent_at: now, already_outstanding: true });
+    }
+    // Delivery failed — RETAIN the record with Delivery Failed status.
+    await base44.asServiceRole.entities.PendingTenantScope.update(scope.id, { delivery_status: 'failed' });
+    return Response.json({
+      success: true, resent: false, delivery_status: 'failed',
+      error: 'The invitation email could not be sent. The invitation was kept — you can try again.',
+    }, { status: 202 });
+  }
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -51,8 +141,11 @@ export default async function(req: Request): Promise<Response> {
     const displayName = String(providedDisplayName || '').trim() || [firstName, lastName].filter(Boolean).join(' ').trim() || null;
     const userStatus = user_status || status || 'active';
 
-    if (action !== 'invite') {
-      return Response.json({ error: 'Only action "invite" is supported', code: 'bad_action' }, { status: 400 });
+    if (!['invite', 'resend', 'cancel'].includes(action)) {
+      return Response.json({ error: 'Unsupported action', code: 'bad_action' }, { status: 400 });
+    }
+    if (action === 'resend' || action === 'cancel') {
+      return await managePendingInvitation(base44, caller, body, action);
     }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return Response.json({ error: 'A valid email address is required', code: 'invalid_email' }, { status: 400 });
@@ -206,18 +299,22 @@ export default async function(req: Request): Promise<Response> {
     console.log('[inviteTenantUser] created pending scope', pending.id);
 
     // ── Send the invitation with platform role "user" (NEVER "admin"). ──
+    const nowIso = new Date().toISOString();
     try {
       await base44.users.inviteUser(email, 'user');
       console.log('[inviteTenantUser] inviteUser ok');
+      try { await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: nowIso, delivery_status: 'sent' }); } catch (_) {}
     } catch (invErr) {
       const msg = String(invErr?.message || invErr);
       console.log('[inviteTenantUser] inviteUser threw', msg);
       if (/already|exists|pending|invited/i.test(msg)) {
         // An invitation is already pending for this email; our PendingTenantScope
-        // will apply when it is accepted. Not an error.
+        // will apply when it is accepted. Not an error — no duplicate created.
+        try { await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: nowIso, delivery_status: 'sent' }); } catch (_) {}
         return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id });
       }
       // The invitation email could not be sent, but the pending scope is queued.
+      try { await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { delivery_status: 'failed' }); } catch (_) {}
       return Response.json({
         error: 'The invitation email could not be sent right now. The tenant scoping is queued and will apply when the user is set up. Please try sending the invite again.',
         code: 'invite_service_failed',
