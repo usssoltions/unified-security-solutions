@@ -120,3 +120,10 @@ export const PAGE_MODULE_MAP = {
   // Profile, Configuration, UserManagement, Home, AndroidDownload,
   // NotificationPreferences, ResellerPortal
 };
+
+/* Modules whose operational notifications genuinely use Telegram enrollments.
+ * Customers without any of these modules enabled must not see Telegram
+ * settings (e.g. an Attendance Register-only customer does not use Telegram
+ * notifications). Telegram support itself is not removed — only the surface
+ * is module-gated. */
+export const TELEGRAM_MODULE_KEYS = ["OPERATIONS", "COMPLETE_SECURITY", "ESTATE"];

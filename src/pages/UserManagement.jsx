@@ -58,7 +58,12 @@ export default function UserManagement() {
   const enabledModuleKeys = (entitlements || [])
     .filter(e => e.enabled && (!e.status || e.status === "active"))
     .map(e => e.module_key);
-  const roles = getRolesForTenant(customerType, enabledModuleKeys);
+  // Tenant user management covers the tenant's administrative role too —
+  // Customer Administrator users are part of the tenant user list.
+  const roles = [
+    { value: "customer_admin", label: "Customer Administrator", color: "purple" },
+    ...getRolesForTenant(customerType, enabledModuleKeys),
+  ];
 
   const deleteUserMutation = useMutation({
     mutationFn: async (userId) => {

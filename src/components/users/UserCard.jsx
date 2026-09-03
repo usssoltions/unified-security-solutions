@@ -3,10 +3,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Shield, Radio, UserCheck, Building, Edit, Trash2, Mail, Phone, IdCard } from "lucide-react";
+import { getRoleDisplay } from "@/lib/roleCatalog";
 
 export default function UserCard({ user, onEdit, onDelete }) {
   const roleConfig = {
     admin: {
+      icon: Shield,
+      color: "text-purple-400",
+      bgColor: "bg-purple-500/10",
+      borderColor: "border-purple-500/20",
+      badgeColor: "bg-purple-500"
+    },
+    customer_admin: {
       icon: Shield,
       color: "text-purple-400",
       bgColor: "bg-purple-500/10",
@@ -50,7 +58,7 @@ export default function UserCard({ user, onEdit, onDelete }) {
             <div>
               <h3 className="font-semibold text-white">{user.display_name || user.full_name}</h3>
               <Badge className={config.badgeColor}>
-                {user.role_type?.replace(/_/g, ' ')}
+                {getRoleDisplay(user.role_type)}
               </Badge>
             </div>
           </div>

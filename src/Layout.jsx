@@ -55,6 +55,10 @@ export default function Layout({ children, currentPageName }) {
   const [notificationCount, setNotificationCount] = useState(0);
   const [panicCount, setPanicCount] = useState(0);
   const [retryCount, setRetryCount] = useState(0);
+  // Module-aware home URL for the hardware-back seal. Updated every render
+  // from the FILTERED navigation so it always points at a page the user can
+  // actually open (e.g. Attendance Register for attendance-only customers).
+  const homeUrlRef = React.useRef(null);
 
   // Phase 7: Module entitlement-driven navigation + white-label branding
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
@@ -155,7 +159,7 @@ export default function Layout({ children, currentPageName }) {
   //     and bounces home, so the browser/preview back button can't escape either.
   useEffect(() => {
     if (!user) return;
-    const rootPath = getNavigationItems().find(i => i.isRoot)?.url;
+    const rootPath = homeUrlRef.current;
     if (!rootPath) return;
     const goHome = () => navigate(rootPath, { replace: true });
     window.__ussHardwareBack = goHome;
@@ -333,7 +337,11 @@ export default function Layout({ children, currentPageName }) {
         if (!moduleKey) return true;
         return isModuleEnabled(entitlements, moduleKey, isPlatformAdmin);
       });
-  const rootUrl = navigationItems.find(item => item.isRoot)?.url;
+  // Module-aware home: when the role's marked root page is filtered out by a
+  // module entitlement (attendance-only customer_admin has no REPORTING_CORE),
+  // the first VISIBLE navigation item is the home — Attendance Register.
+  const rootUrl = navigationItems.find(item => item.isRoot)?.url || navigationItems[0]?.url;
+  homeUrlRef.current = rootUrl;
   const isRootPage = navigationItems.some(item => item.isRoot && location.pathname === item.url);
   const canGoBack = !isRootPage && window.history.length > 1;
 
@@ -359,9 +367,15 @@ export default function Layout({ children, currentPageName }) {
 
   const mobileNavItems = getMobileNavItems();
 
+  // Friendly role display names — never expose raw role keys (customer_admin,
+  // attendance_staff, ...) on customer-facing screens.
   const roleLabel = {
     guard: "Security Guard", dispatcher: "Dispatcher", admin: "Administrator",
-    resident: "Resident", estate_manager: "Estate Manager", vendor: "Vendor", client: "Client"
+    resident: "Resident", estate_manager: "Estate Manager", vendor: "Vendor",
+    client: "Client", customer_admin: "Customer Administrator",
+    reseller_admin: "Reseller Administrator", practice_admin: "Practice Administrator",
+    therapist: "Therapist", reception: "Reception", attendance_staff: "Attendance Staff",
+    platform_admin: "Platform Administrator", employer_user: "Employer Portal User",
   }[user.role_type] || user.role_type;
 
   return (

@@ -30,7 +30,10 @@ const ROLE_FALLBACK_PAGES = {
   estate_manager: ["Profile"],
   vendor: ["VendorPortal", "Profile"],
   client: ["ClientDashboard", "Profile"],
-  customer_admin: ["ClientDashboard", "Profile"],
+  // Attendance-first: an attendance-only Customer Administrator lands on the
+  // Attendance Register dashboard (their role home, ClientDashboard, requires
+  // the REPORTING_CORE module, which attendance-only customers lack).
+  customer_admin: ["AttendanceDashboard", "ClientDashboard", "Profile"],
   platform_admin: ["TenantSetup", "ControlRoom", "Profile"],
   reseller_admin: ["ResellerPortal", "Profile"],
   practice_admin: ["MedicalDashboard", "Profile"],

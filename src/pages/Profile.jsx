@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, User, Mail, Shield, Headphones, Phone, Globe } from "lucide-react";
 import TelegramConnection from "@/components/telegram/TelegramConnection";
+import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
+import { TELEGRAM_MODULE_KEYS } from "@/lib/moduleMapping";
+import { getRoleDisplay } from "@/lib/roleCatalog";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useBranding } from "@/hooks/useBranding";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
@@ -35,6 +38,11 @@ export default function Profile() {
   });
   const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
   const isPlatformAdmin = isPlatformAdminUser(user);
+  const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
+  // Telegram settings only appear where an enabled module genuinely uses
+  // Telegram notifications (hidden for Attendance Register-only customers).
+  const telegramRelevant = !user?.customer_id ||
+    TELEGRAM_MODULE_KEYS.some((k) => isModuleEnabled(entitlements, k, false));
 
   if (isLoading) {
     return (
@@ -85,7 +93,7 @@ export default function Profile() {
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4 text-slate-500" />
                 <Badge className="bg-sky-600">
-                  {ROLE_LABELS[user?.role_type] || user?.role_type || user?.role || "User"}
+                  {ROLE_LABELS[user?.role_type] || getRoleDisplay(user?.role_type) || user?.role || "User"}
                 </Badge>
               </div>
             </div>
@@ -99,8 +107,8 @@ export default function Profile() {
           </CardContent>
         </Card>
 
-        {/* Telegram Notifications */}
-        <TelegramConnection user={user} />
+        {/* Telegram Notifications — only for modules that use Telegram */}
+        {telegramRelevant && <TelegramConnection user={user} />}
 
         {/* Support & Branding */}
         {(branding?.support_name || branding?.support_email || branding?.support_phone || branding?.website) && (
