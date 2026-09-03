@@ -1,7 +1,7 @@
 {
   "name": "AttendanceDropdownOption",
   "type": "object",
-  "description": "Attendance Register module: Configurable dropdown options for Medical Centre and Assessment Type. Authorised admins may add/deactivate. Deactivating preserves historical records.",
+  "description": "Attendance Register module: Configurable dropdown options for Medical Centre and Assessment Type. The fixed official options are seeded server-side (idempotently) by the attendanceAccess gateway and must never be altered. Ordinary attendance staff CANNOT create, edit or deactivate options \u2014 option management is restricted to authorized admins (platform / reseller / customer admins) through the attendanceAccess gateway, which also enforces the ATTENDANCE_REGISTER module licence. Deactivating preserves historical records. TENANT ACCESS PATTERN: no {{user.data.*}} RLS rules \u2014 all tenant access goes through the attendanceAccess backend function (server-side tenant resolution, same proven pattern as getTenantUsers). Direct client access below is platform-admin-only.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -50,18 +50,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -76,18 +64,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -102,18 +78,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
