@@ -22,6 +22,7 @@ export const RESELLER_MODULES = [
   { key: "NOTIFICATION_CORE",      label: "Notification Engine",     description: "Multi-channel notifications (email, push, Telegram, in-app)." },
   { key: "MESSAGING",              label: "Messaging",              description: "In-app chat and messaging." },
   { key: "BARKODER_CORE",          label: "SecureScan Engine",       description: "Barcode/QR document scanning core." },
+  { key: "ATTENDANCE_REGISTER",    label: "Attendance Register",     description: "Digital attendance register: worker/patient check-in via SecureScan, e-signatures, official PDF register and Excel export." },
 ];
 
 /** Map module_key -> {label, description} for quick lookup. */

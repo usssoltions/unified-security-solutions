@@ -240,7 +240,7 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
             <div className="p-4 bg-slate-900/50 rounded-lg">
               <p className="text-sm font-semibold text-slate-300 mb-2">Role Descriptions:</p>
               <ul className="text-xs text-slate-400 space-y-1">
-                {(isMedical ? MEDICAL_ROLES : SECURITY_ROLES).map(r => {
+                {roles.map(r => {
                   const d = ROLE_DESCRIPTIONS[r.value];
                   return d ? (
                     <li key={r.value}><strong className={`text-${d.color}-400`}>{d.label}:</strong> {d.text}</li>

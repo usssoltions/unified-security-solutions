@@ -6,7 +6,7 @@
  * Reuses the EXISTING Barkoder DocumentScanner. No parallel scanner, no jsQR fallback.
  */
 import React, { useState, useEffect, useRef } from "react";
-import { base44 } from "@/api/base44Client";
+import { attendanceCall } from "@/lib/attendanceApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -118,11 +118,12 @@ export default function NewAttendanceWizard({
     setIdType(idt);
     setScannedFields(mf);
 
-    if (idn && customerId) {
+    if (idn) {
       try {
-        const found = await base44.entities.AttendanceWorker.filter({ customer_id: customerId, id_number: idn });
-        if (found && found.length > 0) {
-          const w = found[0];
+        // Server-side tenant-scoped lookup via the attendanceAccess gateway
+        const res = await attendanceCall("find_worker", { id_number: idn });
+        const w = res?.worker;
+        if (w) {
           setExistingWorker(w);
           setSurname(w.surname || sn);
           setInitials(w.initials || ini.toUpperCase());
@@ -167,68 +168,42 @@ export default function NewAttendanceWizard({
       const timeStr = localTimeStr(now);
       const ts = now.toISOString();
 
-      let workerId;
+      // Server-side transaction via the attendanceAccess gateway: worker
+      // upsert + attendance record with tenant ids forced server-side
+      // (never trusted from the client), dedup and signature enforcement.
+      const workerUpdates = {};
       if (existingWorker && existingWorker.id) {
-        // Update profile if company/job/cellphone changed
-        const updates = {};
-        if (company !== existingWorker.company) updates.company = company;
-        if (jobDescription !== existingWorker.job_description) updates.job_description = jobDescription;
-        if (cellphone !== existingWorker.cellphone) updates.cellphone = cellphone;
+        if (company !== existingWorker.company) workerUpdates.company = company;
+        if (jobDescription !== existingWorker.job_description) workerUpdates.job_description = jobDescription;
+        if (cellphone !== existingWorker.cellphone) workerUpdates.cellphone = cellphone;
         if (idFrontUrl && idFrontUrl !== existingWorker.id_front_url) {
-          updates.id_front_url = idFrontUrl;
-          updates.id_back_url = idBackUrl || null;
-          updates.id_captured_at = ts;
-          updates.id_captured_by_id = user.id;
-          updates.id_captured_by_name = user.full_name || user.email;
-          updates.id_updated_at = ts;
+          workerUpdates.id_front_url = idFrontUrl;
+          workerUpdates.id_back_url = idBackUrl || null;
         }
-        if (Object.keys(updates).length > 0) {
-          updates.updated_by_name = user.full_name || user.email;
-          await base44.entities.AttendanceWorker.update(existingWorker.id, updates);
-        }
-        workerId = existingWorker.id;
-      } else {
-        const newWorker = await base44.entities.AttendanceWorker.create({
-          customer_id: customerId,
-          reseller_id: user.reseller_id || undefined,
-          surname, initials, first_names: firstNames, id_number: idNumber, id_type: idType,
-          company, job_description: jobDescription, cellphone,
-          id_front_url: idFrontUrl || null, id_back_url: idBackUrl || null,
-          id_captured_at: idFrontUrl ? ts : null,
-          id_captured_by_id: idFrontUrl ? user.id : null,
-          id_captured_by_name: idFrontUrl ? (user.full_name || user.email) : null,
-          created_by_name: user.full_name || user.email,
-          status: "active",
-        });
-        workerId = newWorker.id;
       }
 
-      await base44.entities.AttendanceRecord.create({
-        customer_id: customerId,
-        reseller_id: user.reseller_id || undefined,
-        worker_id: workerId,
-        attendance_date: dateStr,
-        attendance_time: timeStr,
-        attendance_timestamp: ts,
-        surname_snapshot: surname,
-        initials_snapshot: initials,
-        id_number_snapshot: idNumber,
-        id_type_snapshot: idType,
-        company_snapshot: company,
-        job_description_snapshot: jobDescription,
-        cellphone_snapshot: cellphone,
-        medical_centre: medicalCentre,
-        additional_information: additionalInfo,
-        assessment_type: assessmentType,
+      const res = await attendanceCall("register_attendance", {
+        existing_worker_id: existingWorker?.id || null,
+        worker: {
+          surname, initials, first_names: firstNames, id_number: idNumber, id_type: idType,
+          company, job_description: jobDescription, cellphone,
+        },
+        worker_updates: workerUpdates,
+        record: {
+          attendance_date: dateStr,
+          attendance_time: timeStr,
+          attendance_timestamp: ts,
+          medical_centre: medicalCentre,
+          additional_information: additionalInfo,
+          assessment_type: assessmentType,
+        },
         signature_data_url: signatureDataUrl,
-        captured_by_id: user.id,
-        captured_by_name: user.full_name || user.email,
       });
 
       onSuccess({
         workerName: formatDisplayName({ surname, initials }),
         attendanceTime: timeStr,
-        workerId,
+        workerId: res?.worker_id,
       });
     } catch (e) {
       setSaveError("Failed to save attendance. Please try again.");

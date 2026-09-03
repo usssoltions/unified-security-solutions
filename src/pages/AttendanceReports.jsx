@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, FileText, Download, Table, AlertCircle } from "lucide-react";
+import { Loader2, FileText, Download, Table, AlertCircle, ShieldAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useBranding } from "@/hooks/useBranding";
 import { generateOfficialRegisterPdf, downloadBlob } from "@/lib/attendancePdf";
 import { generateAttendanceExcel } from "@/lib/attendanceExcel";
-import { dateRangeISO, loadDropdownOptions } from "@/lib/attendanceDropdowns";
+import { attendanceCall, withSignatures } from "@/lib/attendanceApi";
+import { dateRangeISO } from "@/lib/attendanceDropdowns";
 
 const PRESETS = [
   { label: "Today", key: "today" },
@@ -21,39 +21,39 @@ const PRESETS = [
 ];
 
 export default function AttendanceReports() {
-  const [user, setUser] = useState(null);
   const [preset, setPreset] = useState("this_week");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [filterCompany, setFilterCompany] = useState("");
   const [filterMedical, setFilterMedical] = useState("");
   const [filterAssessment, setFilterAssessment] = useState("");
-  const [dropdowns, setDropdowns] = useState({ medicalCentres: [], assessmentTypes: [] });
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [generatingXlsx, setGeneratingXlsx] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [xlsxError, setXlsxError] = useState(null);
 
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
-  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const { data: ctx } = useQuery({
+    queryKey: ["att_context"],
+    queryFn: () => attendanceCall("get_context"),
+    staleTime: 60000,
+  });
+  const { data: branding } = useBranding(ctx?.customer_id, ctx?.reseller_id);
 
-  useEffect(() => {
-    if (user?.customer_id) loadDropdownOptions(user.customer_id).then(setDropdowns);
-  }, [user?.customer_id]);
+  const { data: dropdowns = { medicalCentres: [], assessmentTypes: [] } } = useQuery({
+    queryKey: ["att_options"],
+    queryFn: async () => {
+      const r = await attendanceCall("list_options");
+      return { medicalCentres: r.medicalCentres || [], assessmentTypes: r.assessmentTypes || [] };
+    },
+    enabled: !!ctx?.authorized, staleTime: 60000,
+  });
 
   const range = preset === "custom" ? { from: customFrom, to: customTo } : dateRangeISO(preset);
 
   const { data: records = [], isLoading } = useQuery({
-    queryKey: ["att_report_records", user?.customer_id, range.from, range.to],
-    queryFn: async () => {
-      const all = await base44.entities.AttendanceRecord.filter({ customer_id: user.customer_id }, "-attendance_date", 3000);
-      return all.filter(r => (r.attendance_date || "") >= range.from && (r.attendance_date || "") <= range.to)
-        .sort((a, b) => {
-          const dc = (a.attendance_date || "").localeCompare(b.attendance_date || "");
-          return dc !== 0 ? dc : (a.attendance_time || "").localeCompare(b.attendance_time || "");
-        });
-    },
-    enabled: !!user?.customer_id && !!range.from && !!range.to,
+    queryKey: ["att_report_records", range.from, range.to],
+    queryFn: () => attendanceCall("list_records", { from: range.from, to: range.to }).then(r => r.records || []),
+    enabled: !!ctx?.authorized && !!range.from && !!range.to,
     staleTime: 20000,
   });
 
@@ -72,7 +72,9 @@ export default function AttendanceReports() {
   const handlePdf = async () => {
     setGeneratingPdf(true); setPdfError(null);
     try {
-      const blob = generateOfficialRegisterPdf(filtered, branding);
+      // Fetch signatures fresh at generation time (scoped server-side).
+      const withSigs = await withSignatures(filtered);
+      const blob = generateOfficialRegisterPdf(withSigs, branding);
       if (!blob) throw new Error("Empty PDF");
       downloadBlob(blob, `rfa_attendance_register_${range.from}_${range.to}.pdf`);
     } catch (e) {
@@ -89,6 +91,26 @@ export default function AttendanceReports() {
       setXlsxError("Excel export failed. Please try again.");
     } finally { setGeneratingXlsx(false); }
   };
+
+  if (!ctx) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!ctx.authorized) {
+    return (
+      <div className="p-4 max-w-md mx-auto text-center py-16">
+        <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-8 h-8 text-slate-500" />
+        </div>
+        <h2 className="text-white text-lg font-semibold mb-2">Attendance Register unavailable</h2>
+        <p className="text-slate-400 text-sm">{ctx.reason}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-5">

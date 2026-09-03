@@ -1,61 +1,62 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  ClipboardList, Plus, Users, FileText, Settings, ChevronRight,
-  Calendar, Clock, Building2, Stethoscope, Activity, CheckCircle2
+  ClipboardList, Plus, Users, FileText,
+  Calendar, Activity, CheckCircle2, Loader2, ShieldAlert
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useBranding } from "@/hooks/useBranding";
 import AttendanceBrandingHeader from "@/components/attendance/AttendanceBrandingHeader";
 import NewAttendanceWizard from "@/components/attendance/NewAttendanceWizard";
-import { loadDropdownOptions, seedDefaultOptions, todayISO, formatDisplayName } from "@/lib/attendanceDropdowns";
+import { attendanceCall } from "@/lib/attendanceApi";
+import { todayISO } from "@/lib/attendanceDropdowns";
 
 export default function AttendanceDashboard() {
   const queryClient = useQueryClient();
-  const [user, setUser] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
-  const [dropdowns, setDropdowns] = useState({ medicalCentres: [], assessmentTypes: [] });
   const [successInfo, setSuccessInfo] = useState(null);
 
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
+  // Authoritative tenant context — the attendanceAccess gateway resolves the
+  // caller's tenant server-side from their User record (no client trust, no
+  // JWT custom claims) and enforces the ATTENDANCE_REGISTER module licence.
+  const { data: ctx } = useQuery({
+    queryKey: ["att_context"],
+    queryFn: () => attendanceCall("get_context"),
+    staleTime: 60000,
+  });
 
-  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const { data: branding } = useBranding(ctx?.customer_id, ctx?.reseller_id);
 
-  // Load dropdowns and seed defaults on first use
-  useEffect(() => {
-    if (!user?.customer_id) return;
-    seedDefaultOptions(user.customer_id);
-    loadDropdownOptions(user.customer_id).then(setDropdowns);
-  }, [user?.customer_id]);
+  const { data: dropdowns = { medicalCentres: [], assessmentTypes: [] } } = useQuery({
+    queryKey: ["att_options"],
+    queryFn: async () => {
+      const r = await attendanceCall("list_options");
+      return { medicalCentres: r.medicalCentres || [], assessmentTypes: r.assessmentTypes || [] };
+    },
+    enabled: !!ctx?.authorized, staleTime: 60000,
+  });
 
   const today = todayISO();
+  const monthStart = today.slice(0, 8) + "01";
 
   const { data: todayRecords = [] } = useQuery({
-    queryKey: ["att_today", user?.customer_id],
-    queryFn: () => base44.entities.AttendanceRecord.filter({ customer_id: user.customer_id, attendance_date: today }, "-attendance_timestamp", 200),
-    enabled: !!user?.customer_id, staleTime: 30000,
+    queryKey: ["att_today", today],
+    queryFn: () => attendanceCall("list_records", { from: today, to: today }).then(r => r.records || []),
+    enabled: !!ctx?.authorized, staleTime: 30000,
   });
 
   const { data: monthRecords = [] } = useQuery({
-    queryKey: ["att_month_count", user?.customer_id],
-    queryFn: async () => {
-      const firstOfMonth = today.slice(0, 8) + "01";
-      const all = await base44.entities.AttendanceRecord.filter({ customer_id: user.customer_id }, "-attendance_timestamp", 1000);
-      return all.filter(r => (r.attendance_date || "") >= firstOfMonth && (r.attendance_date || "") <= today);
-    },
-    enabled: !!user?.customer_id, staleTime: 60000,
+    queryKey: ["att_month_count", monthStart],
+    queryFn: () => attendanceCall("list_records", { from: monthStart, to: today }).then(r => r.records || []),
+    enabled: !!ctx?.authorized, staleTime: 60000,
   });
 
   const { data: workerCount = 0 } = useQuery({
-    queryKey: ["att_workers_count", user?.customer_id],
-    queryFn: async () => {
-      const all = await base44.entities.AttendanceWorker.filter({ customer_id: user.customer_id, status: "active" });
-      return all.length;
-    },
-    enabled: !!user?.customer_id, staleTime: 120000,
+    queryKey: ["att_workers_count"],
+    queryFn: () => attendanceCall("list_workers", { active_only: true }).then(r => (r.workers || []).length),
+    enabled: !!ctx?.authorized, staleTime: 120000,
   });
 
   const recent = todayRecords.slice(0, 8);
@@ -75,8 +76,8 @@ export default function AttendanceDashboard() {
           ← Back to Dashboard
         </Button>
         <NewAttendanceWizard
-          user={user}
-          customerId={user?.customer_id}
+          user={ctx}
+          customerId={ctx?.customer_id}
           medicalCentres={dropdowns.medicalCentres}
           assessmentTypes={dropdowns.assessmentTypes}
           onSuccess={handleSuccess}
@@ -110,6 +111,26 @@ export default function AttendanceDashboard() {
             </Button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (!ctx) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!ctx.authorized) {
+    return (
+      <div className="p-4 max-w-md mx-auto text-center py-16">
+        <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-8 h-8 text-slate-500" />
+        </div>
+        <h2 className="text-white text-lg font-semibold mb-2">Attendance Register unavailable</h2>
+        <p className="text-slate-400 text-sm">{ctx.reason}</p>
       </div>
     );
   }

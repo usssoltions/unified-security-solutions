@@ -1,10 +1,12 @@
 /**
- * Attendance Register — Dropdown seed + helper utilities.
+ * Attendance Register — Dropdown helpers.
  *
- * Call seedDefaultOptions(customerId) once on first use per tenant.
- * It is idempotent — existing options are never duplicated.
+ * Options are stored per customer in the AttendanceDropdownOption entity and
+ * are ONLY reachable through the attendanceAccess backend gateway (server-side
+ * tenant resolution + module licence enforcement). The fixed official options
+ * are seeded idempotently server-side and must never be altered.
  */
-import { base44 } from "@/api/base44Client";
+import { attendanceCall } from "@/lib/attendanceApi";
 
 export const DEFAULT_MEDICAL_CENTRES = [
   "Alec", "First Choice", "Pro-Health", "Exxaro", "Enaex",
@@ -16,40 +18,13 @@ export const DEFAULT_ASSESSMENT_TYPES = [
   "Retest (6w)", "FCE", "Interview (Roaming)", "Interview (Not Roaming)",
 ];
 
-export async function seedDefaultOptions(customerId) {
-  if (!customerId) return;
+/** Returns { medicalCentres: string[], assessmentTypes: string[] }.
+ *  Seeding + tenant scoping happen server-side (idempotent). */
+export async function loadDropdownOptions() {
   try {
-    const existing = await base44.entities.AttendanceDropdownOption.filter({ customer_id: customerId });
-    const hasMedical = existing.some(o => o.option_type === "medical_centre");
-    const hasAssessment = existing.some(o => o.option_type === "assessment_type");
-
-    const toCreate = [];
-    if (!hasMedical) {
-      DEFAULT_MEDICAL_CENTRES.forEach((label, i) =>
-        toCreate.push({ customer_id: customerId, option_type: "medical_centre", label, sort_order: i, active: true })
-      );
-    }
-    if (!hasAssessment) {
-      DEFAULT_ASSESSMENT_TYPES.forEach((label, i) =>
-        toCreate.push({ customer_id: customerId, option_type: "assessment_type", label, sort_order: i, active: true })
-      );
-    }
-    if (toCreate.length > 0) {
-      await base44.entities.AttendanceDropdownOption.bulkCreate(toCreate);
-    }
-  } catch (e) {
-    console.error("seedDefaultOptions failed:", e);
-  }
-}
-
-/** Returns { medicalCentres: string[], assessmentTypes: string[] } from the DB */
-export async function loadDropdownOptions(customerId) {
-  if (!customerId) return { medicalCentres: DEFAULT_MEDICAL_CENTRES, assessmentTypes: DEFAULT_ASSESSMENT_TYPES };
-  try {
-    const all = await base44.entities.AttendanceDropdownOption.filter({ customer_id: customerId, active: true });
-    const sort = (arr) => arr.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
-    const mc = sort(all.filter(o => o.option_type === "medical_centre")).map(o => o.label);
-    const at = sort(all.filter(o => o.option_type === "assessment_type")).map(o => o.label);
+    const res = await attendanceCall("list_options");
+    const mc = res?.medicalCentres || [];
+    const at = res?.assessmentTypes || [];
     return {
       medicalCentres: mc.length ? mc : DEFAULT_MEDICAL_CENTRES,
       assessmentTypes: at.length ? at : DEFAULT_ASSESSMENT_TYPES,

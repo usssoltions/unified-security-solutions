@@ -12,6 +12,7 @@ import UserForm from "../components/users/UserForm";
 import UserCard from "../components/users/UserCard";
 import { getRolesForTenant, ROLE_DESCRIPTIONS } from "@/lib/roleCatalog";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
+import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
 
 export default function UserManagement() {
   const queryClient = useQueryClient();
@@ -50,7 +51,14 @@ export default function UserManagement() {
 
   const isPlatformAdmin = isPlatformAdminUser(currentUser);
   const customerType = customer?.customer_type;
-  const roles = getRolesForTenant(customerType);
+
+  // Module-aware role catalogue: the attendance_staff role is only offered
+  // when the customer's ATTENDANCE_REGISTER module licence is enabled.
+  const { data: entitlements = [] } = useModuleEntitlements(currentUser?.id, customerId);
+  const enabledModuleKeys = (entitlements || [])
+    .filter(e => e.enabled && (!e.status || e.status === "active"))
+    .map(e => e.module_key);
+  const roles = getRolesForTenant(customerType, enabledModuleKeys);
 
   const deleteUserMutation = useMutation({
     mutationFn: async (userId) => {

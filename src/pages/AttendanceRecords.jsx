@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  ClipboardList, Filter, Search, Download, Loader2, Users, Calendar,
-  Building2, FileText, X, ChevronDown, ChevronUp
+  ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generateOfficialRegisterPdf, generateIndividualAttendancePdf, downloadBlob } from "@/lib/attendancePdf";
 import { useBranding } from "@/hooks/useBranding";
-import { dateRangeISO, loadDropdownOptions, idTypeLabel } from "@/lib/attendanceDropdowns";
+import { attendanceCall, withSignatures } from "@/lib/attendanceApi";
+import { dateRangeISO } from "@/lib/attendanceDropdowns";
 
 const PRESETS = [
   { label: "Today", key: "today" },
@@ -23,7 +22,6 @@ const PRESETS = [
 ];
 
 export default function AttendanceRecords() {
-  const [user, setUser] = useState(null);
   const [preset, setPreset] = useState("today");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -32,32 +30,30 @@ export default function AttendanceRecords() {
   const [filterMedical, setFilterMedical] = useState("");
   const [filterAssessment, setFilterAssessment] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [dropdowns, setDropdowns] = useState({ medicalCentres: [], assessmentTypes: [] });
   const [generatingPdf, setGeneratingPdf] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState(null);
 
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
-  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const { data: ctx } = useQuery({
+    queryKey: ["att_context"],
+    queryFn: () => attendanceCall("get_context"),
+    staleTime: 60000,
+  });
+  const { data: branding } = useBranding(ctx?.customer_id, ctx?.reseller_id);
 
-  useEffect(() => {
-    if (user?.customer_id) loadDropdownOptions(user.customer_id).then(setDropdowns);
-  }, [user?.customer_id]);
+  const { data: dropdowns = { medicalCentres: [], assessmentTypes: [] } } = useQuery({
+    queryKey: ["att_options"],
+    queryFn: async () => {
+      const r = await attendanceCall("list_options");
+      return { medicalCentres: r.medicalCentres || [], assessmentTypes: r.assessmentTypes || [] };
+    },
+    enabled: !!ctx?.authorized, staleTime: 60000,
+  });
 
   const range = preset === "custom" ? { from: customFrom, to: customTo } : dateRangeISO(preset);
 
   const { data: records = [], isLoading } = useQuery({
-    queryKey: ["att_records", user?.customer_id, range.from, range.to],
-    queryFn: async () => {
-      const all = await base44.entities.AttendanceRecord.filter({ customer_id: user.customer_id }, "-attendance_date", 2000);
-      return all.filter(r =>
-        (r.attendance_date || "") >= range.from && (r.attendance_date || "") <= range.to
-      ).sort((a, b) => {
-        const dCmp = (a.attendance_date || "").localeCompare(b.attendance_date || "");
-        if (dCmp !== 0) return dCmp;
-        return (a.attendance_time || "").localeCompare(b.attendance_time || "");
-      });
-    },
-    enabled: !!user?.customer_id && !!range.from && !!range.to,
+    queryKey: ["att_records", range.from, range.to],
+    queryFn: () => attendanceCall("list_records", { from: range.from, to: range.to }).then(r => r.records || []),
+    enabled: !!ctx?.authorized && !!range.from && !!range.to,
     staleTime: 15000,
   });
 
@@ -70,10 +66,13 @@ export default function AttendanceRecords() {
     return matchText && matchCompany && matchMedical && matchAssess;
   });
 
+  // Signatures are fetched fresh from the gateway at generation time (they
+  // are stripped from list responses to keep payloads lean).
   const handleGeneratePdf = async () => {
     setGeneratingPdf(true);
     try {
-      const blob = generateOfficialRegisterPdf(filtered, branding);
+      const withSigs = await withSignatures(filtered);
+      const blob = generateOfficialRegisterPdf(withSigs, branding);
       downloadBlob(blob, `attendance_register_${range.from}_${range.to}.pdf`);
     } catch (e) { alert("PDF generation failed. Please try again."); }
     finally { setGeneratingPdf(false); }
@@ -81,7 +80,8 @@ export default function AttendanceRecords() {
 
   const handleIndividualPdf = async (record) => {
     try {
-      const blob = generateIndividualAttendancePdf(record, {}, branding);
+      const withSigs = await withSignatures([record]);
+      const blob = generateIndividualAttendancePdf(withSigs[0], {}, branding);
       downloadBlob(blob, `attendance_${record.id_number_snapshot}_${record.attendance_date}.pdf`);
     } catch (e) { alert("PDF generation failed."); }
   };
@@ -91,6 +91,26 @@ export default function AttendanceRecords() {
     const [y, m, dt] = d.split("-");
     return `${dt}/${m}/${y}`;
   };
+
+  if (!ctx) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!ctx.authorized) {
+    return (
+      <div className="p-4 max-w-md mx-auto text-center py-16">
+        <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-8 h-8 text-slate-500" />
+        </div>
+        <h2 className="text-white text-lg font-semibold mb-2">Attendance Register unavailable</h2>
+        <p className="text-slate-400 text-sm">{ctx.reason}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 max-w-3xl mx-auto space-y-4">

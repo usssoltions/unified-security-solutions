@@ -1,36 +1,39 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Users, Search, Download, Loader2, User, IdCard,
-  Building2, Phone, Calendar, ClipboardList, ChevronDown, ChevronUp, Eye
+  Users, Search, Download, Loader2, User,
+  Calendar, ChevronDown, ChevronUp, ShieldAlert
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generateWorkerIdPdf, downloadBlob } from "@/lib/attendancePdf";
 import { useBranding } from "@/hooks/useBranding";
+import { attendanceCall } from "@/lib/attendanceApi";
 import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
 
 export default function AttendanceWorkers() {
-  const [user, setUser] = useState(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(null);
 
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
-  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const { data: ctx } = useQuery({
+    queryKey: ["att_context"],
+    queryFn: () => attendanceCall("get_context"),
+    staleTime: 60000,
+  });
+  const { data: branding } = useBranding(ctx?.customer_id, ctx?.reseller_id);
 
   const { data: workers = [], isLoading } = useQuery({
-    queryKey: ["att_workers", user?.customer_id],
-    queryFn: () => base44.entities.AttendanceWorker.filter({ customer_id: user.customer_id }, "-created_date", 500),
-    enabled: !!user?.customer_id, staleTime: 30000,
+    queryKey: ["att_workers"],
+    queryFn: () => attendanceCall("list_workers").then(r => r.workers || []),
+    enabled: !!ctx?.authorized, staleTime: 30000,
   });
 
   const { data: allRecords = [] } = useQuery({
-    queryKey: ["att_records_all", user?.customer_id],
-    queryFn: () => base44.entities.AttendanceRecord.filter({ customer_id: user.customer_id }, "-attendance_timestamp", 2000),
-    enabled: !!user?.customer_id, staleTime: 60000,
+    queryKey: ["att_records_all"],
+    queryFn: () => attendanceCall("list_records").then(r => r.records || []),
+    enabled: !!ctx?.authorized, staleTime: 60000,
   });
 
   const recordsByWorker = React.useMemo(() => {
@@ -54,6 +57,26 @@ export default function AttendanceWorkers() {
   };
 
   const formatDate = d => d ? new Date(d).toLocaleDateString("en-ZA") : "—";
+
+  if (!ctx) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!ctx.authorized) {
+    return (
+      <div className="p-4 max-w-md mx-auto text-center py-16">
+        <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-8 h-8 text-slate-500" />
+        </div>
+        <h2 className="text-white text-lg font-semibold mb-2">Attendance Register unavailable</h2>
+        <p className="text-slate-400 text-sm">{ctx.reason}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4">

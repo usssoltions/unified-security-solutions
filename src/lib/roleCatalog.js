@@ -41,6 +41,7 @@ export const ROLE_DESCRIPTIONS = {
   therapist: { label: "Therapist", text: "Run clinical sessions and generate reports", color: "emerald" },
   reception: { label: "Reception", text: "Check-in patients, book appointments", color: "sky" },
   employer_user: { label: "Employer Portal User", text: "Refer employees and view authorised reports", color: "amber" },
+  attendance_staff: { label: "Attendance Staff", text: "Register worker/patient attendance: scanning, signatures, records", color: "sky" },
 };
 
 export const ATTENDANCE_ROLES = [
@@ -48,10 +49,21 @@ export const ATTENDANCE_ROLES = [
   { value: "admin", label: "Admin", color: "purple" },
 ];
 
-export function getRolesForTenant(customerType) {
-  if (customerType === "medical") return MEDICAL_ROLES;
-  if (customerType === "attendance") return ATTENDANCE_ROLES;
-  return SECURITY_ROLES;
+/**
+ * Role options for a tenant. When the tenant has the ATTENDANCE_REGISTER
+ * module licence enabled, the attendance_staff role is appended (for any
+ * industry vertical — e.g. a medical practice running the Attendance
+ * Register). Customers WITHOUT the licence never see attendance_staff.
+ */
+export function getRolesForTenant(customerType, enabledModuleKeys = []) {
+  let roles;
+  if (customerType === "medical") roles = MEDICAL_ROLES;
+  else if (customerType === "attendance") roles = ATTENDANCE_ROLES;
+  else roles = SECURITY_ROLES;
+  if (enabledModuleKeys.includes("ATTENDANCE_REGISTER") && !roles.some((r) => r.value === "attendance_staff")) {
+    roles = [...roles, { value: "attendance_staff", label: "Attendance Staff", color: "sky" }];
+  }
+  return roles;
 }
 
 export function isMedicalRoleSet(roles) {

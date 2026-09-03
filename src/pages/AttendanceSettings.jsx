@@ -1,17 +1,23 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Settings, Plus, Pencil, Archive, RotateCcw, Loader2, Check, X, Building2, ClipboardList
+  Settings, Plus, Pencil, Archive, RotateCcw, Loader2, Check, X, ShieldAlert
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { seedDefaultOptions } from "@/lib/attendanceDropdowns";
+import { attendanceCall } from "@/lib/attendanceApi";
 
-function OptionSection({ title, optionType, customerId, options, onRefresh }) {
-  const queryClient = useQueryClient();
+/**
+ * Attendance Settings — dropdown option management.
+ *
+ * Ordinary attendance staff get a READ-ONLY view; option management is
+ * restricted to authorized admins (practice/customer admins, reseller admins,
+ * platform admins) and is enforced SERVER-SIDE by the attendanceAccess
+ * gateway — this UI gate is presentation only.
+ */
+function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
   const [newLabel, setNewLabel] = useState("");
   const [editId, setEditId] = useState(null);
   const [editLabel, setEditLabel] = useState("");
@@ -24,10 +30,7 @@ function OptionSection({ title, optionType, customerId, options, onRefresh }) {
     if (!newLabel.trim()) return;
     setSaving(true);
     try {
-      await base44.entities.AttendanceDropdownOption.create({
-        customer_id: customerId, option_type: optionType,
-        label: newLabel.trim(), active: true, sort_order: typeOptions.length,
-      });
+      await attendanceCall("save_option", { option_type: optionType, label: newLabel.trim() });
       setNewLabel(""); onRefresh();
     } finally { setSaving(false); }
   };
@@ -36,7 +39,7 @@ function OptionSection({ title, optionType, customerId, options, onRefresh }) {
     if (!editLabel.trim()) return;
     setSaving(true);
     try {
-      await base44.entities.AttendanceDropdownOption.update(editId, { label: editLabel.trim() });
+      await attendanceCall("update_option", { id: editId, label: editLabel.trim() });
       setEditId(null); setEditLabel(""); onRefresh();
     } finally { setSaving(false); }
   };
@@ -44,7 +47,7 @@ function OptionSection({ title, optionType, customerId, options, onRefresh }) {
   const toggleActive = async (opt) => {
     setSaving(true);
     try {
-      await base44.entities.AttendanceDropdownOption.update(opt.id, { active: !opt.active });
+      await attendanceCall("update_option", { id: opt.id, active: !opt.active });
       onRefresh();
     } finally { setSaving(false); }
   };
@@ -56,6 +59,9 @@ function OptionSection({ title, optionType, customerId, options, onRefresh }) {
         <span className="text-slate-400 text-xs">{typeOptions.filter(o => o.active).length} active</span>
       </div>
       <div className="divide-y divide-slate-700/50">
+        {typeOptions.length === 0 && (
+          <p className="px-4 py-3 text-slate-500 text-xs italic">No options configured.</p>
+        )}
         {typeOptions.map(opt => (
           <div key={opt.id} className="px-4 py-3 flex items-center gap-3">
             {editId === opt.id ? (
@@ -73,58 +79,76 @@ function OptionSection({ title, optionType, customerId, options, onRefresh }) {
               <>
                 <span className={`flex-1 text-sm ${opt.active ? "text-white" : "text-slate-500 line-through"}`}>{opt.label}</span>
                 <Badge variant={opt.active ? "default" : "secondary"} className="text-[10px]">{opt.active ? "Active" : "Inactive"}</Badge>
-                <Button size="icon" variant="ghost" onClick={() => { setEditId(opt.id); setEditLabel(opt.label); }} className="h-7 w-7 text-slate-400">
-                  <Pencil className="w-3.5 h-3.5" />
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => toggleActive(opt)} className={`h-7 w-7 ${opt.active ? "text-amber-400" : "text-emerald-400"}`}>
-                  {opt.active ? <Archive className="w-3.5 h-3.5" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                </Button>
+                {!readOnly && (
+                  <>
+                    <Button size="icon" variant="ghost" onClick={() => { setEditId(opt.id); setEditLabel(opt.label); }} className="h-7 w-7 text-slate-400">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => toggleActive(opt)} disabled={saving} className={`h-7 w-7 ${opt.active ? "text-amber-400" : "text-emerald-400"}`}>
+                      {opt.active ? <Archive className="w-3.5 h-3.5" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>
         ))}
       </div>
-      <div className="px-4 py-3 border-t border-slate-700 flex gap-2">
-        <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="New option label…"
-          className="bg-slate-900 border-slate-700 text-white text-sm h-9"
-          onKeyDown={e => e.key === "Enter" && addOption()} />
-        <Button onClick={addOption} disabled={!newLabel.trim() || saving} size="sm" className="bg-sky-600 hover:bg-sky-700 h-9">
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="px-4 py-3 border-t border-slate-700 flex gap-2">
+          <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="New option label…"
+            className="bg-slate-900 border-slate-700 text-white text-sm h-9"
+            onKeyDown={e => e.key === "Enter" && addOption()} />
+          <Button onClick={addOption} disabled={!newLabel.trim() || saving} size="sm" className="bg-sky-600 hover:bg-sky-700 h-9">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function AttendanceSettings() {
-  const [user, setUser] = useState(null);
-  const queryClient = useQueryClient();
-
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
-
-  // Only admins/practice_admins/platform admins should access settings
-  const canAdmin = user && ["admin", "practice_admin", "dispatcher"].includes(user.role_type) || user?.role === "admin" || user?.admin_level === "platform";
-
-  const { data: options = [], refetch } = useQuery({
-    queryKey: ["att_options", user?.customer_id],
-    queryFn: () => base44.entities.AttendanceDropdownOption.filter({ customer_id: user.customer_id }),
-    enabled: !!user?.customer_id, staleTime: 15000,
+  const { data: ctx } = useQuery({
+    queryKey: ["att_context"],
+    queryFn: () => attendanceCall("get_context"),
+    staleTime: 60000,
   });
 
-  const handleSeedDefaults = async () => {
-    if (!user?.customer_id) return;
-    await seedDefaultOptions(user.customer_id);
-    refetch();
+  const { data: options = [], refetch, isLoading } = useQuery({
+    queryKey: ["att_options_full"],
+    queryFn: () => attendanceCall("list_options").then(r => r.options || []),
+    enabled: !!ctx?.authorized, staleTime: 15000,
+  });
+
+  const handleResetDefaults = async () => {
+    try {
+      await attendanceCall("reset_defaults");
+      refetch();
+    } catch (_) { /* gateway enforces authorization; failures surface as no-op */ }
   };
 
-  if (!canAdmin) {
+  if (!ctx) {
     return (
-      <div className="p-4 max-w-xl mx-auto text-center py-16">
-        <Settings className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-        <p className="text-slate-400">Administrator access required for Attendance Settings.</p>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
       </div>
     );
   }
+
+  if (!ctx.authorized) {
+    return (
+      <div className="p-4 max-w-md mx-auto text-center py-16">
+        <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-8 h-8 text-slate-500" />
+        </div>
+        <h2 className="text-white text-lg font-semibold mb-2">Attendance Register unavailable</h2>
+        <p className="text-slate-400 text-sm">{ctx.reason}</p>
+      </div>
+    );
+  }
+
+  const canManage = !!ctx.can_manage_options;
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-5">
@@ -133,25 +157,39 @@ export default function AttendanceSettings() {
         <h1 className="text-white text-xl font-bold flex-1">Attendance Settings</h1>
       </div>
 
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={handleSeedDefaults} className="border-slate-600 text-slate-400 text-xs">
-          Reset to Default Options
-        </Button>
-      </div>
+      {!canManage && (
+        <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-3">
+          <p className="text-sky-300 text-sm">Read-only view — option management requires an administrator role.</p>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
+        </div>
+      )}
+
+      {canManage && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={handleResetDefaults} className="border-slate-600 text-slate-400 text-xs">
+            Reset to Default Options
+          </Button>
+        </div>
+      )}
 
       <OptionSection
         title="Medical Centres"
         optionType="medical_centre"
-        customerId={user?.customer_id}
         options={options}
         onRefresh={refetch}
+        readOnly={!canManage}
       />
       <OptionSection
         title="Assessment Types"
         optionType="assessment_type"
-        customerId={user?.customer_id}
         options={options}
         onRefresh={refetch}
+        readOnly={!canManage}
       />
 
       <div className="bg-slate-800/40 rounded-xl border border-slate-700 p-4">
