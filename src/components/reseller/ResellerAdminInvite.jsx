@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,55 +7,135 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, UserPlus, ShieldCheck } from "lucide-react";
+import { Loader2, UserPlus, ShieldCheck, Lock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { getInviteRolesForCustomer } from "@/lib/roleCatalog";
+
+/** Friendly, non-leaking messages keyed by the backend error codes. */
+const FRIENDLY_ERRORS = {
+  invalid_email: "Please enter a valid email address.",
+  missing_first_name: "First name is required.",
+  missing_role: "Please select a role.",
+  missing_customer: "Please select a customer.",
+  role_not_allowed: "The selected role is not available for this customer. Roles depend on the modules enabled for this customer.",
+  permission_denied: "You do not have permission to invite this user.",
+  customer_not_found: "The selected customer could not be found.",
+  bad_customer: "That customer does not belong to the selected reseller.",
+  scope_failed: "The user exists but could not be scoped. Contact support.",
+  invite_service_failed: "The invitation email could not be sent right now. Please try again.",
+  internal_error: "Invitation failed. Please try again.",
+};
 
 /**
  * ResellerAdminInvite — modal to invite a tenant-scoped user.
- *  - Platform Admin (allowResellerAdmin=true): can create a Reseller Admin
- *    (scoped to the fixed reseller) or a Customer Admin / user under a customer.
- *  - Reseller Admin (allowResellerAdmin=false): can only create Customer Admins
- *    / users under customers belonging to their reseller.
  *
- * Always invites with platform role "user" — never "admin". Scoping is applied
- * server-side by inviteTenantUser.
+ * ROLE OPTIONS ARE MODULE-AWARE: they are derived from the modules ENABLED for
+ * the selected customer (fetched server-side via manageCustomerEntitlement
+ * "list" so reseller admins see the truth even where client-side RLS can't
+ * read ModuleEntitlement), using the central module→role registry in
+ * src/lib/roleCatalog.js (mirrored + ENFORCED server-side in
+ * base44/shared/tenantRoles.ts by inviteTenantUser). The USS Platform Admin
+ * role never appears.
+ *
+ * Customer scoping: only customers of the fixed reseller are offered; when a
+ * single customer is in context (opened from a customer console) it is
+ * preselected and locked. Identity fields are never cleared when the
+ * customer/role changes.
  */
 export default function ResellerAdminInvite({
-  open, onClose, resellerId, resellerName, customers, allowResellerAdmin, onDone,
+  open, onClose, resellerId, resellerName, customers = [], allowResellerAdmin, onDone,
 }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
+  const [customerList, setCustomerList] = useState(customers || []);
+  // null = not loaded yet for the selected customer; [] = loaded (none enabled)
+  const [enabledModuleKeys, setEnabledModuleKeys] = useState(null);
+
+  const singleCustomer = customerList.length === 1;
+  const blankForm = {
     first_name: "", last_name: "", email: "", phone: "",
     role_type: allowResellerAdmin ? "reseller_admin" : "customer_admin",
-    customer_id: "", status: "active",
-  });
+    customer_id: singleCustomer ? customerList[0].id : "",
+    status: "active",
+  };
+  const [form, setForm] = useState(blankForm);
 
   const reset = () => setForm({
-    first_name: "", last_name: "", email: "", phone: "",
-    role_type: allowResellerAdmin ? "reseller_admin" : "customer_admin",
-    customer_id: "", status: "active",
+    ...blankForm,
+    customer_id: singleCustomer ? (customerList[0]?.id || "") : "",
   });
 
-  const display_name = [form.first_name, form.last_name].filter(Boolean).join(" ").trim();
+  // When no customers were passed in (reseller Users tab), load the reseller's
+  // own customers — RLS scopes reseller admins to their reseller; Platform
+  // Admins see the fixed reseller's customers.
+  useEffect(() => {
+    if (!open) return;
+    if ((customers || []).length > 0 || !resellerId) return;
+    let alive = true;
+    base44.entities.Customer.filter({ reseller_id: resellerId })
+      .then((list) => { if (alive) setCustomerList(list || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [open, resellerId]);
+
+  // Preselect the single in-context customer once the list resolves.
+  useEffect(() => {
+    if (customerList.length === 1 && !form.customer_id) {
+      setForm((f) => ({ ...f, customer_id: customerList[0].id }));
+    }
+  }, [customerList]);
+
+  // Fetch the selected customer's ENABLED modules server-side (authoritative
+  // for both the role options here and the backend validation).
+  useEffect(() => {
+    if (!open || !form.customer_id) { setEnabledModuleKeys(null); return; }
+    let alive = true;
+    setEnabledModuleKeys(null);
+    base44.functions.invoke("manageCustomerEntitlement", { action: "list", customer_id: form.customer_id })
+      .then((res) => {
+        const d = res?.data || res;
+        if (alive) setEnabledModuleKeys(d?.module_keys || []);
+      })
+      .catch(() => { if (alive) setEnabledModuleKeys([]); });
+    return () => { alive = false; };
+  }, [open, form.customer_id]);
+
+  const roles = getInviteRolesForCustomer(enabledModuleKeys || [], { allowResellerAdmin });
+
+  // If the selected role is no longer valid for the current customer's
+  // modules (e.g. customer changed), fall back to Customer Administrator.
+  // Only the ROLE is reset — identity fields are preserved.
+  useEffect(() => {
+    if (!enabledModuleKeys) return;
+    if (form.role_type === "reseller_admin") return;
+    if (!roles.some((r) => r.value === form.role_type)) {
+      setForm((f) => ({ ...f, role_type: "customer_admin" }));
+    }
+  }, [enabledModuleKeys]);
+
   const isResellerAdminRole = form.role_type === "reseller_admin";
-  const needsCustomer = ["customer_admin", "admin", "user", "guard", "dispatcher", "estate_manager", "practice_admin", "reception", "therapist"].includes(form.role_type);
+  const needsCustomer = !isResellerAdminRole;
+  const rolesLoading = needsCustomer && enabledModuleKeys === null;
 
   const submit = async () => {
-    if (!form.email) { toast({ title: "Email is required", variant: "destructive" }); return; }
-    if (isResellerAdminRole && !allowResellerAdmin) { toast({ title: "Not permitted", variant: "destructive" }); return; }
-    if (needsCustomer && !form.customer_id) { toast({ title: "Select a customer", variant: "destructive" }); return; }
+    if (!form.first_name.trim()) { toast({ title: "First name is required", variant: "destructive" }); return; }
+    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      toast({ title: "Please enter a valid email address", variant: "destructive" }); return;
+    }
+    if (!form.role_type) { toast({ title: "Please select a role", variant: "destructive" }); return; }
+    if (needsCustomer && !form.customer_id) { toast({ title: "Please select a customer", variant: "destructive" }); return; }
     setSaving(true);
     try {
       const res = await base44.functions.invoke("inviteTenantUser", {
         action: "invite",
-        email: form.email,
+        email: form.email.trim(),
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
         role_type: form.role_type,
         reseller_id: resellerId,
         customer_id: needsCustomer ? form.customer_id : null,
-        display_name: display_name || undefined,
-        phone: form.phone || undefined,
-        status: form.status,
+        phone: form.phone.trim() || undefined,
+        user_status: form.status,
       });
       const d = res?.data || res;
       if (d?.success) {
@@ -67,22 +147,16 @@ export default function ResellerAdminInvite({
         onClose?.();
         return;
       }
-      // Friendly, non-leaking errors
-      const friendly = {
-        invalid_email: "Please enter a valid email address.",
-        permission_denied: "You do not have permission to invite this user.",
-        customer_not_found: "The selected customer could not be found.",
-        bad_customer: "That customer does not belong to the selected reseller.",
-        already_pending: "An invitation is already pending for this email.",
-        invite_service_failed: "The invitation email could not be sent. Please try again.",
-        scope_failed: "The user exists but could not be scoped. Contact support.",
-        invite_pending_scope: "Invitation sent; scoping will apply when the user accepts.",
-        internal_error: "Invitation failed. Please try again.",
-      };
-      const msg = (d?.code && friendly[d.code]) || d?.error || "Invitation failed. Please try again.";
-      throw new Error(msg);
+      // 2xx but not success (e.g. partial delivery) — friendly message, form retained.
+      throw new Error(FRIENDLY_ERRORS[d?.code] || d?.error || "Invitation failed. Please try again.");
     } catch (e) {
-      toast({ title: "Failed to invite", description: e.message, variant: "destructive" });
+      // Log full detail for diagnostics, but never surface raw transport errors.
+      console.error("[ResellerAdminInvite] invitation failed", e);
+      const d = e?.response?.data || e?.data;
+      let msg = (d?.code && FRIENDLY_ERRORS[d?.code]) || d?.error || e?.message || "Invitation failed. Please try again.";
+      if (/status code|network error|request failed/i.test(msg)) msg = "Invitation failed. Please try again.";
+      toast({ title: "Failed to invite", description: msg, variant: "destructive" });
+      // Form data is intentionally retained so the admin can retry.
     } finally {
       setSaving(false);
     }
@@ -100,7 +174,7 @@ export default function ResellerAdminInvite({
         </DialogHeader>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
-          <div><Label className="text-slate-300 text-xs">First Name</Label>
+          <div><Label className="text-slate-300 text-xs">First Name *</Label>
             <Input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} className="bg-slate-950 border-slate-700 mt-1" />
           </div>
           <div><Label className="text-slate-300 text-xs">Last Name</Label>
@@ -112,19 +186,23 @@ export default function ResellerAdminInvite({
           <div><Label className="text-slate-300 text-xs">Mobile Number</Label>
             <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-slate-950 border-slate-700 mt-1" />
           </div>
-          <div><Label className="text-slate-300 text-xs">Role *</Label>
-            <Select value={form.role_type} onValueChange={(v) => setForm({ ...form, role_type: v })}>
+          <div className="sm:col-span-2">
+            <Label className="text-slate-300 text-xs flex items-center gap-1.5">
+              Role *
+              {needsCustomer && (
+                <span className="text-slate-500 font-normal">
+                  {rolesLoading ? " — loading available roles…" : " — based on this customer's enabled modules"}
+                </span>
+              )}
+            </Label>
+            <Select
+              value={form.role_type}
+              onValueChange={(v) => setForm({ ...form, role_type: v })}
+              disabled={rolesLoading}
+            >
               <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {allowResellerAdmin && <SelectItem value="reseller_admin">Reseller Administrator</SelectItem>}
-                <SelectItem value="customer_admin">Customer Administrator</SelectItem>
-                <SelectItem value="admin">Customer Admin (operations)</SelectItem>
-                <SelectItem value="estate_manager">Estate Manager</SelectItem>
-                <SelectItem value="practice_admin">Practice Admin (Medical)</SelectItem>
-                <SelectItem value="dispatcher">Dispatcher</SelectItem>
-                <SelectItem value="guard">Security Guard</SelectItem>
-                <SelectItem value="reception">Reception</SelectItem>
-                <SelectItem value="therapist">Therapist</SelectItem>
+                {roles.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -139,12 +217,21 @@ export default function ResellerAdminInvite({
             </Select>
           </div>
           {!isResellerAdminRole && (
-            <div className="sm:col-span-2">
-              <Label className="text-slate-300 text-xs">Customer {needsCustomer ? "*" : "(optional)"}</Label>
-              <Select value={form.customer_id} onValueChange={(v) => setForm({ ...form, customer_id: v })}>
-                <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
+            <div>
+              <Label className="text-slate-300 text-xs flex items-center gap-1.5">
+                Customer *
+                {singleCustomer && <Lock className="w-3 h-3 text-slate-500" />}
+              </Label>
+              <Select
+                value={form.customer_id}
+                onValueChange={(v) => setForm({ ...form, customer_id: v })}
+                disabled={singleCustomer}
+              >
+                <SelectTrigger className="bg-slate-950 border-slate-700 mt-1">
+                  <SelectValue placeholder={customerList.length === 0 ? "No customers available" : "Select customer"} />
+                </SelectTrigger>
                 <SelectContent>
-                  {(customers || []).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  {customerList.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -160,7 +247,7 @@ export default function ResellerAdminInvite({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => { reset(); onClose?.(); }} className="text-slate-300">Cancel</Button>
-          <Button onClick={submit} disabled={saving} className="bg-sky-500 hover:bg-sky-600">
+          <Button onClick={submit} disabled={saving || rolesLoading} className="bg-sky-500 hover:bg-sky-600">
             {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <UserPlus className="w-4 h-4 mr-1" />}
             Send Invitation
           </Button>

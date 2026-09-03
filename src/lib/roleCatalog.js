@@ -1,15 +1,17 @@
 /**
  * Module-aware role catalog.
  *
- * The platform serves two distinct industry verticals (Security and Medical),
- * each with its own role set. User Management and the invite/edit forms derive
- * their role options from here so a Medical practice only sees Medical roles
- * (Practice Admin / Therapist / Reception / Employer Portal User) and a Security
- * tenant only sees Security roles.
+ * The platform serves multiple industry verticals (Security, Estate, Medical,
+ * Attendance), each with its own role set. `getRolesForTenant(customerType)`
+ * serves the legacy User Management screens; the NEW module-scoped registry
+ * below (`MODULE_ROLE_ACCESS` / `getInviteRolesForCustomer`) is the canonical
+ * source for user INVITATION / assignment flows: the role options shown to an
+ * admin depend on the modules ENABLED for the selected customer, not on a
+ * hard-coded list.
  *
- * `getRolesForTenant(customerType)` is the canonical accessor — pass the
- * current user's Customer `customer_type` ("medical" → Medical roles, anything
- * else → Security roles). A null/undefined customer type defaults to Security.
+ * MODULE_ROLE_ACCESS is MIRRORED server-side in base44/shared/tenantRoles.ts,
+ * which inviteTenantUser enforces authoritatively (fail closed). The two files
+ * MUST be kept in sync.
  */
 
 export const SECURITY_ROLES = [
@@ -42,6 +44,7 @@ export const ROLE_DESCRIPTIONS = {
   reception: { label: "Reception", text: "Check-in patients, book appointments", color: "sky" },
   employer_user: { label: "Employer Portal User", text: "Refer employees and view authorised reports", color: "amber" },
   attendance_staff: { label: "Attendance Staff", text: "Register worker/patient attendance: scanning, signatures, records", color: "sky" },
+  customer_admin: { label: "Customer Administrator", text: "Administrative access to the customer's enabled modules", color: "purple" },
 };
 
 export const ATTENDANCE_ROLES = [
@@ -49,11 +52,73 @@ export const ATTENDANCE_ROLES = [
   { value: "admin", label: "Admin", color: "purple" },
 ];
 
+/* ── Module → role registry (invite/assign flows) ────────────────────────
+ * Mirrors base44/shared/tenantRoles.ts. Keys are the commercial module keys
+ * (see src/lib/resellerModules.js). Order of MODULE_ROLE_ORDER controls the
+ * display order of roles in pickers.
+ */
+export const MODULE_ROLE_ACCESS = {
+  COMPLETE_SECURITY: ["admin", "dispatcher", "guard"],
+  OPERATIONS: ["admin", "dispatcher", "guard"],
+  PATROL: ["dispatcher", "guard"],
+  ACCESS: ["estate_manager", "guard", "reception"],
+  ESTATE: ["estate_manager", "resident", "vendor"],
+  OCCUPATIONAL_THERAPY: ["practice_admin", "therapist", "reception"],
+  ATTENDANCE_REGISTER: ["attendance_staff"],
+  CALLING: [],
+  REPORTING_CORE: [],
+  NOTIFICATION_CORE: [],
+  MESSAGING: [],
+  BARKODER_CORE: [],
+};
+
+export const MODULE_ROLE_ORDER = [
+  "COMPLETE_SECURITY", "OPERATIONS", "PATROL", "ACCESS", "ESTATE",
+  "OCCUPATIONAL_THERAPY", "ATTENDANCE_REGISTER",
+];
+
+export const INVITE_ROLE_LABELS = {
+  reseller_admin: "Reseller Administrator",
+  customer_admin: "Customer Administrator",
+  admin: "Customer Admin (operations)",
+  dispatcher: "Dispatcher / Supervisor",
+  guard: "Security Guard",
+  estate_manager: "Estate Manager",
+  resident: "Resident",
+  vendor: "Vendor",
+  practice_admin: "Practice Administrator",
+  therapist: "Therapist",
+  reception: "Reception",
+  attendance_staff: "Attendance Staff",
+};
+
 /**
- * Role options for a tenant. When the tenant has the ATTENDANCE_REGISTER
- * module licence enabled, the attendance_staff role is appended (for any
- * industry vertical — e.g. a medical practice running the Attendance
- * Register). Customers WITHOUT the licence never see attendance_staff.
+ * Role options for inviting a user to a customer, derived from the modules
+ * ENABLED for that customer. Union across enabled modules, deduplicated,
+ * ordered. "customer_admin" is always present (administrative access to the
+ * customer's enabled modules). "platform_admin" is never included.
+ * "reseller_admin" only when allowResellerAdmin (platform-admin context).
+ */
+export function getInviteRolesForCustomer(enabledModuleKeys = [], { allowResellerAdmin = false } = {}) {
+  const seen = new Set();
+  const roles = [];
+  const push = (value) => {
+    if (!value || value === "platform_admin" || seen.has(value)) return;
+    seen.add(value);
+    roles.push({ value, label: INVITE_ROLE_LABELS[value] || value });
+  };
+  if (allowResellerAdmin) push("reseller_admin");
+  push("customer_admin");
+  for (const key of MODULE_ROLE_ORDER) {
+    if (!(enabledModuleKeys || []).includes(key)) continue;
+    for (const r of MODULE_ROLE_ACCESS[key] || []) push(r);
+  }
+  return roles;
+}
+
+/**
+ * Legacy accessor for tenant-scoped User Management screens (existing users).
+ * Kept for backwards compatibility.
  */
 export function getRolesForTenant(customerType, enabledModuleKeys = []) {
   let roles;

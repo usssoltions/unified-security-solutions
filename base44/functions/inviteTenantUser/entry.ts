@@ -1,27 +1,30 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { getAllowedRolesForModules } from '../../shared/tenantRoles.ts';
 
 /**
- * inviteTenantUser — securely invite a tenant-scoped user (Reseller Admin,
- * Customer Admin, or regular user) and queue the tenant scoping to apply when
- * the invitee accepts the invitation.
+ * inviteTenantUser — securely invite a tenant-scoped user and queue the
+ * tenant scoping to apply when the invitee accepts the invitation.
  *
- * Why a queue: Base44 creates the User record only when the invitee ACCEPTS the
- * invitation, not at invite time. The original implementation tried to scope a
- * non-existent User record, which threw "User not found" (HTTP 500). Now we
- * write a PendingTenantScope record keyed by email; a User-create automation
- * (applyPendingTenantScope) applies it server-side when the invitee accepts.
+ * Payload contract (matches the Add User form):
+ *   action: "invite"
+ *   email            * required, normalised (trim + lowercase)
+ *   first_name       * required
+ *   last_name          optional
+ *   role_type        * required, validated against the customer's ENABLED
+ *                        MODULES server-side (shared/tenantRoles) — fail closed
+ *   customer_id        required for customer-scoped roles; must belong to the
+ *                        caller's reseller (reseller admins) or the given
+ *                        reseller_id (platform admins)
+ *   reseller_id        resolved reseller scope (caller's own for reseller admins)
+ *   phone, user_status optional
  *
  * Security model:
- *  - Platform `role: admin` is reserved for USS Platform Admins. The invite
- *    always uses platform role "user"; the queued scope sets a non-platform
- *    role_type + admin_level. Platform `role: admin` is NEVER granted.
+ *  - Platform `role: admin` (USS Platform Admin) is never granted to invitees.
  *  - Reseller Admin creation is PLATFORM-ONLY.
- *  - Reseller Admins may invite Customer Admins / users only within their own
- *    reseller, and only for customers that belong to that reseller.
- *  - Idempotent: one PendingTenantScope per email. Retrying does not create a
- *    duplicate user or a duplicate invitation.
- *  - If a User with the email already exists (already accepted), scoping is
- *    applied directly to the existing record instead of re-inviting.
+ *  - Reseller Admins may invite only within their own reseller, only for
+ *    customers that belong to that reseller, and only roles allowed by the
+ *    customer's enabled modules.
+ *  - Idempotent: one PendingTenantScope per email.
  */
 function escHtml(s: string): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
@@ -34,17 +37,28 @@ export default async function(req: Request): Promise<Response> {
     if (!caller) return Response.json({ error: 'Authentication required', code: 'auth_required' }, { status: 401 });
 
     const body = await req.json();
-    const { action, email: rawEmail, role_type, reseller_id, customer_id, display_name, phone, status } = body;
+    const {
+      action, email: rawEmail, role_type, reseller_id, customer_id,
+      first_name, last_name, display_name: providedDisplayName, phone,
+      user_status, status,
+    } = body;
     // Normalise the email once (trim + lowercase) so the pending scope, the
     // existing-user lookup, the invitation, and applyMyPendingScope's lookup
     // all key on the exact same value regardless of how the admin typed it.
     const email = (rawEmail || '').trim().toLowerCase();
+    const firstName = String(first_name || '').trim();
+    const lastName = String(last_name || '').trim();
+    const displayName = String(providedDisplayName || '').trim() || [firstName, lastName].filter(Boolean).join(' ').trim() || null;
+    const userStatus = user_status || status || 'active';
 
     if (action !== 'invite') {
       return Response.json({ error: 'Only action "invite" is supported', code: 'bad_action' }, { status: 400 });
     }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return Response.json({ error: 'A valid email address is required', code: 'invalid_email' }, { status: 400 });
+    }
+    if (!firstName) {
+      return Response.json({ error: 'First name is required', code: 'missing_first_name' }, { status: 400 });
     }
     if (!role_type) {
       return Response.json({ error: 'A role is required', code: 'missing_role' }, { status: 400 });
@@ -59,7 +73,7 @@ export default async function(req: Request): Promise<Response> {
     if (role_type === 'reseller_admin' && !isPlatformAdmin) {
       return Response.json({ error: 'Only a Platform Admin can create Reseller Administrators', code: 'permission_denied' }, { status: 403 });
     }
-    if (role_type === 'platform_admin' && !isPlatformAdmin) {
+    if (role_type === 'platform_admin') {
       return Response.json({ error: 'Cannot create Platform Admins', code: 'permission_denied' }, { status: 403 });
     }
     if (isResellerAdmin && !isPlatformAdmin) {
@@ -73,7 +87,6 @@ export default async function(req: Request): Promise<Response> {
 
     let admin_level = 'customer';
     if (role_type === 'reseller_admin') admin_level = 'reseller';
-    else if (role_type === 'platform_admin') admin_level = 'platform';
 
     // Validate customer belongs to the resolved reseller (when customer given).
     let customer;
@@ -91,6 +104,27 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'The selected customer does not belong to that reseller', code: 'bad_customer' }, { status: 400 });
       }
     }
+
+    // ── SERVER-SIDE module-scoped role validation (fail closed). ──
+    // The UI derives role options from the same registry (shared/tenantRoles,
+    // mirrored in src/lib/roleCatalog.js), but this is the authoritative
+    // check: a manipulated request can never assign a role that belongs to a
+    // module the customer has not enabled.
+    if (customer_id && role_type !== 'reseller_admin') {
+      const ents = await base44.asServiceRole.entities.ModuleEntitlement.filter({ customer_id }).catch(() => []);
+      const enabledKeys = (ents || [])
+        .filter((e) => e.enabled && (!e.status || e.status === 'active'))
+        .map((e) => e.module_key);
+      const allowed = getAllowedRolesForModules(enabledKeys);
+      if (!allowed.has(role_type)) {
+        return Response.json({
+          error: 'The selected role is not available for this customer. Roles depend on the modules enabled for this customer.',
+          code: 'role_not_allowed',
+          allowed_roles: Array.from(allowed),
+        }, { status: 400 });
+      }
+    }
+
     const effectiveReseller = reseller_id || (customer ? customer.reseller_id : null) || null;
     const callerName = caller.display_name || caller.full_name || caller.email;
     const moduleLabel = customer?.customer_type
@@ -104,7 +138,7 @@ export default async function(req: Request): Promise<Response> {
     existing = (existing && existing[0]) ? existing[0] : null;
     if (existing) {
       const scopeUpdates = { role_type, admin_level, reseller_id: effectiveReseller, customer_id: customer_id || null };
-      if (display_name) scopeUpdates.display_name = display_name;
+      if (displayName) scopeUpdates.display_name = displayName;
       if (phone) scopeUpdates.phone = phone;
       try {
         await base44.asServiceRole.entities.User.update(existing.id, scopeUpdates);
@@ -130,7 +164,7 @@ export default async function(req: Request): Promise<Response> {
           subject: `Your access to ${orgName}${moduleLabel ? ` (${moduleLabel})` : ''} has been updated`,
           body: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
             <h2 style="color:#1e293b">Access updated</h2>
-            <p>Hi ${escHtml(display_name || '')},</p>
+            <p>Hi ${escHtml(displayName || '')},</p>
             <p>Your access to <b>${escHtml(orgName)}</b> has been updated to <b>${escHtml(role_type.replace(/_/g, ' '))}</b>${moduleLabel ? ` on the <b>${moduleLabel}</b> module` : ''}.</p>
             <p>Log in to the app to see your updated workspace.</p>
             <p style="color:#64748b;font-size:12px">Updated by ${escHtml(callerName)}</p>
@@ -149,12 +183,15 @@ export default async function(req: Request): Promise<Response> {
       admin_level,
       reseller_id: effectiveReseller || null,
       customer_id: customer_id || null,
-      display_name: display_name || null,
+      first_name: firstName || null,
+      last_name: lastName || null,
+      display_name: displayName || null,
       phone: phone || null,
+      user_status: userStatus || 'active',
       status: 'pending',
       invited_by: caller.id,
       invited_by_name: callerName,
-      notes: `Invited as ${role_type}${moduleLabel ? ` (${moduleLabel})` : ''}${status ? ` (${status})` : ''}`,
+      notes: `Invited as ${role_type}${moduleLabel ? ` (${moduleLabel})` : ''} (${userStatus})`,
     };
 
     if (pending) {

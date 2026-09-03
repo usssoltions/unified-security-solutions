@@ -26,6 +26,29 @@ export default async function(req: Request): Promise<Response> {
     const { action, customer_id, reseller_id, module_key, enabled, status,
             licence_start, licence_end, licence_limit, configuration } = body;
 
+    // ── "list": enabled module keys for a customer (used by the invite form
+    // to derive module-scoped role options server-side — reliable for reseller
+    // admins whose client-side RLS cannot read ModuleEntitlement directly).
+    if (action === 'list') {
+      if (!customer_id) {
+        return Response.json({ error: 'customer_id is required' }, { status: 400 });
+      }
+      const listCusts = await base44.asServiceRole.entities.Customer.filter({ id: customer_id });
+      const listCustomer = listCusts[0];
+      if (!listCustomer) return Response.json({ error: 'Customer not found' }, { status: 404 });
+      if (!isPlatformAdmin) {
+        const listReseller = listCustomer.reseller_id || null;
+        if (!listReseller || listReseller !== caller.reseller_id) {
+          return Response.json({ error: 'Forbidden: customer does not belong to your reseller' }, { status: 403 });
+        }
+      }
+      const ents = await base44.asServiceRole.entities.ModuleEntitlement.filter({ customer_id });
+      const module_keys = (ents || [])
+        .filter((e) => e.enabled && (!e.status || e.status === 'active'))
+        .map((e) => e.module_key);
+      return Response.json({ success: true, module_keys });
+    }
+
     if (!action || !['set', 'remove'].includes(action)) {
       return Response.json({ error: 'action must be "set" or "remove"' }, { status: 400 });
     }
