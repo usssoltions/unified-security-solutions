@@ -267,6 +267,116 @@ export default async function main(req: Request): Promise<Response> {
         return Response.json({ worker: found && found.length > 0 ? found[0] : null });
       }
 
+      // ── Worker / Patient directory: create + update (profile flows) ─────────
+      // Tenant ids are stamped SERVER-SIDE from the resolved scope — the
+      // client never supplies customer/reseller ids for a new profile.
+      case 'create_worker': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!scope.customer_id) {
+          return err('A customer scope is required. Pass ?customer_id=… when acting as platform oversight.', 400);
+        }
+        const w = params.worker || {};
+        const idNumber = String(w.id_number || '').trim();
+        if (!w.surname || !idNumber || !w.company || !w.job_description || !w.cellphone) {
+          return err('Surname, ID number, company, job description and cellphone are required.');
+        }
+        const idType = ID_TYPES.includes(w.id_type) ? w.id_type : 'sa_id';
+        // SERVER-SIDE duplicate prevention: one profile per ID/document number
+        // per customer. If the person already exists, return the existing
+        // profile — the UI offers to open it. A duplicate is never created.
+        const dupe = await base44.asServiceRole.entities.AttendanceWorker
+          .filter({ customer_id: scope.customer_id, id_number: idNumber }, '-created_date', 5);
+        if (dupe && dupe.length > 0) {
+          return Response.json({ success: false, duplicate: true, worker: dupe[0] });
+        }
+        const reseller_id = await resolveResellerId();
+        const ts = new Date().toISOString();
+        const worker = await base44.asServiceRole.entities.AttendanceWorker.create({
+          customer_id: scope.customer_id,
+          reseller_id,
+          surname: w.surname,
+          initials: w.initials || '',
+          first_names: w.first_names || '',
+          id_number: idNumber,
+          id_type: idType,
+          company: w.company,
+          job_description: w.job_description,
+          cellphone: w.cellphone,
+          id_front_url: w.id_front_url || null,
+          id_back_url: w.id_back_url || null,
+          id_captured_at: w.id_front_url ? ts : null,
+          id_captured_by_id: w.id_front_url ? caller.id : null,
+          id_captured_by_name: w.id_front_url ? callerName : null,
+          created_by_name: callerName,
+          status: 'active',
+        });
+        return Response.json({ success: true, worker_id: worker.id, worker });
+      }
+
+      case 'update_worker': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!params.worker_id) return err('A worker id is required.');
+        const worker = await base44.asServiceRole.entities.AttendanceWorker.get(params.worker_id).catch(() => null);
+        if (!worker) return err('Worker not found in your scope.', 404);
+        const inScope = scope.customer_id
+          ? worker.customer_id === scope.customer_id
+          : scope.reseller_id ? worker.reseller_id === scope.reseller_id : true;
+        if (!inScope) return err('Worker not found in your scope.', 404);
+
+        const w = params.worker || {};
+        const updates: Record<string, any> = {};
+
+        if (w.id_number !== undefined) {
+          const idNumber = String(w.id_number).trim();
+          if (!idNumber) return err('The ID / document number cannot be empty.');
+          if (idNumber !== worker.id_number) {
+            // Dedup key change: refuse if the new ID number belongs to another
+            // profile in the same tenant.
+            const dupe = await base44.asServiceRole.entities.AttendanceWorker
+              .filter({ customer_id: worker.customer_id, id_number: idNumber }, '-created_date', 5);
+            if (dupe && dupe.some((d) => d.id !== worker.id)) {
+              return err('Another profile with this ID number already exists for this customer.');
+            }
+          }
+          updates.id_number = idNumber;
+        }
+        if (w.id_type !== undefined && ID_TYPES.includes(w.id_type)) updates.id_type = w.id_type;
+        if (w.surname !== undefined) {
+          if (!String(w.surname).trim()) return err('Surname is required.');
+          updates.surname = w.surname;
+        }
+        if (w.initials !== undefined) updates.initials = w.initials || '';
+        if (w.first_names !== undefined) updates.first_names = w.first_names || '';
+        if (w.company !== undefined) {
+          if (!String(w.company).trim()) return err('Company is required.');
+          updates.company = w.company;
+        }
+        if (w.job_description !== undefined) {
+          if (!String(w.job_description).trim()) return err('Job description is required.');
+          updates.job_description = w.job_description;
+        }
+        if (w.cellphone !== undefined) {
+          if (!String(w.cellphone).trim()) return err('Cellphone is required.');
+          updates.cellphone = w.cellphone;
+        }
+        if (w.id_front_url && w.id_front_url !== worker.id_front_url) {
+          const ts = new Date().toISOString();
+          updates.id_front_url = w.id_front_url;
+          updates.id_back_url = w.id_back_url || null;
+          updates.id_captured_at = ts;
+          updates.id_captured_by_id = caller.id;
+          updates.id_captured_by_name = callerName;
+          updates.id_updated_at = ts;
+        }
+
+        if (Object.keys(updates).length === 0) return err('Nothing to update.');
+        updates.updated_by_name = callerName;
+        await base44.asServiceRole.entities.AttendanceWorker.update(worker.id, updates);
+        return Response.json({ success: true, worker: { ...worker, ...updates } });
+      }
+
       // ── Register one attendance (worker upsert + record, one transaction) ────
       case 'register_attendance': {
         const denied = requireAuthorized();

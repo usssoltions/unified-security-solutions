@@ -1,12 +1,14 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, Search, Download, Loader2, User,
-  Calendar, ChevronDown, ChevronUp, ShieldAlert
+  Calendar, ChevronDown, ChevronUp, ShieldAlert, UserPlus, Pencil
 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import AddWorkerFlow from "@/components/attendance/AddWorkerFlow";
 import { Link } from "react-router-dom";
 import { generateWorkerIdPdf, downloadBlob } from "@/lib/attendancePdf";
 import { useBranding } from "@/hooks/useBranding";
@@ -16,6 +18,23 @@ import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
 export default function AttendanceWorkers() {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(null);
+  const [flow, setFlow] = useState(null); // null | { mode: "create" } | { mode: "edit", worker }
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Profile created/updated/existing-selected — refresh the directory,
+  // reveal the profile and confirm with a toast.
+  const handleFlowDone = (worker, kind) => {
+    const wasEdit = flow?.mode === "edit";
+    setFlow(null);
+    queryClient.invalidateQueries({ queryKey: ["att_workers"] });
+    if (worker?.id) setExpanded(worker.id);
+    toast({
+      title: kind === "existing" ? "Existing profile opened"
+        : wasEdit ? "Profile updated" : "Worker / Patient registered",
+      description: worker ? `${formatDisplayName(worker)} · ${worker.id_number}` : undefined,
+    });
+  };
 
   const { data: ctx } = useQuery({
     queryKey: ["att_context"],
@@ -78,12 +97,32 @@ export default function AttendanceWorkers() {
     );
   }
 
+  // The profile creation / edit flow takes over the page until done or cancelled.
+  if (flow) {
+    return (
+      <div className="p-4 max-w-2xl mx-auto">
+        <AddWorkerFlow
+          mode={flow.mode}
+          worker={flow.worker}
+          onDone={handleFlowDone}
+          onCancel={() => setFlow(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4">
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex flex-wrap items-center gap-3 mb-2">
         <Link to="/AttendanceDashboard" className="text-slate-400 text-sm hover:text-white">← Dashboard</Link>
-        <h1 className="text-white text-xl font-bold flex-1">Workers / Patients</h1>
+        <h1 className="text-white text-xl font-bold">Workers / Patients</h1>
         <span className="text-slate-400 text-sm">{filtered.length}</span>
+        <Button
+          onClick={() => setFlow({ mode: "create" })}
+          className="ml-auto bg-sky-600 hover:bg-sky-700 h-10 px-4"
+        >
+          <UserPlus className="w-4 h-4 mr-1.5" /> Add Worker / Patient
+        </Button>
       </div>
 
       <div className="relative">
@@ -97,9 +136,19 @@ export default function AttendanceWorkers() {
           <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <Users className="w-12 h-12 text-slate-600 mx-auto mb-2" />
-          <p className="text-slate-400">No workers registered yet.</p>
+        <div className="text-center py-12 px-4">
+          <Users className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+          {workers.length === 0 ? (
+            <>
+              <p className="text-white font-semibold">No workers / patients registered yet.</p>
+              <p className="text-slate-400 text-sm mt-1 mb-5">Register your first worker / patient to start capturing attendance.</p>
+              <Button onClick={() => setFlow({ mode: "create" })} className="bg-sky-600 hover:bg-sky-700 h-11 px-5">
+                <UserPlus className="w-4 h-4 mr-1.5" /> Register Worker / Patient
+              </Button>
+            </>
+          ) : (
+            <p className="text-slate-400">No workers / patients match your search.</p>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
@@ -140,6 +189,10 @@ export default function AttendanceWorkers() {
                         <p className="text-slate-200">{formatDate(w.created_date)}</p>
                       </div>
                     </div>
+                    <Button size="sm" variant="outline" onClick={() => setFlow({ mode: "edit", worker: w })}
+                      className="border-slate-600 text-slate-300 hover:bg-slate-700">
+                      <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Details
+                    </Button>
 
                     {/* ID document */}
                     <div>
