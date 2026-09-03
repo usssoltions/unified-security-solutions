@@ -120,12 +120,49 @@ Deno.serve(async (req) => {
       }
     } catch (_) {}
 
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // Optional report parameters — only honoured for platform admins; every
+    // other role is hard-scoped to their own tenant server-side below.
+    const body = await req.json().catch(() => ({}));
+    const params = body || {};
+
+    // ── Tenant scoping (server-side, mandatory) ──────────────────────────
+    // A report can only ever contain records from the caller's own
+    // reseller/customer (or, for the platform owner, the platform-managed
+    // pool of records that carry no tenant ids unless they narrow the scope
+    // with customer_id / reseller_id / site_id). It is impossible for one
+    // tenant's records to appear in another tenant's report.
+    const isPlatformAdmin = user.role === 'admin' || user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    let tenantScope = null;
+    if (isPlatformAdmin) {
+      if (params.customer_id) tenantScope = { customer_id: params.customer_id };
+      else if (params.reseller_id) tenantScope = { reseller_id: params.reseller_id };
+      // no params → platform-managed pool (records with no tenant ids)
+    } else if (user.customer_id) {
+      tenantScope = { customer_id: user.customer_id };
+    } else if (user.reseller_id) {
+      tenantScope = { reseller_id: user.reseller_id };
+    }
+    const inTenantScope = (rec) => {
+      if (!rec) return false;
+      if (params.site_id && rec.site_id && rec.site_id !== params.site_id) return false;
+      if (!tenantScope) return !rec.customer_id && !rec.reseller_id;
+      if (tenantScope.customer_id) return rec.customer_id === tenantScope.customer_id;
+      return rec.reseller_id === tenantScope.reseller_id;
+    };
+
+    // ── Report day: the SOUTH AFRICAN calendar day (Africa/Johannesburg,
+    // SAST = UTC+2, no DST) — NOT the server-local day. ────────────────────
+    const SA_OFFSET_MS = 2 * 60 * 60 * 1000;
+    const nowSA = new Date(Date.now() + SA_OFFSET_MS);
+    const sy = nowSA.getUTCFullYear(), smo = nowSA.getUTCMonth(), sdd = nowSA.getUTCDate() - 1;
+    const winStart = new Date(Date.UTC(sy, smo, sdd) - SA_OFFSET_MS);
+    const winEnd = new Date(winStart.getTime() + 86400000 - 1);
+    const inSADay = (v) => {
+      if (!v) return false;
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) && t >= winStart.getTime() && t <= winEnd.getTime();
+    };
+    const yesterday = new Date(Date.UTC(sy, smo, sdd)); // SA report date (labels/filename)
 
     // Fetch all activity from yesterday (plus LocationTracking for movement
     // history and Sites for checkpoint GPS verification) in parallel.
@@ -139,16 +176,32 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.LocationTracking.filter({}),
     ]);
 
-    const inRange = (dateStr) => {
-      const d = new Date(dateStr);
-      return d >= yesterday && d <= endOfYesterday;
-    };
+    // Tenant-scoped, real records only (never sample/demo data).
+    const scoped = (list) => (list || []).filter((r) => !r.is_sample && inTenantScope(r));
+    const scopedIncidents = scoped(incidents);
+    const scopedMaintenance = scoped(maintenance);
+    const scopedPatrols = scoped(patrols);
+    const scopedTracking = scoped(tracking);
 
-    const yesterdayIncidents = (incidents || []).filter((i) => inRange(i.reported_at || i.created_date));
-    const yesterdayMaintenance = (maintenance || []).filter((m) => inRange(m.reported_at || m.created_date));
-    const yesterdayPatrols = (patrols || []).filter((p) => inRange(p.timestamp || p.created_date));
-    const yesterdayShifts = (shifts || []).filter((s) => inRange(s.start_time));
-    const yesterdayTracking = (tracking || []).filter((t) => inRange(t.timestamp || t.created_date));
+    const yesterdayIncidents = scopedIncidents.filter((i) => inSADay(i.reported_at || i.created_date));
+    const yesterdayMaintenance = scopedMaintenance.filter((m) => inSADay(m.reported_at || m.created_date));
+    const yesterdayPatrols = scopedPatrols.filter((p) => inSADay(p.timestamp || p.created_date));
+    const yesterdayTracking = scopedTracking.filter((t) => inSADay(t.timestamp || t.created_date));
+
+    // ── "Shifts" = WORKED shifts only ─────────────────────────────────────
+    // A shift counts only when it was genuinely started through a guard
+    // clock-in during the SA report day. Never counted: scheduled-but-
+    // never-started shifts, cancelled/missed shifts, templates, records
+    // without a valid guard and site, duplicates, sample/test data, and
+    // records belonging to another tenant or site.
+    const dedupe = (list) => {
+      const seen = new Set();
+      return list.filter((r) => (r.id ? !seen.has(r.id) && seen.add(r.id) : true));
+    };
+    const scopedShifts = dedupe(scoped(shifts)).filter((s) =>
+      s.guard_id && s.site_id && s.status !== 'cancelled' && s.status !== 'missed');
+    const yesterdayShifts = scopedShifts.filter((s) => s.clock_in?.timestamp && inSADay(s.clock_in.timestamp));
+    const scheduledNotStarted = scopedShifts.filter((s) => inSADay(s.start_time) && !s.clock_in?.timestamp).length;
 
     const hasActivity = yesterdayIncidents.length > 0 || yesterdayMaintenance.length > 0 ||
       yesterdayPatrols.length > 0 || yesterdayShifts.length > 0 || yesterdayTracking.length > 0;
@@ -207,7 +260,7 @@ Deno.serve(async (req) => {
 
     const aiSummary = [
       `Daily summary for ${yesterday.toLocaleDateString('en-ZA')}:`,
-      `• ${yesterdayShifts.length} shift(s) active, ${yesterdayIncidents.length} incident(s) reported — ${criticalIncidents.length} critical/high, ${openIncidents.length} still open.`,
+      `• ${yesterdayShifts.length} worked shift(s) (${scheduledNotStarted} scheduled but not started), ${yesterdayIncidents.length} incident(s) reported — ${criticalIncidents.length} critical/high, ${openIncidents.length} still open.`,
       `• ${yesterdayMaintenance.length} maintenance request(s) — ${pendingMaintenance.length} still pending.`,
       `• ${yesterdayPatrols.length} checkpoint scan(s) logged.`,
       criticalIncidents.length > 0
@@ -358,6 +411,14 @@ Deno.serve(async (req) => {
       success: true,
       reportsSent: recipients.length,
       date: yesterday.toLocaleDateString('en-ZA'),
+      reportDaySA: new Date(Date.UTC(sy, smo, sdd)).toISOString().split('T')[0],
+      stats: {
+        workedShifts: yesterdayShifts.length,
+        scheduledNotStarted,
+        incidents: yesterdayIncidents.length,
+        maintenance: yesterdayMaintenance.length,
+        patrols: yesterdayPatrols.length,
+      },
       checkpointScans: checkpointRows.length,
       movementTracked: movementSections.length,
     });
