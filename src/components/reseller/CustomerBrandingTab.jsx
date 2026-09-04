@@ -54,6 +54,10 @@ export default function CustomerBrandingTab({ customer, onSaved }) {
   const [edit, setEdit] = useState({
     app_name: customer.app_name || "",
     logo_url: customer.logo_url || "",
+    logo_background:
+      customer.logo_background === "white" || customer.logo_background === "transparent"
+        ? customer.logo_background
+        : "auto",
     primary_color: customer.primary_color || "",
     accent_color: customer.accent_color || "",
     email: customer.email || "",
@@ -99,6 +103,10 @@ export default function CustomerBrandingTab({ customer, onSaved }) {
     saveBranding({
       app_name: (edit.app_name || "").trim(),
       logo_url: edit.logo_url || "",
+      logo_background:
+        edit.logo_background === "white" || edit.logo_background === "transparent"
+          ? edit.logo_background
+          : "",
       primary_color: sanitizeHex(edit.primary_color),
       accent_color: sanitizeHex(edit.accent_color),
       email: (edit.email || "").trim(),
@@ -123,6 +131,10 @@ export default function CustomerBrandingTab({ customer, onSaved }) {
   const effective = {
     app_name: eff(edit.app_name, reseller?.app_name),
     logo_url: eff(edit.logo_url, reseller?.logo_url),
+    logo_background:
+      edit.logo_background === "white" || edit.logo_background === "transparent"
+        ? edit.logo_background
+        : "auto",
     primary_color: eff(edit.primary_color, reseller?.primary_color),
     accent_color: eff(edit.accent_color, reseller?.accent_color),
   };
@@ -192,6 +204,27 @@ export default function CustomerBrandingTab({ customer, onSaved }) {
                   : reseller?.logo_url
                     ? "No customer logo — the reseller logo is currently inherited."
                     : "No customer logo — the platform mark is used."}
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-slate-300 text-xs">Logo background</Label>
+              <div className="flex gap-2 mt-1.5">
+                {[["auto", "Auto"], ["white", "White"], ["transparent", "Transparent"]].map(([v, l]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setField("logo_background", v)}
+                    className={`px-3.5 py-2.5 min-h-[44px] rounded-lg text-xs font-medium transition active:scale-95 touch-manipulation border shrink-0 ${edit.logo_background === v ? "bg-sky-600 text-white border-sky-600" : "bg-slate-950 text-slate-300 border-slate-700 hover:bg-slate-800"}`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <p className="text-slate-500 text-xs mt-1">
+                Controls the container behind the logo only — the uploaded logo image itself is
+                never modified. Auto keeps the current default treatment; White renders the logo
+                on a clean white container; Transparent applies no forced background.
               </p>
             </div>
 
@@ -265,6 +298,7 @@ export default function CustomerBrandingTab({ customer, onSaved }) {
               {[
                 ["Effective app name", effective.app_name, sourceKind(edit.app_name, reseller?.app_name)],
                 ["Effective logo", effective.logo_url ? "Configured" : "None", sourceKind(edit.logo_url, reseller?.logo_url)],
+                ["Effective logo background", effective.logo_background === "white" ? "White" : effective.logo_background === "transparent" ? "Transparent" : "Auto", customer.logo_background === "white" || customer.logo_background === "transparent" ? "override" : "default"],
                 ["Effective primary colour", effective.primary_color, sourceKind(edit.primary_color, reseller?.primary_color)],
                 ["Effective accent colour", effective.accent_color, sourceKind(edit.accent_color, reseller?.accent_color)],
                 ["Effective support email", edit.email || reseller?.support_email || "", sourceKind(edit.email, reseller?.support_email)],

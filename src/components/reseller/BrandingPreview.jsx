@@ -1,6 +1,7 @@
 import React from "react";
 import { Shield, Bell } from "lucide-react";
 import { resolveBrand, hexToRgba } from "@/lib/branding";
+import BrandLogo from "@/components/branding/BrandLogo";
 
 /**
  * Live preview of the white-labelled application. Reflects the current
@@ -15,6 +16,13 @@ import { resolveBrand, hexToRgba } from "@/lib/branding";
 export default function BrandingPreview({ branding }) {
   const brand = resolveBrand(branding);
   const appName = brand.appName || "SecureGuard";
+  // Logo background mode for the preview. Editors that don't configure a
+  // logo_background (e.g. the reseller editor) keep the legacy white preview
+  // container; the customer editor passes auto/white/transparent so the
+  // preview shows the logo exactly as it will appear in the customer-facing app.
+  const logoBg = ["white", "transparent", "auto"].includes(branding?.logo_background)
+    ? branding.logo_background
+    : "white";
 
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-950 overflow-hidden shadow-lg">
@@ -22,9 +30,13 @@ export default function BrandingPreview({ branding }) {
       <div className="px-3 py-2.5 bg-slate-900/80 border-b border-slate-700 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           {brand.logoUrl ? (
-            <div className="w-7 h-7 rounded-lg bg-white p-0.5 flex items-center justify-center shrink-0">
-              <img src={brand.logoUrl} alt="" className="max-w-full max-h-full object-contain" />
-            </div>
+            <BrandLogo
+              logoUrl={brand.logoUrl}
+              logoBackground={logoBg}
+              alt={appName}
+              containerClassName="w-7 h-7 rounded-lg"
+              whitePaddingClass="p-0.5"
+            />
           ) : (
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"

@@ -27,6 +27,7 @@ import { useBranding } from "@/hooks/useBranding";
 import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
 import { resolveBrand, hexToRgba, PLATFORM_APP_NAME } from "@/lib/branding";
+import BrandLogo from "@/components/branding/BrandLogo";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { getNavItems } from "@/lib/routeRegistry";
 
@@ -402,7 +403,13 @@ export default function Layout({ children, currentPageName }) {
                     </button>
                   ) : (
                     brand.logoUrl ? (
-                      <img src={brand.logoUrl} alt={brand.appName || "Logo"} className="w-9 h-9 rounded-xl object-contain bg-slate-900/60 lg:hidden" />
+                      <BrandLogo
+                        logoUrl={brand.logoUrl}
+                        logoBackground={brand.logoBackground}
+                        alt={brand.appName || "Logo"}
+                        containerClassName="w-9 h-9 rounded-xl lg:hidden"
+                        whitePaddingClass="p-1"
+                      />
                     ) : (
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg lg:hidden" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})`, boxShadow: `0 10px 15px -3px ${hexToRgba(brand.primary, 0.3)}` }}>
                         <Shield className="w-5 h-5 text-white" />
@@ -411,7 +418,13 @@ export default function Layout({ children, currentPageName }) {
                   )}
 
                   {brand.logoUrl ? (
-                    <img src={brand.logoUrl} alt={brand.appName || "Logo"} className="w-9 h-9 rounded-xl object-contain bg-slate-900/60 hidden lg:block" />
+                    <BrandLogo
+                      logoUrl={brand.logoUrl}
+                      logoBackground={brand.logoBackground}
+                      alt={brand.appName || "Logo"}
+                      containerClassName="w-9 h-9 rounded-xl hidden lg:flex"
+                      whitePaddingClass="p-1"
+                    />
                   ) : (
                     <div className="w-9 h-9 rounded-xl hidden lg:flex items-center justify-center shadow-lg" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})`, boxShadow: `0 10px 15px -3px ${hexToRgba(brand.primary, 0.3)}` }}>
                       <Shield className="w-5 h-5 text-white" />

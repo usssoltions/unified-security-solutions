@@ -40,6 +40,15 @@
       "type": "string",
       "description": "Customer logo file URL. Customer-level white-label branding override \u2014 wins over the reseller logo when set."
     },
+    "logo_background": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "white",
+        "transparent"
+      ],
+      "description": "Controls the CONTAINER behind the uploaded logo only \u2014 the logo image itself is never modified (no recolour/tint/filter/invert). 'white' renders the logo inside a clean white container with internal padding; 'transparent' applies no forced background colour; 'auto' or blank keeps the surface's existing default treatment and inherits the reseller value when supported (customer \u2192 reseller \u2192 platform default). Stored as a customer OVERRIDE only \u2014 inherited values are never copied into the customer record."
+    },
     "primary_color": {
       "type": "string",
       "description": "Customer primary brand colour (hex). Customer-level override \u2014 wins over the reseller colour when set."

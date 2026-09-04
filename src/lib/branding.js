@@ -59,6 +59,11 @@ export function resolveBrand(branding) {
     primary: isValidHex(b.primary_color) ? b.primary_color : DEFAULT_BRAND_PRIMARY,
     accent: isValidHex(b.accent_color) ? b.accent_color : DEFAULT_BRAND_ACCENT,
     logoUrl: b.logo_url || null,
+    // Container mode behind the logo — normalised to auto/white/transparent.
+    logoBackground:
+      b.logo_background === "white" || b.logo_background === "transparent"
+        ? b.logo_background
+        : "auto",
     appName: b.app_name || null,
     supportName: b.support_name || null,
     supportEmail: b.support_email || null,

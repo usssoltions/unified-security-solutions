@@ -4,6 +4,7 @@
  */
 import React from "react";
 import { ClipboardList } from "lucide-react";
+import BrandLogo from "@/components/branding/BrandLogo";
 
 export default function AttendanceBrandingHeader({ branding, subtitle }) {
   const primary = branding?.primary_color || "#334155";
@@ -15,10 +16,14 @@ export default function AttendanceBrandingHeader({ branding, subtitle }) {
       style={{ background: `linear-gradient(135deg, ${primary}dd, ${primary}99)` }}
     >
       {branding?.logo_url ? (
-        <img
-          src={branding.logo_url}
+        <BrandLogo
+          logoUrl={branding.logo_url}
+          logoBackground={branding?.logo_background}
           alt={name}
-          className="h-10 w-auto max-w-[80px] object-contain rounded-lg bg-white/10 p-1"
+          containerClassName="h-10 max-w-[80px] rounded-lg p-1"
+          imgClassName="h-full w-auto max-w-full object-contain"
+          autoBackgroundClass="bg-white/10"
+          whitePaddingClass=""
           onError={(e) => { e.target.style.display = "none"; }}
         />
       ) : (

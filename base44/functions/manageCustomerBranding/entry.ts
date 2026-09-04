@@ -25,6 +25,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 const ALLOWED_FIELDS = [
   'app_name',
   'logo_url',
+  'logo_background',
   'primary_color',
   'accent_color',
   'email',
@@ -97,6 +98,10 @@ export default async function(req: Request): Promise<Response> {
     }
     if ('accent_color' in update && update.accent_color && !HEX_RE.test(update.accent_color)) {
       return Response.json({ error: 'Invalid accent_color (must be #rrggbb)' }, { status: 400 });
+    }
+    // Logo background controls the CONTAINER behind the logo only.
+    if ('logo_background' in update && update.logo_background && !['auto', 'white', 'transparent'].includes(update.logo_background)) {
+      return Response.json({ error: 'Invalid logo_background' }, { status: 400 });
     }
 
     if (Object.keys(update).length === 0) {

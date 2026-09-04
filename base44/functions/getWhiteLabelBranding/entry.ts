@@ -58,6 +58,7 @@ export default async function(req: Request): Promise<Response> {
       reseller_name: reseller?.name || null,
       app_name: reseller?.app_name || null,
       logo_url: reseller?.logo_url || null,
+      logo_background: reseller?.logo_background || null,
       primary_color: reseller?.primary_color || null,
       accent_color: reseller?.accent_color || null,
       support_name: reseller?.support_name || null,
@@ -73,6 +74,11 @@ export default async function(req: Request): Promise<Response> {
       b.customer_name = customer.name || null;
       b.app_name = customer.app_name || b.app_name;
       b.logo_url = customer.logo_url || b.logo_url;
+      // 'white'/'transparent' are real customer overrides; blank/'auto'
+      // inherits the reseller value (or falls back to platform Auto).
+      if (customer.logo_background === 'white' || customer.logo_background === 'transparent') {
+        b.logo_background = customer.logo_background;
+      }
       b.primary_color = customer.primary_color || b.primary_color;
       b.accent_color = customer.accent_color || b.accent_color;
       b.support_email = customer.email || b.support_email;
