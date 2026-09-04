@@ -28,8 +28,11 @@ export default function UserManagement() {
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
-      // SDK invoke returns an Axios response — the payload is under res.data.
       const res = await base44.functions.invoke("getTenantUsers", {});
+      // The SDK's invoke() returns the HTTP response wrapper — the actual
+      // payload lives under .data (same normalization as every other
+      // backend-function call in this app). Reading res.users directly
+      // always yielded undefined → the "0 users" bug.
       const d = res?.data !== undefined ? res.data : res;
       return d?.users || [];
     },

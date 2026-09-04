@@ -19,15 +19,14 @@ export default async function(req: Request): Promise<Response> {
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Only authorized roles can manage users
-    const authorizedRoles = ['admin', 'platform_admin', 'reseller_admin', 'practice_admin', 'estate_manager'];
-    const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin';
-    const isResellerAdmin = caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller';
-    // Customer Administrators may manage users of their OWN customer only —
-    // the tenant scope is enforced below from the caller's User record.
-    const isCustomerAdmin = !isPlatformAdmin && !isResellerAdmin && !!caller.customer_id &&
-      (caller.admin_level === 'customer' || ['customer_admin', 'practice_admin', 'estate_manager'].includes(caller.role_type));
-    const isAuthorized = caller.role === 'admin' || authorizedRoles.includes(caller.role_type) || isCustomerAdmin;
+    // Only authorized roles can manage users. Customer Administrators
+    // (customer_admin, or a vertical admin role scoped to a customer) manage
+    // their OWN tenant only — enforced further below by canonical customer_id.
+    const authorizedRoles = ['admin', 'platform_admin', 'reseller_admin', 'practice_admin', 'estate_manager', 'customer_admin'];
+    const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
+    const isResellerAdmin = !isPlatformAdmin && (caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller');
+    const isAuthorized = isPlatformAdmin || isResellerAdmin ||
+      authorizedRoles.includes(caller.role_type) || caller.admin_level === 'customer';
     if (!isAuthorized) {
       return Response.json({ error: 'Forbidden: insufficient permissions to manage users' }, { status: 403 });
     }
@@ -51,13 +50,16 @@ export default async function(req: Request): Promise<Response> {
     }
 
     // Reseller admins can only manage users within their own reseller
-    if (isResellerAdmin && targetUser.reseller_id !== caller.reseller_id) {
+    if (caller.role_type === 'reseller_admin' && targetUser.reseller_id !== caller.reseller_id) {
       return Response.json({ error: 'Forbidden: can only manage users within your reseller' }, { status: 403 });
     }
 
-    // Customer Administrators can only manage users within their own
-    // customer/tenant — enforced from the caller's User record.
-    if (isCustomerAdmin && targetUser.customer_id !== caller.customer_id) {
+    // Tenant admins (customer_admin, practice_admin, estate_manager, legacy
+    // admin role_type with a customer scope) can only manage users within
+    // their OWN customer tenant — pinned server-side to the canonical
+    // customer_id. Never customer-name matching; never cross-tenant access.
+    if (!isPlatformAdmin && !isResellerAdmin && caller.customer_id &&
+        targetUser.customer_id !== caller.customer_id) {
       return Response.json({ error: 'Forbidden: can only manage users within your organisation' }, { status: 403 });
     }
 
@@ -88,14 +90,15 @@ export default async function(req: Request): Promise<Response> {
           'patrol_reminder_enabled', 'patrol_reminder_interval_minutes',
           'needs_daily_report', 'needs_start_of_shift_report'
         ];
-        // Customer admins can never re-scope a user's tenant or permission
-        // context through this action — only profile fields.
-        const fields = isCustomerAdmin
-          ? allowedFields.filter((f) => !['customer_id', 'reseller_id', 'employer_id', 'module_context'].includes(f))
-          : allowedFields;
+        // Tenant/permission fields are platform/reseller-admin only — a
+        // Customer Administrator can never move a user between tenants or
+        // change their scopes through this action.
+        const tenantFields = ['customer_id', 'reseller_id', 'employer_id', 'module_context'];
         const filteredUpdates = {};
         for (const [key, value] of Object.entries(updates)) {
-          if (fields.includes(key)) filteredUpdates[key] = value;
+          if (!allowedFields.includes(key)) continue;
+          if (tenantFields.includes(key) && !isPlatformAdmin && !isResellerAdmin) continue;
+          filteredUpdates[key] = value;
         }
         if (Object.keys(filteredUpdates).length === 0) {
           return Response.json({ error: 'No valid fields to update' }, { status: 400 });
@@ -111,29 +114,27 @@ export default async function(req: Request): Promise<Response> {
         if (!newRole) {
           return Response.json({ error: 'role_type is required in updates' }, { status: 400 });
         }
-        // Only platform admin / reseller admin can change roles freely.
-        // Customer Administrators may change roles ONLY within the roles
-        // allowed by their customer's ENABLED modules (server-side validated
-        // via shared/tenantRoles — platform, reseller and unrelated vertical
-        // roles fail closed).
-        const canChangeRole = caller.role === 'admin' ||
-          ['platform_admin', 'reseller_admin'].includes(caller.role_type);
-        if (!canChangeRole) {
-          if (!isCustomerAdmin) {
+        // Only platform admin / admin / reseller admin can change roles freely.
+        // Customer Administrators may change roles ONLY within their own
+        // tenant and ONLY to roles allowed by the customer's ENABLED module
+        // entitlements (fail closed — platform, reseller and other-vertical
+        // roles are never assignable through this path).
+        const isPlatformRoleChanger = isPlatformAdmin || caller.role_type === 'reseller_admin';
+        if (!isPlatformRoleChanger) {
+          if (caller.role_type !== 'customer_admin') {
             return Response.json({ error: 'Forbidden: insufficient permissions to change roles' }, { status: 403 });
           }
           if (targetUser.customer_id !== caller.customer_id) {
-            return Response.json({ error: 'Forbidden: can only change roles within your organisation' }, { status: 403 });
+            return Response.json({ error: 'Forbidden: can only manage users within your organisation' }, { status: 403 });
           }
-          const ents = await base44.asServiceRole.entities.ModuleEntitlement
-            .filter({ customer_id: caller.customer_id })
-            .catch(() => []);
-          const enabledKeys = (ents || [])
+          const entitlements = await base44.asServiceRole.entities.ModuleEntitlement
+            .filter({ customer_id: caller.customer_id });
+          const enabledKeys = (entitlements || [])
             .filter((e) => e.enabled && (!e.status || e.status === 'active'))
             .map((e) => e.module_key);
           const allowedRoles = getAllowedRolesForModules(enabledKeys);
           if (!allowedRoles.has(newRole)) {
-            return Response.json({ error: 'Forbidden: that role is not available for your organisation' }, { status: 403 });
+            return Response.json({ error: `Forbidden: role "${newRole}" is not available for this organisation` }, { status: 403 });
           }
         }
         result = await base44.asServiceRole.entities.User.update(target_user_id, { role_type: newRole });

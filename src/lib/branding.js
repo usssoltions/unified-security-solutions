@@ -11,8 +11,11 @@
 export const DEFAULT_BRAND_PRIMARY = "#0ea5e9"; // sky-500 (USS platform default)
 export const DEFAULT_BRAND_ACCENT = "#2563eb"; // blue-600
 
-/** Neutral final fallback when neither customer nor reseller branding
- *  configures an app name — never a vertical product name like SecureGuard. */
+/** Platform fallback application name — the FINAL step of the white-label
+ * hierarchy (Customer branding → Reseller branding → Platform fallback).
+ * Used only when neither the customer nor the reseller has configured an
+ * app_name. Never a vertical product label: "SecureGuard" / "EstateHub" are
+ * NOT platform fallbacks — they are module-specific names. */
 export const PLATFORM_APP_NAME = "USS Platform";
 
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;

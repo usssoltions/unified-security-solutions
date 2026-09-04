@@ -13,6 +13,9 @@ import { SECURITY_ROLES, MEDICAL_ROLES, ROLE_DESCRIPTIONS, isMedicalRoleSet } fr
 export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSuccess }) {
   const queryClient = useQueryClient();
   const isMedical = isMedicalRoleSet(roles);
+  // Guard clock-in PIN only applies to tenants with guard roles — hidden for
+  // Attendance Register-only (and other non-guard) role sets.
+  const showGuardFields = roles.some(r => ["guard", "admin", "dispatcher"].includes(r.value));
   const [formData, setFormData] = useState({
     display_name: user?.display_name || user?.full_name || "",
     email: user?.email || "",
@@ -28,36 +31,36 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
   const [inviteStatus, setInviteStatus] = useState(null);
 
   const updateUserMutation = useMutation({
-    // All edits go through the manageUser backend function: only authorized
-    // admins can reach other users (the built-in User entity blocks
-    // client-side cross-user writes), every change is tenant-scoped
-    // server-side, and role changes are validated against the customer's
-    // enabled modules.
     mutationFn: async (data) => {
-      const invokeManage = async (payload) => {
-        const res = await base44.functions.invoke("manageUser", payload);
-        const d = res?.data !== undefined ? res.data : res;
-        if (!d?.success && d?.error) throw new Error(d.error);
-        return d;
-      };
-      await invokeManage({
-        action: "update",
-        target_user_id: user.id,
-        updates: {
-          // full_name is a platform-managed read-only field and silently
-          // ignored on update, so we persist the editable name into display_name.
+      try {
+        const callManageUser = async (action, updates) => {
+          const res = await base44.functions.invoke("manageUser", {
+            action,
+            target_user_id: user.id,
+            updates,
+          });
+          const d = res?.data !== undefined ? res.data : res;
+          if (d?.error) throw new Error(d.error);
+          return d;
+        };
+        // Server-side authorized update (tenant-scoped, audited,
+        // field-whitelisted). full_name is a platform-managed read-only field
+        // and silently ignored on update, so the editable name is persisted
+        // into display_name instead. role_type is handled separately below.
+        await callManageUser("update", {
           display_name: data.display_name,
           badge_number: data.badge_number,
           phone: data.phone,
-          security_pin: data.security_pin
-        }
-      });
-      if (data.role_type !== user.role_type) {
-        await invokeManage({
-          action: "change_role",
-          target_user_id: user.id,
-          updates: { role_type: data.role_type }
+          security_pin: data.security_pin,
         });
+        // Role changes go through the server-side role gate. For Customer
+        // Administrators the new role is validated server-side against the
+        // customer's enabled module entitlements (fail closed).
+        if (data.role_type !== user.role_type) {
+          await callManageUser("change_role", { role_type: data.role_type });
+        }
+      } catch (err) {
+        throw new Error(err?.response?.data?.error || err?.message || "Failed to save changes.");
       }
     },
     onSuccess: () => {
@@ -247,22 +250,31 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-slate-300 flex items-center gap-2">
-                  <Lock className="w-4 h-4" />
-                  Security PIN (for clock-in)
-                </Label>
-                <Input
-                  type="password"
-                  value={formData.security_pin}
-                  onChange={(e) => setFormData({ ...formData, security_pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                  className="bg-slate-900 border-slate-700 text-white"
-                  placeholder="4-digit PIN"
-                  maxLength={4}
-                />
-                <p className="text-xs text-slate-500">Default: 1234</p>
-              </div>
+              {showGuardFields && (
+                <div className="space-y-2">
+                  <Label className="text-slate-300 flex items-center gap-2">
+                    <Lock className="w-4 h-4" />
+                    Security PIN (for clock-in)
+                  </Label>
+                  <Input
+                    type="password"
+                    value={formData.security_pin}
+                    onChange={(e) => setFormData({ ...formData, security_pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    className="bg-slate-900 border-slate-700 text-white"
+                    placeholder="4-digit PIN"
+                    maxLength={4}
+                  />
+                  <p className="text-xs text-slate-500">Default: 1234</p>
+                </div>
+              )}
             </div>
+
+            <Alert className="bg-amber-500/10 border-amber-500/20">
+              <AlertDescription className="text-slate-300 text-sm">
+                <p className="font-semibold mb-1">Password Management:</p>
+                <p>Users can reset their password via the login page using the "Forgot Password" link. Passwords cannot be changed from the admin panel for security reasons.</p>
+              </AlertDescription>
+            </Alert>
 
             {updateUserMutation.isError && (
               <Alert className="bg-rose-500/10 border-rose-500/20">
@@ -271,13 +283,6 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
                 </AlertDescription>
               </Alert>
             )}
-
-            <Alert className="bg-amber-500/10 border-amber-500/20">
-              <AlertDescription className="text-slate-300 text-sm">
-                <p className="font-semibold mb-1">Password Management:</p>
-                <p>Users can reset their password via the login page using the "Forgot Password" link. Passwords cannot be changed from the admin panel for security reasons.</p>
-              </AlertDescription>
-            </Alert>
 
             <div className="p-4 bg-slate-900/50 rounded-lg">
               <p className="text-sm font-semibold text-slate-300 mb-2">Role Descriptions:</p>
