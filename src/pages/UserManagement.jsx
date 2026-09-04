@@ -28,8 +28,10 @@ export default function UserManagement() {
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
+      // SDK invoke returns an Axios response — the payload is under res.data.
       const res = await base44.functions.invoke("getTenantUsers", {});
-      return res?.users || [];
+      const d = res?.data !== undefined ? res.data : res;
+      return d?.users || [];
     },
   });
 

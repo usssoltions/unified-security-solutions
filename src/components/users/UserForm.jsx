@@ -28,17 +28,37 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
   const [inviteStatus, setInviteStatus] = useState(null);
 
   const updateUserMutation = useMutation({
+    // All edits go through the manageUser backend function: only authorized
+    // admins can reach other users (the built-in User entity blocks
+    // client-side cross-user writes), every change is tenant-scoped
+    // server-side, and role changes are validated against the customer's
+    // enabled modules.
     mutationFn: async (data) => {
-      const updateData = {
-        // full_name is a platform-managed read-only field and silently ignored
-        // on update, so we persist the editable name into display_name instead.
-        display_name: data.display_name,
-        role_type: data.role_type,
-        badge_number: data.badge_number,
-        phone: data.phone,
-        security_pin: data.security_pin
+      const invokeManage = async (payload) => {
+        const res = await base44.functions.invoke("manageUser", payload);
+        const d = res?.data !== undefined ? res.data : res;
+        if (!d?.success && d?.error) throw new Error(d.error);
+        return d;
       };
-      return await base44.entities.User.update(user.id, updateData);
+      await invokeManage({
+        action: "update",
+        target_user_id: user.id,
+        updates: {
+          // full_name is a platform-managed read-only field and silently
+          // ignored on update, so we persist the editable name into display_name.
+          display_name: data.display_name,
+          badge_number: data.badge_number,
+          phone: data.phone,
+          security_pin: data.security_pin
+        }
+      });
+      if (data.role_type !== user.role_type) {
+        await invokeManage({
+          action: "change_role",
+          target_user_id: user.id,
+          updates: { role_type: data.role_type }
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["allUsers"]);
@@ -243,6 +263,14 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
                 <p className="text-xs text-slate-500">Default: 1234</p>
               </div>
             </div>
+
+            {updateUserMutation.isError && (
+              <Alert className="bg-rose-500/10 border-rose-500/20">
+                <AlertDescription className="text-rose-300 text-sm">
+                  {updateUserMutation.error?.message || "Failed to save changes. Please try again."}
+                </AlertDescription>
+              </Alert>
+            )}
 
             <Alert className="bg-amber-500/10 border-amber-500/20">
               <AlertDescription className="text-slate-300 text-sm">

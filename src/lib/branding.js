@@ -11,6 +11,10 @@
 export const DEFAULT_BRAND_PRIMARY = "#0ea5e9"; // sky-500 (USS platform default)
 export const DEFAULT_BRAND_ACCENT = "#2563eb"; // blue-600
 
+/** Neutral final fallback when neither customer nor reseller branding
+ *  configures an app name — never a vertical product name like SecureGuard. */
+export const PLATFORM_APP_NAME = "USS Platform";
+
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 export function isValidHex(h) {

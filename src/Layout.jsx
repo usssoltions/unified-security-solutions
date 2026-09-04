@@ -26,7 +26,7 @@ import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitle
 import { useBranding } from "@/hooks/useBranding";
 import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
-import { resolveBrand, hexToRgba } from "@/lib/branding";
+import { resolveBrand, hexToRgba, PLATFORM_APP_NAME } from "@/lib/branding";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { getNavItems } from "@/lib/routeRegistry";
 
@@ -276,7 +276,7 @@ export default function Layout({ children, currentPageName }) {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-400 text-sm">Loading SecureGuard...</p>
+          <p className="text-slate-400 text-sm">Loading {PLATFORM_APP_NAME}...</p>
         </div>
       </div>
     );
@@ -309,8 +309,8 @@ export default function Layout({ children, currentPageName }) {
           <div className="w-20 h-20 bg-gradient-to-br from-sky-400 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-sky-500/30">
             <Shield className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">SecureGuard</h1>
-          <p className="text-slate-400 mb-8">Professional Security Management</p>
+          <h1 className="text-3xl font-bold text-white mb-2">{PLATFORM_APP_NAME}</h1>
+          <p className="text-slate-400 mb-8">Operations &amp; Workforce Management</p>
           <Button onClick={() => base44.auth.redirectToLogin()} className="bg-sky-500 hover:bg-sky-600 h-12 px-8 text-base shadow-lg shadow-sky-500/30">
             Sign In
           </Button>
@@ -421,14 +421,14 @@ export default function Layout({ children, currentPageName }) {
                   {!canGoBack && (
                     <div className="lg:hidden">
                       <h1 className="font-bold text-white text-base leading-tight">
-                        {brand.appName || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
+                        {brand.appName || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : PLATFORM_APP_NAME)}
                       </h1>
                       <p className="text-xs text-slate-400">{roleLabel}</p>
                     </div>
                   )}
                   <div className="hidden lg:block">
                     <h1 className="font-bold text-white text-base leading-tight">
-                      {brand.appName || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : "SecureGuard")}
+                      {brand.appName || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : PLATFORM_APP_NAME)}
                     </h1>
                     <p className="text-xs text-slate-400">{roleLabel}</p>
                   </div>
