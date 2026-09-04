@@ -189,9 +189,9 @@ export default function AttendanceWorkers() {
                         <p className="text-slate-200">{formatDate(w.created_date)}</p>
                       </div>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setFlow({ mode: "edit", worker: w })}
-                      className="border-slate-600 text-slate-300 hover:bg-slate-700">
-                      <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Details
+                    <Button variant="outline" onClick={() => setFlow({ mode: "edit", worker: w })}
+                      className="border-slate-600 text-slate-300 hover:bg-slate-700 h-11">
+                      <Pencil className="w-4 h-4 mr-1.5" /> Edit Details
                     </Button>
 
                     {/* ID document */}
@@ -204,8 +204,8 @@ export default function AttendanceWorkers() {
                             {w.id_back_url && <img src={w.id_back_url} alt="ID Back" className="h-24 rounded-lg object-cover border border-slate-600" />}
                           </div>
                           {w.id_captured_at && <p className="text-slate-500 text-xs">Captured {formatDate(w.id_captured_at)}</p>}
-                          <Button size="sm" onClick={() => handleWorkerPdf(w)} className="bg-sky-700 hover:bg-sky-600">
-                            <Download className="w-3.5 h-3.5 mr-1.5" /> Download ID PDF
+                          <Button onClick={() => handleWorkerPdf(w)} className="bg-sky-700 hover:bg-sky-600 h-11">
+                            <Download className="w-4 h-4 mr-1.5" /> Download ID PDF
                           </Button>
                         </div>
                       ) : (

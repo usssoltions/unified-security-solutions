@@ -86,12 +86,12 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
             {editId === opt.id ? (
               <>
                 <Input value={editLabel} onChange={e => setEditLabel(e.target.value)} autoFocus
-                  className="bg-slate-900 border-slate-700 text-white text-sm h-8 flex-1" />
-                <Button size="icon" onClick={saveEdit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 h-8 w-8">
-                  <Check className="w-3.5 h-3.5" />
+                  className="bg-slate-900 border-slate-700 text-white text-sm h-10 flex-1" />
+                <Button size="icon" onClick={saveEdit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 h-10 w-10 shrink-0">
+                  <Check className="w-4 h-4" />
                 </Button>
-                <Button size="icon" variant="ghost" onClick={() => { setEditId(null); setEditLabel(""); }} className="h-8 w-8 text-slate-400">
-                  <X className="w-3.5 h-3.5" />
+                <Button size="icon" variant="ghost" onClick={() => { setEditId(null); setEditLabel(""); }} className="h-10 w-10 shrink-0 text-slate-400">
+                  <X className="w-4 h-4" />
                 </Button>
               </>
             ) : (
@@ -99,11 +99,11 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
                 <span className="flex-1 text-sm text-white">{opt.label}</span>
                 {!readOnly && (
                   <>
-                    <Button size="icon" variant="ghost" title="Rename" onClick={() => { setEditId(opt.id); setEditLabel(opt.label); }} className="h-7 w-7 text-slate-400">
-                      <Pencil className="w-3.5 h-3.5" />
+                    <Button size="icon" variant="ghost" title="Rename" onClick={() => { setEditId(opt.id); setEditLabel(opt.label); }} className="h-10 w-10 shrink-0 text-slate-400">
+                      <Pencil className="w-4 h-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" title="Deactivate — hides this option from new attendance registrations; historical records keep the value" onClick={() => deactivateOption(opt)} disabled={saving} className="h-7 w-7 text-amber-400">
-                      <Archive className="w-3.5 h-3.5" />
+                    <Button size="icon" variant="ghost" title="Deactivate — hides this option from new attendance registrations; historical records keep the value" onClick={() => deactivateOption(opt)} disabled={saving} className="h-10 w-10 shrink-0 text-amber-400">
+                      <Archive className="w-4 h-4" />
                     </Button>
                   </>
                 )}
@@ -128,8 +128,8 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
                   <span className="flex-1 text-sm text-slate-500">{opt.label}</span>
                   <Badge variant="secondary" className="text-[10px]">Inactive</Badge>
                   {!readOnly && (
-                    <Button size="icon" variant="ghost" title="Restore — return this option to active use" onClick={() => restoreOption(opt)} disabled={saving} className="h-7 w-7 text-emerald-400">
-                      <RotateCcw className="w-3.5 h-3.5" />
+                    <Button size="icon" variant="ghost" title="Restore — return this option to active use" onClick={() => restoreOption(opt)} disabled={saving} className="h-10 w-10 shrink-0 text-emerald-400">
+                      <RotateCcw className="w-4 h-4" />
                     </Button>
                   )}
                 </div>
@@ -141,10 +141,10 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
       {!readOnly && (
         <div className="px-4 py-3 border-t border-slate-700 flex gap-2">
           <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="New option label…"
-            className="bg-slate-900 border-slate-700 text-white text-sm h-9"
+            className="bg-slate-900 border-slate-700 text-white text-sm h-11"
             onKeyDown={e => e.key === "Enter" && addOption()} />
-          <Button onClick={addOption} disabled={!newLabel.trim() || saving} size="sm" className="bg-sky-600 hover:bg-sky-700 h-9">
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+          <Button onClick={addOption} disabled={!newLabel.trim() || saving} className="bg-sky-600 hover:bg-sky-700 h-11 w-11 shrink-0">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
           </Button>
         </div>
       )}

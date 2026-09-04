@@ -11,12 +11,13 @@ import {
 } from "@/components/ui/select";
 import {
   Loader2, Building2, Users, MapPin, Package, Settings, Activity,
-  ArrowLeft, Plus, CheckCircle2, UserPlus, ShieldCheck, Mail, Send, X, Smartphone,
+  ArrowLeft, Plus, CheckCircle2, UserPlus, ShieldCheck, Mail, Send, X, Smartphone, Palette,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import CustomerModulesModal from "@/components/reseller/CustomerModulesModal";
 import ResellerAdminInvite from "@/components/reseller/ResellerAdminInvite";
+import CustomerBrandingTab from "@/components/reseller/CustomerBrandingTab";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: Building2 },
@@ -25,6 +26,7 @@ const TABS = [
   { id: "users", label: "Users", icon: Users },
   { id: "devices", label: "Devices", icon: Smartphone },
   { id: "settings", label: "Settings", icon: Settings },
+  { id: "branding", label: "Branding", icon: Palette },
   { id: "audit", label: "Audit Log", icon: Activity },
 ];
 
@@ -279,7 +281,7 @@ export default function CustomerConsole({ customerId }) {
       <div className="flex flex-wrap gap-2">
         {visibleTabs.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t.id ? "bg-emerald-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
+            className={`flex items-center gap-2 px-3.5 py-2.5 min-h-[44px] rounded-lg text-sm font-medium transition-colors touch-manipulation ${tab === t.id ? "bg-emerald-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
             <t.icon className="w-4 h-4" /> {t.label}
           </button>
         ))}
@@ -519,6 +521,10 @@ export default function CustomerConsole({ customerId }) {
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {tab === "branding" && (
+        <CustomerBrandingTab customer={customer} onSaved={loadCustomer} />
       )}
 
       {tab === "audit" && (

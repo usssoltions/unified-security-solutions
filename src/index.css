@@ -162,3 +162,34 @@ button:focus-visible {
    + bottom nav, both z-50). Fixes the map-bleeding-over-sidebar/bottom-nav bug
    on every page that renders a Leaflet map. */
 .leaflet-container { isolation: isolate; }
+
+/* ── Touch reliability & smoothness (Android phones/tablets, WebView/PWA) ──
+   1. touch-action: manipulation removes any residual tap delay and stops the
+      browser treating a quick second tap as a zoom gesture — the main cause
+      of buttons that need two taps on Android. Pinch-zoom/panning of content
+      is untouched; interactive controls simply never wait.
+   2. Coarse pointers (phones/tablets): small interactive controls get an
+      enlarged INVISIBLE hit area via ::after, so effective touch targets stay
+      around 44px without changing visual layout. Controls ≥ 8px apart never
+      overlap (4px expansion each side). */
+button:not(:disabled),
+a,
+[role="button"],
+select,
+summary {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  button:not(:disabled),
+  [role="button"] {
+    position: relative;
+  }
+  button:not(:disabled)::after,
+  [role="button"]::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+}

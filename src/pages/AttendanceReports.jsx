@@ -128,7 +128,7 @@ export default function AttendanceReports() {
         <div className="flex flex-wrap gap-1.5">
           {PRESETS.map(p => (
             <button key={p.key} onClick={() => setPreset(p.key)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition active:scale-95
+              className={`px-3.5 py-2.5 min-h-[44px] rounded-lg text-sm font-medium transition active:scale-95
                 ${preset === p.key ? "bg-sky-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
               {p.label}
             </button>

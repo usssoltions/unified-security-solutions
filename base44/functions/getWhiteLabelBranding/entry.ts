@@ -18,6 +18,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  *  - Only non-sensitive branding fields are returned.
  *  - Platform admins (no reseller/customer context) receive null → the app
  *    shows the USS platform default theme.
+ *
+ * APK READINESS: this function is the SINGLE SOURCE of effective branding
+ * (effective app name, logo, colours, support contacts, address + canonical
+ * customer_id / reseller_id). A future dedicated Android APK can retrieve the
+ * exact same resolved values for this customer without duplicating branding
+ * configuration. Per-field resolution means a blank customer field always
+ * inherits the reseller value — the Customer record stores overrides only.
  */
 export default async function(req: Request): Promise<Response> {
   try {
@@ -57,6 +64,7 @@ export default async function(req: Request): Promise<Response> {
       support_email: reseller?.support_email || null,
       support_phone: reseller?.support_phone || null,
       website: reseller?.website || null,
+      address: reseller?.address || null,
     };
 
     // Customer-level overrides win over reseller branding, per field.
@@ -68,7 +76,9 @@ export default async function(req: Request): Promise<Response> {
       b.primary_color = customer.primary_color || b.primary_color;
       b.accent_color = customer.accent_color || b.accent_color;
       b.support_email = customer.email || b.support_email;
+      b.support_phone = customer.phone || b.support_phone;
       b.website = customer.website || b.website;
+      b.address = customer.address || b.address;
     }
 
     return Response.json({ branding: b });
