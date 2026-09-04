@@ -43,6 +43,9 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
   const [idBackUrl, setIdBackUrl] = useState(worker?.id_back_url || null);
 
   const [existing, setExisting] = useState(null); // duplicate found via lookup
+  // Driver's Licence scans do not reliably provide full first names — when
+  // true, the operator must enter them manually before continuing.
+  const [licenceMissingFirstNames, setLicenceMissingFirstNames] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
@@ -52,6 +55,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
     try {
       const res = await attendanceCall("find_worker", { id_number: idn });
       setExisting(res?.worker || null);
+      if (res?.worker) setLicenceMissingFirstNames(false);
     } catch { setExisting(null); }
   };
 
@@ -60,12 +64,20 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
     setShowScanner(false);
     const mf = mappedFields;
     if (!mf) { setStep(2); return; }
-    const fn = mf.first_names || mf.visitor_name || "";
+    // Driver's Licence scans do NOT reliably provide full first names — never
+    // substitute surname/visitor name/initials. Only a dedicated, reliable
+    // first-names value may auto-fill; otherwise First Names stays blank and
+    // the operator enters it manually. SA ID and Passport mapping unchanged.
+    const licenceScan = resolvedProfileId === "drivers_licence";
+    const fn = licenceScan
+      ? (mf.first_names || "")
+      : (mf.first_names || mf.visitor_name || "");
     const ini = mf.initials || (fn ? fn.split(" ").map(w => w[0]).join("") : "");
     const idn = mf.visitor_id_number || mf.driver_licence_number || "";
     const idt = resolvedProfileId === "drivers_licence" ? "drivers_licence"
       : resolvedProfileId === "sa_id" ? "sa_id"
       : resolvedProfileId === "passport_mr" ? "passport" : "sa_id";
+    setLicenceMissingFirstNames(licenceScan && !fn.trim());
     setSurname(mf.surname || "");
     setInitials(ini.toUpperCase());
     setFirstNames(fn);
@@ -76,8 +88,11 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
   };
 
   // ── Validation (same required fields as the attendance wizard) ────────────
+  // Driver's Licence scan without reliable full first names: the operator
+  // cannot continue until First Names is completed manually.
+  const firstNamesRequired = licenceMissingFirstNames && idType === "drivers_licence" && !firstNames.trim();
   const detailsValid = surname.trim() && idNumber.trim() && company.trim()
-    && jobDescription.trim() && cellphone.trim();
+    && jobDescription.trim() && cellphone.trim() && !firstNamesRequired;
 
   const goNextFromDetails = () => {
     if (!isEdit) lookupExisting(idNumber.trim());
@@ -191,9 +206,17 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
             </div>
           </div>
           <div>
-            <label className="text-slate-400 text-xs mb-1 block">First Names</label>
-            <Input value={firstNames} onChange={e => setFirstNames(e.target.value)} placeholder="First names (optional)"
+            <label className="text-slate-400 text-xs mb-1 block">
+              First Names{firstNamesRequired ? " *" : ""}
+            </label>
+            <Input value={firstNames} onChange={e => setFirstNames(e.target.value)}
+              placeholder={firstNamesRequired ? "Enter the person's full first names" : "First names (optional)"}
               className="bg-slate-900 border-slate-700 text-white" />
+            {firstNamesRequired && (
+              <p className="text-amber-400 text-xs mt-1">
+                Full first names are not available from this licence scan. Please enter the person's full first names.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

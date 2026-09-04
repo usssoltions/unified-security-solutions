@@ -66,6 +66,9 @@ export default function NewAttendanceWizard({
 
   // Worker/profile state
   const [scannedFields, setScannedFields] = useState(null);
+  // Driver's Licence scans do not reliably provide full first names — when
+  // true, the operator must enter them manually before continuing.
+  const [licenceMissingFirstNames, setLicenceMissingFirstNames] = useState(false);
   const [existingWorker, setExistingWorker] = useState(null); // null=unknown, false=new, {...}=found
   const [workerLookupDone, setWorkerLookupDone] = useState(false);
 
@@ -103,7 +106,14 @@ export default function NewAttendanceWizard({
     if (!mf) { setStep(2); return; }
 
     const sn = mf.surname || "";
-    const fn = mf.first_names || mf.visitor_name || "";
+    // Driver's Licence scans do NOT reliably provide full first names — never
+    // substitute surname/visitor name/initials. Only a dedicated, reliable
+    // first-names value may auto-fill; otherwise First Names stays blank and
+    // the operator enters it manually. SA ID and Passport mapping unchanged.
+    const licenceScan = resolvedProfileId === "drivers_licence";
+    const fn = licenceScan
+      ? (mf.first_names || "")
+      : (mf.first_names || mf.visitor_name || "");
     const ini = mf.initials || (fn ? fn.split(" ").map(w => w[0]).join("") : "");
     const idn = mf.visitor_id_number || mf.driver_licence_number || "";
     const idt = resolvedProfileId === "drivers_licence" ? "drivers_licence"
@@ -111,6 +121,7 @@ export default function NewAttendanceWizard({
                : resolvedProfileId === "passport_mr" ? "passport"
                : "sa_id";
 
+    setLicenceMissingFirstNames(licenceScan && !fn.trim());
     setSurname(sn);
     setInitials(ini.toUpperCase());
     setFirstNames(fn);
@@ -133,6 +144,7 @@ export default function NewAttendanceWizard({
           setCellphone(w.cellphone || "");
           setIdFrontUrl(w.id_front_url || null);
           setIdBackUrl(w.id_back_url || null);
+          setLicenceMissingFirstNames(false);
         } else {
           setExistingWorker(false);
         }
@@ -149,6 +161,7 @@ export default function NewAttendanceWizard({
   const handleManualEntry = () => {
     setShowScanner(false);
     setExistingWorker(false);
+    setLicenceMissingFirstNames(false);
     setWorkerLookupDone(true);
     setStep(2);
   };
@@ -214,7 +227,10 @@ export default function NewAttendanceWizard({
   };
 
   // ── Validation ────────────────────────────────────────────────────────────
-  const step2Valid = surname.trim() && idNumber.trim() && company.trim() && jobDescription.trim() && cellphone.trim();
+  // Driver's Licence scan without reliable full first names: the operator
+  // cannot continue until First Names is completed manually.
+  const firstNamesRequired = licenceMissingFirstNames && idType === "drivers_licence" && !firstNames.trim();
+  const step2Valid = surname.trim() && idNumber.trim() && company.trim() && jobDescription.trim() && cellphone.trim() && !firstNamesRequired;
   const step4Valid = medicalCentre && assessmentType;
 
   const goNext = () => {
@@ -292,9 +308,17 @@ export default function NewAttendanceWizard({
             </div>
           </div>
           <div>
-            <label className="text-slate-400 text-xs mb-1 block">First Names</label>
-            <Input value={firstNames} onChange={e => setFirstNames(e.target.value)} placeholder="First names (optional)"
+            <label className="text-slate-400 text-xs mb-1 block">
+              First Names{firstNamesRequired ? " *" : ""}
+            </label>
+            <Input value={firstNames} onChange={e => setFirstNames(e.target.value)}
+              placeholder={firstNamesRequired ? "Enter the person's full first names" : "First names (optional)"}
               className="bg-slate-900 border-slate-700 text-white" />
+            {firstNamesRequired && (
+              <p className="text-amber-400 text-xs mt-1">
+                Full first names are not available from this licence scan. Please enter the person's full first names.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
