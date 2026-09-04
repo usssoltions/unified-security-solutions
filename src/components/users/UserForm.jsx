@@ -60,13 +60,25 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
     }
     setInviteStatus({ loading: true });
     try {
-      // Base44 invite — role must be "admin" or "user"; we set role_type via update after
-      const baseRole = ["admin"].includes(inviteRole) ? "admin" : "user";
-      await base44.users.inviteUser(inviteEmail.trim(), baseRole);
-      setInviteStatus({ success: `Invitation sent to ${inviteEmail}. Once they log in, edit their profile to set their specific role (${inviteRole}).` });
+      // Server-side tenant invitation: inviteTenantUser validates the role
+      // against the customer's enabled modules, stores the tenant scope
+      // (customer / reseller / role) in a PendingTenantScope, and sends the
+      // platform invitation. The scope is applied to the invitee's account
+      // AUTOMATICALLY on their first login — no manual profile step.
+      const res = await base44.functions.invoke("inviteTenantUser", {
+        action: "invite",
+        email: inviteEmail.trim(),
+        role_type: inviteRole,
+      });
+      const d = res?.data !== undefined ? res.data : res;
+      if (d?.error) throw new Error(d.error);
+      const roleLabel = roles.find(r => r.value === inviteRole)?.label || inviteRole;
+      setInviteStatus({
+        success: `Invitation sent to ${inviteEmail.trim()}. Their ${roleLabel} access will be applied automatically when they sign in for the first time.`,
+      });
       setInviteEmail("");
     } catch (err) {
-      setInviteStatus({ error: err?.message || "Failed to send invitation. The user may already exist." });
+      setInviteStatus({ error: err?.message || "Failed to send invitation. Please try again." });
     }
   };
 
@@ -123,7 +135,9 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
 
             <Alert className="bg-amber-500/10 border-amber-500/20">
               <AlertDescription className="text-slate-300 text-sm">
-                The user will receive an email invitation. After they log in for the first time, you can edit their profile to confirm their role and add additional details like badge number and phone.
+                The user will receive an email invitation. Their{" "}
+                {roles.find(r => r.value === inviteRole)?.label || "selected role"}{" "}
+                access will be applied automatically when they sign in for the first time.
               </AlertDescription>
             </Alert>
 

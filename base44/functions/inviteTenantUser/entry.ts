@@ -169,7 +169,7 @@ export default async function(req: Request): Promise<Response> {
     if (!caller) return Response.json({ error: 'Authentication required', code: 'auth_required' }, { status: 401 });
 
     const body = await req.json();
-    const {
+    let {
       action, email: rawEmail, role_type, reseller_id, customer_id,
       first_name, last_name, display_name: providedDisplayName, phone,
       user_status, status,
@@ -192,17 +192,24 @@ export default async function(req: Request): Promise<Response> {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return Response.json({ error: 'A valid email address is required', code: 'invalid_email' }, { status: 400 });
     }
-    if (!firstName) {
-      return Response.json({ error: 'First name is required', code: 'missing_first_name' }, { status: 400 });
-    }
+    // The Customer Administrator invite dialog collects email + role only —
+    // the name is optional (completed by the invitee from their profile).
     if (!role_type) {
       return Response.json({ error: 'A role is required', code: 'missing_role' }, { status: 400 });
     }
 
     const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin';
     const isResellerAdmin = caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller';
+    // Customer Administrators may invite users into their OWN customer only.
+    // The tenant scope is forced SERVER-SIDE from the caller's User record —
+    // a customer admin can never select another customer or reseller, and
+    // the role is validated against their customer's enabled modules below.
+    const isCustomerAdmin =
+      !isPlatformAdmin && !isResellerAdmin &&
+      (caller.admin_level === 'customer' ||
+        ['customer_admin', 'practice_admin', 'estate_manager'].includes(caller.role_type));
 
-    if (!isPlatformAdmin && !isResellerAdmin) {
+    if (!isPlatformAdmin && !isResellerAdmin && !isCustomerAdmin) {
       return Response.json({ error: 'You do not have permission to invite users', code: 'permission_denied' }, { status: 403 });
     }
     if (role_type === 'reseller_admin' && !isPlatformAdmin) {
@@ -222,6 +229,21 @@ export default async function(req: Request): Promise<Response> {
 
     let admin_level = 'customer';
     if (role_type === 'reseller_admin') admin_level = 'reseller';
+
+    // Customer Admins are pinned to their own customer. Any client-supplied
+    // customer/reseller id is ignored (or rejected on mismatch) — the scope
+    // comes from the caller's User record, and the reseller is resolved from
+    // the Customer record server-side (effectiveReseller below).
+    if (isCustomerAdmin) {
+      if (!caller.customer_id) {
+        return Response.json({ error: 'Your account has no customer scope. Please contact support.', code: 'permission_denied' }, { status: 403 });
+      }
+      if (customer_id && customer_id !== caller.customer_id) {
+        return Response.json({ error: 'You can only invite users into your own organisation', code: 'permission_denied' }, { status: 403 });
+      }
+      customer_id = caller.customer_id;
+      reseller_id = undefined;
+    }
 
     // Validate customer belongs to the resolved reseller (when customer given).
     let customer;
