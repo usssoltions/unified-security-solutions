@@ -68,8 +68,8 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
   };
 
   return (
-    <div className="bg-slate-800/60 rounded-2xl border border-slate-700 overflow-hidden">
-      <div className="px-4 py-3 bg-slate-800/80 flex items-center justify-between">
+    <div className="bg-[var(--surface-card)] rounded-2xl border border-[var(--border-default)] overflow-hidden">
+      <div className="px-4 py-3 bg-[var(--surface-raised)] flex items-center justify-between">
         <h3 className="text-white font-semibold text-sm">{title}</h3>
         <span className="text-slate-400 text-xs">{typeOptions.filter(o => o.active).length} active</span>
       </div>
@@ -87,7 +87,7 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
               <>
                 <Input value={editLabel} onChange={e => setEditLabel(e.target.value)} autoFocus
                   className="bg-slate-900 border-slate-700 text-white text-sm h-10 flex-1" />
-                <Button size="icon" onClick={saveEdit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 h-10 w-10 shrink-0">
+                <Button size="icon" variant="brand" onClick={saveEdit} disabled={saving} className="h-10 w-10 shrink-0">
                   <Check className="w-4 h-4" />
                 </Button>
                 <Button size="icon" variant="ghost" onClick={() => { setEditId(null); setEditLabel(""); }} className="h-10 w-10 shrink-0 text-slate-400">
@@ -143,7 +143,7 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
           <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="New option label…"
             className="bg-slate-900 border-slate-700 text-white text-sm h-11"
             onKeyDown={e => e.key === "Enter" && addOption()} />
-          <Button onClick={addOption} disabled={!newLabel.trim() || saving} className="bg-sky-600 hover:bg-sky-700 h-11 w-11 shrink-0">
+          <Button onClick={addOption} disabled={!newLabel.trim() || saving} variant="brand" className="h-11 w-11 shrink-0">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
           </Button>
         </div>
@@ -202,8 +202,8 @@ export default function AttendanceSettings() {
       </div>
 
       {!canManage && (
-        <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-3">
-          <p className="text-sky-300 text-sm">Read-only view — option management requires an administrator role.</p>
+        <div className="bg-[var(--surface-raised)] border border-[var(--border-default)] rounded-xl p-3">
+          <p className="text-slate-300 text-sm">Read-only view — option management requires an administrator role.</p>
         </div>
       )}
 
@@ -236,7 +236,7 @@ export default function AttendanceSettings() {
         readOnly={!canManage}
       />
 
-      <div className="bg-slate-800/40 rounded-xl border border-slate-700 p-4">
+      <div className="bg-[var(--surface-raised)] rounded-xl border border-[var(--border-default)] p-4">
         <p className="text-slate-400 text-xs">
           <strong className="text-slate-300">Deactivating</strong> an option archives it — it disappears from new attendance
           registrations, stays under Archived / Inactive, and can be restored at any time. Historical attendance records,

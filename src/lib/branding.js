@@ -47,6 +47,33 @@ export function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function hexToRgbArray(hex) {
+  let h = String(hex || "").replace("#", "").trim();
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  return [
+    parseInt(h.slice(0, 2), 16) || 0,
+    parseInt(h.slice(2, 4), 16) || 0,
+    parseInt(h.slice(4, 6), 16) || 0,
+  ];
+}
+const clamp255 = (n) => Math.max(0, Math.min(255, Math.round(n)));
+const toHex = (rgb) => `#${rgb.map((c) => clamp255(c).toString(16).padStart(2, "0")).join("")}`;
+
+/** Darker shade of a brand hex — hover/pressed states (amount 0–1). Derived,
+ * never hardcoded per customer: e.g. #07575A → #064D4F at 12%. */
+export function darkenHex(hex, amount = 0.12) {
+  if (!isValidHex(hex)) return hex;
+  const f = 1 - amount;
+  return toHex(hexToRgbArray(hex).map((c) => c * f));
+}
+
+/** Lighter, dark-theme-readable shade of a brand hex — links, focus rings and
+  light "primary derivative" icons. Mixes toward white; derived, not hardcoded. */
+export function lightenHex(hex, amount = 0.45) {
+  if (!isValidHex(hex)) return hex;
+  return toHex(hexToRgbArray(hex).map((c) => c + (255 - c) * amount));
+}
+
 /**
  * Normalises a branding object (from useBranding / the Reseller editor) into a
  * safe theme with guaranteed fallbacks. Never throws, never returns invalid

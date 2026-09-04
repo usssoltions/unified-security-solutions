@@ -129,7 +129,7 @@ export default function AttendanceReports() {
           {PRESETS.map(p => (
             <button key={p.key} onClick={() => setPreset(p.key)}
               className={`px-3.5 py-2.5 min-h-[44px] rounded-lg text-sm font-medium transition active:scale-95
-                ${preset === p.key ? "bg-sky-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
+                ${preset === p.key ? "bg-[var(--brand-primary)] text-white" : "bg-[var(--surface-raised)] text-slate-300 hover:bg-slate-700"}`}>
               {p.label}
             </button>
           ))}
@@ -151,7 +151,7 @@ export default function AttendanceReports() {
       </div>
 
       {/* Optional filters */}
-      <div className="bg-slate-800/50 rounded-xl p-3 space-y-3">
+      <div className="bg-[var(--surface-raised)] rounded-xl p-3 space-y-3">
         <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">Optional Filters</p>
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -179,7 +179,7 @@ export default function AttendanceReports() {
       </div>
 
       {/* Summary card */}
-      <div className="bg-slate-800/60 rounded-xl border border-slate-700 p-4 space-y-1">
+      <div className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-4 space-y-1">
         <p className="text-slate-400 text-sm">Selected period: <span className="text-white font-semibold">{rangeLabel}</span></p>
         <p className="text-slate-400 text-sm">
           {isLoading ? "Loading…" : <><span className="text-white font-semibold">{filtered.length}</span> record{filtered.length !== 1 ? "s" : ""} match</>}
@@ -194,7 +194,7 @@ export default function AttendanceReports() {
           </div>
         )}
         <Button onClick={handlePdf} disabled={filtered.length === 0 || generatingPdf || isLoading}
-          className="w-full h-14 text-base bg-sky-600 hover:bg-sky-700">
+          variant="brand" className="w-full h-14 text-base">
           {generatingPdf ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <FileText className="w-5 h-5 mr-2" />}
           Generate Official PDF Register
         </Button>
@@ -205,7 +205,7 @@ export default function AttendanceReports() {
           </div>
         )}
         <Button onClick={handleExcel} disabled={filtered.length === 0 || generatingXlsx || isLoading}
-          variant="outline" className="w-full h-14 text-base border-emerald-700 text-emerald-400 hover:bg-emerald-900/20">
+          variant="outline" className="w-full h-14 text-base border-[var(--border-default)] text-slate-200 hover:bg-[var(--surface-raised)]">
           {generatingXlsx ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Table className="w-5 h-5 mr-2" />}
           Export Excel (.xlsx)
         </Button>

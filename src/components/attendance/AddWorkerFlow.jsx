@@ -158,7 +158,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
             Scan the worker's/patient's South African ID, Driver's Licence or Passport using SecureScan,
             or enter the details manually.
           </p>
-          <Button onClick={() => setShowScanner(true)} className="w-full h-16 text-lg bg-sky-600 hover:bg-sky-700">
+          <Button onClick={() => setShowScanner(true)} variant="brand" className="w-full h-16 text-lg">
             <ScanLine className="w-6 h-6 mr-3" /> Scan Document
           </Button>
           <div className="relative flex items-center gap-3">
@@ -257,7 +257,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
             <Button onClick={goNextFromDetails} disabled={!detailsValid}
-              className="flex-1 bg-sky-600 hover:bg-sky-700 h-12">
+              variant="brand" className="flex-1 h-12">
               Next <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -287,7 +287,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
                 <Button variant="outline" onClick={() => setStep(2)} className="flex-1 border-slate-600 text-slate-300 h-12">
                   <ChevronLeft className="w-4 h-4 mr-1" /> Back
                 </Button>
-                <Button onClick={() => setStep(4)} className="flex-1 bg-sky-600 hover:bg-sky-700 h-12">
+                <Button onClick={() => setStep(4)} variant="brand" className="flex-1 h-12">
                   Continue <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
@@ -308,7 +308,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
       {/* ── STEP 4: Review & Confirm ── */}
       {step === 4 && (
         <div className="space-y-4">
-          <div className="bg-slate-800/60 rounded-2xl border border-slate-700 divide-y divide-slate-700/50">
+          <div className="bg-[var(--surface-card)] rounded-2xl border border-[var(--border-default)] divide-y divide-slate-700/50">
             {[
               ["Surname, Initials", `${surname}${initials ? ", " + initials : ""}`],
               ["First Names", firstNames],
@@ -336,7 +336,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
               <ChevronLeft className="w-4 h-4 mr-1" /> Edit
             </Button>
             <Button onClick={handleConfirm} disabled={saving}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-14 text-base">
+              variant="brand" className="flex-1 h-14 text-base">
               {saving ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
               {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Profile"}
             </Button>

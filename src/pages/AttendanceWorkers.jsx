@@ -119,7 +119,7 @@ export default function AttendanceWorkers() {
         <span className="text-slate-400 text-sm">{filtered.length}</span>
         <Button
           onClick={() => setFlow({ mode: "create" })}
-          className="ml-auto bg-sky-600 hover:bg-sky-700 h-10 px-4"
+          variant="brand" className="ml-auto h-10 px-4"
         >
           <UserPlus className="w-4 h-4 mr-1.5" /> Add Worker / Patient
         </Button>
@@ -142,7 +142,7 @@ export default function AttendanceWorkers() {
             <>
               <p className="text-white font-semibold">No workers / patients registered yet.</p>
               <p className="text-slate-400 text-sm mt-1 mb-5">Register your first worker / patient to start capturing attendance.</p>
-              <Button onClick={() => setFlow({ mode: "create" })} className="bg-sky-600 hover:bg-sky-700 h-11 px-5">
+              <Button onClick={() => setFlow({ mode: "create" })} variant="brand" className="h-11 px-5">
                 <UserPlus className="w-4 h-4 mr-1.5" /> Register Worker / Patient
               </Button>
             </>
@@ -157,7 +157,7 @@ export default function AttendanceWorkers() {
               (b.attendance_timestamp || "").localeCompare(a.attendance_timestamp || ""));
             const isOpen = expanded === w.id;
             return (
-              <div key={w.id} className="bg-slate-800/60 rounded-xl border border-slate-700 overflow-hidden">
+              <div key={w.id} className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] overflow-hidden">
                 <button className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-slate-800 transition"
                   onClick={() => setExpanded(isOpen ? null : w.id)}>
                   <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center shrink-0 mt-0.5">
@@ -204,7 +204,7 @@ export default function AttendanceWorkers() {
                             {w.id_back_url && <img src={w.id_back_url} alt="ID Back" className="h-24 rounded-lg object-cover border border-slate-600" />}
                           </div>
                           {w.id_captured_at && <p className="text-slate-500 text-xs">Captured {formatDate(w.id_captured_at)}</p>}
-                          <Button onClick={() => handleWorkerPdf(w)} className="bg-sky-700 hover:bg-sky-600 h-11">
+                          <Button onClick={() => handleWorkerPdf(w)} variant="brand" className="h-11">
                             <Download className="w-4 h-4 mr-1.5" /> Download ID PDF
                           </Button>
                         </div>
@@ -225,8 +225,8 @@ export default function AttendanceWorkers() {
                               <Calendar className="w-3 h-3 shrink-0" />
                               <span className="text-slate-300">{r.attendance_date ? r.attendance_date.split("-").reverse().join("/") : "—"}</span>
                               <span>{r.attendance_time}</span>
-                              <span className="text-sky-400">{r.medical_centre}</span>
-                              <span className="text-emerald-400">{r.assessment_type}</span>
+                              <span className="text-[var(--brand-link)]">{r.medical_centre}</span>
+                              <span className="text-[var(--brand-accent)]">{r.assessment_type}</span>
                             </div>
                           ))}
                         </div>

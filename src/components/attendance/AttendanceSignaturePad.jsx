@@ -64,7 +64,7 @@ export default function AttendanceSignaturePad({ onAccept, onCancel }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-1">
-        <PenTool className="w-5 h-5 text-sky-400" />
+        <PenTool className="w-5 h-5 text-[var(--brand-link)]" />
         <span className="text-white font-semibold text-base">Signature Required</span>
       </div>
       <p className="text-slate-400 text-sm">Please sign in the box below using your finger or stylus.</p>
@@ -87,7 +87,7 @@ export default function AttendanceSignaturePad({ onAccept, onCancel }) {
             Back
           </Button>
         )}
-        <Button onClick={accept} disabled={isEmpty} className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-12">
+        <Button onClick={accept} disabled={isEmpty} variant="brand" className="flex-1 h-12">
           <Check className="w-4 h-4 mr-2" /> Accept Signature
         </Button>
       </div>

@@ -193,3 +193,30 @@ summary {
     inset: -4px;
   }
 }
+
+/* ── Refined platform dark-theme neutrals + brand theme tokens ──────────────
+   Neutral surfaces/text are PLATFORM-level readability values, NOT customer
+   branding. Brand tokens are set at runtime by the Layout from the white-label
+   branding resolver (customer → reseller → platform default); the values below
+   are the platform fallbacks. All customer-facing Attendance surfaces consume
+   these tokens — no scattered per-customer colour values. */
+:root {
+  --surface-base: #09111D;
+  --surface-card: #131D2B;
+  --surface-raised: #1A2535;
+  --border-default: #2C394A;
+  --text-primary: #F8FAFC;
+  --text-secondary: #A7B0BE;
+  --text-muted: #7E8998;
+  --brand-primary: #0ea5e9;
+  --brand-primary-hover: #0c94d1; /* 12% darker than the default primary */
+  --brand-accent: #2563eb;
+  --brand-link: #38bdf8;
+  --brand-focus: #38bdf8;
+}
+
+/* Subtle brand focus ring for interactive brand surfaces (links, tabs). */
+.brand-focus:focus-visible {
+  outline: 2px solid var(--brand-focus);
+  outline-offset: 2px;
+}

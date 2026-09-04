@@ -98,7 +98,7 @@ export default function AttendanceDashboard() {
           <p className="text-slate-300">{successInfo.workerName}</p>
           <p className="text-slate-400 text-sm">Registered at {successInfo.attendanceTime}</p>
           <div className="flex flex-col gap-2 pt-2">
-            <Button onClick={() => { setSuccessInfo(null); setShowWizard(true); }} className="w-full h-12 bg-sky-600 hover:bg-sky-700">
+            <Button onClick={() => { setSuccessInfo(null); setShowWizard(true); }} variant="brand" className="w-full h-12">
               <Plus className="w-4 h-4 mr-2" /> Register Another
             </Button>
             <Link to={`/AttendanceRecords`}>
@@ -142,41 +142,40 @@ export default function AttendanceDashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Today", value: todayRecords.length, icon: Calendar, color: "sky" },
-          { label: "This Month", value: monthRecords.length, icon: Activity, color: "emerald" },
-          { label: "Workers / Patients", value: workerCount, icon: Users, color: "violet" },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className={`bg-slate-800/60 rounded-2xl border border-slate-700 p-4 text-center`}>
-            <Icon className={`w-6 h-6 mx-auto mb-1 text-${color}-400`} />
+          { label: "Today", value: todayRecords.length, icon: Calendar, iconClass: "text-[var(--brand-link)]" },
+          { label: "This Month", value: monthRecords.length, icon: Activity, iconClass: "text-[var(--brand-accent)]" },
+          { label: "Workers / Patients", value: workerCount, icon: Users, iconClass: "text-[var(--brand-link)]" },
+        ].map(({ label, value, icon: Icon, iconClass }) => (
+          <div key={label} className="bg-[var(--surface-card)] rounded-2xl border border-[var(--border-default)] p-4 text-center">
+            <Icon className={`w-6 h-6 mx-auto mb-1 ${iconClass}`} />
             <p className="text-white text-2xl font-bold">{value}</p>
             <p className="text-slate-400 text-xs mt-0.5">{label}</p>
           </div>
         ))}
       </div>
 
-      {/* Primary Action */}
-      <Button onClick={() => setShowWizard(true)}
-        className="w-full h-16 text-lg font-bold"
-        style={{ background: branding?.primary_color ? `linear-gradient(135deg, ${branding.primary_color}, ${branding.accent_color || branding.primary_color}cc)` : undefined }}>
+      {/* Primary Action — solid brand primary (brandPrimaryAction token) */}
+      <Button onClick={() => setShowWizard(true)} variant="brand"
+        className="w-full h-16 text-lg font-bold">
         <Plus className="w-6 h-6 mr-3" /> + New Attendance
       </Button>
 
       {/* Quick nav */}
       <div className="grid grid-cols-3 gap-3">
         <Link to="/AttendanceRecords">
-          <button className="w-full bg-slate-800/60 rounded-xl border border-slate-700 p-4 text-center hover:border-slate-500 active:scale-95 transition">
+          <button className="w-full bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-4 text-center hover:border-[var(--brand-primary)] active:scale-95 transition">
             <ClipboardList className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
             <p className="text-white text-xs font-medium">Records</p>
           </button>
         </Link>
         <Link to="/AttendanceWorkers">
-          <button className="w-full bg-slate-800/60 rounded-xl border border-slate-700 p-4 text-center hover:border-slate-500 active:scale-95 transition">
+          <button className="w-full bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-4 text-center hover:border-[var(--brand-primary)] active:scale-95 transition">
             <Users className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
             <p className="text-white text-xs font-medium">Workers</p>
           </button>
         </Link>
         <Link to="/AttendanceReports">
-          <button className="w-full bg-slate-800/60 rounded-xl border border-slate-700 p-4 text-center hover:border-slate-500 active:scale-95 transition">
+          <button className="w-full bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-4 text-center hover:border-[var(--brand-primary)] active:scale-95 transition">
             <FileText className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
             <p className="text-white text-xs font-medium">Reports</p>
           </button>
@@ -187,17 +186,17 @@ export default function AttendanceDashboard() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold">Recent Attendance — Today</h3>
-          <Link to="/AttendanceRecords" className="text-sky-400 text-sm">View all →</Link>
+          <Link to="/AttendanceRecords" className="text-[var(--brand-link)] text-sm brand-focus">View all →</Link>
         </div>
         {recent.length === 0 ? (
-          <div className="bg-slate-800/40 rounded-xl border border-slate-700 p-8 text-center">
+          <div className="bg-[var(--surface-raised)] rounded-xl border border-[var(--border-default)] p-8 text-center">
             <ClipboardList className="w-10 h-10 text-slate-600 mx-auto mb-2" />
             <p className="text-slate-400 text-sm">No attendance registered yet today.</p>
           </div>
         ) : (
           <div className="space-y-2">
             {recent.map(r => (
-              <div key={r.id} className="bg-slate-800/60 rounded-xl border border-slate-700 px-4 py-3 flex items-center gap-3">
+              <div key={r.id} className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] px-4 py-3 flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
                   <Users className="w-4 h-4 text-slate-400" />
                 </div>

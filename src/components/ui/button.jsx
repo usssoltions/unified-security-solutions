@@ -11,6 +11,8 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-emerald-500 text-white shadow-sm hover:bg-emerald-600",
+        brand:
+          "bg-[var(--brand-primary)] text-white shadow-sm hover:bg-[var(--brand-primary-hover)]",
         destructive:
           "bg-rose-500 text-white shadow-sm hover:bg-rose-600",
         outline:

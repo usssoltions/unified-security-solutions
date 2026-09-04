@@ -41,15 +41,15 @@ function StepIndicator({ currentStep }) {
           <React.Fragment key={step.id}>
             <div className={`flex flex-col items-center gap-1 shrink-0 ${active ? "opacity-100" : done ? "opacity-80" : "opacity-40"}`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition
-                ${active ? "bg-sky-500 text-white" : done ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"}`}>
+                ${active ? "bg-[var(--brand-primary)] text-white" : done ? "bg-[var(--brand-accent)] text-slate-900" : "bg-slate-700 text-slate-400"}`}>
                 {done ? <CheckCircle2 className="w-4 h-4" /> : step.id}
               </div>
-              <span className={`text-xs whitespace-nowrap ${active ? "text-sky-400 font-medium" : done ? "text-emerald-400" : "text-slate-500"}`}>
+              <span className={`text-xs whitespace-nowrap ${active ? "text-[var(--brand-link)] font-medium" : done ? "text-[var(--brand-accent)]" : "text-slate-500"}`}>
                 {step.label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className={`flex-1 h-0.5 min-w-[12px] mx-1 mb-4 rounded ${done ? "bg-emerald-500" : "bg-slate-700"}`} />
+              <div className={`flex-1 h-0.5 min-w-[12px] mx-1 mb-4 rounded ${done ? "bg-[var(--brand-accent)]" : "bg-slate-700"}`} />
             )}
           </React.Fragment>
         );
@@ -263,7 +263,7 @@ export default function NewAttendanceWizard({
         <div className="space-y-4">
           <h2 className="text-white text-xl font-bold">Scan Identification Document</h2>
           <p className="text-slate-400 text-sm">Scan the worker's/patient's South African ID, Driver's Licence or Passport using the Barkoder scanner.</p>
-          <Button onClick={() => setShowScanner(true)} className="w-full h-16 text-lg bg-sky-600 hover:bg-sky-700">
+          <Button onClick={() => setShowScanner(true)} variant="brand" className="w-full h-16 text-lg">
             <ScanLine className="w-6 h-6 mr-3" /> Scan Document
           </Button>
           <div className="relative flex items-center gap-3">
@@ -284,7 +284,7 @@ export default function NewAttendanceWizard({
           <div className="flex items-center gap-2">
             <h2 className="text-white text-xl font-bold">Worker / Patient Details</h2>
             {existingWorker && <Badge className="bg-amber-500 text-white text-xs">Existing Profile</Badge>}
-            {existingWorker === false && <Badge className="bg-sky-500 text-white text-xs">New Worker</Badge>}
+            {existingWorker === false && <Badge className="bg-[var(--brand-primary)] text-white text-xs">New Worker</Badge>}
           </div>
           {existingWorker && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
@@ -357,7 +357,7 @@ export default function NewAttendanceWizard({
             <Button variant="outline" onClick={goBack} className="flex-1 border-slate-600 text-slate-300 h-12">
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
-            <Button onClick={goNext} disabled={!step2Valid} className="flex-1 bg-sky-600 hover:bg-sky-700 h-12">
+            <Button onClick={goNext} disabled={!step2Valid} variant="brand" className="flex-1 h-12">
               Next <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -402,7 +402,7 @@ export default function NewAttendanceWizard({
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
             {(existingWorker?.id_front_url) && (
-              <Button onClick={goNext} className="flex-1 bg-sky-600 hover:bg-sky-700 h-12">
+              <Button onClick={goNext} variant="brand" className="flex-1 h-12">
                 Continue <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             )}
@@ -441,7 +441,7 @@ export default function NewAttendanceWizard({
             <Button variant="outline" onClick={goBack} className="flex-1 border-slate-600 text-slate-300 h-12">
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
-            <Button onClick={goNext} disabled={!step4Valid} className="flex-1 bg-sky-600 hover:bg-sky-700 h-12">
+            <Button onClick={goNext} disabled={!step4Valid} variant="brand" className="flex-1 h-12">
               Next <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -463,7 +463,7 @@ export default function NewAttendanceWizard({
       {step === 6 && (
         <div className="space-y-4">
           <h2 className="text-white text-xl font-bold">Review Attendance</h2>
-          <div className="bg-slate-800/60 rounded-2xl border border-slate-700 divide-y divide-slate-700/50">
+          <div className="bg-[var(--surface-card)] rounded-2xl border border-[var(--border-default)] divide-y divide-slate-700/50">
             {[
               ["Surname, Initials", `${surname}${initials ? ", " + initials : ""}`],
               ["ID / Passport Number", idNumber],
@@ -482,7 +482,7 @@ export default function NewAttendanceWizard({
             ))}
           </div>
           {signatureDataUrl && (
-            <div className="bg-slate-800/60 rounded-xl border border-slate-700 p-3">
+            <div className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-3">
               <p className="text-slate-400 text-xs mb-2">Signature Preview</p>
               <img src={signatureDataUrl} alt="Signature" className="h-16 bg-white rounded-lg border border-slate-600" />
             </div>
@@ -496,7 +496,7 @@ export default function NewAttendanceWizard({
             <Button variant="outline" onClick={goBack} disabled={saving} className="flex-1 border-slate-600 text-slate-300 h-12">
               <ChevronLeft className="w-4 h-4 mr-1" /> Edit
             </Button>
-            <Button onClick={handleConfirm} disabled={saving} className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-14 text-base">
+            <Button onClick={handleConfirm} disabled={saving} variant="brand" className="flex-1 h-14 text-base">
               {saving ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
               {saving ? "Saving…" : "Confirm Attendance"}
             </Button>

@@ -139,7 +139,7 @@ export default function AttendanceRecords() {
         {PRESETS.map(p => (
           <button key={p.key} onClick={() => setPreset(p.key)}
             className={`px-3.5 py-2.5 min-h-[44px] rounded-lg text-xs font-medium whitespace-nowrap transition active:scale-95
-              ${preset === p.key ? "bg-sky-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}>
+              ${preset === p.key ? "bg-[var(--brand-primary)] text-white" : "bg-[var(--surface-raised)] text-slate-400 hover:bg-slate-700"}`}>
             {p.label}
           </button>
         ))}
@@ -178,7 +178,7 @@ export default function AttendanceRecords() {
         </Button>
       </div>
       {showFilters && (
-        <div className="grid grid-cols-2 gap-2 bg-slate-800/50 rounded-xl p-3">
+        <div className="grid grid-cols-2 gap-2 bg-[var(--surface-raised)] rounded-xl p-3">
           <div>
             <label className="text-slate-400 text-xs mb-1 block">Company</label>
             <Input value={filterCompany} onChange={e => setFilterCompany(e.target.value)} placeholder="Filter company…"
@@ -208,12 +208,12 @@ export default function AttendanceRecords() {
         <span className="text-slate-400 text-sm">{filtered.length} record{filtered.length !== 1 ? "s" : ""}</span>
         <div className="flex flex-wrap gap-2">
           <Button onClick={handleGeneratePdf} disabled={filtered.length === 0 || generatingPdf} size="sm"
-            className="bg-sky-600 hover:bg-sky-700 h-11">
+            variant="brand" className="h-11">
             {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Download className="w-4 h-4 mr-1.5" />}
             Official PDF
           </Button>
           <Button onClick={handleGenerateExcel} disabled={filtered.length === 0 || generatingExcel} size="sm"
-            variant="outline" className="border-emerald-600 text-emerald-400 hover:bg-emerald-900/20 h-11">
+            variant="outline" className="border-[var(--border-default)] text-slate-200 hover:bg-[var(--surface-raised)] h-11">
             {generatingExcel ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Download className="w-4 h-4 mr-1.5" />}
             Official Excel
           </Button>
@@ -233,7 +233,7 @@ export default function AttendanceRecords() {
       ) : (
         <div className="space-y-2">
           {filtered.map(r => (
-            <div key={r.id} className="bg-slate-800/60 rounded-xl border border-slate-700 p-3 space-y-2">
+            <div key={r.id} className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-3 space-y-2">
               <div className="flex items-start gap-3">
                 <div>
                   <p className="text-white font-semibold text-sm">
@@ -247,8 +247,8 @@ export default function AttendanceRecords() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {r.company_snapshot && <Badge variant="outline" className="text-[10px] border-slate-600 text-slate-300">{r.company_snapshot}</Badge>}
-                {r.medical_centre && <Badge variant="outline" className="text-[10px] border-sky-700 text-sky-400">{r.medical_centre}</Badge>}
-                {r.assessment_type && <Badge variant="outline" className="text-[10px] border-emerald-700 text-emerald-400">{r.assessment_type}</Badge>}
+                {r.medical_centre && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-link)]">{r.medical_centre}</Badge>}
+                {r.assessment_type && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-accent)]">{r.assessment_type}</Badge>}
               </div>
               <div className="flex justify-end">
                 <Button size="sm" variant="ghost" onClick={() => handleIndividualPdf(r)} className="text-slate-400 text-xs h-10 px-3">

@@ -13,7 +13,7 @@ export default function AttendanceBrandingHeader({ branding, subtitle }) {
   return (
     <div
       className="rounded-2xl p-4 mb-5 flex items-center gap-4"
-      style={{ background: `linear-gradient(135deg, ${primary}dd, ${primary}99)` }}
+      style={{ backgroundColor: primary }}
     >
       {branding?.logo_url ? (
         <BrandLogo
@@ -33,7 +33,7 @@ export default function AttendanceBrandingHeader({ branding, subtitle }) {
       )}
       <div>
         <p className="text-white font-bold text-base leading-tight">{name}</p>
-        {subtitle && <p className="text-white/70 text-xs mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="text-white/75 text-xs mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );

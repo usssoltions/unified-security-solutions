@@ -26,7 +26,7 @@ import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitle
 import { useBranding } from "@/hooks/useBranding";
 import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
-import { resolveBrand, hexToRgba, PLATFORM_APP_NAME } from "@/lib/branding";
+import { resolveBrand, hexToRgba, darkenHex, lightenHex, PLATFORM_APP_NAME } from "@/lib/branding";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { getNavItems } from "@/lib/routeRegistry";
@@ -70,12 +70,17 @@ export default function Layout({ children, currentPageName }) {
   const isPlatformAdmin = isPlatformAdminUser(user);
   const brand = resolveBrand(branding);
 
-  // Apply white-label branding colors to CSS variables
+  // Apply white-label branding colors to CSS variables. Hover/pressed and
+  // link/focus shades are DERIVED from the effective primary (never hardcoded
+  // per customer) so every branded surface follows the tenant's brand.
   useEffect(() => {
-    if (!branding) return;
     const root = document.documentElement;
-    if (branding.primary_color) root.style.setProperty("--brand-primary", branding.primary_color);
-    if (branding.accent_color) root.style.setProperty("--brand-accent", branding.accent_color);
+    const primary = resolveBrand(branding).primary;
+    if (branding?.primary_color) root.style.setProperty("--brand-primary", branding.primary_color);
+    if (branding?.accent_color) root.style.setProperty("--brand-accent", branding.accent_color);
+    root.style.setProperty("--brand-primary-hover", darkenHex(primary, 0.12));
+    root.style.setProperty("--brand-link", lightenHex(primary, 0.45));
+    root.style.setProperty("--brand-focus", lightenHex(primary, 0.45));
   }, [branding]);
 
   useEffect(() => {
