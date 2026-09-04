@@ -116,6 +116,36 @@ export function getInviteRolesForCustomer(enabledModuleKeys = [], { allowReselle
   return roles;
 }
 
+/** True when the customer's only enabled operational module is the
+ *  Attendance Register (SecureScan / BARKODER_CORE is supporting
+ *  infrastructure that introduces NO user roles). */
+export function isAttendanceOnlyCustomer(enabledModuleKeys = []) {
+  const operational = MODULE_ROLE_ORDER.filter((k) => (enabledModuleKeys || []).includes(k));
+  return operational.length > 0 && operational.every((k) => k === "ATTENDANCE_REGISTER");
+}
+
+/**
+ * Role options for the tenant User Management screens (role filters,
+ * counters, Add User / Edit User role dropdowns). Derived from the
+ * customer's ENABLED MODULE ENTITLEMENTS — never from a generic
+ * customer_type. An Attendance Register / SecureScan-only customer offers
+ * exactly Customer Administrator and Attendance Staff — never medical,
+ * security, estate or platform roles. Other module mixes keep the legacy
+ * vertical role set.
+ */
+export function getTenantUserManagementRoles(enabledModuleKeys = [], customerType) {
+  if (isAttendanceOnlyCustomer(enabledModuleKeys)) {
+    return [
+      { value: "customer_admin", label: "Customer Administrator", color: "purple" },
+      { value: "attendance_staff", label: "Attendance Staff", color: "sky" },
+    ];
+  }
+  return [
+    { value: "customer_admin", label: "Customer Administrator", color: "purple" },
+    ...getRolesForTenant(customerType, enabledModuleKeys),
+  ];
+}
+
 /**
  * Legacy accessor for tenant-scoped User Management screens (existing users).
  * Kept for backwards compatibility.

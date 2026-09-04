@@ -155,7 +155,6 @@ export const ROUTE_REGISTRY = {
     { title: "Attendance Records", pageKey: "AttendanceRecords", icon: FileText },
     { title: "Workers / Patients", pageKey: "AttendanceWorkers", icon: Users },
     { title: "Attendance Reports", pageKey: "AttendanceReports", icon: BarChart3 },
-    { title: "Attendance Settings", pageKey: "AttendanceSettings", icon: Sliders },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   practice_admin: [
@@ -233,7 +232,7 @@ export const EXTRA_ALLOWED_PAGES = {
     "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings",
   ],
   reseller_admin: ["ResellerManagement", "CustomerManagement"],
-  attendance_staff: ["AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
+  attendance_staff: ["AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports"],
   customer_admin: ["AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
   practice_admin: ["MedicalPatientDetail", "MedicalEmployerDetail", "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
   therapist: ["MedicalPatientDetail", "MedicalEmployerDetail"],

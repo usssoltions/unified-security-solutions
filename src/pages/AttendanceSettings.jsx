@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Settings, Plus, Pencil, Archive, RotateCcw, Loader2, Check, X, ShieldAlert
+  Settings, Plus, Pencil, Archive, RotateCcw, Loader2, Check, X, ShieldAlert,
+  ChevronDown, ChevronUp
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { attendanceCall } from "@/lib/attendanceApi";
@@ -22,9 +23,13 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
   const [editId, setEditId] = useState(null);
   const [editLabel, setEditLabel] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const typeOptions = options.filter(o => o.option_type === optionType)
     .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
+  // Active and archived/inactive options are NEVER mixed into one list.
+  const activeOptions = typeOptions.filter(o => o.active);
+  const inactiveOptions = typeOptions.filter(o => !o.active);
 
   const addOption = async () => {
     if (!newLabel.trim()) return;
@@ -44,10 +49,20 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
     } finally { setSaving(false); }
   };
 
-  const toggleActive = async (opt) => {
+  // Deactivate (soft-archive): hidden from new attendance dropdowns, never
+  // deleted — historical records keep the original value. Restore reverses it.
+  const deactivateOption = async (opt) => {
     setSaving(true);
     try {
-      await attendanceCall("update_option", { id: opt.id, active: !opt.active });
+      await attendanceCall("update_option", { id: opt.id, active: false });
+      onRefresh();
+    } finally { setSaving(false); }
+  };
+
+  const restoreOption = async (opt) => {
+    setSaving(true);
+    try {
+      await attendanceCall("update_option", { id: opt.id, active: true });
       onRefresh();
     } finally { setSaving(false); }
   };
@@ -58,11 +73,15 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
         <h3 className="text-white font-semibold text-sm">{title}</h3>
         <span className="text-slate-400 text-xs">{typeOptions.filter(o => o.active).length} active</span>
       </div>
+      {/* Active Options — the only list new attendance registrations draw from */}
+      <div className="px-4 pt-3 pb-1 text-slate-500 text-[11px] font-semibold uppercase tracking-wide">
+        Active Options
+      </div>
       <div className="divide-y divide-slate-700/50">
-        {typeOptions.length === 0 && (
-          <p className="px-4 py-3 text-slate-500 text-xs italic">No options configured.</p>
+        {activeOptions.length === 0 && (
+          <p className="px-4 py-3 text-slate-500 text-xs italic">No active options configured.</p>
         )}
-        {typeOptions.map(opt => (
+        {activeOptions.map(opt => (
           <div key={opt.id} className="px-4 py-3 flex items-center gap-3">
             {editId === opt.id ? (
               <>
@@ -77,15 +96,14 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
               </>
             ) : (
               <>
-                <span className={`flex-1 text-sm ${opt.active ? "text-white" : "text-slate-500 line-through"}`}>{opt.label}</span>
-                <Badge variant={opt.active ? "default" : "secondary"} className="text-[10px]">{opt.active ? "Active" : "Inactive"}</Badge>
+                <span className="flex-1 text-sm text-white">{opt.label}</span>
                 {!readOnly && (
                   <>
-                    <Button size="icon" variant="ghost" onClick={() => { setEditId(opt.id); setEditLabel(opt.label); }} className="h-7 w-7 text-slate-400">
+                    <Button size="icon" variant="ghost" title="Rename" onClick={() => { setEditId(opt.id); setEditLabel(opt.label); }} className="h-7 w-7 text-slate-400">
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => toggleActive(opt)} disabled={saving} className={`h-7 w-7 ${opt.active ? "text-amber-400" : "text-emerald-400"}`}>
-                      {opt.active ? <Archive className="w-3.5 h-3.5" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                    <Button size="icon" variant="ghost" title="Deactivate — hides this option from new attendance registrations; historical records keep the value" onClick={() => deactivateOption(opt)} disabled={saving} className="h-7 w-7 text-amber-400">
+                      <Archive className="w-3.5 h-3.5" />
                     </Button>
                   </>
                 )}
@@ -94,6 +112,32 @@ function OptionSection({ title, optionType, options, onRefresh, readOnly }) {
           </div>
         ))}
       </div>
+
+      {/* Archived / Inactive — collapsed, never mixed into the active list */}
+      {inactiveOptions.length > 0 && (
+        <div className="border-t border-slate-700/50">
+          <button onClick={() => setShowArchived(!showArchived)}
+            className="w-full px-4 py-2.5 flex items-center gap-2 text-slate-400 hover:text-white text-xs font-medium transition-colors">
+            {showArchived ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            Archived / Inactive ({inactiveOptions.length})
+          </button>
+          {showArchived && (
+            <div className="divide-y divide-slate-700/50 border-t border-slate-700/30">
+              {inactiveOptions.map(opt => (
+                <div key={opt.id} className="px-4 py-3 flex items-center gap-3 bg-slate-900/40">
+                  <span className="flex-1 text-sm text-slate-500">{opt.label}</span>
+                  <Badge variant="secondary" className="text-[10px]">Inactive</Badge>
+                  {!readOnly && (
+                    <Button size="icon" variant="ghost" title="Restore — return this option to active use" onClick={() => restoreOption(opt)} disabled={saving} className="h-7 w-7 text-emerald-400">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {!readOnly && (
         <div className="px-4 py-3 border-t border-slate-700 flex gap-2">
           <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="New option label…"
@@ -194,8 +238,9 @@ export default function AttendanceSettings() {
 
       <div className="bg-slate-800/40 rounded-xl border border-slate-700 p-4">
         <p className="text-slate-400 text-xs">
-          <strong className="text-slate-300">Deactivating</strong> an option hides it from new attendance registrations.
-          Historical records continue to display the value correctly.
+          <strong className="text-slate-300">Deactivating</strong> an option archives it — it disappears from new attendance
+          registrations, stays under Archived / Inactive, and can be restored at any time. Historical attendance records,
+          PDF and Excel exports always keep their original values.
         </p>
       </div>
     </div>

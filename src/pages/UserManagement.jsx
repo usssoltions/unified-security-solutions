@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PullToRefresh from "@/components/PullToRefresh";
 import UserForm from "../components/users/UserForm";
 import UserCard from "../components/users/UserCard";
-import { getRolesForTenant, ROLE_DESCRIPTIONS } from "@/lib/roleCatalog";
+import { getTenantUserManagementRoles, isAttendanceOnlyCustomer, ROLE_DESCRIPTIONS } from "@/lib/roleCatalog";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
 
@@ -52,18 +52,17 @@ export default function UserManagement() {
   const isPlatformAdmin = isPlatformAdminUser(currentUser);
   const customerType = customer?.customer_type;
 
-  // Module-aware role catalogue: the attendance_staff role is only offered
-  // when the customer's ATTENDANCE_REGISTER module licence is enabled.
+  // Module-entitlement role catalogue: the roles offered in this tenant's
+  // user management (filters, counters, Add/Edit role dropdowns) derive from
+  // the customer's ENABLED modules — never from a generic customer_type. An
+  // Attendance Register / SecureScan-only customer offers exactly Customer
+  // Administrator and Attendance Staff.
   const { data: entitlements = [] } = useModuleEntitlements(currentUser?.id, customerId);
   const enabledModuleKeys = (entitlements || [])
     .filter(e => e.enabled && (!e.status || e.status === "active"))
     .map(e => e.module_key);
-  // Tenant user management covers the tenant's administrative role too —
-  // Customer Administrator users are part of the tenant user list.
-  const roles = [
-    { value: "customer_admin", label: "Customer Administrator", color: "purple" },
-    ...getRolesForTenant(customerType, enabledModuleKeys),
-  ];
+  const attendanceOnly = isAttendanceOnlyCustomer(enabledModuleKeys);
+  const roles = getTenantUserManagementRoles(enabledModuleKeys, customerType);
 
   const deleteUserMutation = useMutation({
     mutationFn: async (userId) => {
@@ -122,7 +121,7 @@ export default function UserManagement() {
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-white">User Management</h1>
               <p className="text-slate-400">
-                {customerType === "medical" ? "Medical practice users" : "Security operations users"}
+                {attendanceOnly ? "Attendance Register users" : (customerType === "medical" ? "Medical practice users" : "Security operations users")}
               </p>
             </div>
           </div>
