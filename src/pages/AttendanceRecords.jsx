@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generateOfficialRegisterPdf, generateIndividualAttendancePdf, downloadBlob } from "@/lib/attendancePdf";
+import { generateOfficialRegisterExcel, attendanceRegisterFilename } from "@/lib/attendanceExcel";
 import { useBranding } from "@/hooks/useBranding";
 import { attendanceCall, withSignatures } from "@/lib/attendanceApi";
 import { dateRangeISO } from "@/lib/attendanceDropdowns";
@@ -31,6 +32,7 @@ export default function AttendanceRecords() {
   const [filterAssessment, setFilterAssessment] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [generatingExcel, setGeneratingExcel] = useState(false);
 
   const { data: ctx } = useQuery({
     queryKey: ["att_context"],
@@ -76,6 +78,19 @@ export default function AttendanceRecords() {
       downloadBlob(blob, `attendance_register_${range.from}_${range.to}.pdf`);
     } catch (e) { alert("PDF generation failed. Please try again."); }
     finally { setGeneratingPdf(false); }
+  };
+
+  // Official Excel export — the EXACT same filtered dataset and server-side
+  // tenant scoping as the Official PDF (one shared register dataset, fetched
+  // fresh through the attendanceAccess gateway at generation time).
+  const handleGenerateExcel = async () => {
+    setGeneratingExcel(true);
+    try {
+      const withSigs = await withSignatures(filtered);
+      const blob = await generateOfficialRegisterExcel(withSigs, branding, range.from, range.to);
+      downloadBlob(blob, attendanceRegisterFilename(range.from, range.to));
+    } catch (e) { alert("Excel generation failed. Please try again."); }
+    finally { setGeneratingExcel(false); }
   };
 
   const handleIndividualPdf = async (record) => {
@@ -189,13 +204,20 @@ export default function AttendanceRecords() {
       )}
 
       {/* Result count + actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-slate-400 text-sm">{filtered.length} record{filtered.length !== 1 ? "s" : ""}</span>
-        <Button onClick={handleGeneratePdf} disabled={filtered.length === 0 || generatingPdf} size="sm"
-          className="bg-sky-600 hover:bg-sky-700">
-          {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Download className="w-4 h-4 mr-1.5" />}
-          Official PDF
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleGeneratePdf} disabled={filtered.length === 0 || generatingPdf} size="sm"
+            className="bg-sky-600 hover:bg-sky-700">
+            {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Download className="w-4 h-4 mr-1.5" />}
+            Official PDF
+          </Button>
+          <Button onClick={handleGenerateExcel} disabled={filtered.length === 0 || generatingExcel} size="sm"
+            variant="outline" className="border-emerald-600 text-emerald-400 hover:bg-emerald-900/20">
+            {generatingExcel ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Download className="w-4 h-4 mr-1.5" />}
+            Official Excel
+          </Button>
+        </div>
       </div>
 
       {/* Records list */}

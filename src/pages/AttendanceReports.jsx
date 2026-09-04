@@ -6,7 +6,7 @@ import { Loader2, FileText, Download, Table, AlertCircle, ShieldAlert } from "lu
 import { Link } from "react-router-dom";
 import { useBranding } from "@/hooks/useBranding";
 import { generateOfficialRegisterPdf, downloadBlob } from "@/lib/attendancePdf";
-import { generateAttendanceExcel } from "@/lib/attendanceExcel";
+import { generateOfficialRegisterExcel, attendanceRegisterFilename } from "@/lib/attendanceExcel";
 import { attendanceCall, withSignatures } from "@/lib/attendanceApi";
 import { dateRangeISO } from "@/lib/attendanceDropdowns";
 
@@ -85,8 +85,11 @@ export default function AttendanceReports() {
   const handleExcel = async () => {
     setGeneratingXlsx(true); setXlsxError(null);
     try {
-      const blob = await generateAttendanceExcel(filtered);
-      downloadBlob(blob, `attendance_export_${range.from}_${range.to}.xlsx`);
+      // Same filtered dataset + fresh signatures as the Official PDF — one
+      // shared register dataset feeding both renderers.
+      const withSigs = await withSignatures(filtered);
+      const blob = await generateOfficialRegisterExcel(withSigs, branding, range.from, range.to);
+      downloadBlob(blob, attendanceRegisterFilename(range.from, range.to));
     } catch (e) {
       setXlsxError("Excel export failed. Please try again.");
     } finally { setGeneratingXlsx(false); }
