@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { Shield, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { PLATFORM_APP_NAME } from "@/lib/branding";
+import BrandedLoginForm from "@/components/branding/BrandedLoginForm";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
 /**
  * PreLoginBrandShell — the login/install surface. When the URL carries a
  * valid ?brand=<pwa_slug>, the PUBLIC PWA manifest endpoint is fetched
- * (unauthenticated, public-safe data only: app name, icon, theme colour)
- * and the card shows that customer's branding.
+ * (unauthenticated, public-safe data only: app name, icon, theme colour,
+ * background colour) and the card shows that customer's branding, including
+ * a customer-branded email/password login form powered by the OFFICIAL
+ * Base44 auth SDK.
  *
  * COSMETIC ONLY: the slug never grants tenant access. After login the
- * authenticated user's actual tenant branding and data scope win — the
+ * authenticated user's actual tenant scope, branding and data win — the
  * brand parameter is ignored for anything data-related.
  */
 export default function PreLoginBrandShell({ onSignIn }) {
@@ -43,7 +45,7 @@ export default function PreLoginBrandShell({ onSignIn }) {
       })
       .catch(() => {
         // A fetch failure must never trap the visitor on the spinner — fall
-        // back to the generic platform shell so Sign In still works.
+        // back to the generic platform shell so sign-in still works.
         if (alive) setBrand({ branded: false });
       });
     return () => { alive = false; };
@@ -61,11 +63,13 @@ export default function PreLoginBrandShell({ onSignIn }) {
 
   const branded = !!brand?.branded;
   const appName = branded ? brand.name : PLATFORM_APP_NAME;
-  const themeColor = branded && brand.theme ? brand.theme : "";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6">
-      <div className="text-center">
+    <div
+      className="min-h-screen flex items-center justify-center bg-slate-950 p-6"
+      style={branded && brand.background ? { backgroundColor: brand.background } : undefined}
+    >
+      <div className="w-full max-w-sm text-center">
         {branded && brand.icon ? (
           <div
             className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl overflow-hidden"
@@ -79,14 +83,8 @@ export default function PreLoginBrandShell({ onSignIn }) {
           </div>
         )}
         <h1 className="text-3xl font-bold text-white mb-2">{appName}</h1>
-        <p className="text-slate-400 mb-8">Workforce &amp; Operations Management</p>
-        <Button
-          onClick={onSignIn}
-          className="h-12 px-8 text-base shadow-lg"
-          style={themeColor ? { backgroundColor: themeColor } : undefined}
-        >
-          Sign In
-        </Button>
+        <p className="text-slate-400 mb-6">Workforce &amp; Operations Management</p>
+        <BrandedLoginForm brand={brand} onPlatformSignIn={onSignIn} />
         {branded && (
           <p className="text-slate-600 text-xs mt-4 max-w-xs mx-auto">
             Installed app branding — your own account's data and permissions apply after sign-in.
