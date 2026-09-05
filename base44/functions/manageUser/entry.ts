@@ -8,6 +8,8 @@ import { getAllowedRolesForModules } from '../../shared/tenantRoles.ts';
  *   - update:       edit allowed fields (display_name, phone, badge_number, etc.)
  *   - change_role:  change role_type (admin/management only)
  *   - deactivate:   soft-delete (sets role_type to 'inactive' equivalent)
+ *   - remove_access: tenant-access removal (customer/reseller admins) — scope+role
+ *                   cleared, pending invitations revoked, global User retained
  *   - delete:       hard delete (platform admin only)
  *
  * All actions are recorded in PlatformAuditLog. Frontend UI hiding is NOT sufficient —
@@ -45,7 +47,7 @@ export default async function(req: Request): Promise<Response> {
     }
 
     // Prevent self-deletion and self-role-change (security control)
-    if (target_user_id === caller.id && ['delete', 'change_role', 'deactivate'].includes(action)) {
+    if (target_user_id === caller.id && ['delete', 'change_role', 'deactivate', 'remove_access'].includes(action)) {
       return Response.json({ error: 'Cannot delete, deactivate, or change own role' }, { status: 403 });
     }
 
@@ -158,6 +160,56 @@ export default async function(req: Request): Promise<Response> {
         });
         await auditLog('user.deactivated', 'deactivate', null, null,
           `User ${targetUser.email} deactivated by ${caller.display_name || caller.full_name}`);
+        break;
+      }
+
+      case 'remove_access': {
+        // Tenant-access removal for Customer / Reseller administrators.
+        // The global Base44 User object is RETAINED (the platform's
+        // authentication requires it) — what is removed is the target's
+        // access to THIS tenant: customer/reseller scope, role and module
+        // context, plus any pending invitation for the same tenant. Worker /
+        // patient profiles, attendance records and signatures are NEVER
+        // touched by this action. Last-admin protection: a customer may
+        // never be left with zero Customer Administrators.
+        const tenantAdminRoles = ['customer_admin', 'practice_admin', 'estate_manager'];
+        const isTenantAdminTarget = tenantAdminRoles.includes(targetUser.role_type) || targetUser.admin_level === 'customer';
+        if (!isPlatformAdmin && isTenantAdminTarget) {
+          const tenantUsers = await base44.asServiceRole.entities.User
+            .filter({ customer_id: caller.customer_id }, '-created_date', 500);
+          const adminCount = (tenantUsers || []).filter((u) =>
+            tenantAdminRoles.includes(u.role_type) || u.admin_level === 'customer').length;
+          if (adminCount <= 1) {
+            return Response.json({
+              error: 'At least one Customer Administrator must remain active. Create or assign another Customer Administrator before removing this account.'
+            }, { status: 403 });
+          }
+        }
+        const removedScopes = {
+          customer_id: targetUser.customer_id,
+          reseller_id: targetUser.reseller_id,
+          role_type: targetUser.role_type,
+          module_context: targetUser.module_context,
+          employer_id: targetUser.employer_id,
+        };
+        result = await base44.asServiceRole.entities.User.update(target_user_id, {
+          customer_id: null, reseller_id: null, role_type: null,
+          module_context: null, employer_id: null,
+        });
+        // Revoke pending invitations for the same tenant (same email)
+        const pendingQuery = caller.customer_id
+          ? { email: targetUser.email, customer_id: caller.customer_id, status: 'pending' }
+          : { email: targetUser.email, reseller_id: caller.reseller_id, status: 'pending' };
+        const pending = await base44.asServiceRole.entities.PendingTenantScope
+          .filter(pendingQuery).catch(() => []);
+        for (const p of (pending || [])) {
+          await base44.asServiceRole.entities.PendingTenantScope.update(p.id, {
+            status: 'expired',
+            notes: `Invitation revoked — tenant access removed by ${caller.display_name || caller.full_name}`,
+          }).catch(() => null);
+        }
+        await auditLog('user.access_removed', 'remove_access', removedScopes, null,
+          `Tenant access removed for ${targetUser.email} by ${caller.display_name || caller.full_name}. Revoked pending invitations: ${(pending || []).length}.`);
         break;
       }
 

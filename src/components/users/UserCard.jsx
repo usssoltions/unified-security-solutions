@@ -102,18 +102,18 @@ export default function UserCard({ user, onEdit, onDelete }) {
           <Button
             onClick={() => onEdit(user)}
             size="sm"
-            className={`flex-1 ${!user.role_type ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-transparent border border-slate-600 text-slate-300 hover:bg-slate-700"}`}
+            className={`flex-1 h-11 ${!user.role_type ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-transparent border border-slate-600 text-slate-300 hover:bg-slate-700"}`}
           >
             <Edit className="w-4 h-4 mr-1" />
             {!user.role_type ? "Set Role" : "Edit"}
           </Button>
           <Button
-            onClick={() => onDelete(user.id)}
+            onClick={() => onDelete(user)}
             size="sm"
             variant="outline"
-            className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
+            className="flex-1 h-11 border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-4 h-4 mr-1" /> Remove
           </Button>
         </div>
       </CardContent>

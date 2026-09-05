@@ -77,6 +77,9 @@ export default async function main(req: Request): Promise<Response> {
   const canWrite = isPlatformAdmin || isResellerAdmin || isCustomerAdmin || isAttendanceStaff;
   // Attendance staff may register attendance but NEVER manage dropdown options.
   const canManageOptions = canWrite && !isAttendanceStaff;
+  // Worker/Patient profile MANAGEMENT (archive / restore / permanent delete)
+  // — admins and above only, NEVER attendance staff.
+  const canManageWorkers = canWrite && !isAttendanceStaff;
 
   // ── Tenant scope resolution ────────────────────────────────────────────────
   let scope;
@@ -146,6 +149,20 @@ export default async function main(req: Request): Promise<Response> {
     return null;
   };
 
+  // Security-sensitive management actions are recorded in PlatformAuditLog.
+  const writeAudit = (event_type: string, entity_id: string, action: string, notes: string, worker: any = null) =>
+    base44.asServiceRole.entities.PlatformAuditLog.create({
+      event_type,
+      user_id: caller.id,
+      user_name: callerName,
+      customer_id: worker?.customer_id || scope.customer_id || null,
+      reseller_id: worker?.reseller_id || scope.reseller_id || null,
+      entity_name: 'AttendanceWorker',
+      entity_id,
+      action,
+      notes,
+    }).catch(() => null);
+
   // ── Idempotent seeding of the fixed official options (per customer) ───────
   const seedDefaults = async (): Promise<void> => {
     if (!scope.customer_id) return;
@@ -176,6 +193,7 @@ export default async function main(req: Request): Promise<Response> {
           is_platform_admin: isPlatformAdmin,
           can_register: authorized,
           can_manage_options: authorized && canManageOptions,
+          can_manage_workers: authorized && canManageWorkers,
         });
       }
 
@@ -263,6 +281,9 @@ export default async function main(req: Request): Promise<Response> {
         if (denied) return denied;
         if (!params.id_number) return Response.json({ worker: null });
         const q = { ...scopeQuery(), id_number: String(params.id_number).trim() };
+        // Archived profiles are excluded from new-attendance lookup unless
+        // explicitly requested.
+        if (!params.include_archived) q.status = 'active';
         const found = await base44.asServiceRole.entities.AttendanceWorker.filter(q, '-created_date', 5);
         return Response.json({ worker: found && found.length > 0 ? found[0] : null });
       }
@@ -377,6 +398,69 @@ export default async function main(req: Request): Promise<Response> {
         return Response.json({ success: true, worker: { ...worker, ...updates } });
       }
 
+      // ── Worker / Patient lifecycle management (admins only, never staff) ──
+      // Archive / Restore / Permanent Delete. Tenant scope is enforced from
+      // the caller's resolved scope — a client-supplied id from another
+      // tenant fails closed with 404.
+      case 'archive_worker':
+      case 'restore_worker':
+      case 'delete_worker': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!canManageWorkers) return err('Only authorized admins may manage worker / patient profiles.', 403);
+        if (!params.worker_id) return err('A worker id is required.');
+
+        const worker = await base44.asServiceRole.entities.AttendanceWorker.get(params.worker_id).catch(() => null);
+        if (!worker) return err('Worker not found in your scope.', 404);
+        const inScope = scope.customer_id
+          ? worker.customer_id === scope.customer_id
+          : scope.reseller_id ? worker.reseller_id === scope.reseller_id : true;
+        if (!inScope) return err('Worker not found in your scope.', 404);
+
+        // Inspect ALL references before any destructive action. Attendance
+        // records (each with its own per-visit signature) are the only
+        // dependent records; ID-document images belong to the profile itself.
+        const recs = await base44.asServiceRole.entities.AttendanceRecord
+          .filter({ worker_id: worker.id }, '-attendance_date', 3000)
+          .catch(() => []);
+
+        if (action === 'archive_worker') {
+          if (worker.status === 'inactive') return err('This profile is already archived.');
+          await base44.asServiceRole.entities.AttendanceWorker.update(worker.id, {
+            status: 'inactive', updated_by_name: callerName,
+          });
+          await writeAudit('worker.archived', worker.id, 'archive',
+            `Archived worker/patient ${worker.id_number} — ${recs.length} attendance records remain intact.`, worker);
+          return Response.json({ success: true });
+        }
+
+        if (action === 'restore_worker') {
+          if (worker.status !== 'inactive') return err('This profile is not archived.');
+          await base44.asServiceRole.entities.AttendanceWorker.update(worker.id, {
+            status: 'active', updated_by_name: callerName,
+          });
+          await writeAudit('worker.restored', worker.id, 'restore',
+            `Restored worker/patient ${worker.id_number} to active.`, worker);
+          return Response.json({ success: true });
+        }
+
+        // Permanent delete — removes the profile record together with its
+        // ID-document image references. Attendance records are SELF-CONTAINED
+        // (each keeps its own surname/initials/ID/company/job/medical centre/
+        // assessment/signature snapshots), so historical registers, PDF/Excel
+        // exports and signatures are unaffected by the profile's removal.
+        // Guard: a profile WITH history may only be permanently deleted from
+        // the ARCHIVED management flow (archive first, then delete) — never
+        // straight from the active list.
+        if (recs.length > 0 && worker.status !== 'inactive') {
+          return err('This profile has historical attendance records. Archive it first — the attendance history and reports will remain unchanged.', 409);
+        }
+        await base44.asServiceRole.entities.AttendanceWorker.delete(worker.id);
+        await writeAudit('worker.deleted', worker.id, 'delete',
+          `Permanently deleted worker/patient ${worker.id_number} — ${recs.length} historical attendance records remain intact.`, worker);
+        return Response.json({ success: true, attendance_records_kept: recs.length });
+      }
+
       // ── Register one attendance (worker upsert + record, one transaction) ────
       case 'register_attendance': {
         const denied = requireAuthorized();
@@ -401,6 +485,7 @@ export default async function main(req: Request): Promise<Response> {
           worker = await base44.asServiceRole.entities.AttendanceWorker.get(params.existing_worker_id).catch(() => null);
           if (!worker || worker.customer_id !== scope.customer_id) return err('Worker not found in your scope.', 404);
           const updates: Record<string, any> = {};
+          if (worker.status === 'inactive') updates.status = 'active';
           const wu = params.worker_updates || {};
           if (wu.company !== undefined && wu.company !== worker.company) updates.company = wu.company;
           if (wu.job_description !== undefined && wu.job_description !== worker.job_description) updates.job_description = wu.job_description;
@@ -431,6 +516,14 @@ export default async function main(req: Request): Promise<Response> {
             .filter({ customer_id: scope.customer_id, id_number: idNumber }, '-created_date', 5);
           if (dupe && dupe.length > 0) {
             worker = dupe[0];
+            // An archived profile attending again is restored to active —
+            // archived profiles are excluded from lookup, so a reuse here
+            // means the person is present in person again.
+            if (worker.status === 'inactive') {
+              await base44.asServiceRole.entities.AttendanceWorker.update(worker.id, {
+                status: 'active', updated_by_name: callerName,
+              });
+            }
           } else {
             const ts = rec.attendance_timestamp || new Date().toISOString();
             worker = await base44.asServiceRole.entities.AttendanceWorker.create({

@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, Search, Download, Loader2, User,
-  Calendar, ChevronDown, ChevronUp, ShieldAlert, UserPlus, Pencil
+  Calendar, ChevronDown, ChevronUp, ShieldAlert, UserPlus, Pencil,
+  Archive, ArchiveRestore, Trash2
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import AddWorkerFlow from "@/components/attendance/AddWorkerFlow";
@@ -19,6 +20,7 @@ export default function AttendanceWorkers() {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(null);
   const [flow, setFlow] = useState(null); // null | { mode: "create" } | { mode: "edit", worker }
+  const [showArchived, setShowArchived] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -61,12 +63,35 @@ export default function AttendanceWorkers() {
     return m;
   }, [allRecords]);
 
-  const filtered = workers.filter(w => {
+  // Worker/Patient lifecycle management is admin-only (server-enforced via
+  // can_manage_workers; attendance_staff never receives these controls).
+  const canManageWorkers = !!ctx?.can_manage_workers;
+  const activeWorkers = workers.filter(w => (w.status || "active") !== "inactive");
+  const archivedWorkers = workers.filter(w => w.status === "inactive");
+
+  // Search + counts cover ACTIVE profiles only — archived profiles are
+  // deliberately excluded and appear only in the admin Archived section.
+  const filtered = activeWorkers.filter(w => {
     const q = search.toLowerCase();
     if (!q) return true;
     return [w.surname, w.initials, w.first_names, w.id_number, w.company, w.cellphone]
       .some(v => (v || "").toLowerCase().includes(q));
   });
+
+  const confirmDeleteText = (visitCount) => visitCount === 0
+    ? "Delete Worker / Patient permanently?\n\nThis profile has no attendance history and will be permanently removed. This action cannot be undone."
+    : "Delete Profile Permanently?\n\nThis profile has historical attendance records. The profile itself will be permanently removed, but all historical attendance records, signatures and reports remain intact — each attendance keeps its own captured snapshot. This action cannot be undone.";
+
+  const runManage = async (action, worker, confirmText, successTitle) => {
+    if (!window.confirm(confirmText)) return;
+    try {
+      await attendanceCall(action, { worker_id: worker.id });
+      queryClient.invalidateQueries({ queryKey: ["att_workers"] });
+      toast({ title: successTitle, description: `${formatDisplayName(worker)} · ${worker.id_number}` });
+    } catch (e) {
+      toast({ title: "Action failed", description: e?.message || "Please try again.", variant: "destructive" });
+    }
+  };
 
   const handleWorkerPdf = async (worker) => {
     try {
@@ -138,7 +163,7 @@ export default function AttendanceWorkers() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 px-4">
           <Users className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          {workers.length === 0 ? (
+          {activeWorkers.length === 0 && archivedWorkers.length === 0 ? (
             <>
               <p className="text-white font-semibold">No workers / patients registered yet.</p>
               <p className="text-slate-400 text-sm mt-1 mb-5">Register your first worker / patient to start capturing attendance.</p>
@@ -189,10 +214,29 @@ export default function AttendanceWorkers() {
                         <p className="text-slate-200">{formatDate(w.created_date)}</p>
                       </div>
                     </div>
-                    <Button variant="outline" onClick={() => setFlow({ mode: "edit", worker: w })}
-                      className="border-slate-600 text-slate-300 hover:bg-slate-700 h-11">
-                      <Pencil className="w-4 h-4 mr-1.5" /> Edit Details
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button variant="outline" onClick={() => setFlow({ mode: "edit", worker: w })}
+                        className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 h-11">
+                        <Pencil className="w-4 h-4 mr-1.5" /> Edit Details
+                      </Button>
+                      {canManageWorkers && (
+                        recs.length === 0 ? (
+                          <Button variant="ghost"
+                            onClick={() => runManage("delete_worker", w, confirmDeleteText(0), "Profile permanently deleted")}
+                            className="flex-1 h-11 bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20">
+                            <Trash2 className="w-4 h-4 mr-1.5" /> Delete Permanently
+                          </Button>
+                        ) : (
+                          <Button variant="ghost"
+                            onClick={() => runManage("archive_worker", w,
+                              "Archive Worker / Patient?\n\nThis person has historical attendance records. Their profile will be removed from active registration/search results, but historical attendance and reports will remain unchanged.",
+                              "Profile archived")}
+                            className="flex-1 h-11 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20">
+                            <Archive className="w-4 h-4 mr-1.5" /> Archive
+                          </Button>
+                        )
+                      )}
+                    </div>
 
                     {/* ID document */}
                     <div>
@@ -237,6 +281,50 @@ export default function AttendanceWorkers() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Archived profiles — Customer Administrator only. Historical records
+          remain viewable in Records/Reports; Restore or permanent delete. */}
+      {canManageWorkers && archivedWorkers.length > 0 && (
+        <div className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] overflow-hidden">
+          <button className="w-full px-4 py-3 flex items-center justify-between text-left"
+            onClick={() => setShowArchived(s => !s)}>
+            <span className="text-slate-300 text-sm font-semibold flex items-center gap-2">
+              <Archive className="w-4 h-4 text-amber-400" /> Archived Workers / Patients ({archivedWorkers.length})
+            </span>
+            {showArchived ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+          </button>
+          {showArchived && (
+            <div className="border-t border-slate-700 divide-y divide-slate-700">
+              {archivedWorkers.map(w => {
+                const recs = recordsByWorker[w.id] || [];
+                return (
+                  <div key={w.id} className="px-4 py-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-white text-sm font-medium">{formatDisplayName(w)}</p>
+                        <p className="text-slate-500 text-xs">{w.id_number} · {w.company || "—"} · {recs.length} visit{recs.length === 1 ? "" : "s"}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-400 shrink-0">Archived</Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="brand" className="flex-1 h-11"
+                        onClick={() => runManage("restore_worker", w,
+                          "Restore this Worker / Patient to the active registration list?",
+                          "Profile restored")}>
+                        <ArchiveRestore className="w-4 h-4 mr-1.5" /> Restore
+                      </Button>
+                      <Button variant="ghost" className="flex-1 h-11 bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20"
+                        onClick={() => runManage("delete_worker", w, confirmDeleteText(recs.length), "Profile permanently deleted")}>
+                        <Trash2 className="w-4 h-4 mr-1.5" /> Delete Permanently
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

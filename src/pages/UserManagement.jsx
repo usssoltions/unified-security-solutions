@@ -10,9 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PullToRefresh from "@/components/PullToRefresh";
 import UserForm from "../components/users/UserForm";
 import UserCard from "../components/users/UserCard";
-import { getTenantUserManagementRoles, isAttendanceOnlyCustomer, ROLE_DESCRIPTIONS } from "@/lib/roleCatalog";
+import { getTenantUserManagementRoles, isAttendanceOnlyCustomer, ROLE_DESCRIPTIONS, getRoleDisplay } from "@/lib/roleCatalog";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function UserManagement() {
   const queryClient = useQueryClient();
@@ -69,18 +70,46 @@ export default function UserManagement() {
   const attendanceOnly = isAttendanceOnlyCustomer(enabledModuleKeys);
   const roles = getTenantUserManagementRoles(enabledModuleKeys, customerType);
 
-  const deleteUserMutation = useMutation({
-    mutationFn: async (userId) => {
-      await base44.functions.invoke('manageUser', { action: 'delete', target_user_id: userId });
+  const { toast } = useToast();
+
+  // Tenant admins REMOVE ACCESS (scope/role cleared, global User retained —
+  // Base44 does not permit deleting the platform authentication User);
+  // platform admins may hard-delete. The server enforces tenant scope and
+  // last-admin protection; failures surface as toasts.
+  const removeUserMutation = useMutation({
+    mutationFn: async ({ user, action }) => {
+      const res = await base44.functions.invoke('manageUser', { action, target_user_id: user.id });
+      const d = res?.data !== undefined ? res.data : res;
+      if (d?.error) throw new Error(d.error);
+      return d;
     },
-    onSuccess: () => queryClient.invalidateQueries(["allUsers"]),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries(["allUsers"]);
+      toast({
+        title: vars.action === 'delete' ? 'User permanently deleted' : 'User access removed',
+        description: `${vars.user.full_name || vars.user.email} can no longer access this account.`,
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: 'Could not remove user',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    },
   });
 
   const handleEdit = (user) => { setEditingUser(user); setShowUserForm(true); };
-  const handleDelete = async (userId) => {
-    if (window.confirm("Are you sure you want to delete this user?")) {
-      await deleteUserMutation.mutateAsync(userId);
-    }
+  const handleRemove = (user) => {
+    const roleLabel = getRoleDisplay(user.role_type) || user.role_type || 'User';
+    const confirmMsg =
+      `Remove User Access?\n\n` +
+      `${user.full_name || user.display_name || user.email}\n` +
+      `${user.email}\n` +
+      `${roleLabel}\n\n` +
+      `This user will no longer be able to access this customer account. Attendance and worker records captured previously will remain intact.`;
+    if (!window.confirm(confirmMsg)) return;
+    removeUserMutation.mutate({ user, action: isPlatformAdmin ? 'delete' : 'remove_access' });
   };
 
   const filterUsers = (roleValue) => {
@@ -193,7 +222,7 @@ export default function UserManagement() {
                 <p className="text-slate-400 col-span-full text-center py-8">No users found</p>
               ) : (
                 filterUsers("all").map(u => (
-                  <UserCard key={u.id} user={u} onEdit={handleEdit} onDelete={handleDelete} />
+                  <UserCard key={u.id} user={u} onEdit={handleEdit} onDelete={handleRemove} />
                 ))
               )}
             </div>
@@ -206,7 +235,7 @@ export default function UserManagement() {
                   <p className="text-slate-400 col-span-full text-center py-8">No {r.label.toLowerCase()}s found</p>
                 ) : (
                   filterUsers(r.value).map(u => (
-                    <UserCard key={u.id} user={u} onEdit={handleEdit} onDelete={handleDelete} />
+                    <UserCard key={u.id} user={u} onEdit={handleEdit} onDelete={handleRemove} />
                   ))
                 )}
               </div>
