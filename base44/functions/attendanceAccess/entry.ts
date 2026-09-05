@@ -597,6 +597,40 @@ export default async function main(req: Request): Promise<Response> {
         return Response.json({ records: out });
       }
 
+      // ── Controlled attendance-record deletion (admins only, never staff) ──
+      // For legitimate cleanup (e.g. setup/test records before handover).
+      // Deletes ONLY the single selected AttendanceRecord — its inline
+      // signature (signature_data_url) is removed together with the record.
+      // Worker/patient profiles, users and all other records are untouched.
+      // One record per call; no bulk delete. Cross-tenant ids fail closed.
+      case 'delete_attendance_record': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!canManageWorkers) return err('Only authorized administrators may delete attendance records.', 403);
+        if (!params.record_id) return err('An attendance record id is required.');
+
+        const rec = await base44.asServiceRole.entities.AttendanceRecord.get(params.record_id).catch(() => null);
+        if (!rec) return err('Attendance record not found in your scope.', 404);
+        const inScope = scope.customer_id
+          ? rec.customer_id === scope.customer_id
+          : scope.reseller_id ? rec.reseller_id === scope.reseller_id : true;
+        if (!inScope) return err('Attendance record not found in your scope.', 404);
+
+        await base44.asServiceRole.entities.AttendanceRecord.delete(rec.id);
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'attendance.record_deleted',
+          user_id: caller.id,
+          user_name: callerName,
+          customer_id: rec.customer_id || scope.customer_id || null,
+          reseller_id: rec.reseller_id || scope.reseller_id || null,
+          entity_name: 'AttendanceRecord',
+          entity_id: rec.id,
+          action: 'delete',
+          notes: `Deleted attendance for ${rec.surname_snapshot || 'unknown'}${rec.initials_snapshot ? ', ' + rec.initials_snapshot : ''} (ID ${rec.id_number_snapshot || '—'}) on ${rec.attendance_date} ${rec.attendance_time} at ${rec.medical_centre || '—'} (${rec.assessment_type || '—'}). Signature removed with the record.`,
+        }).catch(() => null);
+        return Response.json({ success: true });
+      }
+
       case 'get_signatures': {
         const denied = requireAuthorized();
         if (denied) return denied;

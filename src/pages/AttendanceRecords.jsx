@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X
+  ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X, Trash2
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generateOfficialRegisterPdf, generateIndividualAttendancePdf, downloadBlob } from "@/lib/attendancePdf";
@@ -12,6 +12,7 @@ import { generateOfficialRegisterExcel, attendanceRegisterFilename } from "@/lib
 import { useBranding } from "@/hooks/useBranding";
 import { attendanceCall, withSignatures } from "@/lib/attendanceApi";
 import { dateRangeISO } from "@/lib/attendanceDropdowns";
+import { useToast } from "@/components/ui/use-toast";
 
 const PRESETS = [
   { label: "Today", key: "today" },
@@ -33,6 +34,9 @@ export default function AttendanceRecords() {
   const [showFilters, setShowFilters] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [generatingExcel, setGeneratingExcel] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: ctx } = useQuery({
     queryKey: ["att_context"],
@@ -99,6 +103,37 @@ export default function AttendanceRecords() {
       const blob = generateIndividualAttendancePdf(withSigs[0], {}, branding);
       downloadBlob(blob, `attendance_${record.id_number_snapshot}_${record.attendance_date}.pdf`);
     } catch (e) { alert("PDF generation failed."); }
+  };
+
+  // Controlled Customer-Admin deletion of a single attendance record
+  // (setup/test cleanup). Server-side: admin-only (403 for attendance
+  // staff), canonical-tenant scoped, deletes ONLY this record — its inline
+  // signature is removed with it; the worker profile is untouched.
+  const canDeleteRecords = !!ctx?.can_manage_workers;
+  const handleDeleteRecord = async (r) => {
+    const confirmMsg =
+      `Delete Attendance Record Permanently?\n\n` +
+      `${r.surname_snapshot || ""}${r.initials_snapshot ? ", " + r.initials_snapshot : ""}\n` +
+      `${formatDate(r.attendance_date)}\n` +
+      `${r.attendance_time || "—"}\n` +
+      `${r.medical_centre || "—"}\n` +
+      `${r.assessment_type || "—"}\n\n` +
+      `This attendance record and its captured signature will be permanently removed.\n\nThis action cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+    setDeletingId(r.id);
+    try {
+      await attendanceCall("delete_attendance_record", { record_id: r.id });
+      // Refresh every surface that counts/renders attendance: this Records
+      // page (all date ranges), Dashboard Today/This-Month counts, Reports
+      // and the Workers page attendance-history list.
+      queryClient.invalidateQueries({ queryKey: ["att_records"] });
+      queryClient.invalidateQueries({ queryKey: ["att_today"] });
+      queryClient.invalidateQueries({ queryKey: ["att_month_count"] });
+      queryClient.invalidateQueries({ queryKey: ["att_records_all"] });
+      toast({ title: "Attendance record deleted", description: `${r.surname_snapshot || ""} · ${formatDate(r.attendance_date)}` });
+    } catch (e) {
+      toast({ title: "Delete failed", description: e?.message || "Please try again.", variant: "destructive" });
+    } finally { setDeletingId(null); }
   };
 
   const formatDate = (d) => {
@@ -250,8 +285,18 @@ export default function AttendanceRecords() {
                 {r.medical_centre && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-link)]">{r.medical_centre}</Badge>}
                 {r.assessment_type && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-accent)]">{r.assessment_type}</Badge>}
               </div>
-              <div className="flex justify-end">
-                <Button size="sm" variant="ghost" onClick={() => handleIndividualPdf(r)} className="text-slate-400 text-xs h-10 px-3">
+              <div className="flex justify-end gap-2">
+                {canDeleteRecords && (
+                  <Button size="sm" variant="ghost" disabled={deletingId === r.id}
+                    onClick={() => handleDeleteRecord(r)}
+                    className="text-rose-400 text-xs h-11 px-3 hover:bg-rose-500/10">
+                    {deletingId === r.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                      : <Trash2 className="w-3.5 h-3.5 mr-1" />}
+                    Delete Record
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => handleIndividualPdf(r)} className="text-slate-400 text-xs h-11 px-3">
                   <Download className="w-3 h-3 mr-1" /> PDF
                 </Button>
               </div>
