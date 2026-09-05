@@ -47,6 +47,10 @@
             href = '/functions/getPwaManifest?slug=' + encodeURIComponent(slug);
           }
         } catch (e) {}
+        // Only ONE manifest link may exist for the page — any leftover
+        // generic /manifest.json link would let Chrome pick the wrong one.
+        var old = document.querySelectorAll('link[rel="manifest"]');
+        for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
         var link = document.createElement('link');
         link.rel = 'manifest';
         link.href = href;

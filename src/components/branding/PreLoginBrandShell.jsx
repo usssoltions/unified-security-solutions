@@ -32,6 +32,7 @@ export default function PreLoginBrandShell({ onSignIn }) {
         // Only treat as branded when the endpoint actually resolved this
         // slug (unknown/inactive slugs return the generic platform manifest).
         const branded = m.start_url === `/?brand=${slug}`;
+        if (branded) document.title = m.name;
         setBrand({
           branded,
           name: branded ? m.name : PLATFORM_APP_NAME,
@@ -40,7 +41,11 @@ export default function PreLoginBrandShell({ onSignIn }) {
           background: m.background_color,
         });
       })
-      .catch(() => {});
+      .catch(() => {
+        // A fetch failure must never trap the visitor on the spinner — fall
+        // back to the generic platform shell so Sign In still works.
+        if (alive) setBrand({ branded: false });
+      });
     return () => { alive = false; };
   }, [slug]);
 

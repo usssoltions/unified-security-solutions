@@ -46,6 +46,7 @@ import AttendanceReports from './pages/AttendanceReports';
 import AttendanceSettings from './pages/AttendanceSettings';
 import ProtectedPage from '@/components/ProtectedPage';
 import RoleHomeRedirect from '@/components/RoleHomeRedirect';
+import PreLoginBrandShell from '@/components/branding/PreLoginBrandShell';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -76,6 +77,20 @@ const AuthenticatedApp = () => {
       // resolved. No unscoped app access, no platform/customer fallback.
       return <OnboardingFailed message={authError.message} />;
     } else if (authError.type === 'auth_required') {
+      // Customer-branded route (?brand=<pwa_slug>): STAY on the branded
+      // document — show the public-safe branded pre-login shell instead of
+      // bouncing straight to the platform login page. The visitor installs
+      // the PWA from the customer-branded page, so Chrome's install prompt
+      // uses the CUSTOMER manifest (this was why ?brand=sauerman previously
+      // installed as "USS Platform": the auto-redirect moved the visitor to
+      // unbranded documents before Chrome evaluated installability).
+      // Sign In leads to the platform login with the full branded URL
+      // (incl. ?brand) preserved as the return URL. Unbranded routes keep
+      // the automatic login redirect.
+      const slugMatch = /[?&]brand=([a-z0-9-]+)/i.exec(window.location.search);
+      if (slugMatch && /^[a-z0-9][a-z0-9-]{1,30}$/.test(slugMatch[1].toLowerCase())) {
+        return <PreLoginBrandShell onSignIn={navigateToLogin} />;
+      }
       // Redirect to login automatically
       navigateToLogin();
       return null;
