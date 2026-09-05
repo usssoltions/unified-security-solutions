@@ -1,15 +1,23 @@
 /**
  * DocumentCamera — guided live capture for physical ID document photos.
  *
- * • Rear (environment) camera by default; continuous autofocus where
- *   supported; tap-to-focus; short focus-settle before capture is enabled.
- * • A document alignment guide (ID-1 landscape card / portrait page) overlays
- *   the preview with the instruction to fill the guide with the document.
- * • On capture the image is TRULY cropped from the ORIGINAL camera-resolution
- *   frame to the guide area before anything is saved — the full camera frame
- *   (table/bed/hands/background) is never stored or uploaded.
- * • Shows the CROPPED preview with Use Photo / Retake.
- * • Gallery fallback (same guided crop) if the camera is unavailable.
+ * ROBUST CAMERA INIT SEQUENCE (fixes the black-preview bug):
+ *   1. Progressive getUserMedia constraint fallback (advanced → environment → any).
+ *   2. The <video> element is MOUNTED during "starting" and "live" phases —
+ *      the stream is attached to a real element, never to a null ref.
+ *   3. Wait for loadedmetadata → play() → readyState >= 2 with non-zero
+ *      videoWidth/videoHeight — only then is the camera marked READY and
+ *      Capture Photo enabled.
+ *   4. Autofocus capabilities are applied only AFTER the preview is live and
+ *      only if the device reports them (getCapabilities) — unsupported focus
+ *      can never break the preview.
+ *   5. Stream tracks are stopped ONLY on final unmount / leaving the live
+ *      camera — never by ordinary re-renders.
+ *
+ * On capture the image is TRULY cropped from the ORIGINAL camera-resolution
+ * frame to the guide area before anything is saved. The darkened surround
+ * darkens only OUTSIDE the guide (a box-shadow ring) — the guide interior is
+ * fully transparent to the live video.
  *
  * Physical document PHOTO subsystem only — Barkoder/SecureScan is untouched.
  */
@@ -20,11 +28,20 @@ import {
 } from "lucide-react";
 import { guideForIdType, visibleSourceRect, cropToGuide, captureWarnings } from "@/lib/documentPhoto";
 
+// Progressive camera constraints — never fail because an advanced
+// resolution/facing combination is unsupported on a device.
+const CAMERA_CONSTRAINTS = [
+  { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
+  { video: { facingMode: "environment" }, audio: false },
+  { video: true, audio: false },
+];
+
 export default function DocumentCamera({ title, idType = "sa_id", onUse, onCancel }) {
   const [phase, setPhase] = useState("starting"); // starting | live | still | preview | denied
   const [errorMsg, setErrorMsg] = useState(null);
   const [warnings, setWarnings] = useState([]);
-  const [focusSettling, setFocusSettling] = useState(true);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [statusLine, setStatusLine] = useState(null);
   const [guideStyle, setGuideStyle] = useState({});
   const [stillUrl, setStillUrl] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -37,6 +54,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
   const guideRef = useRef(null);
   const streamRef = useRef(null);
   const objectUrlRef = useRef(null);
+  const cancelledRef = useRef(false);
 
   const guide = guideForIdType(idType);
 
@@ -47,49 +65,98 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     }
   };
 
-  // Start the rear camera with the highest practical resolution
+  /**
+   * Attach the stream to the (mounted) video element and wait until REAL
+   * video frames are available: loadedmetadata → play() → readyState >= 2
+   * with non-zero videoWidth/videoHeight.
+   */
+  const attachAndWaitForFrames = async (stream) => {
+    const video = videoRef.current;
+    if (!video) return false;
+    video.srcObject = stream;
+    if (video.readyState < 1) {
+      await new Promise((resolve) => {
+        const done = () => {
+          video.removeEventListener("loadedmetadata", done);
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(done, 5000);
+        video.addEventListener("loadedmetadata", done);
+      });
+    }
+    try { await video.play(); } catch (_) {}
+    for (let i = 0; i < 80; i++) {
+      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) return true;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
+  };
+
   const startCamera = async () => {
+    cancelledRef.current = false;
     setPhase("starting");
     setErrorMsg(null);
     setWarnings([]);
-    setFocusSettling(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1440 },
-        },
-        audio: false,
-      });
-      streamRef.current = stream;
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        await video.play().catch(() => {});
-      }
-      // Continuous autofocus where supported (harmless if unsupported)
-      const track = stream.getVideoTracks()[0];
-      if (track) {
-        try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (_) {}
-      }
-      setRetakeSource("camera");
-      setPhase("live");
-      // Short focus-settle period — capture is disabled while the camera focuses
-      setTimeout(() => setFocusSettling(false), 900);
-    } catch (e) {
+    setStatusLine(null);
+    setCameraReady(false);
+
+    // 1) Request the stream with progressive constraint fallback
+    let stream = null;
+    let lastErr = null;
+    for (const constraints of CAMERA_CONSTRAINTS) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (e) { lastErr = e; }
+    }
+    if (cancelledRef.current) {
+      stream?.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    if (!stream) {
       setPhase("denied");
       setErrorMsg(
-        e?.name === "NotAllowedError"
+        lastErr?.name === "NotAllowedError"
           ? "Camera permission was denied. Allow camera access in your browser/app settings, or choose an existing photo below."
-          : "The camera is unavailable on this device. You can retry, or choose an existing photo below."
+          : "The camera could not be opened on this device. You can retry, or choose an existing photo below."
       );
+      return;
+    }
+    streamRef.current = stream;
+    // "live" mounts the <video> element (if not already mounted) and shows the guide
+    setPhase("live");
+
+    // 2) Attach + wait until real frames are flowing
+    const framesReady = await attachAndWaitForFrames(stream);
+    if (cancelledRef.current) { stopStream(); return; }
+
+    // 3) Focus capabilities only AFTER the preview is live, only if supported
+    const track = stream.getVideoTracks()[0];
+    try {
+      const caps = track?.getCapabilities?.();
+      if (caps?.focusMode?.includes?.("continuous")) {
+        await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+      }
+    } catch (_) {}
+    if (cancelledRef.current) { stopStream(); return; }
+
+    // 4) Ready gate — Capture Photo stays disabled until this is true
+    if (framesReady) {
+      setCameraReady(true);
+    } else {
+      stopStream();
+      setPhase("denied");
+      setErrorMsg("The camera opened but no video image is available. Close any other app using the camera and try again.");
     }
   };
 
+  // Start once on mount; stop tracks ONLY on final unmount. Ordinary
+  // re-renders never touch the stream.
   useEffect(() => {
     startCamera();
     return () => {
+      cancelledRef.current = true;
       stopStream();
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
@@ -111,7 +178,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
         if (gh > ch * 0.58) { gh = ch * 0.58; gw = gh * guide.aspect; }
       } else {
         gh = ch * 0.62;
-        gw = gh / guide.aspect;
+        gw = gh * guide.aspect;
         if (gw > cw * 0.86) { gw = cw * 0.86; gh = gw / guide.aspect; }
       }
       setGuideStyle({
@@ -127,24 +194,27 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     return () => ro.disconnect();
   }, [phase, guide]);
 
-  // Tap-to-focus (where the device/browser permits it)
+  // Tap-to-focus — only when the camera is READY and the device supports it
   const tapToFocus = async (e) => {
-    if (phase !== "live" || !streamRef.current) return;
+    if (phase !== "live" || !cameraReady || !streamRef.current) return;
     const track = streamRef.current.getVideoTracks()[0];
     const video = videoRef.current;
     if (!track || !video) return;
-    const r = video.getBoundingClientRect();
-    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-    setFocusSettling(true);
-    try { await track.applyConstraints({ advanced: [{ focusMode: "single-shot", pointsOfInterest: [x, y] }] }); } catch (_) {}
-    setTimeout(() => setFocusSettling(false), 700);
+    try {
+      const caps = track.getCapabilities?.();
+      if (!caps?.focusMode?.includes?.("single-shot")) return;
+      const r = video.getBoundingClientRect();
+      const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+      setStatusLine("Focusing…");
+      await track.applyConstraints({ advanced: [{ focusMode: "single-shot", pointsOfInterest: [x, y] }] });
+      setTimeout(() => setStatusLine(null), 800);
+    } catch (_) {}
   };
 
   const setPreviewFromCrop = (crop) => {
     if (!crop) {
-      setErrorMsg("Capture failed — please retake.");
-      setPhase("denied");
+      setStatusLine("Capture failed — please try again.");
       return;
     }
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -152,14 +222,20 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     setPreviewUrl(objectUrlRef.current);
     setPreviewFile(crop.file);
     setWarnings(captureWarnings(crop));
-    stopStream();
+    stopStream(); // leaving the live camera after a successful capture
     setPhase("preview");
   };
 
-  // Capture from the LIVE video frame (object-fit: cover mapping)
+  // Capture from the LIVE video frame — guarded: no capture unless real
+  // frames are actually available.
   const grabFrame = async () => {
     const video = videoRef.current, container = containerRef.current, guideEl = guideRef.current;
-    if (!video || !container || !guideEl || !video.videoWidth) return;
+    if (!video || !video.videoWidth || video.readyState < 2) {
+      setStatusLine("Camera is not ready yet. Please wait.");
+      setTimeout(() => setStatusLine(null), 2500);
+      return;
+    }
+    if (!container || !guideEl) return;
     const rect = visibleSourceRect({
       mediaW: video.videoWidth, mediaH: video.videoHeight,
       cw: container.clientWidth, ch: container.clientHeight,
@@ -218,18 +294,39 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
           onClick={phase === "live" ? tapToFocus : undefined}
           className="relative w-full h-[56vh] max-h-[520px] bg-black rounded-xl overflow-hidden"
         >
-          {phase === "live" ? (
-            <video ref={videoRef} playsInline muted autoPlay className="absolute inset-0 w-full h-full object-cover" />
-          ) : phase === "still" ? (
+          {phase === "still" ? (
             <img ref={stillImgRef} src={stillUrl} alt="Document" className="absolute inset-0 w-full h-full object-contain" />
           ) : (
+            <video ref={videoRef} playsInline muted autoPlay className="absolute inset-0 w-full h-full object-cover" />
+          )}
+
+          {/* Initialising overlay — removed the moment the live phase begins
+              (frames verified separately before CAMERA READY). */}
+          {phase === "starting" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
-              <p className="text-slate-400 text-sm">Starting camera…</p>
+              <Loader2 className="w-8 h-8 text-slate-300 animate-spin" />
+              <p className="text-slate-300 text-sm">INITIALISING CAMERA…</p>
             </div>
           )}
 
-          {/* Document alignment guide — darkened surround + frame */}
+          {/* Camera status chip */}
+          {phase === "live" && (
+            <div className={`absolute top-2 left-1/2 -translate-x-1/2 text-xs px-3 py-1 rounded-full flex items-center gap-1.5 z-10 ${cameraReady ? "bg-emerald-600/85 text-white" : "bg-slate-900/85 text-slate-200"}`}>
+              {cameraReady
+                ? <><CheckCircle2 className="w-3 h-3" /> CAMERA READY</>
+                : <><Loader2 className="w-3 h-3 animate-spin" /> STARTING CAMERA…</>}
+            </div>
+          )}
+
+          {statusLine && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-slate-900/90 text-slate-200 text-xs px-3 py-1.5 rounded-full z-10">
+              {statusLine}
+            </div>
+          )}
+
+          {/* Document alignment guide — the darkened surround is a box-shadow
+              RING outside the frame only; the guide interior is fully
+              transparent to the live video underneath. */}
           {guideStyle.width != null && (
             <>
               <div
@@ -255,19 +352,16 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
               </p>
             </>
           )}
-
-          {phase === "live" && focusSettling && (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-slate-900/80 text-slate-200 text-xs px-3 py-1 rounded-full flex items-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin" /> Focusing…
-            </div>
-          )}
         </div>
       )}
 
       {phase === "denied" && (
         <div className="space-y-3">
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2 text-amber-300 text-sm">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {errorMsg}
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1">
+            <p className="text-amber-300 text-sm font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4" /> CAMERA UNAVAILABLE
+            </p>
+            <p className="text-amber-300/90 text-sm">{errorMsg}</p>
           </div>
           <Button onClick={startCamera} variant="brand" className="w-full h-12">
             <Camera className="w-4 h-4 mr-2" /> Retry Camera
@@ -282,10 +376,10 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       )}
 
       {phase === "live" && (
-        <Button onClick={grabFrame} disabled={focusSettling} variant="brand" className="w-full h-12">
-          {focusSettling
-            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Focusing…</>
-            : <><Camera className="w-4 h-4 mr-2" /> Capture Photo</>}
+        <Button onClick={grabFrame} disabled={!cameraReady} variant="brand" className="w-full h-12">
+          {cameraReady
+            ? <><Camera className="w-4 h-4 mr-2" /> Capture Photo</>
+            : <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Starting camera…</>}
         </Button>
       )}
 
