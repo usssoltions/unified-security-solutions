@@ -17,7 +17,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  * Customer admins / staff do NOT get branding edit rights — they inherit.
  *
  * Allowlist: app_name, logo_url, primary_color, accent_color, email, phone,
- * website, address. Every other submitted field (status, ownership, tenant
+ * website, address + PWA install fields (pwa_app_name, pwa_short_name,
+ * pwa_background_color, pwa_icon_192_url, pwa_icon_512_url; pwa_slug is
+ * validated separately — unique + immutable once assigned). Every other
+ * submitted field (status, ownership, tenant
  * ids, reseller_id, licensing, …) is silently rejected. The client-supplied
  * customer_id only names the target — it is never trusted as authorization.
  */
@@ -32,7 +35,16 @@ const ALLOWED_FIELDS = [
   'phone',
   'website',
   'address',
+  'pwa_app_name',
+  'pwa_short_name',
+  'pwa_background_color',
+  'pwa_icon_192_url',
+  'pwa_icon_512_url',
 ] as const;
+
+// Public PWA install slug: lowercase, URL-safe. Uniqueness and immutability
+// are validated server-side below (pwa_slug is NOT in ALLOWED_FIELDS).
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
@@ -103,6 +115,36 @@ export default async function(req: Request): Promise<Response> {
     if ('logo_background' in update && update.logo_background && !['auto', 'white', 'transparent'].includes(update.logo_background)) {
       return Response.json({ error: 'Invalid logo_background' }, { status: 400 });
     }
+    if ('pwa_background_color' in update && update.pwa_background_color && !HEX_RE.test(update.pwa_background_color)) {
+      return Response.json({ error: 'Invalid PWA background colour (must be #rrggbb)' }, { status: 400 });
+    }
+
+    // PWA install slug — public identifier baked into installed PWAs
+    // (manifest id/start_url). Immutable once assigned, globally unique,
+    // validated here. COSMETIC ONLY: it never grants tenant access.
+    if ('pwa_slug' in submitted) {
+      const newSlug = String(submitted.pwa_slug || '').toLowerCase().trim();
+      const existingSlug = String(customer.pwa_slug || '').toLowerCase().trim();
+      if (newSlug) {
+        if (!SLUG_RE.test(newSlug)) {
+          return Response.json({ error: 'PWA Slug must be lowercase letters, numbers and hyphens (2-31 characters, no spaces)' }, { status: 400 });
+        }
+        if (existingSlug && newSlug !== existingSlug) {
+          return Response.json({ error: 'PWA Slug is immutable once assigned — it is baked into installed apps and cannot be changed.' }, { status: 400 });
+        }
+        if (newSlug !== existingSlug) {
+          const dupes = await base44.asServiceRole.entities.Customer
+            .filter({ pwa_slug: newSlug }, 'created_date', 10)
+            .catch(() => []);
+          if ((dupes || []).some((c: any) => c.id !== customerId)) {
+            return Response.json({ error: `PWA Slug "${newSlug}" is already used by another customer` }, { status: 400 });
+          }
+          update.pwa_slug = newSlug;
+        }
+      } else if (existingSlug) {
+        return Response.json({ error: 'PWA Slug cannot be cleared once assigned — it is baked into installed apps.' }, { status: 400 });
+      }
+    }
 
     if (Object.keys(update).length === 0) {
       return Response.json({ success: true, customer, unchanged: true });
@@ -111,6 +153,7 @@ export default async function(req: Request): Promise<Response> {
     // Capture the previous branding values for the audit trail.
     const oldValues: any = {};
     for (const k of ALLOWED_FIELDS) oldValues[k] = customer[k] ?? null;
+    oldValues.pwa_slug = customer.pwa_slug ?? null;
 
     const updated: any = await base44.asServiceRole.entities.Customer.update(customerId, update);
 

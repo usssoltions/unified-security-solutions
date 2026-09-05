@@ -1,19 +1,12 @@
 {
   "id": "/",
-  "name": "SecureGuard — Security Management",
-  "short_name": "SecureGuard",
-  "description": "Professional security guard management platform for scheduling, incident reporting, patrol tracking, and compliance monitoring.",
-  "lang": "en",
-  "dir": "ltr",
+  "name": "USS Platform",
+  "short_name": "USS",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
-  "orientation": "any",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
-  "categories": ["business", "productivity", "utilities"],
-  "prefer_related_applications": false,
+  "theme_color": "#0ea5e9",
+  "background_color": "#09111D",
   "icons": [
     {
       "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png",
@@ -26,12 +19,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
     }
   ]
 }

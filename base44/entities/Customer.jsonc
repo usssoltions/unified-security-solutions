@@ -57,6 +57,30 @@
       "type": "string",
       "description": "Customer accent / action colour (hex). Customer-level override \u2014 wins over the reseller colour when set."
     },
+    "pwa_slug": {
+      "type": "string",
+      "description": "PUBLIC, unique, immutable-once-assigned install slug for this customer's PWA (lowercase letters, numbers, hyphens; never derived from the customer name or id). Baked into installed PWAs via the manifest id/start_url (/?brand=<slug>) and used by the public getPwaManifest function. COSMETIC ONLY \u2014 the slug never grants tenant access or exposes the internal customer id. Uniqueness and immutability are enforced server-side by manageCustomerBranding."
+    },
+    "pwa_app_name": {
+      "type": "string",
+      "description": "Installed PWA app name override (launcher label). Distinct from the in-app business name (app_name). Blank falls back to the customer's effective app/business name \u2192 reseller \u2192 platform default."
+    },
+    "pwa_short_name": {
+      "type": "string",
+      "description": "Installed PWA short name (limited-space launcher label, practical limit ~12 characters). Blank is derived from the PWA app name."
+    },
+    "pwa_icon_192_url": {
+      "type": "string",
+      "description": "Dedicated square 192x192 PWA launcher icon URL. Blank falls back to pwa_icon_512_url, then the customer logo (never distorted), then the reseller/platform icon."
+    },
+    "pwa_icon_512_url": {
+      "type": "string",
+      "description": "Dedicated square 512x512 PWA launcher icon URL (PNG, maskable-compatible recommended). Blank falls back to the customer logo, then the reseller/platform icon."
+    },
+    "pwa_background_color": {
+      "type": "string",
+      "description": "Installed PWA splash/background colour override (hex). Blank uses the platform neutral dark background."
+    },
     "address": {
       "type": "string"
     },

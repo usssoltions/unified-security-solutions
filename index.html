@@ -11,7 +11,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="USS Guard" />
+    <meta name="apple-mobile-web-app-title" content="USS Platform" />
 
     <!-- Theme color — matches app dark background -->
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
@@ -31,10 +31,28 @@
     <link rel="dns-prefetch" href="https://cdn.onesignal.com" />
     <link rel="dns-prefetch" href="https://onesignal.com" />
 
-    <title>USS Guard</title>
+    <title>USS Platform</title>
 
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json" />
+    <!-- PWA Manifest — customer-specific when a valid ?brand=<pwa_slug> is
+         present: the public getPwaManifest function endpoint serves the raw
+         manifest JSON unauthenticated (cosmetic install branding only, never
+         tenant access). Otherwise the generic USS Platform manifest. -->
+    <script>
+      (function () {
+        var href = '/manifest.json';
+        try {
+          var m = /[?&]brand=([a-z0-9-]+)/i.exec(window.location.search);
+          var slug = m ? m[1].toLowerCase() : '';
+          if (slug && /^[a-z0-9][a-z0-9-]{1,30}$/.test(slug)) {
+            href = '/functions/getPwaManifest?slug=' + encodeURIComponent(slug);
+          }
+        } catch (e) {}
+        var link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = href;
+        document.head.appendChild(link);
+      })();
+    </script>
 
     <!-- Apple touch icon (USS branded) -->
     <link rel="apple-touch-icon" href="https://media.base44.com/images/public/690fd37d10984f1f26cedab8/1f03ecb8e_generated_image.png" />

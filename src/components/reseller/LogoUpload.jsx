@@ -18,7 +18,7 @@ const ALLOWED = ["image/png", "image/jpeg", "image/webp"];
  * Logo persists across logout/login and devices because it is stored on the
  * Reseller record server-side, not in local client state.
  */
-export default function LogoUpload({ value, onChange, disabled }) {
+export default function LogoUpload({ value, onChange, disabled, label = "Logo" }) {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
@@ -39,7 +39,7 @@ export default function LogoUpload({ value, onChange, disabled }) {
       const url = res?.file_url || res?.data?.file_url;
       if (!url) throw new Error("Upload failed — no file URL returned.");
       onChange(url);
-      toast({ title: "Logo uploaded" });
+      toast({ title: `${label} uploaded` });
     } catch (e) {
       toast({ title: "Upload failed", description: e.message, variant: "destructive" });
     } finally {
@@ -50,11 +50,11 @@ export default function LogoUpload({ value, onChange, disabled }) {
 
   return (
     <div>
-      <Label className="text-slate-300 text-xs">Logo</Label>
+      <Label className="text-slate-300 text-xs">{label}</Label>
       <div className="flex items-center gap-3 mt-1">
         {value ? (
           <div className="w-20 h-20 rounded-lg bg-white border border-slate-700 flex items-center justify-center p-1.5 shrink-0">
-            <img src={value} alt="Reseller logo" className="max-w-full max-h-full object-contain" />
+            <img src={value} alt={label} className="max-w-full max-h-full object-contain" />
           </div>
         ) : (
           <div className="w-20 h-20 rounded-lg bg-slate-950 border border-dashed border-slate-600 flex items-center justify-center shrink-0">
@@ -81,7 +81,7 @@ export default function LogoUpload({ value, onChange, disabled }) {
             ) : (
               <Upload className="w-4 h-4 mr-2" />
             )}
-            {uploading ? "Uploading…" : value ? "Replace Logo" : "Upload Logo"}
+            {uploading ? "Uploading…" : value ? `Replace ${label}` : `Upload ${label}`}
           </Button>
           {value && !disabled && (
             <Button
@@ -90,7 +90,7 @@ export default function LogoUpload({ value, onChange, disabled }) {
               onClick={() => onChange("")}
               className="text-rose-400 hover:bg-rose-500/10 justify-start"
             >
-              <Trash2 className="w-4 h-4 mr-2" /> Remove Logo
+              <Trash2 className="w-4 h-4 mr-2" /> Remove {label}
             </Button>
           )}
         </div>

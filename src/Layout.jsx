@@ -28,6 +28,7 @@ import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
 import { resolveBrand, hexToRgba, darkenHex, lightenHex, PLATFORM_APP_NAME } from "@/lib/branding";
 import BrandLogo from "@/components/branding/BrandLogo";
+import PreLoginBrandShell from "@/components/branding/PreLoginBrandShell";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { getNavItems } from "@/lib/routeRegistry";
 
@@ -309,20 +310,11 @@ export default function Layout({ children, currentPageName }) {
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-sky-400 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-sky-500/30">
-            <Shield className="w-10 h-10 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">{PLATFORM_APP_NAME}</h1>
-          <p className="text-slate-400 mb-8">Workforce & Operations Management</p>
-          <Button onClick={() => base44.auth.redirectToLogin()} className="bg-sky-500 hover:bg-sky-600 h-12 px-8 text-base shadow-lg shadow-sky-500/30">
-            Sign In
-          </Button>
-        </div>
-      </div>
-    );
+    // Pre-login cosmetic shell: when ?brand=<pwa_slug> is present, the public
+    // PWA branding shows on the login/install surface. COSMETIC ONLY — the
+    // slug never grants tenant scope; after login the authenticated user's
+    // tenant branding and data scope win.
+    return <PreLoginBrandShell onSignIn={() => base44.auth.redirectToLogin()} />;
   }
 
   const getNavigationItems = () => getNavItems(user.role_type);

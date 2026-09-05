@@ -22,6 +22,7 @@ import {
 import ColorPicker from "./ColorPicker";
 import LogoUpload from "./LogoUpload";
 import BrandingPreview from "./BrandingPreview";
+import CustomerPwaBrandingSection from "./CustomerPwaBrandingSection";
 import { sanitizeHex, PLATFORM_APP_NAME } from "@/lib/branding";
 
 /**
@@ -320,6 +321,14 @@ export default function CustomerBrandingTab({ customer, onSaved }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* PWA install branding — clearly separated from the in-app branding
+          fields above. Server-validated unique, immutable-once-set slug. */}
+      <CustomerPwaBrandingSection
+        customer={customer}
+        saving={saving}
+        onSave={saveBranding}
+      />
 
       <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
         <AlertDialogContent className="bg-slate-900 border-slate-700">
