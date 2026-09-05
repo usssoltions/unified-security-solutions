@@ -68,9 +68,9 @@ export default function AttendanceWorkers() {
       .some(v => (v || "").toLowerCase().includes(q));
   });
 
-  const handleWorkerPdf = (worker) => {
+  const handleWorkerPdf = async (worker) => {
     try {
-      const blob = generateWorkerIdPdf(worker, branding);
+      const blob = await generateWorkerIdPdf(worker, branding);
       downloadBlob(blob, `id_doc_${worker.id_number}.pdf`);
     } catch (e) { alert("PDF generation failed."); }
   };
@@ -200,8 +200,8 @@ export default function AttendanceWorkers() {
                       {w.id_front_url ? (
                         <div className="space-y-2">
                           <div className="flex gap-2">
-                            <img src={w.id_front_url} alt="ID Front" className="h-24 rounded-lg object-cover border border-slate-600" />
-                            {w.id_back_url && <img src={w.id_back_url} alt="ID Back" className="h-24 rounded-lg object-cover border border-slate-600" />}
+                            <img src={w.id_front_url} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
+                            {w.id_back_url && <img src={w.id_back_url} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
                           </div>
                           {w.id_captured_at && <p className="text-slate-500 text-xs">Captured {formatDate(w.id_captured_at)}</p>}
                           <Button onClick={() => handleWorkerPdf(w)} variant="brand" className="h-11">

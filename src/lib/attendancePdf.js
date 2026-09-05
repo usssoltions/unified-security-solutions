@@ -295,7 +295,28 @@ export function generateIndividualAttendancePdf(record, worker, branding) {
   return doc.output("blob");
 }
 
-export function generateWorkerIdPdf(worker, branding) {
+/** Contain-fit mm dimensions for an image URL, computed from the image's REAL
+ * aspect ratio so documents are never stretched in the PDF. Falls back to 4:3
+ * if dimensions cannot be read. */
+function fittedImageRect(url, maxW, maxH) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const fallback = () => {
+      const s = Math.min(maxW / 4, maxH / 3);
+      resolve({ w: 4 * s, h: 3 * s });
+    };
+    img.onload = () => {
+      const w = img.naturalWidth || 4;
+      const h = img.naturalHeight || 3;
+      const s = Math.min(maxW / w, maxH / h);
+      resolve({ w: w * s, h: h * s });
+    };
+    img.onerror = fallback;
+    img.src = url;
+  });
+}
+
+export async function generateWorkerIdPdf(worker, branding) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const businessName = branding?.app_name || branding?.name || "USS Platform";
 
@@ -330,21 +351,31 @@ export function generateWorkerIdPdf(worker, branding) {
   }
   fy += 6;
 
-  if (worker.id_front_url) {
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(60, 60, 60);
-    doc.text("IDENTIFICATION DOCUMENT — FRONT", 105, fy, { align: "center" });
-    fy += 3;
-    try { doc.addImage(worker.id_front_url, 15, fy, 85, 55); } catch (_) {}
-    if (worker.id_back_url) {
-      try { doc.addImage(worker.id_back_url, 110, fy, 85, 55); } catch (_) {}
-      doc.setFontSize(7);
-      doc.setTextColor(120, 120, 120);
-      doc.text("FRONT", 57, fy + 58, { align: "center" });
-      doc.text("BACK", 152, fy + 58, { align: "center" });
+  // Document images — rendered from the STORED masters (the tightly cropped
+  // high-quality document photos). Width/height are computed from each
+  // image's actual aspect ratio (contain-fit) — never stretched, never an
+  // upscaled thumbnail.
+  const docImages = [
+    worker.id_front_url ? { label: "FRONT", url: worker.id_front_url } : null,
+    worker.id_back_url ? { label: "BACK", url: worker.id_back_url } : null,
+  ].filter(Boolean);
+
+  if (docImages.length) {
+    const sideBySide = docImages.length === 2;
+    for (const { label, url } of docImages) {
+      const boxX = sideBySide ? (label === "FRONT" ? 15 : 110) : 45;
+      const boxW = sideBySide ? 85 : 120;
+      const boxH = 62;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(60, 60, 60);
+      doc.text(`IDENTIFICATION DOCUMENT — ${label}`, boxX + boxW / 2, fy, { align: "center" });
+      const fit = await fittedImageRect(url, boxW, boxH);
+      try {
+        doc.addImage(url, boxX + (boxW - fit.w) / 2, fy + 3 + (boxH - fit.h) / 2, fit.w, fit.h);
+      } catch (_) {}
     }
-    fy += 65;
+    fy += 3 + 62 + 5;
   }
 
   const footer = [

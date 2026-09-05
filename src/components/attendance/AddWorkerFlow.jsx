@@ -274,8 +274,8 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
                   <CheckCircle2 className="w-4 h-4" /> Document photo on file
                 </p>
                 <div className="flex gap-2">
-                  <img src={idFrontUrl} alt="ID Front" className="h-24 rounded-lg object-cover border border-slate-700" />
-                  {idBackUrl && <img src={idBackUrl} alt="ID Back" className="h-24 rounded-lg object-cover border border-slate-700" />}
+                  <img src={idFrontUrl} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
+                  {idBackUrl && <img src={idBackUrl} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
                 </div>
                 <Button variant="outline" size="sm"
                   onClick={() => { setIdFrontUrl(null); setIdBackUrl(null); }}

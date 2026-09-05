@@ -379,9 +379,9 @@ export default function NewAttendanceWizard({
                 </p>
               )}
               <div className="flex gap-2">
-                <img src={existingWorker.id_front_url} alt="ID Front" className="h-24 rounded-lg object-cover border border-slate-700" />
+                <img src={existingWorker.id_front_url} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
                 {existingWorker.id_back_url && (
-                  <img src={existingWorker.id_back_url} alt="ID Back" className="h-24 rounded-lg object-cover border border-slate-700" />
+                  <img src={existingWorker.id_back_url} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
                 )}
               </div>
               <Button variant="outline" size="sm" onClick={() => { setIdFrontUrl(null); setIdBackUrl(null); }}
