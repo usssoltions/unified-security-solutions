@@ -1,0 +1,37 @@
+{
+  "name": "Auto-Patrol Regeneration (Site Patrol Config)",
+  "description": "Event-driven (zero idle cost): fires when a site's patrol_config or checkpoints change \u2014 rebuilds that site's future not-yet-started patrols with the new configuration (started/completed history untouched). Disabled configs generate nothing new.",
+  "trigger": {
+    "condition": "${ ((.trigger.changed_fields | index(\"patrol_config\") != null) or (.trigger.changed_fields | index(\"checkpoints\") != null)) }",
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "update"
+      ],
+      "entity_name": "Site"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "auto_patrol_regeneration_site_patrol_config",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "generateScheduledPatrols",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "generateScheduledPatrols"
+  }
+}

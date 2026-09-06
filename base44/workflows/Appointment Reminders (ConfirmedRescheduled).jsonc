@@ -1,0 +1,37 @@
+{
+  "name": "Appointment Reminders (Confirmed/Rescheduled)",
+  "description": "Event-driven (zero idle cost): fires when an appointment is rescheduled (start_time changed) or becomes confirmed/scheduled. Runs the idempotent reminder sweep so newly-eligible appointments get reminders without any polling.",
+  "trigger": {
+    "condition": "${ ((.trigger.changed_fields | index(\"start_time\") != null) or (.trigger.data.status == \"confirmed\") or (.trigger.data.status == \"scheduled\")) }",
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "update"
+      ],
+      "entity_name": "Appointment"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "appointment_reminders_confirmed_rescheduled",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "sendAppointmentReminders",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "sendAppointmentReminders"
+  }
+}

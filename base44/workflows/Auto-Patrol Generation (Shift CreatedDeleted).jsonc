@@ -1,0 +1,38 @@
+{
+  "name": "Auto-Patrol Generation (Shift Created/Deleted)",
+  "description": "Event-driven (zero idle cost): shift created \u2192 generate patrols for that shift's site+date (idempotent, deduped); shift deleted \u2192 clean up its future not-yet-started patrols. Respects the Auto-Generate Patrols kill switch and per-site patrol_config.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create",
+        "delete"
+      ],
+      "entity_name": "Shift"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "auto_patrol_generation_shift_created_deleted",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "generateScheduledPatrols",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "generateScheduledPatrols"
+  }
+}

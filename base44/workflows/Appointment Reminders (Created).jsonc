@@ -1,0 +1,37 @@
+{
+  "name": "Appointment Reminders (Created)",
+  "description": "Event-driven (zero idle cost): fires once when an appointment is created. Runs the idempotent reminder sweep \u2014 only sends reminders actually due, never twice (reminders_sent). Replaces the retired 30-minute scheduled reminder automation.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create"
+      ],
+      "entity_name": "Appointment"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "appointment_reminders_created",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "sendAppointmentReminders",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "sendAppointmentReminders"
+  }
+}

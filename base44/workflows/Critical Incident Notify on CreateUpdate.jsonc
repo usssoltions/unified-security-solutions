@@ -1,0 +1,38 @@
+{
+  "name": "Critical Incident Notify on Create/Update",
+  "description": "Fires only when an Incident is created or updated with critical priority \u2014 zero polling costs",
+  "trigger": {
+    "condition": "${ ((.trigger.data.priority == \"critical\") and (.trigger.data.notification_sent != true)) }",
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create",
+        "update"
+      ],
+      "entity_name": "Incident"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "critical_incident_notify_on_create_update",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "monitorHighPriorityIncidents",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "monitorHighPriorityIncidents"
+  }
+}
