@@ -63,6 +63,33 @@ export const MODULE_LABELS: Record<string, string> = {
   COMPLETE_SECURITY: 'Security Operations',
 };
 
+/** Pluralized labels for the natural-language access sentence
+ *  (e.g. "Access Control, Patrols and Security Operations"). */
+export const MODULE_ACCESS_LABELS: Record<string, string> = {
+  ...MODULE_LABELS,
+  PATROL: 'Patrols',
+};
+
+/** Oxford-style natural list: "A", "A and B", "A, B and C". */
+function naturalList(items: string[]): string {
+  if (!items.length) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/** Customer-facing module keys, DEDUPLICATED. The COMPLETE_SECURITY bundle
+ *  already covers ACCESS / PATROL / OPERATIONS — when the bundle is enabled,
+ *  its overlapping component labels are never ALSO listed (they are the same
+ *  capabilities, not additive modules). */
+export function dedupedOperationalKeys(enabledKeys: string[] = []): string[] {
+  const keys = operationalModuleKeys(enabledKeys);
+  if (!keys.includes('COMPLETE_SECURITY')) return keys;
+  const filtered = keys.filter((k) =>
+    k === 'COMPLETE_SECURITY' || !['ACCESS', 'PATROL', 'OPERATIONS'].includes(k));
+  return filtered.length ? filtered : keys;
+}
+
 /** Module-aware functional descriptions — what a user of that module does.
  *  MIRRORED in src/lib/roleCatalog.js (MODULE_DESCRIPTIONS). */
 export const MODULE_DESCRIPTIONS: Record<string, string> = {
@@ -110,7 +137,7 @@ export function roleDescriptionForModules(roleType: string, enabledKeys: string[
   if (roleType === 'reseller_admin') {
     return 'Administer the reseller organisation, its customers, licences and users.';
   }
-  const descs = operationalModuleKeys(enabledKeys)
+  const descs = dedupedOperationalKeys(enabledKeys)
     .map((k) => MODULE_DESCRIPTIONS[k])
     .filter(Boolean);
   if (!descs.length) {
@@ -132,14 +159,14 @@ export function buildInvitationEmail(p: {
   const displayName = p.displayName || 'your organisation';
   const role = roleDisplay(p.role_type);
   const desc = roleDescriptionForModules(p.role_type, p.enabledModuleKeys || []);
-  const moduleNames = operationalModuleKeys(p.enabledModuleKeys || [])
-    .map((k) => MODULE_LABELS[k]).filter(Boolean);
+  const moduleNames = dedupedOperationalKeys(p.enabledModuleKeys || [])
+    .map((k) => MODULE_ACCESS_LABELS[k] || MODULE_LABELS[k]).filter(Boolean);
   const updated = p.kind === 'updated';
   const subject = updated
     ? `Your access to ${displayName} has been updated`
     : `You've been invited to ${displayName}`;
   const accessLine = moduleNames.length
-    ? `${displayName} has invited you to access its ${moduleNames[0]}${moduleNames.length > 1 ? ` and ${moduleNames.slice(1).join(' and ')}` : ''}.`
+    ? `${displayName} has invited you to access its ${naturalList(moduleNames)}.`
     : `${displayName} has invited you to join.`;
   const greeting = p.inviteeName ? `Hi ${escHtml(String(p.inviteeName).trim().split(/\s+/)[0])},` : 'Hello,';
 
@@ -156,7 +183,7 @@ export function buildInvitationEmail(p: {
     ${p.inviterName ? `<p style="color:#334155;margin:0 0 12px">${updated ? 'Updated' : 'Invited'} by ${escHtml(p.inviterName)}.</p>` : ''}
     ${updated
       ? '<p style="color:#334155;margin:0">Sign in to the app to see your updated workspace.</p>'
-      : '<p style="color:#94a3b8;font-size:12px;margin:0">Use the invitation link sent to this email address to set up your account and sign in.</p>'}
+      : '<p style="color:#94a3b8;font-size:12px;margin:0">This email confirms your access details. Your secure account setup link arrives in a separate email to this address — use that link to activate your account.</p>'}
   </div>
   <div style="padding:14px 28px;background:#f8fafc;color:#94a3b8;font-size:11px">
     ${brand.support_email ? `Questions? Contact ${escHtml(brand.support_email)}.` : ''}
