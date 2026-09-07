@@ -37,6 +37,7 @@ export const PAGE_MODULE_MAP = {
   StayAwakeConfiguration: "OPERATIONS",
   GuardIncidents: "OPERATIONS",
   GuardMaintenance: "OPERATIONS",
+  ScheduledTasks: "OPERATIONS",
 
   // ── PATROL module ───────────────────────────────────────────────
   GuardPatrol: "PATROL",

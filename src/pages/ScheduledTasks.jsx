@@ -88,7 +88,7 @@ export default function ScheduledTasks() {
     try {
       const d = await act(
         payload.id ? { action: "update", ...payload } : { action: "create", ...payload },
-        payload.id ? "Task updated" : (d => d)(null) || "Task created"
+        payload.id ? "Task updated" : "Task created"
       );
       if (d?.occurrences_generated > 0) {
         toast({ title: `Recurring task created`, description: `${d.occurrences_generated} upcoming occurrences scheduled.` });
