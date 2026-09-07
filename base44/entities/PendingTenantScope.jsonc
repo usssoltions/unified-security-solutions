@@ -1,47 +1,77 @@
 {
   "name": "PendingTenantScope",
   "type": "object",
-  "description": "Holds tenant scoping (reseller_id / customer_id / site_id / role_type / admin_level) for an invited user whose User record does not exist yet (the invitee has not accepted the invitation). A User-create automation (applyPendingTenantScope) consumes these records when the invitee accepts and the User record is created, applying the scoping server-side. One record per email (upsert by email). This is NOT a separate invitation system \u2014 the invitation itself is sent via base44.users.inviteUser; this entity only queues the tenant scoping to apply on acceptance.",
+  "description": "Holds tenant scoping (reseller_id / customer_id / site_id / role_type / admin_level) for an invited user whose User record does not exist yet (the invitee has not accepted the invitation). A User-create automation (applyPendingTenantScope) consumes these records when the invitee accepts and the User record is created, applying the scoping server-side. One record per email (upsert by email). This is NOT a separate invitation system \u2014 the invitation itself is sent via base44.users.inviteUser; this entity only queues the tenant scoping to apply on acceptance. NULLABLE FIELDS: inviteTenantUser legitimately writes explicit nulls (admin_level null for operational roles, site_id/reseller_id/customer_id/name/phone null when unset) \u2014 the platform's field validation rejects nulls on plain string fields, so these fields MUST declare type [\"string\", \"null\"] (live regression 2026-09-07: every Security Guard invitation failed at the scope-create stage).",
   "properties": {
     "email": {
       "type": "string",
-      "description": "Invitee email. Unique per pending scope (upsert by email)."
+      "description": "Invitee email. Unique per pending scope (upsert by email). Always present (normalised trim + lowercase)."
     },
     "role_type": {
-      "type": "string"
+      "type": "string",
+      "description": "Role the invitee will receive on acceptance (never platform_admin)."
     },
     "admin_level": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "enum": [
         "reseller",
         "customer",
-        "platform"
+        "platform",
+        null
       ],
-      "description": "Only TENANT ADMINISTRATOR roles (customer_admin / practice_admin / estate_manager) receive 'customer'; reseller_admin receives 'reseller'. Operational roles receive NO admin level (null) \u2014 admin_level never grants user-management capability to operational users."
+      "description": "Only TENANT ADMINISTRATOR roles (customer_admin / practice_admin / estate_manager) receive 'customer'; reseller_admin receives 'reseller'. Operational roles (guard, dispatcher, attendance_staff, ...) receive NO admin level (explicit null) \u2014 admin_level never grants user-management capability to operational users."
     },
     "reseller_id": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Resolved reseller scope (from the caller, or the customer's reseller). Null for direct platform-managed customers."
     },
     "customer_id": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Tenant the invitee is scoped to. Null only for reseller_admin invitations (no customer scope)."
     },
     "site_id": {
-      "type": "string",
-      "description": "Optional site assignment for site-scoped operational roles (e.g. Security Guard assigned to a specific site). Validated at invite time to exist, be active, and belong to the invited customer \u2014 never a cross-tenant site. Applied to the invitee's User record on acceptance."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional site assignment for site-scoped operational roles (e.g. Security Guard assigned to a specific site). Validated at invite time to exist, be active, and belong to the invited customer \u2014 never a cross-tenant site. Applied to the invitee's User record on acceptance. Null when the role has no site assignment."
     },
     "first_name": {
-      "type": "string",
-      "description": "Invitee first name from the unified invitation form. Persisted so the entered name is never discarded; composed into display_name and applied to the invitee's User record on acceptance (full_name is platform-managed and read-only)."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Invitee first name from the unified invitation form. Persisted so the entered name is never discarded; composed into display_name and applied to the invitee's User record on acceptance (full_name is platform-managed and read-only). Null when not provided."
     },
     "last_name": {
-      "type": "string",
-      "description": "Invitee last name from the unified invitation form. Persisted so the entered name is never discarded; composed into display_name and applied to the invitee's User record on acceptance."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Invitee last name from the unified invitation form. Persisted so the entered name is never discarded; composed into display_name and applied to the invitee's User record on acceptance. Null when not provided."
     },
     "display_name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Composed invitee display name ('First Last')."
     },
     "phone": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Invitee mobile number. Null when not provided."
     },
     "user_status": {
       "type": "string",
@@ -58,9 +88,11 @@
       "enum": [
         "pending",
         "applied",
-        "expired"
+        "expired",
+        "cancelled"
       ],
-      "default": "pending"
+      "default": "pending",
+      "description": "Invitation lifecycle. 'cancelled' is set by inviteTenantUser (action cancel) together with cancelled_at/cancelled_by."
     },
     "delivery_status": {
       "type": "string",
@@ -72,11 +104,18 @@
       "default": "queued",
       "description": "Invitation delivery lifecycle: 'queued' the instant the pending scope is created, 'sent' once the platform invitation email has been dispatched (set by inviteTenantUser after inviteUser succeeds), 'failed' when dispatch fails (record retained so the admin can retry)."
     },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp the platform invitation email was dispatched (set by inviteTenantUser after users.inviteUser succeeds, and on resend)."
+    },
     "invited_by": {
-      "type": "string"
+      "type": "string",
+      "description": "User id of the inviting admin."
     },
     "invited_by_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Display name of the inviting admin."
     },
     "applied_user_id": {
       "type": "string",
@@ -89,7 +128,11 @@
     "cancelled_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Timestamp when the invitation was cancelled by an admin (status is set to 'cancelled' via the scope notes; the cancellation event is audit-logged)."
+      "description": "Timestamp when the invitation was cancelled by an admin; the cancellation event is audit-logged."
+    },
+    "cancelled_by": {
+      "type": "string",
+      "description": "User id of the admin who cancelled the invitation (set by inviteTenantUser action cancel)."
     },
     "notes": {
       "type": "string"

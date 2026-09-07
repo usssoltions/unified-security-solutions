@@ -435,7 +435,16 @@ export default async function(req: Request): Promise<Response> {
 
     return Response.json({ success: true, pending_scope_id: pending.id, invite_sent: true });
   } catch (error) {
-    console.log('[inviteTenantUser] fatal', String(error?.message || error));
+    const msg = String(error?.message || error);
+    console.log('[inviteTenantUser] fatal', msg);
+    // Surface SAFE, actionable validation detail (e.g. "Error in field X: …")
+    // to the administrator — never stack traces or internals.
+    if (/^Error in field /i.test(msg)) {
+      return Response.json({
+        error: `The invitation could not be saved: ${msg}`,
+        code: 'validation_error',
+      }, { status: 500 });
+    }
     return Response.json({ error: 'Invitation failed. Please try again.', code: 'internal_error' }, { status: 500 });
   }
 }
