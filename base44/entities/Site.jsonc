@@ -1,6 +1,7 @@
 {
   "name": "Site",
   "type": "object",
+  "description": "Security site with checkpoints and patrol configuration. TENANT ACCESS PATTERN: this entity carries NO {{user.data.*}} RLS rules \u2014 session tokens do not reliably expose custom User fields (customer_id/reseller_id), so the previous tenant-scoping rules could never match and direct client reads leaked every tenant's sites (confirmed cross-tenant defect, fixed 2026-09). ALL tenant reads/writes go through the siteAccess backend function, which resolves the caller's tenant server-side from their User record (the proven attendanceAccess/scheduledTaskAccess pattern), validates site/customer/reseller scope on every operation, and fails closed with 403 for cross-tenant access. Direct client access below is restricted to platform admins only \u2014 Customer A can never retrieve or mutate Customer B's sites, checkpoints or geofences.",
   "properties": {
     "name": {
       "type": "string"
@@ -179,28 +180,9 @@
           }
         },
         {
-          "$and": [
-            {
-              "data.reseller_id": "{{user.data.reseller_id}}"
-            },
-            {
-              "data.reseller_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -212,28 +194,9 @@
           }
         },
         {
-          "$and": [
-            {
-              "data.reseller_id": "{{user.data.reseller_id}}"
-            },
-            {
-              "data.reseller_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -245,35 +208,25 @@
           }
         },
         {
-          "$and": [
-            {
-              "data.reseller_id": "{{user.data.reseller_id}}"
-            },
-            {
-              "data.reseller_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
     "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
