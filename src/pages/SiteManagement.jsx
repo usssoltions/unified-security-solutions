@@ -19,7 +19,15 @@ export default function SiteManagement() {
   const { data: sites, isLoading, error, refetch } = useQuery({
     queryKey: ["sites"],
     queryFn: () => listSites(),
-    initialData: [],
+    // EVIDENCE-BASED FIX: `initialData: []` made react-query treat this
+    // query as FRESH (dataUpdatedAt = mount time) for the app's 15s global
+    // staleTime — so on a session's FIRST mount no gateway fetch fired at
+    // all, and the page rendered the initialData placeholder [] as the
+    // final result ("No sites created yet") while the gateway was in fact
+    // returning the tenant's site. With no initialData and staleTime 0 the
+    // page fetches from the siteAccess gateway on every mount and shows the
+    // real loading/error/data states.
+    staleTime: 0,
     retry: false
   });
 
