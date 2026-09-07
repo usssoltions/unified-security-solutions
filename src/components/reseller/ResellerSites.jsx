@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { createSite } from "@/lib/siteApi";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -29,7 +30,7 @@ export default function ResellerSites({ resellerId, customers, sites, onRefresh,
     if (!customer) { toast({ title: "Invalid customer", variant: "destructive" }); return; }
     setSaving(true);
     try {
-      await base44.entities.Site.create({
+      await createSite({
         name: form.name,
         address: form.address,
         client_name: customer.name,

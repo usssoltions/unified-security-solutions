@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ export default function EstateProperties() {
       if (!cid) { setLoading(false); return; }
       const [props, sts] = await Promise.all([
         base44.entities.Property.filter({ customer_id: cid }).catch(() => []),
-        base44.entities.Site.filter({ customer_id: cid }).catch(() => []),
+        listSites().catch(() => []),
       ]);
       setProperties(props);
       setSites(sts);

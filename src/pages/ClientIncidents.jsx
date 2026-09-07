@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Search, Loader2, MapPin, Clock } from "lucide-react";
@@ -22,7 +23,7 @@ export default function ClientIncidents() {
       const cid = u.customer_id;
       if (!cid) { setLoading(false); return; }
       const [sites, incs] = await Promise.all([
-        base44.entities.Site.filter({ customer_id: cid }).catch(() => []),
+        listSites().catch(() => []),
         base44.entities.Incident.filter({}).catch(() => []),
       ]);
       const siteIds = new Set(sites.map(s => s.id));

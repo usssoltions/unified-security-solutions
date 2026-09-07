@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { getSite } from "@/lib/siteApi";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -87,7 +88,7 @@ export default function PatrolReminderAlert({ user, shift, location, onDismiss }
 
   const loadAIGuidance = async () => {
     try {
-      const site = await base44.entities.Site.get(shift.site_id);
+      const site = await getSite(shift.site_id);
       const recentPatrols = await base44.entities.PatrolLog.filter(
         { shift_id: shift.id },
         "-timestamp",

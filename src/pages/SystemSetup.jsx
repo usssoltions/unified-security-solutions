@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { createSite } from "@/lib/siteApi";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -114,7 +115,7 @@ export default function SystemSetup() {
       // Create Sites
       addStatus("Creating test sites at your location...", "info");
       const sites = await Promise.all([
-        base44.entities.Site.create({
+        createSite({
           name: "Yzerfontein Security Post",
           address: "131 Atlantic Drive, Yzerfontein, 7351",
           client_name: "Coastal Properties",
@@ -126,7 +127,7 @@ export default function SystemSetup() {
             { id: "cp2", name: "Perimeter Fence", qr_code: "YZER_PERI_002", location: { lat: -33.3483, lng: 18.1616 } }
           ]
         }),
-        base44.entities.Site.create({
+        createSite({
           name: "Beach Front Property",
           address: "45 Beach Road, Yzerfontein, 7351",
           client_name: "Ocean View Estates",
@@ -137,7 +138,7 @@ export default function SystemSetup() {
             { id: "cp3", name: "Beach Access", qr_code: "BEACH_ACC_001", location: { lat: -33.3490, lng: 18.1620 } }
           ]
         }),
-        base44.entities.Site.create({
+        createSite({
           name: "Town Center Complex",
           address: "Main Street, Yzerfontein, 7351",
           client_name: "Local Business Council",

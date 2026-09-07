@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { getSite } from "@/lib/siteApi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +56,7 @@ export default function ClockInOut({ user, location }) {
     queryKey: ["assignedSite", assignedShift?.site_id],
     queryFn: async () => {
       if (!assignedShift?.site_id) return null;
-      return await base44.entities.Site.get(assignedShift.site_id);
+      return await getSite(assignedShift.site_id);
     },
     enabled: !!assignedShift?.site_id
   });

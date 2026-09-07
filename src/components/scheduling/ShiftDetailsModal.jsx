@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,7 @@ export default function ShiftDetailsModal({ shift, onClose }) {
   const { data: sites } = useQuery({
     queryKey: ["sites"],
     queryFn: async () => {
-      return await base44.entities.Site.list();
+      return await listSites();
     },
     initialData: []
   });

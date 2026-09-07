@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ export default function AIRiskPredictor({ user }) {
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
     queryFn: async () => {
-      const data = await base44.entities.Site.list();
+      const data = await listSites();
       return Array.isArray(data) ? data : [];
     },
     initialData: []

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { listSites, updateSite } from "@/lib/siteApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +57,7 @@ export default function TenantSetupManager({ user }) {
       const [r, c, s] = await Promise.all([
         base44.entities.Reseller.list().catch(() => []),
         base44.entities.Customer.list().catch(() => []),
-        base44.entities.Site.list().catch(() => []),
+        listSites().catch(() => []),
       ]);
       setResellers(r || []);
       setCustomers(c || []);
@@ -102,7 +103,7 @@ export default function TenantSetupManager({ user }) {
     if (!customerId) { toast({ title: "Select a Customer first", variant: "destructive" }); return; }
     try {
       const reseller = resellerId === "direct" || resellerId === "" ? null : resellerId;
-      await base44.entities.Site.update(siteId, { customer_id: customerId, reseller_id: reseller });
+      await updateSite(siteId, { customer_id: customerId, reseller_id: reseller });
       toast({ title: "Site assigned", description: "Ownership updated" });
       loadData();
     } catch (e) {

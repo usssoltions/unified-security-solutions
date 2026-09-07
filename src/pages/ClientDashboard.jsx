@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, Shield, AlertTriangle, FileText, MapPin, Loader2, TrendingUp, Clock } from "lucide-react";
@@ -26,7 +27,7 @@ export default function ClientDashboard() {
       if (!cid) { setLoading(false); return; }
 
       const [sites, incidents, accessLogs, reports] = await Promise.all([
-        base44.entities.Site.filter({ customer_id: cid, status: "active" }).catch(() => []),
+        listSites({ status: "active" }).catch(() => []),
         base44.entities.Incident.filter({}).catch(() => []),
         base44.entities.AccessLog.filter({}).catch(() => []),
         base44.entities.GeneratedReport.filter({}).catch(() => []),

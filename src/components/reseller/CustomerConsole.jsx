@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites, createSite as createSiteRecord } from "@/lib/siteApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -109,7 +110,7 @@ export default function CustomerConsole({ customerId }) {
     setListsLoading(true);
     try {
       const [s, ents, rEnts, logs] = await Promise.all([
-        base44.entities.Site.filter({ customer_id: customerId }).catch(() => []),
+        listSites({ customer_id: customerId }).catch(() => []),
         base44.entities.ModuleEntitlement.filter({ customer_id: customerId }).catch(() => []),
         resellerId ? base44.entities.ResellerEntitlement.filter({ reseller_id: resellerId }).catch(() => []) : Promise.resolve([]),
         base44.entities.PlatformAuditLog.filter({ customer_id: customerId }).catch(() => []),
@@ -184,7 +185,7 @@ export default function CustomerConsole({ customerId }) {
     if (!siteForm.name || !siteForm.address) { toast({ title: "Name and address required", variant: "destructive" }); return; }
     setSiteForm((f) => ({ ...f, saving: true }));
     try {
-      await base44.entities.Site.create({
+      await createSiteRecord({
         name: siteForm.name,
         address: siteForm.address,
         client_name: customer.name,

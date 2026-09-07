@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,8 +39,8 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
   useEffect(() => {
     if (!user?.customer_id) { setSites([]); return; }
     let alive = true;
-    base44.entities.Site.filter({ customer_id: user.customer_id, status: "active" })
-      .then((list) => { if (alive) setSites(list || []); })
+    listSites({ customer_id: user.customer_id })
+      .then((list) => { if (alive) setSites((list || []).filter((s) => s.status === "active")); })
       .catch(() => { if (alive) setSites([]); });
     return () => { alive = false; };
   }, [user?.id, user?.customer_id]);

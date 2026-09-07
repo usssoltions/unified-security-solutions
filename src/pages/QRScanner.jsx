@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { base44 } from "@/api/base44Client";
+import { getSite } from "@/lib/siteApi";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -88,7 +89,7 @@ export default function QRScanner() {
     queryKey: ["site", shift?.site_id],
     queryFn: async () => {
       if (!shift?.site_id) return null;
-      return await base44.entities.Site.get(shift.site_id);
+      return await getSite(shift.site_id);
     },
     enabled: !!shift
   });

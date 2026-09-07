@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { getSite } from "@/lib/siteApi";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +55,7 @@ export default function DailyReport() {
     queryKey: ["site", activeShift?.site_id],
     queryFn: async () => {
       if (!activeShift?.site_id) return null;
-      return await base44.entities.Site.get(activeShift.site_id);
+      return await getSite(activeShift.site_id);
     },
     enabled: !!activeShift
   });

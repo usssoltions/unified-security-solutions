@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { getSite } from "@/lib/siteApi";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { saveOffline, isOnline } from "@/lib/offlineDB";
@@ -48,7 +49,7 @@ export default function StartOfShift() {
         setShift(currentShift);
 
         if (currentShift.site_id) {
-          const currentSite = await base44.entities.Site.get(currentShift.site_id);
+          const currentSite = await getSite(currentShift.site_id);
           setSite(currentSite);
         }
       }

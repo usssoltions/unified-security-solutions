@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,7 +33,7 @@ export default function AssetForm({ asset, onClose, onSuccess }) {
 
   const { data: sites } = useQuery({
     queryKey: ["sites"],
-    queryFn: async () => await base44.entities.Site.list(),
+    queryFn: async () => await listSites(),
     initialData: []
   });
 

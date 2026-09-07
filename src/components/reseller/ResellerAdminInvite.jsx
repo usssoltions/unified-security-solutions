@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -129,8 +130,8 @@ export default function ResellerAdminInvite({
     if (!open || !needsCustomer || !form.customer_id) { setSites(null); return; }
     let alive = true;
     setSites(null);
-    base44.entities.Site.filter({ customer_id: form.customer_id, status: "active" })
-      .then((list) => { if (alive) setSites(list || []); })
+    listSites({ customer_id: form.customer_id })
+      .then((list) => { if (alive) setSites((list || []).filter((s) => s.status === "active")); })
       .catch(() => { if (alive) setSites([]); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

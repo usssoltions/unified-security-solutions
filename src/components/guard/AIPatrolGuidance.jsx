@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { getSite } from "@/lib/siteApi";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -67,7 +68,7 @@ export default function AIPatrolGuidance({ user, shift, location }) {
     queryKey: ["site", shift?.site_id],
     queryFn: async () => {
       if (!shift?.site_id) return null;
-      return await base44.entities.Site.get(shift.site_id);
+      return await getSite(shift.site_id);
     },
     enabled: !!shift?.site_id
   });

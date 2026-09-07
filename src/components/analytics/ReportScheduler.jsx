@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +30,7 @@ export default function ReportScheduler({ onClose }) {
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
     queryFn: async () => {
-      const data = await base44.entities.Site.list();
+      const data = await listSites();
       return Array.isArray(data) ? data : [];
     },
     initialData: []

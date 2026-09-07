@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { getSite } from "@/lib/siteApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,9 +21,9 @@ export default function PatrolRouteGuidance({ user, shift, location, onDismiss }
     }
 
     try {
-      const sites = await base44.entities.Site.filter({ id: shift.site_id });
-      if (sites && Array.isArray(sites) && sites.length > 0 && sites[0].checkpoints && Array.isArray(sites[0].checkpoints)) {
-        setCheckpoints(sites[0].checkpoints);
+      const site = await getSite(shift.site_id);
+      if (site && Array.isArray(site.checkpoints)) {
+        setCheckpoints(site.checkpoints);
       } else {
         setCheckpoints([]);
       }

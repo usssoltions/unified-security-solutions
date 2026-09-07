@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +45,7 @@ export default function SiteMapDashboard() {
 
   const { data: sites = [], refetch: refetchSites } = useQuery({
     queryKey: ["mapSites"],
-    queryFn: () => base44.entities.Site.filter({ status: "active" }),
+    queryFn: () => listSites({ status: "active" }),
     refetchInterval: 60000,
   });
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { createSite, updateSite } from "@/lib/siteApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -218,9 +219,9 @@ export default function SiteForm({ site, onClose, onSuccess }) {
         };
 
         if (site) {
-          await base44.entities.Site.update(site.id, data);
+          await updateSite(site.id, data);
         } else {
-          await base44.entities.Site.create(data);
+          await createSite(data);
         }
 
         // Clear draft on successful save

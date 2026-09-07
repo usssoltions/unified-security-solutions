@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { listSites } from "@/lib/siteApi";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,7 +23,7 @@ export default function PatrolAnalytics() {
 
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
-    queryFn: () => base44.entities.Site.list(),
+    queryFn: () => listSites(),
   });
 
   const total = patrols.length;
