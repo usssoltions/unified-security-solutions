@@ -11,7 +11,10 @@
       "default": "user"
     },
     "role_type": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "enum": [
         "admin",
         "estate_manager",
@@ -27,12 +30,17 @@
         "reception",
         "employer_user",
         "customer_admin",
-        "attendance_staff"
+        "attendance_staff",
+        null
       ],
-      "default": "resident"
+      "default": "resident",
+      "description": "Nullable: manageUser remove_access writes null when tenant access is removed."
     },
     "admin_level": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "enum": [
         "platform",
         "reseller",
@@ -42,38 +50,60 @@
       "description": "Admin scope: platform (sees all tenants), reseller (sees own reseller's customers), customer (sees own tenant only). Null for non-admin users. Used by RLS to determine who bypasses tenant isolation."
     },
     "reseller_id": {
-      "type": "string",
-      "description": "Reseller ID if this user belongs to a reseller organization."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Reseller ID if this user belongs to a reseller organization. Nullable: cleared by manageUser remove_access."
     },
     "customer_id": {
-      "type": "string",
-      "description": "Customer/tenant ID this user belongs to. Used for tenant isolation."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Customer/tenant ID this user belongs to. Used for tenant isolation. Nullable: cleared by manageUser remove_access."
     },
     "employer_id": {
-      "type": "string",
-      "description": "Employer ID for employer portal users (medical module)."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Employer ID for employer portal users (medical module). Nullable: cleared by manageUser remove_access."
     },
     "site_id": {
-      "type": "string",
-      "description": "Primary site ID for site-scoped users."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Primary site ID for site-scoped users. Nullable: cleared when set to 'All customer sites'."
     },
     "module_context": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "enum": [
         "security",
         "estate",
         "medical",
-        "platform"
+        "platform",
+        null
       ],
       "default": "security",
-      "description": "Primary module context for navigation and terminology."
+      "description": "Primary module context for navigation and terminology. Nullable: cleared by manageUser remove_access."
     },
     "first_name": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "User first name. full_name is platform-managed/read-only, so the editable name parts are stored here and in last_name; display_name (first + last) remains the canonical single name field used across the app (User Management, Scheduling, Scheduled Tasks, Reports, notifications)."
     },
     "last_name": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "User last name. See first_name."
     },
     "user_status": {
