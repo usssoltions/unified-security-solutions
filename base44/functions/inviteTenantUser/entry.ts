@@ -204,10 +204,11 @@ export default async function(req: Request): Promise<Response> {
     // The tenant scope is forced SERVER-SIDE from the caller's User record —
     // a customer admin can never select another customer or reseller, and
     // the role is validated against their customer's enabled modules below.
+    // Role-based ONLY (no admin_level fallback): operational roles such as
+    // Customer Admin (operations) can never invite users.
     const isCustomerAdmin =
       !isPlatformAdmin && !isResellerAdmin &&
-      (caller.admin_level === 'customer' ||
-        ['customer_admin', 'practice_admin', 'estate_manager'].includes(caller.role_type));
+      ['customer_admin', 'practice_admin', 'estate_manager'].includes(caller.role_type);
 
     if (!isPlatformAdmin && !isResellerAdmin && !isCustomerAdmin) {
       return Response.json({ error: 'You do not have permission to invite users', code: 'permission_denied' }, { status: 403 });
@@ -227,8 +228,14 @@ export default async function(req: Request): Promise<Response> {
       }
     }
 
-    let admin_level = 'customer';
+    // admin_level marks TENANT ADMINISTRATORS only. Previously EVERY invited
+    // user (including guards and Customer Admin (operations)) received the
+    // 'customer' admin level, which leaked unauthorized user-management
+    // capability. Operational roles now receive NO admin level.
+    const TENANT_ADMIN_ROLES = ['customer_admin', 'practice_admin', 'estate_manager'];
+    let admin_level: string | null = null;
     if (role_type === 'reseller_admin') admin_level = 'reseller';
+    else if (TENANT_ADMIN_ROLES.includes(role_type)) admin_level = 'customer';
 
     // Customer Admins are pinned to their own customer. Any client-supplied
     // customer/reseller id is ignored (or rejected on mismatch) — the scope
@@ -260,6 +267,27 @@ export default async function(req: Request): Promise<Response> {
       if (reseller_id && customerReseller && customerReseller !== reseller_id) {
         return Response.json({ error: 'The selected customer does not belong to that reseller', code: 'bad_customer' }, { status: 400 });
       }
+    }
+
+    // ── Site assignment (site-scoped operational roles, e.g. Security Guard
+    // assigned to a specific site). Validated SERVER-SIDE: the site must
+    // exist, be active, and belong to the SELECTED customer — never a
+    // cross-tenant site. Stored on the pending scope and applied to the
+    // invitee's User record automatically on acceptance.
+    let site_id: string | null = null;
+    if (body.site_id) {
+      if (!customer_id) {
+        return Response.json({ error: 'A site can only be assigned together with a customer', code: 'bad_site' }, { status: 400 });
+      }
+      const siteRows = await base44.asServiceRole.entities.Site.filter({ id: body.site_id }).catch(() => []);
+      const site = (siteRows && siteRows[0]) ? siteRows[0] : null;
+      if (!site || site.customer_id !== customer_id) {
+        return Response.json({ error: 'The selected site does not belong to the selected customer', code: 'bad_site' }, { status: 400 });
+      }
+      if (site.status && site.status !== 'active') {
+        return Response.json({ error: 'The selected site is not active', code: 'bad_site' }, { status: 400 });
+      }
+      site_id = site.id;
     }
 
     // ── SERVER-SIDE module-scoped role validation (fail closed). ──
@@ -330,6 +358,7 @@ export default async function(req: Request): Promise<Response> {
       admin_level,
       reseller_id: effectiveReseller || null,
       customer_id: customer_id || null,
+      site_id,
       first_name: firstName || null,
       last_name: lastName || null,
       display_name: displayName || null,
@@ -349,7 +378,14 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id });
     }
 
-    pending = await base44.asServiceRole.entities.PendingTenantScope.create(scopeFields);
+    // Delivery lifecycle: created as 'queued' the instant the invitation
+    // record exists, then updated to 'sent' once the platform invitation is
+    // dispatched (or 'failed' on delivery failure) — the Users tab never
+    // shows a stale "Not sent yet" for a successfully dispatched invitation.
+    pending = await base44.asServiceRole.entities.PendingTenantScope.create({
+      ...scopeFields,
+      delivery_status: 'queued',
+    });
     console.log('[inviteTenantUser] created pending scope', pending.id);
 
     // ── Send the invitation with platform role "user" (NEVER "admin"). ──

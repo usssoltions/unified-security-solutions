@@ -34,3 +34,18 @@ export const RESELLER_MODULE_MAP = Object.fromEntries(
 export function moduleLabels(keys = []) {
   return (keys || []).map((k) => RESELLER_MODULE_MAP[k]?.label || k);
 }
+
+/* ── Central friendly-name resolver ─────────────────────────────────────
+ * The SINGLE source of truth for displaying a module on ANY customer-facing
+ * or administrator-facing surface. Internal entitlement keys (COMPLETE_SECURITY,
+ * BARKODER_CORE, REPORTING_CORE, NOTIFICATION_CORE, ...) are for logic and
+ * database use only and must NEVER be rendered raw. Use these helpers
+ * everywhere a module key is displayed.
+ */
+export function getModuleDisplayName(key) {
+  return (key && RESELLER_MODULE_MAP[key]?.label) || key || "";
+}
+
+export function getModuleDescription(key) {
+  return (key && RESELLER_MODULE_MAP[key]?.description) || "";
+}

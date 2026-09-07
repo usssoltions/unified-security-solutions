@@ -21,14 +21,19 @@ export default async function(req: Request): Promise<Response> {
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Only authorized roles can manage users. Customer Administrators
-    // (customer_admin, or a vertical admin role scoped to a customer) manage
-    // their OWN tenant only — enforced further below by canonical customer_id.
-    const authorizedRoles = ['admin', 'platform_admin', 'reseller_admin', 'practice_admin', 'estate_manager', 'customer_admin'];
+    // User administration is RESERVED for tenant administrators — the
+    // Customer Administrator (customer_admin) and the vertical admin roles
+    // (practice_admin, estate_manager) — plus reseller/platform admins. The
+    // operational role 'admin' (Customer Admin (operations)) and every other
+    // operational role (dispatcher, guard, reception, ...) can NOT manage
+    // users. This is enforced SERVER-SIDE, not only by hidden UI, and no
+    // admin_level fallback is honoured (admin_level is only assigned to
+    // tenant administrator roles by inviteTenantUser).
+    const authorizedRoles = ['platform_admin', 'reseller_admin', 'practice_admin', 'estate_manager', 'customer_admin'];
     const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
     const isResellerAdmin = !isPlatformAdmin && (caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller');
     const isAuthorized = isPlatformAdmin || isResellerAdmin ||
-      authorizedRoles.includes(caller.role_type) || caller.admin_level === 'customer';
+      authorizedRoles.includes(caller.role_type);
     if (!isAuthorized) {
       return Response.json({ error: 'Forbidden: insufficient permissions to manage users' }, { status: 403 });
     }
@@ -87,7 +92,7 @@ export default async function(req: Request): Promise<Response> {
         // Whitelist allowed fields — never allow id, email, or role changes here
         const allowedFields = [
           'display_name', 'badge_number', 'phone', 'whatsapp', 'unit_number',
-          'security_pin', 'customer_id', 'reseller_id', 'employer_id', 'module_context',
+          'security_pin', 'site_id', 'customer_id', 'reseller_id', 'employer_id', 'module_context',
           'profile_photo', 'stay_awake_enabled', 'stay_awake_interval_minutes',
           'patrol_reminder_enabled', 'patrol_reminder_interval_minutes',
           'needs_daily_report', 'needs_start_of_shift_report'
@@ -101,6 +106,16 @@ export default async function(req: Request): Promise<Response> {
           if (!allowedFields.includes(key)) continue;
           if (tenantFields.includes(key) && !isPlatformAdmin && !isResellerAdmin) continue;
           filteredUpdates[key] = value;
+        }
+        // Site assignment must belong to the target user's customer — a
+        // tenant admin can never scope a user to another customer's site.
+        if (filteredUpdates.site_id !== undefined && filteredUpdates.site_id) {
+          const siteRows = await base44.asServiceRole.entities.Site
+            .filter({ id: filteredUpdates.site_id }).catch(() => []);
+          const site = (siteRows && siteRows[0]) ? siteRows[0] : null;
+          if (!site || (targetUser.customer_id && site.customer_id !== targetUser.customer_id)) {
+            return Response.json({ error: 'The selected site does not belong to this organisation' }, { status: 400 });
+          }
         }
         if (Object.keys(filteredUpdates).length === 0) {
           return Response.json({ error: 'No valid fields to update' }, { status: 400 });

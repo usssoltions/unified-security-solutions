@@ -32,7 +32,7 @@ export const MEDICAL_ROLES = [
 ];
 
 export const ROLE_DESCRIPTIONS = {
-  admin: { label: "Admin", text: "Full system access", color: "purple" },
+  admin: { label: "Customer Admin (operations)", text: "Day-to-day operations: shifts, incidents, patrols and control room", color: "purple" },
   dispatcher: { label: "Dispatcher/Supervisor", text: "Control room, shifts, operations", color: "purple" },
   guard: { label: "Security Guard", text: "Field operations, clock in/out, incidents", color: "emerald" },
   client: { label: "Client", text: "View reports and incidents for their sites", color: "amber" },
@@ -61,9 +61,9 @@ export const MODULE_ROLE_ACCESS = {
   COMPLETE_SECURITY: ["admin", "dispatcher", "guard"],
   OPERATIONS: ["admin", "dispatcher", "guard"],
   PATROL: ["dispatcher", "guard"],
-  ACCESS: ["estate_manager", "guard", "reception"],
+  ACCESS: ["guard", "reception"],
   ESTATE: ["estate_manager", "resident", "vendor"],
-  OCCUPATIONAL_THERAPY: ["practice_admin", "therapist", "reception"],
+  OCCUPATIONAL_THERAPY: ["practice_admin", "therapist", "reception", "employer_user"],
   ATTENDANCE_REGISTER: ["attendance_staff"],
   CALLING: [],
   REPORTING_CORE: [],
@@ -134,12 +134,19 @@ export function isAttendanceOnlyCustomer(enabledModuleKeys = []) {
  * vertical role set.
  */
 export function getTenantUserManagementRoles(enabledModuleKeys = [], customerType) {
-  if (isAttendanceOnlyCustomer(enabledModuleKeys)) {
-    return [
-      { value: "customer_admin", label: "Customer Administrator", color: "purple" },
-      { value: "attendance_staff", label: "Attendance Staff", color: "sky" },
-    ];
+  // Module-scoped catalogue: when the customer has ANY operational module
+  // enabled, the tenant user-management role set is derived from those
+  // modules (the SAME registry used for invitations and enforced server-side
+  // by inviteTenantUser / manageUser). A role appears only when its module is
+  // active for THIS customer — Estate Manager never appears for a customer
+  // without Estate Management, Attendance Staff only with the Attendance
+  // Register, etc.
+  const hasOperational = MODULE_ROLE_ORDER.some((k) => (enabledModuleKeys || []).includes(k));
+  if (hasOperational) {
+    return getInviteRolesForCustomer(enabledModuleKeys);
   }
+  // Legacy fallback: customers without module entitlements yet keep the
+  // vertical role set so existing setups do not lose their roles.
   return [
     { value: "customer_admin", label: "Customer Administrator", color: "purple" },
     ...getRolesForTenant(customerType, enabledModuleKeys),
@@ -206,8 +213,15 @@ export function getRoleDescription(roleValue, enabledModuleKeys = []) {
   if (roleValue === "reseller_admin") {
     return "Administer the reseller organisation, its customers, licences and users.";
   }
-  const descs = OPERATIONAL_MODULE_ORDER
-    .filter((k) => (enabledModuleKeys || []).includes(k))
+  // Deduplicated module keys: the COMPLETE_SECURITY bundle already covers
+  // ACCESS / PATROL / OPERATIONS — its overlapping components are never ALSO
+  // described (mirrors the server-side invitation wording fix).
+  const keys = OPERATIONAL_MODULE_ORDER
+    .filter((k) => (enabledModuleKeys || []).includes(k));
+  const dedupedKeys = keys.includes("COMPLETE_SECURITY")
+    ? keys.filter((k) => k === "COMPLETE_SECURITY" || !["ACCESS", "PATROL", "OPERATIONS"].includes(k))
+    : keys;
+  const descs = dedupedKeys
     .map((k) => MODULE_DESCRIPTIONS[k])
     .filter(Boolean);
   if (!descs.length) {

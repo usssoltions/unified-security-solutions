@@ -55,13 +55,15 @@ export const ROUTE_REGISTRY = {
     { title: "Guard Activity", pageKey: "GuardActivity", icon: Users },
     { title: "AI Reports", pageKey: "AIReports", icon: Sparkles },
     { title: "Shift Reports", pageKey: "StartOfShiftHistory", icon: FileText },
-    { title: "User Management", pageKey: "UserManagement", icon: Users },
+    // User Management is RESERVED for the Customer Administrator (and
+    // reseller/platform admins) — operational roles do not manage users.
     { title: "Assets", pageKey: "AssetManagement", icon: Package },
     { title: "Stay Awake", pageKey: "StayAwakeConfiguration", icon: Zap },
     { title: "Configuration", pageKey: "Configuration", icon: Sliders },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
-  // `admin` (customer-level admin) shares the dispatcher navigation.
+  // `admin` = Customer Admin (operations) — day-to-day operational management.
+  // Shares the dispatcher operational navigation, WITHOUT user management.
   admin: [
     { title: "Control Room", pageKey: "ControlRoom", icon: Radio, isRoot: true },
     { title: "Incident Queue", pageKey: "AdminIncidents", icon: AlertTriangle },
@@ -86,7 +88,6 @@ export const ROUTE_REGISTRY = {
     { title: "Guard Activity", pageKey: "GuardActivity", icon: Users },
     { title: "AI Reports", pageKey: "AIReports", icon: Sparkles },
     { title: "Shift Reports", pageKey: "StartOfShiftHistory", icon: FileText },
-    { title: "User Management", pageKey: "UserManagement", icon: Users },
     { title: "Assets", pageKey: "AssetManagement", icon: Package },
     { title: "Stay Awake", pageKey: "StayAwakeConfiguration", icon: Zap },
     { title: "Configuration", pageKey: "Configuration", icon: Sliders },
@@ -128,13 +129,44 @@ export const ROUTE_REGISTRY = {
     { title: "Incidents", pageKey: "ClientIncidents", icon: AlertTriangle },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
-  // Customer Administrator — customer-scoped operational dashboard. Lands on
-  // the customer dashboard (core, not module-gated) so login always resolves;
-  // operational module pages they are licensed for are reachable and gated by
-  // ProtectedPage's module-entitlement check.
+  // Customer Administrator — the FULL customer-level admin experience for
+  // every module enabled for their customer. Each entry is INDEPENDENTLY
+  // module-gated: the Layout filters the sidebar by the customer's active
+  // ModuleEntitlements and the ProtectedPage route guard blocks unlicensed
+  // pages (fail closed). A security customer like Dogs and All sees the whole
+  // operations set; an attendance-only customer sees only the Attendance
+  // Register pages; a medical practice sees only its OT pages. Platform /
+  // reseller administration is NEVER part of this registry.
   customer_admin: [
     { title: "Dashboard", pageKey: "ClientDashboard", icon: BarChart3, isRoot: true },
     { title: "Sites", pageKey: "SiteManagement", icon: MapPin },
+    { title: "Scheduling", pageKey: "Scheduling", icon: Calendar },
+    { title: "Incidents", pageKey: "AdminIncidents", icon: AlertTriangle },
+    { title: "Maintenance", pageKey: "AdminMaintenance", icon: Wrench },
+    { title: "Panic Queue", pageKey: "PanicManagement", icon: Zap },
+    { title: "Patrols", pageKey: "PatrolDashboard", icon: Shield },
+    { title: "Patrol Monitoring", pageKey: "PatrolMonitoring", icon: Activity },
+    { title: "Patrol Checklists", pageKey: "PatrolChecklists", icon: ClipboardList },
+    { title: "Completed Patrols", pageKey: "CompletedPatrols", icon: FileText },
+    { title: "Patrol Analytics", pageKey: "PatrolAnalytics", icon: BarChart3 },
+    { title: "Access Control", pageKey: "AccessControl", icon: QrCode },
+    { title: "Access History", pageKey: "AccessHistory", icon: FileText },
+    { title: "Access Settings", pageKey: "AccessSettings", icon: Sliders },
+    { title: "Contacts", pageKey: "Contacts", icon: Users },
+    { title: "Call History", pageKey: "CallHistory", icon: Clock },
+    { title: "Call Recordings", pageKey: "CallRecordings", icon: Mic },
+    { title: "Clock In/Out", pageKey: "ClockInOutReports", icon: Clock },
+    { title: "Shift Reports", pageKey: "StartOfShiftHistory", icon: FileText },
+    { title: "Site Map", pageKey: "SiteMapDashboard", icon: MapPin },
+    { title: "Reports", pageKey: "Reports", icon: FileText },
+    { title: "Analytics", pageKey: "Analytics", icon: BarChart3 },
+    { title: "Report Scheduling", pageKey: "ReportScheduling", icon: Calendar },
+    { title: "Data Hub", pageKey: "DataHub", icon: FileText },
+    { title: "Guard Activity", pageKey: "GuardActivity", icon: Users },
+    { title: "AI Reports", pageKey: "AIReports", icon: Sparkles },
+    { title: "Assets", pageKey: "AssetManagement", icon: Package },
+    { title: "Stay Awake", pageKey: "StayAwakeConfiguration", icon: Zap },
+    { title: "Configuration", pageKey: "Configuration", icon: Sliders },
     { title: "Attendance Register", pageKey: "AttendanceDashboard", icon: ClipboardList },
     { title: "Workers / Patients", pageKey: "AttendanceWorkers", icon: Users },
     { title: "Attendance Records", pageKey: "AttendanceRecords", icon: FileText },
@@ -233,7 +265,7 @@ export const EXTRA_ALLOWED_PAGES = {
   ],
   reseller_admin: ["ResellerManagement", "CustomerManagement"],
   attendance_staff: ["AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports"],
-  customer_admin: ["AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
+  customer_admin: ["QRScanner", "CompletedPatrols", "PatrolChecklists", "PatrolMonitoring", "ClientReports", "ClientIncidents", "DailyReport", "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
   practice_admin: ["MedicalPatientDetail", "MedicalEmployerDetail", "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
   therapist: ["MedicalPatientDetail", "MedicalEmployerDetail"],
   reception: ["MedicalPatientDetail", "MedicalEmployerDetail"],

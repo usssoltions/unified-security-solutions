@@ -18,6 +18,8 @@ import { useNavigate } from "react-router-dom";
 import CustomerModulesModal from "@/components/reseller/CustomerModulesModal";
 import ResellerAdminInvite from "@/components/reseller/ResellerAdminInvite";
 import CustomerBrandingTab from "@/components/reseller/CustomerBrandingTab";
+import { getModuleDisplayName } from "@/lib/resellerModules";
+import { formatDateTime } from "@/lib/datetime";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: Building2 },
@@ -247,8 +249,13 @@ export default function CustomerConsole({ customerId }) {
 
   const statusBadge = (s) => s === "active" ? "bg-emerald-500/20 text-emerald-400" : s === "suspended" ? "bg-amber-500/20 text-amber-400" : "bg-slate-500/20 text-slate-400";
   const deliveryBadge = (d) => d === "sent" ? "bg-emerald-500/20 text-emerald-400"
+    : d === "queued" ? "bg-sky-500/20 text-sky-400"
     : d === "failed" ? "bg-rose-500/20 text-rose-400"
     : "bg-slate-500/20 text-slate-400";
+  const deliveryLabel = (d) => d === "sent" ? "Sent"
+    : d === "queued" ? "Queued"
+    : d === "failed" ? "Delivery Failed"
+    : "Not sent yet";
 
   const pendingName = (p) => p.display_name || [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email;
 
@@ -384,7 +391,7 @@ export default function CustomerConsole({ customerId }) {
           )}
           {activeEntitlements.map((e) => (
             <div key={e.id} className="flex items-center justify-between bg-slate-800/50 p-3 rounded-lg">
-              <p className="text-sm font-medium text-white flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> {e.module_label || e.module_key}</p>
+              <p className="text-sm font-medium text-white flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" /> {getModuleDisplayName(e.module_key)}</p>
               <Badge className="bg-emerald-500/20 text-emerald-400">Enabled</Badge>
             </div>
           ))}
@@ -443,10 +450,10 @@ export default function CustomerConsole({ customerId }) {
                     <span>Customer: <span className="text-slate-300">{customer.name}</span></span>
                     <span className="flex items-center gap-1">Delivery:
                       <Badge className={deliveryBadge(p.delivery_status)}>
-                        {p.delivery_status === "failed" ? "Delivery Failed" : p.delivery_status === "sent" ? "Sent" : "Not sent yet"}
+                        {deliveryLabel(p.delivery_status)}
                       </Badge>
                     </span>
-                    <span>Sent: <span className="text-slate-300">{(p.sent_at || p.created_date) ? new Date(p.sent_at || p.created_date).toLocaleString() : "—"}</span></span>
+                    <span>Sent: <span className="text-slate-300">{formatDateTime(p.sent_at || p.created_date)}</span></span>
                   </div>
                 </div>
                 <div className="flex gap-2 shrink-0">
@@ -539,7 +546,7 @@ export default function CustomerConsole({ customerId }) {
                   <div key={a.id} className="bg-slate-800/40 p-3 rounded-lg">
                     <div className="flex items-center justify-between">
                       <p className="text-white text-sm font-medium">{a.action || a.event_type}</p>
-                      <span className="text-xs text-slate-500">{a.created_date ? new Date(a.created_date).toLocaleString() : ""}</span>
+                      <span className="text-xs text-slate-500">{formatDateTime(a.created_date)}</span>
                     </div>
                     <p className="text-slate-400 text-xs">{a.user_name || a.user_id?.slice(0, 8)} • {a.notes || ""}</p>
                   </div>

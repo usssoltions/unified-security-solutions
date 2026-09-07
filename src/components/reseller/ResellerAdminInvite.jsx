@@ -23,8 +23,12 @@ const FRIENDLY_ERRORS = {
   bad_customer: "That customer does not belong to the selected reseller.",
   scope_failed: "The user exists but could not be scoped. Contact support.",
   invite_service_failed: "The invitation email could not be sent right now. Please try again.",
+  bad_site: "The selected site is not valid for this customer.",
   internal_error: "Invitation failed. Please try again.",
 };
+
+/** Site-scoped operational roles — these get the Site Assignment field. */
+const SITE_SCOPED_ROLES = ["guard", "dispatcher"];
 
 /**
  * ResellerAdminInvite — modal to invite a tenant-scoped user.
@@ -56,6 +60,7 @@ export default function ResellerAdminInvite({
     first_name: "", last_name: "", email: "", phone: "",
     role_type: allowResellerAdmin ? "reseller_admin" : "customer_admin",
     customer_id: singleCustomer ? customerList[0].id : "",
+    site_id: "",
     status: "active",
   };
   const [form, setForm] = useState(blankForm);
@@ -117,6 +122,22 @@ export default function ResellerAdminInvite({
   const needsCustomer = !isResellerAdminRole;
   const rolesLoading = needsCustomer && enabledModuleKeys === null;
 
+  // Site options for site-scoped operational roles — the SELECTED customer's
+  // active sites only, never cross-tenant.
+  const [sites, setSites] = useState(null);
+  useEffect(() => {
+    if (!open || !needsCustomer || !form.customer_id) { setSites(null); return; }
+    let alive = true;
+    setSites(null);
+    base44.entities.Site.filter({ customer_id: form.customer_id, status: "active" })
+      .then((list) => { if (alive) setSites(list || []); })
+      .catch(() => { if (alive) setSites([]); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form.customer_id]);
+
+  const showSiteField = needsCustomer && SITE_SCOPED_ROLES.includes(form.role_type);
+
   const submit = async () => {
     if (!form.first_name.trim()) { toast({ title: "First name is required", variant: "destructive" }); return; }
     if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
@@ -135,6 +156,7 @@ export default function ResellerAdminInvite({
         reseller_id: resellerId,
         customer_id: needsCustomer ? form.customer_id : null,
         phone: form.phone.trim() || undefined,
+        site_id: showSiteField && form.site_id ? form.site_id : undefined,
         user_status: form.status,
       });
       const d = res?.data || res;
@@ -197,7 +219,7 @@ export default function ResellerAdminInvite({
             </Label>
             <Select
               value={form.role_type}
-              onValueChange={(v) => setForm({ ...form, role_type: v })}
+              onValueChange={(v) => setForm((f) => ({ ...f, role_type: v, site_id: SITE_SCOPED_ROLES.includes(v) ? f.site_id : "" }))}
               disabled={rolesLoading}
             >
               <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue /></SelectTrigger>
@@ -211,6 +233,26 @@ export default function ResellerAdminInvite({
               </p>
             )}
           </div>
+          {showSiteField && (
+            <div className="sm:col-span-2">
+              <Label className="text-slate-300 text-xs">Site Assignment</Label>
+              <Select
+                value={form.site_id || "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, site_id: v === "none" ? "" : v }))}
+              >
+                <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">All customer sites (no fixed site)</SelectItem>
+                  {(sites || []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500 mt-1">
+                Only this customer's active sites are offered. The site is applied automatically when the invitee accepts.
+              </p>
+            </div>
+          )}
           <div><Label className="text-slate-300 text-xs">Status</Label>
             <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
               <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue /></SelectTrigger>
@@ -229,7 +271,7 @@ export default function ResellerAdminInvite({
               </Label>
               <Select
                 value={form.customer_id}
-                onValueChange={(v) => setForm({ ...form, customer_id: v })}
+                onValueChange={(v) => setForm((f) => ({ ...f, customer_id: v, site_id: "" }))}
                 disabled={singleCustomer}
               >
                 <SelectTrigger className="bg-slate-950 border-slate-700 mt-1">

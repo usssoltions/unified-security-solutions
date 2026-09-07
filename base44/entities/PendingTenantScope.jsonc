@@ -1,7 +1,7 @@
 {
   "name": "PendingTenantScope",
   "type": "object",
-  "description": "Holds tenant scoping (reseller_id / customer_id / role_type / admin_level) for an invited user whose User record does not exist yet (the invitee has not accepted the invitation). A User-create automation (applyPendingTenantScope) consumes these records when the invitee accepts and the User record is created, applying the scoping server-side. One record per email (idempotent). This is NOT a separate invitation system \u2014 the invitation itself is sent via base44.users.inviteUser; this entity only queues the tenant scoping to apply on acceptance.",
+  "description": "Holds tenant scoping (reseller_id / customer_id / site_id / role_type / admin_level) for an invited user whose User record does not exist yet (the invitee has not accepted the invitation). A User-create automation (applyPendingTenantScope) consumes these records when the invitee accepts and the User record is created, applying the scoping server-side. One record per email (idempotent). This is NOT a separate invitation system \u2014 the invitation itself is sent via base44.users.inviteUser; this entity only queues the tenant scoping to apply on acceptance.",
   "properties": {
     "email": {
       "type": "string",
@@ -16,13 +16,18 @@
         "reseller",
         "customer",
         "platform"
-      ]
+      ],
+      "description": "Only TENANT ADMINISTRATOR roles (customer_admin / practice_admin / estate_manager) receive 'customer'; reseller_admin receives 'reseller'. Operational roles receive NO admin level (null) \u2014 admin_level never grants user-management capability to operational users."
     },
     "reseller_id": {
       "type": "string"
     },
     "customer_id": {
       "type": "string"
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Optional site assignment for site-scoped operational roles (e.g. Security Guard assigned to a specific site). Validated at invite time to exist, be active, and belong to the invited customer \u2014 never a cross-tenant site. Applied to the invitee's User record on acceptance."
     },
     "display_name": {
       "type": "string"
@@ -39,6 +44,16 @@
       ],
       "default": "pending"
     },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "sent",
+        "failed"
+      ],
+      "default": "queued",
+      "description": "Invitation delivery lifecycle: 'queued' the instant the pending scope is created, 'sent' once the platform invitation email has been dispatched (set by inviteTenantUser after inviteUser succeeds), 'failed' when dispatch fails (record retained so the admin can retry)."
+    },
     "invited_by": {
       "type": "string"
     },
@@ -52,6 +67,11 @@
     "applied_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "cancelled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the invitation was cancelled by an admin (status is set to 'cancelled' via the scope notes; the cancellation event is audit-logged)."
     },
     "notes": {
       "type": "string"

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -23,12 +23,26 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
     badge_number: user?.badge_number || "",
     phone: user?.phone || "",
     security_pin: user?.security_pin || "",
+    site_id: user?.site_id || "",
     new_password: ""
   });
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState(roles[0]?.value || "guard");
   const [inviteStatus, setInviteStatus] = useState(null);
+
+  // Site options for site-scoped operational roles — the target user's OWN
+  // customer's active sites only (server re-validates; never cross-tenant).
+  const [sites, setSites] = useState([]);
+  const showSiteField = user && ["guard", "dispatcher"].includes(formData.role_type);
+  useEffect(() => {
+    if (!user?.customer_id) { setSites([]); return; }
+    let alive = true;
+    base44.entities.Site.filter({ customer_id: user.customer_id, status: "active" })
+      .then((list) => { if (alive) setSites(list || []); })
+      .catch(() => { if (alive) setSites([]); });
+    return () => { alive = false; };
+  }, [user?.id, user?.customer_id]);
 
   const updateUserMutation = useMutation({
     mutationFn: async (data) => {
@@ -52,6 +66,7 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
           badge_number: data.badge_number,
           phone: data.phone,
           security_pin: data.security_pin,
+          ...(showSiteField ? { site_id: data.site_id || null } : {}),
         });
         // Role changes go through the server-side role gate. For Customer
         // Administrators the new role is validated server-side against the
@@ -265,6 +280,27 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
                     maxLength={4}
                   />
                   <p className="text-xs text-slate-500">Default: 1234</p>
+                </div>
+              )}
+
+              {showSiteField && (
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Site Assignment</Label>
+                  <Select
+                    value={formData.site_id || "none"}
+                    onValueChange={(v) => setFormData((f) => ({ ...f, site_id: v === "none" ? "" : v }))}
+                  >
+                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">All customer sites (no fixed site)</SelectItem>
+                      {sites.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-500">Only this customer's active sites are offered.</p>
                 </div>
               )}
             </div>

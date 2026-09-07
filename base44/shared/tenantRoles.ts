@@ -22,9 +22,9 @@ export const MODULE_ROLE_ACCESS: Record<string, string[]> = {
   COMPLETE_SECURITY: ["admin", "dispatcher", "guard"],
   OPERATIONS: ["admin", "dispatcher", "guard"],
   PATROL: ["dispatcher", "guard"],
-  ACCESS: ["estate_manager", "guard", "reception"],
+  ACCESS: ["guard", "reception"],
   ESTATE: ["estate_manager", "resident", "vendor"],
-  OCCUPATIONAL_THERAPY: ["practice_admin", "therapist", "reception"],
+  OCCUPATIONAL_THERAPY: ["practice_admin", "therapist", "reception", "employer_user"],
   ATTENDANCE_REGISTER: ["attendance_staff"],
   // Support modules with no user roles of their own:
   CALLING: [],

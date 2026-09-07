@@ -25,7 +25,9 @@
         "practice_admin",
         "therapist",
         "reception",
-        "employer_user"
+        "employer_user",
+        "customer_admin",
+        "attendance_staff"
       ],
       "default": "resident"
     },
