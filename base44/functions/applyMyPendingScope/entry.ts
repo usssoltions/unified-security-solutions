@@ -42,8 +42,11 @@ export default async function(req: Request): Promise<Response> {
     if (scope.reseller_id) updates.reseller_id = scope.reseller_id;
     if (scope.customer_id !== undefined && scope.customer_id !== null) updates.customer_id = scope.customer_id;
     if (scope.display_name) updates.display_name = scope.display_name;
+    if (scope.first_name) updates.first_name = scope.first_name;
+    if (scope.last_name) updates.last_name = scope.last_name;
     if (scope.phone) updates.phone = scope.phone;
     if (scope.site_id) updates.site_id = scope.site_id;
+    if (scope.user_status) updates.user_status = scope.user_status;
 
     if (Object.keys(updates).length === 0) {
       return Response.json({ applied: false });

@@ -91,7 +91,7 @@ export default async function(req: Request): Promise<Response> {
       case 'update': {
         // Whitelist allowed fields — never allow id, email, or role changes here
         const allowedFields = [
-          'display_name', 'badge_number', 'phone', 'whatsapp', 'unit_number',
+          'display_name', 'first_name', 'last_name', 'user_status', 'badge_number', 'phone', 'whatsapp', 'unit_number',
           'security_pin', 'site_id', 'customer_id', 'reseller_id', 'employer_id', 'module_context',
           'profile_photo', 'stay_awake_enabled', 'stay_awake_interval_minutes',
           'patrol_reminder_enabled', 'patrol_reminder_interval_minutes',

@@ -7,30 +7,45 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, UserPlus, Lock, Mail } from "lucide-react";
+import { X, Lock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { SECURITY_ROLES, MEDICAL_ROLES, ROLE_DESCRIPTIONS, isMedicalRoleSet } from "@/lib/roleCatalog";
+import { ROLE_DESCRIPTIONS } from "@/lib/roleCatalog";
 
-export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSuccess }) {
+/**
+ * UserForm — EDIT an existing tenant user. Exposes the same field set as the
+ * unified invitation form (TenantUserInviteForm): First Name, Last Name,
+ * Mobile, Role (where authorised), Status and Site Assignment.
+ *
+ * Invitations themselves are handled exclusively by the shared
+ * TenantUserInviteForm — there is no longer a second, reduced invite form.
+ *
+ * full_name is platform-managed and read-only, so the editable name parts are
+ * stored in first_name / last_name and the canonical single name
+ * (display_name = "First Last") is kept in sync for every existing consumer
+ * (User Management, Scheduling, Scheduled Tasks, Reports, notifications).
+ */
+export default function UserForm({ user, roles = [], onClose, onSuccess }) {
   const queryClient = useQueryClient();
-  const isMedical = isMedicalRoleSet(roles);
   // Guard clock-in PIN only applies to tenants with guard roles — hidden for
   // Attendance Register-only (and other non-guard) role sets.
   const showGuardFields = roles.some(r => ["guard", "admin", "dispatcher"].includes(r.value));
+
+  // Fall back to splitting the existing display name for records created
+  // before first/last name fields existed.
+  const fallbackName = user?.display_name || user?.full_name || "";
+  const fallbackParts = fallbackName.trim().split(/\s+/).filter(Boolean);
+
   const [formData, setFormData] = useState({
-    display_name: user?.display_name || user?.full_name || "",
+    first_name: user?.first_name || fallbackParts[0] || "",
+    last_name: user?.last_name || fallbackParts.slice(1).join(" "),
     email: user?.email || "",
     role_type: user?.role_type || roles[0]?.value || "guard",
     badge_number: user?.badge_number || "",
     phone: user?.phone || "",
     security_pin: user?.security_pin || "",
     site_id: user?.site_id || "",
-    new_password: ""
+    user_status: user?.user_status || "active",
   });
-
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState(roles[0]?.value || "guard");
-  const [inviteStatus, setInviteStatus] = useState(null);
 
   // Site options for site-scoped operational roles — the target user's OWN
   // customer's active sites only (server re-validates; never cross-tenant).
@@ -47,36 +62,36 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
 
   const updateUserMutation = useMutation({
     mutationFn: async (data) => {
-      try {
-        const callManageUser = async (action, updates) => {
-          const res = await base44.functions.invoke("manageUser", {
-            action,
-            target_user_id: user.id,
-            updates,
-          });
-          const d = res?.data !== undefined ? res.data : res;
-          if (d?.error) throw new Error(d.error);
-          return d;
-        };
-        // Server-side authorized update (tenant-scoped, audited,
-        // field-whitelisted). full_name is a platform-managed read-only field
-        // and silently ignored on update, so the editable name is persisted
-        // into display_name instead. role_type is handled separately below.
-        await callManageUser("update", {
-          display_name: data.display_name,
-          badge_number: data.badge_number,
-          phone: data.phone,
-          security_pin: data.security_pin,
-          ...(showSiteField ? { site_id: data.site_id || null } : {}),
+      const callManageUser = async (action, updates) => {
+        const res = await base44.functions.invoke("manageUser", {
+          action,
+          target_user_id: user.id,
+          updates,
         });
-        // Role changes go through the server-side role gate. For Customer
-        // Administrators the new role is validated server-side against the
-        // customer's enabled module entitlements (fail closed).
-        if (data.role_type !== user.role_type) {
-          await callManageUser("change_role", { role_type: data.role_type });
-        }
-      } catch (err) {
-        throw new Error(err?.response?.data?.error || err?.message || "Failed to save changes.");
+        const d = res?.data !== undefined ? res.data : res;
+        if (d?.error) throw new Error(d.error);
+        return d;
+      };
+      // Server-side authorized update (tenant-scoped, audited,
+      // field-whitelisted). full_name is a platform-managed read-only field
+      // and silently ignored on update, so the editable name parts are
+      // persisted into first_name / last_name and the canonical display_name
+      // is kept in sync. role_type is handled separately below.
+      await callManageUser("update", {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        display_name: [data.first_name, data.last_name].filter(Boolean).join(" ").trim(),
+        user_status: data.user_status,
+        badge_number: data.badge_number,
+        phone: data.phone,
+        security_pin: data.security_pin,
+        ...(showSiteField ? { site_id: data.site_id || null } : {}),
+      });
+      // Role changes go through the server-side role gate. For Customer
+      // Administrators the new role is validated server-side against the
+      // customer's enabled module entitlements (fail closed).
+      if (data.role_type !== user.role_type) {
+        await callManageUser("change_role", { role_type: data.role_type });
       }
     },
     onSuccess: () => {
@@ -92,106 +107,7 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
     }
   };
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim()) {
-      setInviteStatus({ error: "Please enter an email address." });
-      return;
-    }
-    setInviteStatus({ loading: true });
-    try {
-      // Server-side tenant invitation: inviteTenantUser validates the role
-      // against the customer's enabled modules, stores the tenant scope
-      // (customer / reseller / role) in a PendingTenantScope, and sends the
-      // platform invitation. The scope is applied to the invitee's account
-      // AUTOMATICALLY on their first login — no manual profile step.
-      const res = await base44.functions.invoke("inviteTenantUser", {
-        action: "invite",
-        email: inviteEmail.trim(),
-        role_type: inviteRole,
-      });
-      const d = res?.data !== undefined ? res.data : res;
-      if (d?.error) throw new Error(d.error);
-      const roleLabel = roles.find(r => r.value === inviteRole)?.label || inviteRole;
-      setInviteStatus({
-        success: `Invitation sent to ${inviteEmail.trim()}. Their ${roleLabel} access will be applied automatically when they sign in for the first time.`,
-      });
-      setInviteEmail("");
-    } catch (err) {
-      setInviteStatus({ error: err?.message || "Failed to send invitation. Please try again." });
-    }
-  };
-
-  if (!user) {
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-        <Card className="w-full max-w-2xl bg-slate-800 border-slate-700 my-8">
-          <CardHeader className="border-b border-slate-700">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <UserPlus className="w-6 h-6 text-sky-400" />
-                <CardTitle className="text-white">Invite New User</CardTitle>
-              </div>
-              <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400">
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-6 space-y-4">
-            <div className="space-y-2">
-              <Label className="text-slate-300">Email Address *</Label>
-              <Input
-                type="email"
-                placeholder="user@example.com"
-                value={inviteEmail}
-                onChange={e => setInviteEmail(e.target.value)}
-                className="bg-slate-900 border-slate-700 text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-300">Role *</Label>
-              <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map(r => (
-                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {inviteStatus?.success && (
-              <Alert className="bg-emerald-500/10 border-emerald-500/20">
-                <AlertDescription className="text-emerald-300 text-sm">{inviteStatus.success}</AlertDescription>
-              </Alert>
-            )}
-            {inviteStatus?.error && (
-              <Alert className="bg-rose-500/10 border-rose-500/20">
-                <AlertDescription className="text-rose-300 text-sm">{inviteStatus.error}</AlertDescription>
-              </Alert>
-            )}
-
-            <Alert className="bg-amber-500/10 border-amber-500/20">
-              <AlertDescription className="text-slate-300 text-sm">
-                The user will receive an email invitation. Their{" "}
-                {roles.find(r => r.value === inviteRole)?.label || "selected role"}{" "}
-                access will be applied automatically when they sign in for the first time.
-              </AlertDescription>
-            </Alert>
-
-            <div className="flex gap-3 pt-2">
-              <Button onClick={onClose} variant="outline" className="flex-1 border-slate-600 text-slate-300">Cancel</Button>
-              <Button onClick={handleInvite} disabled={inviteStatus?.loading} className="flex-1 bg-sky-600 hover:bg-sky-700">
-                <Mail className="w-4 h-4 mr-2" />
-                {inviteStatus?.loading ? "Sending..." : "Send Invitation"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -208,12 +124,21 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-slate-300">Full Name *</Label>
+                <Label className="text-slate-300">First Name *</Label>
                 <Input
-                  value={formData.display_name}
-                  onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+                  value={formData.first_name}
+                  onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
                   className="bg-slate-900 border-slate-700 text-white"
                   required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">Last Name</Label>
+                <Input
+                  value={formData.last_name}
+                  onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                  className="bg-slate-900 border-slate-700 text-white"
                 />
               </div>
 
@@ -243,6 +168,26 @@ export default function UserForm({ user, roles = SECURITY_ROLES, onClose, onSucc
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">Status</Label>
+                <Select
+                  value={formData.user_status}
+                  onValueChange={(value) => setFormData({ ...formData, user_status: value })}
+                >
+                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  Removing access entirely uses the Remove action on the user card.
+                </p>
               </div>
 
               <div className="space-y-2">

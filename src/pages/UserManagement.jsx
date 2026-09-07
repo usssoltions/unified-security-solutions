@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PullToRefresh from "@/components/PullToRefresh";
 import UserForm from "../components/users/UserForm";
 import UserCard from "../components/users/UserCard";
+import TenantUserInviteForm from "@/components/users/TenantUserInviteForm";
 import { getTenantUserManagementRoles, isAttendanceOnlyCustomer, ROLE_DESCRIPTIONS, getRoleDisplay } from "@/lib/roleCatalog";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
@@ -19,6 +20,11 @@ export default function UserManagement() {
   const queryClient = useQueryClient();
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  // Unified invitation flow: every caller scope (Platform, Reseller,
+  // Customer Administrator) uses the ONE shared TenantUserInviteForm +
+  // inviteTenantUser backend contract. The form locks the customer to the
+  // caller's own tenant for Customer Administrators.
+  const [showInviteForm, setShowInviteForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Users via getTenantUsers (server-side) — the built-in User entity only
@@ -160,7 +166,7 @@ export default function UserManagement() {
             </div>
           </div>
           <Button
-            onClick={() => { setEditingUser(null); setShowUserForm(true); }}
+            onClick={() => setShowInviteForm(true)}
             className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
           >
             <Plus className="w-5 h-5 mr-2" /> Add User
@@ -243,12 +249,23 @@ export default function UserManagement() {
           ))}
         </Tabs>
 
-        {showUserForm && (
+        {showUserForm && editingUser && (
           <UserForm
             user={editingUser}
             roles={roles}
             onClose={() => { setShowUserForm(false); setEditingUser(null); }}
             onSuccess={() => { setShowUserForm(false); setEditingUser(null); queryClient.invalidateQueries(["allUsers"]); }}
+          />
+        )}
+
+        {showInviteForm && (
+          <TenantUserInviteForm
+            open={showInviteForm}
+            onClose={() => setShowInviteForm(false)}
+            onDone={() => queryClient.invalidateQueries(["allUsers"])}
+            lockedCustomer={!isPlatformAdmin && customerId && customer ? { id: customer.id, name: customer.name } : undefined}
+            resellerId={!isPlatformAdmin && !customerId ? currentUser?.reseller_id : undefined}
+            allowResellerAdmin={isPlatformAdmin}
           />
         )}
       </div>

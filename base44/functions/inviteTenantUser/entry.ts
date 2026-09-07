@@ -325,6 +325,9 @@ export default async function(req: Request): Promise<Response> {
     if (existing) {
       const scopeUpdates = { role_type, admin_level, reseller_id: effectiveReseller, customer_id: customer_id || null };
       if (displayName) scopeUpdates.display_name = displayName;
+      if (firstName) scopeUpdates.first_name = firstName;
+      if (lastName) scopeUpdates.last_name = lastName;
+      scopeUpdates.user_status = userStatus || 'active';
       if (phone) scopeUpdates.phone = phone;
       try {
         await base44.asServiceRole.entities.User.update(existing.id, scopeUpdates);

@@ -68,6 +68,24 @@
       "default": "security",
       "description": "Primary module context for navigation and terminology."
     },
+    "first_name": {
+      "type": "string",
+      "description": "User first name. full_name is platform-managed/read-only, so the editable name parts are stored here and in last_name; display_name (first + last) remains the canonical single name field used across the app (User Management, Scheduling, Scheduled Tasks, Reports, notifications)."
+    },
+    "last_name": {
+      "type": "string",
+      "description": "User last name. See first_name."
+    },
+    "user_status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "inactive"
+      ],
+      "default": "active",
+      "description": "Account status: stored, applied on invitation acceptance and editable by authorised admins. Login-blocking enforcement of suspended/inactive is a separate hardening \u2014 access removal today is manageUser remove_access."
+    },
     "display_name": {
       "type": "string"
     },
