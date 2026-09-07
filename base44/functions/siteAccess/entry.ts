@@ -51,10 +51,6 @@ export default async function(req) {
     const canManage = platformAdmin || resellerAdmin || tenantManager;
     const canRead = platformAdmin || resellerAdmin || tenantReader;
 
-    if (!canRead) {
-      return Response.json({ error: 'Your role cannot access site data', code: 'forbidden_role' }, { status: 403 });
-    }
-
     const callerName = caller.display_name || caller.full_name || caller.email;
 
     const audit = async (event_type, site, details) => {
@@ -70,6 +66,19 @@ export default async function(req) {
         notes: details || null,
       }).catch(() => {});
     };
+
+    if (!canRead) {
+      // Rejected role access is evidence-logged with the exact server-side
+      // resolution — a 403 must never silently look like "0 sites".
+      await audit('site.access_denied', null,
+        'forbidden_role action=' + action +
+        ' role=' + caller.role +
+        ' role_type=' + roleType +
+        ' admin_level=' + (caller.admin_level || 'none') +
+        ' customer_id=' + (caller.customer_id || 'none') +
+        ' reseller_id=' + (caller.reseller_id || 'none'));
+      return Response.json({ error: 'Your role cannot access site data', code: 'forbidden_role' }, { status: 403 });
+    }
 
     const findSite = async (id) => {
       if (!id) return null;
@@ -94,23 +103,53 @@ export default async function(req) {
     if (action === 'list') {
       let sites = [];
       const statusFilter = body.status ? { status: String(body.status) } : {};
-      if (platformAdmin) {
-        sites = body.customer_id
-          ? await svc.entities.Site.filter(Object.assign({ customer_id: String(body.customer_id) }, statusFilter), '-created_date', 500).catch(() => [])
-          : await svc.entities.Site.list('-created_date', 500).catch(() => []);
-      } else if (resellerAdmin) {
-        if (body.customer_id) {
-          const custs = await svc.entities.Customer.filter({ id: String(body.customer_id) }).catch(() => []);
-          const cust = (custs && custs[0]) ? custs[0] : null;
-          if (!cust || cust.reseller_id !== caller.reseller_id) {
-            return Response.json({ error: 'That customer does not belong to your reseller', code: 'forbidden_customer' }, { status: 403 });
+      let listScope = 'tenant';
+      let listQuery = null;
+      try {
+        if (platformAdmin) {
+          listScope = 'platform';
+          if (body.customer_id) {
+            listQuery = Object.assign({ customer_id: String(body.customer_id) }, statusFilter);
+            sites = await svc.entities.Site.filter(listQuery, '-created_date', 500);
+          } else {
+            sites = await svc.entities.Site.list('-created_date', 500);
           }
-          sites = await svc.entities.Site.filter(Object.assign({ customer_id: cust.id }, statusFilter), '-created_date', 500).catch(() => []);
+        } else if (resellerAdmin) {
+          listScope = 'reseller';
+          if (body.customer_id) {
+            const custs = await svc.entities.Customer.filter({ id: String(body.customer_id) });
+            const cust = (custs && custs[0]) ? custs[0] : null;
+            if (!cust || cust.reseller_id !== caller.reseller_id) {
+              return Response.json({ error: 'That customer does not belong to your reseller', code: 'forbidden_customer' }, { status: 403 });
+            }
+            listQuery = Object.assign({ customer_id: cust.id }, statusFilter);
+            sites = await svc.entities.Site.filter(listQuery, '-created_date', 500);
+          } else {
+            listQuery = Object.assign({ reseller_id: caller.reseller_id }, statusFilter);
+            sites = await svc.entities.Site.filter(listQuery, '-created_date', 500);
+          }
         } else {
-          sites = await svc.entities.Site.filter(Object.assign({ reseller_id: caller.reseller_id }, statusFilter), '-created_date', 500).catch(() => []);
+          listQuery = Object.assign({ customer_id: caller.customer_id }, statusFilter);
+          sites = await svc.entities.Site.filter(listQuery, '-created_date', 500);
         }
-      } else {
-        sites = await svc.entities.Site.filter(Object.assign({ customer_id: caller.customer_id }, statusFilter), '-created_date', 500).catch(() => []);
+      } catch (e) {
+        // A backend exception must NEVER surface as an empty site list.
+        await audit('site.list_error', null, 'scope=' + listScope + ' query=' + JSON.stringify(listQuery) + ' error=' + ((e && e.message) || String(e)));
+        return Response.json({ error: 'The site query failed on the server', code: 'list_failed' }, { status: 500 });
+      }
+      // End-to-end evidence capture: an EMPTY list is audit-logged with the
+      // exact server-side resolution (me() identity, branch, query) so any
+      // live "0 sites" report is traceable from Johan's real request.
+      if (!(sites || []).length) {
+        await audit('site.list_empty', null,
+          'scope=' + listScope +
+          ' query=' + JSON.stringify(listQuery) +
+          ' role=' + caller.role +
+          ' role_type=' + roleType +
+          ' admin_level=' + (caller.admin_level || 'none') +
+          ' caller_customer_id=' + (caller.customer_id || 'none') +
+          ' caller_reseller_id=' + (caller.reseller_id || 'none') +
+          ' caller_id=' + caller.id);
       }
       return Response.json({ sites: sites || [], can_manage: canManage });
     }

@@ -42,7 +42,12 @@ async function invokeSiteAccess(payload) {
 
 export async function listSites(params = {}) {
   const d = await invokeSiteAccess({ action: "list", ...params });
-  return d.sites || [];
+  // A malformed/undefined payload must NEVER render as "0 sites" —
+  // surface it as a real error instead.
+  if (!Array.isArray(d.sites)) {
+    throw new Error("Site list response was malformed — no sites array returned.");
+  }
+  return d.sites;
 }
 
 export async function getSite(siteId) {
