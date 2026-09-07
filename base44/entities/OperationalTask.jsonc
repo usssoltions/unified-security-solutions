@@ -1,7 +1,7 @@
 {
   "name": "OperationalTask",
   "type": "object",
-  "description": "Operations module: Task assigned to Control Room or management. Examples: Check guard, Contact site, Verify patrol, Follow up incident, Review alarm, Confirm shift, Contact customer. Supervisor verification supported.",
+  "description": "Operations module: Scheduled operational task \u2014 a DISTINCT workflow from guard shift scheduling. One record = one task occurrence. Recurring tasks store a shared series id (recurrence_key prefix) and parent_task_id; occurrences are generated server-side (bounded rolling window, deduplicated by recurrence_key) by the scheduledTaskAccess backend function. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 session tokens do not reliably expose custom User fields (customer_id/reseller_id), so template-based tenant scoping is unproven on this platform. ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record (the proven pattern of attendanceAccess/getTenantUsers), enforces the OPERATIONS / COMPLETE_SECURITY module licence, validates site/assignee tenant membership, and fails closed for unauthorized roles. Direct client access below is restricted to platform admins only \u2014 Customer A can never reach Customer B's tasks.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -20,7 +20,8 @@
       "type": "string"
     },
     "description": {
-      "type": "string"
+      "type": "string",
+      "description": "Task instructions / description"
     },
     "task_type": {
       "type": "string",
@@ -60,9 +61,24 @@
     "assigned_by_name": {
       "type": "string"
     },
+    "scheduled_date": {
+      "type": "string",
+      "format": "date",
+      "description": "SAST calendar date the task is scheduled for (YYYY-MM-DD)"
+    },
+    "scheduled_time": {
+      "type": "string",
+      "description": "SAST local time (HH:MM) the task is scheduled for"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO instant derived from scheduled_date + scheduled_time at the SAST fixed offset (+02:00). Used for sorting and overdue comparison."
+    },
     "due_date": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "description": "Optional due deadline (UTC ISO). Open tasks past this point are swept to status 'overdue' by scheduledTaskAccess."
     },
     "status": {
       "type": "string",
@@ -72,9 +88,49 @@
         "in_progress",
         "awaiting",
         "completed",
-        "overdue"
+        "overdue",
+        "cancelled"
       ],
       "default": "new"
+    },
+    "recurrence_type": {
+      "type": "string",
+      "enum": [
+        "none",
+        "daily",
+        "weekly",
+        "weekdays",
+        "monthly",
+        "custom"
+      ],
+      "default": "none",
+      "description": "Recurrence rule for the series (stored on the parent and every generated occurrence)."
+    },
+    "recurrence_weekdays": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Selected weekdays (0=Sun .. 6=Sat) for 'weekdays' recurrence.",
+      "default": []
+    },
+    "recurrence_interval_days": {
+      "type": "number",
+      "default": 1,
+      "description": "Interval in days for 'custom' recurrence."
+    },
+    "recurrence_end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Optional last date occurrences may be generated for (inclusive)."
+    },
+    "recurrence_key": {
+      "type": "string",
+      "description": "Series dedup key: '<seriesId>:<scheduled_date>'. Occurrence generation is idempotent \u2014 a key already present is never duplicated."
+    },
+    "parent_task_id": {
+      "type": "string",
+      "description": "The series parent task id for generated occurrences."
     },
     "completion_notes_required": {
       "type": "boolean",
@@ -129,11 +185,13 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -141,14 +199,13 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
-        },
-        {
-          "data.assigned_to": "{{user.id}}"
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -156,21 +213,29 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
-        },
-        {
-          "data.assigned_to": "{{user.id}}"
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }
