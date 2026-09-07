@@ -22,7 +22,11 @@ const TENANT_READ_ROLES = ['guard', 'dispatcher', 'admin', 'customer_admin', 'cl
 const TENANT_MANAGE_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 
 function isPlatformAdmin(u) {
-  return !!u && (u.role_type === 'platform_admin' || u.admin_level === 'platform');
+  // Mirrors the proven gateways (attendanceAccess / getTenantUsers): the
+  // built-in role 'admin' is the USS Platform Admin alongside explicit
+  // platform_admin role_type / admin_level. Without it, platform oversight
+  // (and the app owner's own access) failed closed with forbidden_role.
+  return !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
 }
 function isResellerAdmin(u) {
   return !!u && !isPlatformAdmin(u) && (u.role_type === 'reseller_admin' || u.admin_level === 'reseller');

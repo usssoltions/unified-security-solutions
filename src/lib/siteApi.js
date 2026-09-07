@@ -20,8 +20,18 @@
 import { base44 } from "@/api/base44Client";
 
 async function invokeSiteAccess(payload) {
-  const res = await base44.functions.invoke("siteAccess", payload);
-  const d = res?.data ?? res;
+  let res;
+  try {
+    res = await base44.functions.invoke("siteAccess", payload);
+  } catch (e) {
+    // The SDK THROWS on non-2xx — surface the gateway's real error message
+    // so a rejected tenant request is never a silent empty list.
+    const d = e?.response?.data;
+    const err = new Error(d?.error || e?.message || "Site request failed");
+    err.code = d?.code;
+    throw err;
+  }
+  const d = res?.data !== undefined ? res.data : res;
   if (!d || d.error) {
     const err = new Error(d?.error || "Site request failed");
     err.code = d?.code;

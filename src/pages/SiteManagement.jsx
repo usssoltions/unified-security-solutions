@@ -16,10 +16,11 @@ export default function SiteManagement() {
 
   // Tenant scope is resolved SERVER-SIDE by the siteAccess gateway —
   // only the authenticated caller's own customer's sites are ever returned.
-  const { data: sites, isLoading } = useQuery({
+  const { data: sites, isLoading, error, refetch } = useQuery({
     queryKey: ["sites"],
     queryFn: () => listSites(),
-    initialData: []
+    initialData: [],
+    retry: false
   });
 
   const deleteSiteMutation = useMutation({
@@ -48,6 +49,22 @@ export default function SiteManagement() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400" />
+      </div>
+    );
+  }
+
+  // A rejected gateway request is NEVER shown as an empty site list — the
+  // real reason (tenant scope, licence, connectivity) is surfaced instead.
+  if (error) {
+    return (
+      <div className="min-h-screen p-4 lg:p-6 flex items-center justify-center">
+        <Card className="bg-slate-800/50 border-rose-500/30 max-w-md w-full">
+          <CardContent className="p-6 text-center space-y-3">
+            <p className="text-white font-semibold">Couldn't load sites</p>
+            <p className="text-slate-400 text-sm">{error.message || "The site request was rejected."}</p>
+            <Button onClick={() => refetch()}>Try Again</Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
