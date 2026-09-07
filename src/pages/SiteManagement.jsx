@@ -1,32 +1,36 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
 import { MapPin, Plus, Edit, Trash2, Navigation, QrCode } from "lucide-react";
 import SiteForm from "../components/sites/SiteForm";
+import { listSites, deleteSite } from "@/lib/siteApi";
 
 export default function SiteManagement() {
   const [showForm, setShowForm] = useState(false);
   const [editingSite, setEditingSite] = useState(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
+  // Tenant scope is resolved SERVER-SIDE by the siteAccess gateway —
+  // only the authenticated caller's own customer's sites are ever returned.
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
-    queryFn: async () => {
-      return await base44.entities.Site.list("-created_date");
-    },
+    queryFn: () => listSites(),
     initialData: []
   });
 
   const deleteSiteMutation = useMutation({
     mutationFn: async (siteId) => {
-      await base44.entities.Site.delete(siteId);
+      await deleteSite(siteId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["sites"]);
+      queryClient.invalidateQueries({ queryKey: ["sites"] });
+    },
+    onError: (e) => {
+      toast({ title: e?.message || "Delete failed", variant: "destructive" });
     }
   });
 
@@ -213,7 +217,7 @@ export default function SiteManagement() {
           onClose={handleCloseForm}
           onSuccess={() => {
             handleCloseForm();
-            queryClient.invalidateQueries(["sites"]);
+            queryClient.invalidateQueries({ queryKey: ["sites"] });
           }}
         />
       )}
