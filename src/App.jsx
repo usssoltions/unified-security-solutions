@@ -45,6 +45,7 @@ import AttendanceWorkers from './pages/AttendanceWorkers';
 import AttendanceReports from './pages/AttendanceReports';
 import AttendanceSettings from './pages/AttendanceSettings';
 import ScheduledTasks from './pages/ScheduledTasks';
+import TestDataCleanup from './pages/TestDataCleanup';
 import ProtectedPage from '@/components/ProtectedPage';
 import RoleHomeRedirect from '@/components/RoleHomeRedirect';
 import PreLoginBrandShell from '@/components/branding/PreLoginBrandShell';
@@ -357,6 +358,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="ScheduledTasks">
             <ProtectedPage pageKey="ScheduledTasks">
               <ScheduledTasks />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/TestDataCleanup" element={
+          <LayoutWrapper currentPageName="TestDataCleanup">
+            <ProtectedPage pageKey="TestDataCleanup">
+              <TestDataCleanup />
             </ProtectedPage>
           </LayoutWrapper>
         } />
