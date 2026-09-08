@@ -1,7 +1,7 @@
 {
   "name": "ControlRoom",
   "type": "object",
-  "description": "Task Scheduling module: a customer's physical Control Room with its own operators, supervisors, service areas (linked sites) and task queue. A customer may operate multiple Control Rooms (e.g. Control Room 1 and Control Room 2) with separate queues. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 session tokens do not reliably expose custom User fields, so template-based tenant scoping is unproven on this platform. ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record (the proven attendanceAccess/scheduledTaskAccess pattern), validates control-room/customer/reseller scope on every operation, and fails closed with 403 for cross-tenant access. Direct client access below is restricted to platform admins only \u2014 Dogs and All can never retrieve or mutate Sauerman's Control Rooms, operators or sites.",
+  "description": "Task Scheduling module: a customer's physical Control Room with its own operators, supervisors, service areas (linked sites) and task queue. A customer may operate multiple Control Rooms (e.g. Control Room 1 and Control Room 2) with separate queues. DATA LIFECYCLE: DEACTIVATE (status 'inactive') removes the room from new task list / assignment options (the gateway rejects batch creation for non-active rooms) while keeping it visible in historical reporting; ARCHIVE (status 'archived') additionally hides it from active management views; DELETE is permitted only for a room with NO task or task-list history whatsoever \u2014 a room referenced by any batch/task must be deactivated or archived so historical records keep their original control room name snapshot. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record, validates control-room/customer/reseller scope on every operation, and fails closed with 403 for cross-tenant access. Direct client access below is restricted to platform admins only.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -29,9 +29,11 @@
       "type": "string",
       "enum": [
         "active",
-        "inactive"
+        "inactive",
+        "archived"
       ],
-      "default": "active"
+      "default": "active",
+      "description": "'inactive' = DEACTIVATED: the room no longer accepts new task lists, disappears from new-assignment options and operator assignment workflows, but remains visible in historical reporting. 'archived' = additionally hidden from active management views. Rooms with task/report history can never be destructively deleted \u2014 deactivate or archive instead."
     },
     "linked_site_ids": {
       "type": "array",

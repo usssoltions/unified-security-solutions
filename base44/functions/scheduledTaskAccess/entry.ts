@@ -60,6 +60,7 @@ import {
   resolveTaskRecipients, notifyTaskRecipients,
 } from '../../shared/taskNotifications.ts';
 import { completionNotification, reminderNotification, deadlineReport, reasonRequiredNotification } from '../../shared/taskReportContent.ts';
+import { handleTaskLifecycle } from '../../shared/taskLifecycle.ts';
 
 const EDIT_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 const OPERATOR_ROLE = 'control_room_operator';
@@ -92,6 +93,8 @@ function isResellerAdmin(u) {
 function userName(u) {
   return (u && (u.display_name || u.full_name || u.email)) || '—';
 }
+
+
 
 /* ── Date helpers — YYYY-MM-DD strings are timezone-neutral ─────────────── */
 function ymdToDate(s) {
@@ -291,14 +294,14 @@ export default async function(req) {
       const recentBatches = await svc.entities.TaskBatch.filter(
         { is_series: false, status: 'active' }, '-scheduled_date', 100).catch(() => []);
       const dueBatches = (recentBatches || []).filter((b) =>
-        b.scheduled_date && b.scheduled_date <= today && b.scheduled_date >= cutoff);
+        b.scheduled_date && b.scheduled_date <= today && b.scheduled_date >= cutoff && !b.archived);
 
       // 2. Top-up recurring series (bounded, dedup by recurrence_key).
       const seriesRows = await svc.entities.TaskBatch.filter(
         { is_series: true, status: 'active' }, '-created_date', 50).catch(() => []);
       for (const series of (seriesRows || [])) {
         const rec = { type: series.recurrence_type, weekdays: series.recurrence_weekdays || [], interval: series.recurrence_interval_days || 1 };
-        if (rec.type === 'none') continue;
+        if (rec.type === 'none' || series.archived) continue;
         const endYmd = (series.recurrence_end_date && DATE_RE.test(series.recurrence_end_date))
           ? series.recurrence_end_date : addDaysYmd(today, 30);
         const dates = occurrenceDates(series.scheduled_date, rec, endYmd, 62);
@@ -337,7 +340,7 @@ export default async function(req) {
         const tasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
         const allTasks = tasks || [];
         if (!allTasks.length) continue;
-        const outstanding = allTasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+        const outstanding = allTasks.filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
 
         if (now < deadlineMs) {
           // ── Active window: 2-hour reminder cycle ──
@@ -378,7 +381,7 @@ export default async function(req) {
             results.tasks_marked_overdue += outstanding.length;
           }
           const freshTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
-          const freshOutstanding = (freshTasks || []).filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+          const freshOutstanding = (freshTasks || []).filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
           const needReason = freshOutstanding.filter((t) => !t.non_completion_reason);
           const customerName = await getCustomerName(batch.customer_id);
           if (needReason.length) {
@@ -406,7 +409,7 @@ export default async function(req) {
           } else {
             // Every incomplete task already has a reason (or nothing is
             // incomplete) → finalise the authoritative Task Completion Report.
-            const report = deadlineReport(batch, freshTasks || allTasks, customerName);
+            const report = deadlineReport(batch, (freshTasks || []).filter((t) => !t.archived), customerName);
             const recipients = await resolveTaskRecipients(svc, batch.customer_id,
               [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
             const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
@@ -541,7 +544,7 @@ export default async function(req) {
           const parents = await svc.entities.OperationalTask.filter(
             { customer_id: customerId, recurrence_type: { $ne: 'none' } }, '-created_date', 50).catch(() => []);
           for (const parent of (parents || [])) {
-            if (!parent.recurrence_key || parent.status === 'cancelled' || parent.task_batch_id) continue;
+            if (!parent.recurrence_key || parent.archived || parent.status === 'cancelled' || parent.task_batch_id) continue;
             const seriesId = parent.recurrence_key.slice(0, parent.recurrence_key.lastIndexOf(':'));
             const rec = { type: parent.recurrence_type, weekdays: parent.recurrence_weekdays || [], interval: parent.recurrence_interval_days || 1 };
             const endYmd = (parent.recurrence_end_date && DATE_RE.test(parent.recurrence_end_date))
@@ -586,17 +589,26 @@ export default async function(req) {
         // lists belonging to control rooms they are explicitly assigned to
         // (same-customer is NOT same-as-authorised). Supervisors/customer
         // admins keep their wider legitimate scope.
-        if (isOperator) batches = (batches || []).filter((b) => operatorRoomIds.indexOf(b.control_room_id) !== -1);
+        if (isOperator) batches = (batches || []).filter((b) => operatorRoomIds.indexOf(b.control_room_id) !== -1 && !b.archived);
       } else if (platformAdmin) {
         batches = await svc.entities.TaskBatch.list('-scheduled_date', 100).catch(() => []);
       }
       const users = staff.filter((u) => ASSIGNABLE_ROLES.indexOf(u.role_type) !== -1);
+      // DATA LIFECYCLE: archived records are excluded from every ACTIVE list
+      // (queues, My Tasks, active batch views, automation) and returned
+      // separately for the authorised Archived views.
+      const activeTasks = (tasks || []).filter((t) => !t.archived);
+      const archivedTasks = (tasks || []).filter((t) => !!t.archived);
+      const activeBatches = (batches || []).filter((b) => !b.archived);
+      const archivedBatches = (batches || []).filter((b) => !!b.archived);
       return Response.json({
-        tasks: tasks || [],
+        tasks: activeTasks,
+        archived_tasks: archivedTasks,
         sites: sites || [],
         users,
         staff,
-        batches: batches || [],
+        batches: activeBatches,
+        archived_batches: archivedBatches,
         // OPERATOR LEAST-PRIVILEGE: an operator's visible control rooms are
         // EXACTLY the rooms listing them in operator_user_ids — never the
         // whole customer's rooms. Unassigned operator → zero rooms, zero tasks.
