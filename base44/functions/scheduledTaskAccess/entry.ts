@@ -660,7 +660,7 @@ export default async function(req) {
       const fields = {
         customer_id: customerId, reseller_id: resellerId, name,
         physical_address: String(body.physical_address || '').trim() || null,
-        status: body.status === 'inactive' ? 'inactive' : 'active',
+        status: ['active', 'inactive', 'archived'].indexOf(body.status) !== -1 ? body.status : 'active',
         linked_site_ids: siteIds,
         operator_user_ids: ops.ids, supervisor_user_ids: sups.ids,
         notes: body.notes || null, created_by_name: callerName,
@@ -681,25 +681,6 @@ export default async function(req) {
       await logTaskScopeAudit(svc, { event_type: 'task.control_room_created', actor: caller,
         customerId, resellerId, controlId: created.id, notes: name });
       return Response.json({ success: true, control_room: created });
-    }
-
-    if (action === 'controlRoomDelete') {
-      if (!canEdit) return Response.json({ error: 'Your role cannot manage control rooms', code: 'forbidden_action' }, { status: 403 });
-      const rows = await svc.entities.ControlRoom.filter({ id: String(body.id || '') }).catch(() => []);
-      const room = (rows && rows[0]) || null;
-      if (!room) return Response.json({ error: 'Control room not found' }, { status: 404 });
-      if (!platformAdmin && room.customer_id !== customerId) {
-        return Response.json({ error: 'That control room does not belong to your customer', code: 'forbidden_room' }, { status: 403 });
-      }
-      const active = await svc.entities.OperationalTask.filter(
-        { control_room_id: room.id, status: { $in: ALL_OPEN_STATUSES } }).catch(() => []);
-      if ((active || []).length) {
-        return Response.json({ error: 'This control room still has open tasks — deactivate it instead of deleting', code: 'room_in_use' }, { status: 400 });
-      }
-      await svc.entities.ControlRoom.delete(room.id);
-      await logTaskScopeAudit(svc, { event_type: 'task.control_room_deleted', actor: caller,
-        customerId: room.customer_id, resellerId: room.reseller_id, controlId: room.id, notes: room.name });
-      return Response.json({ success: true });
     }
 
     /* ── Task Batch creation ──────────────────────────────────────────────── */
@@ -864,35 +845,6 @@ export default async function(req) {
       await logTaskAudit(svc, { event_type: 'task.batch_created', actor: caller, batch: series,
         notes: title + ' (recurring ' + recurrence_type + ') → ' + room.name + ' — ' + occurrences + ' occurrence(s) generated' });
       return Response.json({ success: true, batch: series, occurrences_generated: occurrences });
-    }
-
-    /* ── Batch cancel ─────────────────────────────────────────────────────── */
-    if (action === 'cancelBatch') {
-      if (!canEdit) return Response.json({ error: 'Your role cannot cancel task lists', code: 'forbidden_action' }, { status: 403 });
-      const batch = await findBatch(body.id);
-      if (!batch) return Response.json({ error: 'Task list not found' }, { status: 404 });
-      if (!platformAdmin && batch.customer_id !== customerId) {
-        return Response.json({ error: 'That task list does not belong to your customer', code: 'forbidden_batch' }, { status: 403 });
-      }
-      const cancelTasksOf = async (batchId) => {
-        await svc.entities.OperationalTask.updateMany(
-          { task_batch_id: batchId, status: { $in: ALL_OPEN_STATUSES } },
-          { $set: { status: 'cancelled' } }).catch(() => {});
-      };
-      if (batch.is_series) {
-        await svc.entities.TaskBatch.updateMany(
-          { parent_batch_id: batch.id, status: 'active' },
-          { $set: { status: 'cancelled' } }).catch(() => {});
-        const future = await svc.entities.TaskBatch.filter({ parent_batch_id: batch.id, status: 'cancelled' }).catch(() => []);
-        for (const occ of (future || [])) await cancelTasksOf(occ.id);
-        await cancelTasksOf(batch.id);
-      } else {
-        await cancelTasksOf(batch.id);
-      }
-      await svc.entities.TaskBatch.update(batch.id, { status: 'cancelled' });
-      await logTaskAudit(svc, { event_type: 'task.batch_cancelled', actor: caller, batch,
-        notes: batch.title + (batch.is_series ? ' (series + future occurrences)' : '') });
-      return Response.json({ success: true });
     }
 
     /* ── Batch edit — primary supervisor / additional recipients ─────────── */
@@ -1137,7 +1089,7 @@ export default async function(req) {
         const batch = await findBatch(task.task_batch_id);
         if (batch && batch.status === 'reason_pending') {
           const allTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
-          const incomplete = (allTasks || []).filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+          const incomplete = (allTasks || []).filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
           if (!incomplete.some((t) => !t.non_completion_reason)) {
             const custRows = await svc.entities.Customer.filter({ id: batch.customer_id }).catch(() => []);
             const customerName = (custRows && custRows[0] && custRows[0].name) || 'Customer';
@@ -1343,6 +1295,17 @@ export default async function(req) {
       }
       return Response.json({ success: true, task: created, occurrences_generated: occurrences });
     }
+
+    /* ── DATA LIFECYCLE ACTIONS (task/task-list delete, archive, restore,
+       bulk archive/cancel, series cancel scopes, control-room status/delete,
+       platform-admin test data cleanup) — implemented in the shared lifecycle
+       module so every tenant scope/eligibility rule lives in one place.
+       Returns null when the action is not a lifecycle action. */
+    const lifecycleResponse = await handleTaskLifecycle(svc, {
+      caller, platformAdmin, resellerAdmin, customerId, canEdit, callerName, body,
+      findTask, findBatch, assertScope, logTaskAudit,
+    });
+    if (lifecycleResponse) return lifecycleResponse;
 
     return Response.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {

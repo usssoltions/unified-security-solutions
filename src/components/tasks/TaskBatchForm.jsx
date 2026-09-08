@@ -67,7 +67,7 @@ export default function TaskBatchForm({ open, onClose, onSubmit, data, saving })
     setTasks([{ ...EMPTY_TASK }]);
   }, [open]);
 
-  const controlRooms = (data?.control_rooms || []).filter((r) => r.status !== "inactive");
+  const controlRooms = (data?.control_rooms || []).filter((r) => !["inactive", "archived"].includes(r.status));
   const sites = data?.sites || [];
   const staff = data?.staff || [];
   const supervisors = staff.filter((u) => SUPERVISOR_ROLES.includes(u.role_type));

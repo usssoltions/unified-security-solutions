@@ -138,7 +138,8 @@ export default function ControlRoomManager({ open, onClose, data, act }) {
                   <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-11"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-700 z-[60]">
                     <SelectItem value="active" className="text-white">Active</SelectItem>
-                    <SelectItem value="inactive" className="text-white">Inactive</SelectItem>
+                    <SelectItem value="inactive" className="text-white">Inactive (deactivated — no new task lists)</SelectItem>
+                    <SelectItem value="archived" className="text-white">Archived (hidden from active views)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

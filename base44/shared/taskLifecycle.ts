@@ -19,6 +19,8 @@
  * Control Room Operators and Guards NEVER receive delete/archive privileges.
  */
 
+import { sastTodayYmd } from './taskNotifications.ts';
+
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // Africa/Johannesburg, UTC+2, no DST
 const ALL_OPEN_STATUSES = ['new', 'acknowledged', 'in_progress', 'awaiting',
   'queue', 'assigned', 'awaiting_verification', 'reopened', 'overdue'];
@@ -183,7 +185,6 @@ export async function handleTaskLifecycle(svc, ctx) {
     if (!batch) return Response.json({ error: 'Task list not found' }, { status: 404 });
     const scopeErr = batchScope(batch);
     if (scopeErr) return scopeErr;
-    const { sastTodayYmd } = await import('./taskNotifications.ts');
     const today = sastTodayYmd();
     const cancelTasksOf = async (batchId) => {
       await svc.entities.OperationalTask.updateMany(
