@@ -512,6 +512,21 @@ export default async function(req) {
       if (isOperator) return assertScope(task);
       return Response.json({ error: 'Only a Control Room Operator or supervisor can perform this action', code: 'forbidden_action' }, { status: 403 });
     };
+    /* Work actions (start, guard sign-off): the ASSIGNED user may work their
+       OWN task; a guard may never touch another user's task; everyone else
+       needs operator/supervisor authority with proper scope. */
+    const assertActorOnTask = (task) => {
+      if (!task) return Response.json({ error: 'Task not found', code: 'not_found' }, { status: 404 });
+      if (platformAdmin || canEdit) return null;
+      if (isOperator) return assertScope(task);
+      if (isGuard) {
+        if (task.assigned_to !== caller.id) {
+          return Response.json({ error: 'You can only access tasks assigned to you', code: 'forbidden_task' }, { status: 403 });
+        }
+        return null;
+      }
+      return Response.json({ error: 'Only the assigned user, a Control Room Operator or a supervisor can perform this action', code: 'forbidden_action' }, { status: 403 });
+    };
 
     /* ── list ─────────────────────────────────────────────────────────────── */
     if (action === 'list') {
@@ -935,11 +950,8 @@ export default async function(req) {
     /* ── Start ────────────────────────────────────────────────────────────── */
     if (action === 'start') {
       const task = await findTask(body.id);
-      const gate = assertOperatorOrEdit(task);
+      const gate = assertActorOnTask(task);
       if (gate) return gate;
-      if (!canEdit && !isOperator && task.assigned_to !== caller.id) {
-        return Response.json({ error: 'Only the assigned user can start this task', code: 'forbidden_task' }, { status: 403 });
-      }
       if (task.status === 'completed' || task.status === 'cancelled') {
         return Response.json({ error: 'Only open tasks can be started' }, { status: 400 });
       }
@@ -953,11 +965,8 @@ export default async function(req) {
     /* ── SIGN-OFF 1 — Guard/User completion (NOT completed) ──────────────── */
     if (action === 'submitCompletion') {
       const task = await findTask(body.id);
-      const gate = assertOperatorOrEdit(task);
+      const gate = assertActorOnTask(task);
       if (gate) return gate;
-      if (!canEdit && !isOperator && task.assigned_to !== caller.id) {
-        return Response.json({ error: 'Only the assigned user can sign off this task', code: 'forbidden_task' }, { status: 403 });
-      }
       if (task.status === 'cancelled') return Response.json({ error: 'A cancelled task cannot be completed' }, { status: 400 });
       if (task.status === 'completed') return Response.json({ success: true, task, unchanged: true });
       const notes = String(body.completion_notes || '').trim();
