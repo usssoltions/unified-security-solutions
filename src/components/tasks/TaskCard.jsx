@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Clock, MapPin, User, Building2, CalendarClock, ClipboardList, Repeat,
   ShieldCheck, FileWarning, AlertTriangle,
 } from "lucide-react";
+import EvidenceViewDialog from "./EvidenceViewDialog";
 import { formatDateTime, formatDate } from "@/lib/datetime";
 import { TASK_STATUS_META, PRIORITY_META } from "./taskMeta";
 
@@ -13,6 +14,7 @@ import { TASK_STATUS_META, PRIORITY_META } from "./taskMeta";
  * passed as children by each view (operator queue / My Tasks / supervisor).
  */
 export default function TaskCard({ task, children }) {
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const status = TASK_STATUS_META[task.status] || TASK_STATUS_META.new;
   const priority = PRIORITY_META[task.priority] || PRIORITY_META.medium;
 
@@ -77,8 +79,8 @@ export default function TaskCard({ task, children }) {
               </div>
               {task.completion_notes && <p className="mt-1 whitespace-pre-wrap">{task.completion_notes}</p>}
               {task.completion_evidence_url && (
-                <a href={task.completion_evidence_url} target="_blank" rel="noreferrer"
-                  className="inline-block mt-1 text-sky-400 underline">View evidence</a>
+                <button type="button" onClick={() => setEvidenceOpen(true)}
+                  className="inline-block mt-1 text-sky-400 underline">View evidence</button>
               )}
             </div>
           )}
@@ -117,6 +119,13 @@ export default function TaskCard({ task, children }) {
 
         {children && <div className="flex sm:flex-col gap-2 shrink-0">{children}</div>}
       </div>
+
+      {/* In-app evidence viewer — a raw new-tab open renders blank in the
+          guard's Android WebView, so the stored file is displayed in-app. */}
+      {task.completion_evidence_url && (
+        <EvidenceViewDialog open={evidenceOpen} url={task.completion_evidence_url}
+          onClose={() => setEvidenceOpen(false)} />
+      )}
     </div>
   );
 }

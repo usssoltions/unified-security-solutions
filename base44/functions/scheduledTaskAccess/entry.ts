@@ -1032,6 +1032,15 @@ export default async function(req) {
       if (gate) return gate;
       if (task.status === 'cancelled') return Response.json({ error: 'A cancelled task cannot be completed' }, { status: 400 });
       if (task.status === 'completed') return Response.json({ success: true, task, unchanged: true });
+      // SIGN-OFF 1 IMMUTABILITY — fail closed: once sign-off 1 exists, a
+      // second guard sign-off is rejected (409) even with the UI bypassed.
+      // The signed record (timestamp, notes, signature, evidence) can never
+      // be overwritten or duplicated. ONLY an operator rejection
+      // (status 'reopened' — preserved history, task returned for rework)
+      // legitimately allows a fresh sign-off.
+      if (task.completed_at && task.status !== 'reopened') {
+        return Response.json({ error: 'Guard sign-off has already been completed for this task', code: 'signoff_exists' }, { status: 409 });
+      }
       const notes = String(body.completion_notes || '').trim();
       if (task.completion_notes_required && !notes) {
         return Response.json({ error: 'Completion notes are required for this task' }, { status: 400 });

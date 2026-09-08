@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ClipboardList, PlayCircle, CheckCircle2, Shield } from "lucide-react";
+import { ClipboardList, PlayCircle, CheckCircle2, Shield, Lock } from "lucide-react";
 import TaskCard from "./TaskCard";
 import SignoffDialog from "./SignoffDialog";
 import { TASK_OPEN_STATUSES } from "./taskMeta";
@@ -64,9 +64,18 @@ export default function MyTasksView({ data, act, user }) {
                   <PlayCircle className="w-4 h-4" /> Start
                 </Button>
               )}
-              <Button size="sm" onClick={() => setSignoffTask(task)} className="flex-1 sm:flex-none">
-                <CheckCircle2 className="w-4 h-4" /> Complete & Sign Off
-              </Button>
+              {/* SIGN-OFF 1 is one-shot: once the guard has signed off, the
+                  button is replaced by a read-only state — the signed record
+                  is immutable until the operator rejects and reopens it. */}
+              {!task.completed_at || task.status === "reopened" ? (
+                <Button size="sm" onClick={() => setSignoffTask(task)} className="flex-1 sm:flex-none">
+                  <CheckCircle2 className="w-4 h-4" /> Complete & Sign Off
+                </Button>
+              ) : (
+                <div className="flex-1 sm:flex-none flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-300 text-xs font-medium">
+                  <Lock className="w-4 h-4 shrink-0" /> Awaiting Control Room Verification
+                </div>
+              )}
             </TaskCard>
           ))}
         </div>
