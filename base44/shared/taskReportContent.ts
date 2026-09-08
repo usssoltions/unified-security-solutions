@@ -137,3 +137,25 @@ export function deadlineReport(batch, tasks, customerName) {
     counts: { total, completed: completed.length, outstanding: outstanding.length, overdue: overdue.length, reopened: reopened.length, cancelled: cancelled.length, pct },
   };
 }
+
+export function reasonRequiredNotification(batch, tasksNeedingReason, customerName) {
+  const lines = tasksNeedingReason.map((t) =>
+    '- ' + t.title + ' [' + t.status + '] — ' + (t.assigned_to_name || 'unassigned'));
+  const subject = 'Action Required — Non-Completion Reasons (' + tasksNeedingReason.length + ') — ' + batch.title;
+  const emailBody = [
+    'TASK SCHEDULING — REASON REQUIRED BEFORE REPORT',
+    '',
+    'Customer: ' + customerName,
+    'Control Room: ' + (batch.control_room_name || '—'),
+    'Task List: ' + batch.title + ' (' + batch.scheduled_date + ')',
+    'Deadline: ' + (batch.deadline_time || '—') + ' — passed without dual sign-off on the task(s) below.',
+    '',
+    'The authoritative Task Completion Report CANNOT be finalised until a reason for non-completion is captured for EVERY incomplete task:',
+    ...lines,
+    '',
+    'Capture the reason in the Task Scheduling screen (Overdue view → Reason). The Task Completion Report is generated and delivered automatically once all reasons are present.',
+  ].join('\n');
+  const telegramText = '⚠️ *Reason Required* — ' + batch.title + ' (' + (batch.control_room_name || '—') + ')\n' +
+    tasksNeedingReason.length + ' incomplete task(s) need a non-completion reason before the Task Completion Report can be finalised.';
+  return { subject, emailBody, telegramText };
+}

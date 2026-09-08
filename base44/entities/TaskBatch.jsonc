@@ -1,7 +1,7 @@
 {
   "name": "TaskBatch",
   "type": "object",
-  "description": "Task Scheduling module: a supervisor's task list/batch allocated to a specific Control Room (e.g. 'Daily Operational Tasks' 08:00-16:00 for Dogs and All Control Room 1). A recurring series stores its definition once (is_series=true, task_definitions embedded) and generates dated occurrence batches (parent_batch_id set, recurrence_key 'seriesId:YYYY-MM-DD') server-side \u2014 bounded and deduplicated by recurrence_key. Reminders (every 2h inside the active window) and the deadline Task Completion Report are driven per occurrence batch by the scheduled sweep. TENANT ACCESS PATTERN: NO {{user.data.*}} RLS rules \u2014 all tenant access goes through the scheduledTaskAccess gateway (server-side tenant resolution). Direct client access is platform-admin-only.",
+  "description": "Task Scheduling module: a supervisor's task list/batch allocated to a specific Control Room (e.g. 'Daily Operational Tasks' 08:00-16:00 for Dogs and All Control Room 1). A recurring series stores its definition once (is_series=true, task_definitions embedded) and generates dated occurrence batches (parent_batch_id set, recurrence_key 'seriesId:YYYY-MM-DD') server-side \u2014 bounded and deduplicated by recurrence_key. Reminders (every 2h inside the active window) and the deadline Task Completion Report are driven per occurrence batch by the scheduled sweep. DEADLINE REASON GATE: at the deadline, if any incomplete task has no non-completion reason, the batch enters status 'reason_pending' (a reason-required exception notification is sent once) and the authoritative Task Completion Report is NOT finalised \u2014 it generates automatically (captureReason action) once every incomplete task has a reason. TENANT ACCESS PATTERN: NO {{user.data.*}} RLS rules \u2014 all tenant access goes through the scheduledTaskAccess gateway (server-side tenant resolution). Direct client access is platform-admin-only.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -193,7 +193,7 @@
         "type": "string"
       },
       "default": [],
-      "description": "Optional additional authorised recipients (same customer only) for completion notifications and the deadline report."
+      "description": "Optional additional authorised recipients (same customer only) for completion notifications and the deadline report. Editable via the scheduledTaskAccess updateBatch action \u2014 removal stops future delivery."
     },
     "additional_notification_names": {
       "type": "array",
@@ -206,11 +206,20 @@
       "type": "string",
       "enum": [
         "active",
+        "reason_pending",
         "cancelled",
         "reported"
       ],
       "default": "active",
-      "description": "'reported' = deadline Task Completion Report generated and delivered for this occurrence."
+      "description": "'reason_pending' = deadline passed with incomplete task(s) still missing a non-completion reason \u2014 the authoritative Task Completion Report is held until every incomplete task has a reason (then set to 'reported'). 'reported' = authoritative deadline Task Completion Report generated and delivered."
+    },
+    "reason_required_notified_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp the one-time deadline reason-required exception notification was sent (idempotency guard for the reason gate \u2014 the sweep never re-spams)."
     },
     "reminder_count": {
       "type": "number",
@@ -237,6 +246,13 @@
         "null"
       ],
       "description": "Summary of deadline-report delivery (email/telegram recipients)."
+    },
+    "report_content": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the authoritative Task Completion Report body delivered at the deadline (audit/verification: proves every incomplete task carries its non-completion reason)."
     },
     "created_by_name": {
       "type": [

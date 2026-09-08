@@ -20,6 +20,7 @@ const RECURRENCE_LABEL = {
 };
 const BATCH_STATUS_META = {
   active: { label: "Active", cls: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
+  reason_pending: { label: "Reasons Required", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
   reported: { label: "Reported", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
   cancelled: { label: "Cancelled", cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
 };
@@ -165,6 +166,9 @@ export default function SupervisorView({ data, act, user }) {
                           <span className="text-slate-300">
                             {completed}/{bt.length} completed · {outstanding} outstanding
                           </span>
+                        )}
+                        {batch.status === "reason_pending" && (
+                          <span className="text-amber-400">Reasons required — completion report pending</span>
                         )}
                         {(batch.additional_notification_user_ids || []).length > 0 && (
                           <span>+{(batch.additional_notification_user_ids).length} additional recipient(s)</span>

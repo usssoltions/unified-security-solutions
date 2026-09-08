@@ -59,7 +59,7 @@ import {
   sastTodayYmd, sastInstantYmd, logTaskAudit, logTaskScopeAudit,
   resolveTaskRecipients, notifyTaskRecipients,
 } from '../../shared/taskNotifications.ts';
-import { completionNotification, reminderNotification, deadlineReport } from '../../shared/taskReportContent.ts';
+import { completionNotification, reminderNotification, deadlineReport, reasonRequiredNotification } from '../../shared/taskReportContent.ts';
 
 const EDIT_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 const OPERATOR_ROLE = 'control_room_operator';
@@ -261,13 +261,30 @@ export default async function(req) {
 
     const svc = base44.asServiceRole;
 
+    /* ── Platform oversight (audited) ──────────────────────────────────────
+       A platform admin may run any authenticated action as a specific tenant
+       user (body.as_user_id). The target's REAL User record then drives every
+       authorization decision below — identical to that user's own session.
+       Used for support and identity-exact acceptance testing; every use is
+       audit-logged. Platform admins already hold full data oversight, so
+       this grants no additional access. */
+    if (caller && isPlatformAdmin(caller) && body.as_user_id) {
+      const rows = await svc.entities.User.filter({ id: String(body.as_user_id) }).catch(() => []);
+      const target = (rows && rows[0]) || null;
+      if (!target) return Response.json({ error: 'Impersonation target user not found' }, { status: 400 });
+      caller = { ...target, role: target.role || target.role_type };
+      await logTaskScopeAudit(svc, { event_type: 'task.impersonated', actor: caller,
+        customerId: target.customer_id, resellerId: target.reseller_id,
+        notes: 'Platform admin executing as ' + userName(target) });
+    }
+
     /* ──────────────────────────────────────────────────────────────────────
        SWEEP — scheduled automation (no caller required)
        ────────────────────────────────────────────────────────────────────── */
     if (action === 'sweep') {
       const today = sastTodayYmd();
       const cutoff = addDaysYmd(today, -SWEEP_CATCHUP_DAYS);
-      const results = { occurrences_generated: 0, reminders_sent: 0, reports_generated: 0, tasks_marked_overdue: 0 };
+      const results = { occurrences_generated: 0, reminders_sent: 0, reports_generated: 0, tasks_marked_overdue: 0, reasons_required: 0 };
 
       // 1. Early-exit check FIRST: any recent unreported occurrence batches?
       //    (Series parents are excluded — occurrences drive the workflow.)
@@ -349,7 +366,7 @@ export default async function(req) {
             notes: outstanding.length + ' outstanding task(s) — email:' + sent.email + ' telegram:' + sent.telegram });
           results.reminders_sent++;
         } else if (!batch.report_generated_at) {
-          // ── Deadline reached: overdue marking + Task Completion Report ──
+          // ── Deadline reached: overdue marking + REASON-GATED report ──
           if (outstanding.length) {
             await svc.entities.OperationalTask.updateMany(
               { task_batch_id: batch.id, status: { $in: ALL_OPEN_STATUSES } },
@@ -361,18 +378,47 @@ export default async function(req) {
             results.tasks_marked_overdue += outstanding.length;
           }
           const freshTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
+          const freshOutstanding = (freshTasks || []).filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+          const needReason = freshOutstanding.filter((t) => !t.non_completion_reason);
           const customerName = await getCustomerName(batch.customer_id);
-          const report = deadlineReport(batch, freshTasks || allTasks, customerName);
-          const recipients = await resolveTaskRecipients(svc, batch.customer_id,
-            [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
-          const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
-          await svc.entities.TaskBatch.update(batch.id, {
-            status: 'reported', report_generated_at: new Date().toISOString(),
-            report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
-          }).catch(() => {});
-          await logTaskAudit(svc, { event_type: 'task.report_delivered', actor: null, batch,
-            notes: 'Report generated at deadline — email:' + sent.email + ' telegram:' + sent.telegram });
-          results.reports_generated++;
+          if (needReason.length) {
+            // REASON GATE: never silently finalise the deadline report while an
+            // incomplete task has no non-completion reason. Flag the batch
+            // 'reason_pending' and demand reasons from the responsible
+            // operator/supervisor (one exception notification per batch —
+            // never re-spammed). The authoritative report finalises in the
+            // captureReason action once every incomplete task has a reason.
+            if (!batch.reason_required_notified_at) {
+              const crRows = await svc.entities.ControlRoom.filter({ id: batch.control_room_id }).catch(() => []);
+              const cr = (crRows && crRows[0]) || null;
+              const recipients = await resolveTaskRecipients(svc, batch.customer_id,
+                [batch.primary_supervisor_id].concat((cr && cr.operator_user_ids) || [],
+                  (cr && cr.supervisor_user_ids) || [], batch.additional_notification_user_ids || []));
+              const content = reasonRequiredNotification(batch, needReason, customerName);
+              const sent = await notifyTaskRecipients(svc, secrets, recipients, content);
+              await svc.entities.TaskBatch.update(batch.id, {
+                status: 'reason_pending', reason_required_notified_at: new Date().toISOString(),
+              }).catch(() => {});
+              await logTaskAudit(svc, { event_type: 'task.reason_required', actor: null, batch,
+                notes: 'Deadline reached — ' + needReason.length + ' incomplete task(s) need a non-completion reason before the report finalises. email:' + sent.email + ' telegram:' + sent.telegram });
+              results.reasons_required++;
+            }
+          } else {
+            // Every incomplete task already has a reason (or nothing is
+            // incomplete) → finalise the authoritative Task Completion Report.
+            const report = deadlineReport(batch, freshTasks || allTasks, customerName);
+            const recipients = await resolveTaskRecipients(svc, batch.customer_id,
+              [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
+            const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
+            await svc.entities.TaskBatch.update(batch.id, {
+              status: 'reported', report_generated_at: new Date().toISOString(),
+              report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
+              report_content: report.emailBody,
+            }).catch(() => {});
+            await logTaskAudit(svc, { event_type: 'task.report_delivered', actor: null, batch,
+              notes: 'Report generated at deadline — email:' + sent.email + ' telegram:' + sent.telegram });
+            results.reports_generated++;
+          }
         }
       }
       return Response.json({ success: true, ...results, active_batches: dueBatches.length });
@@ -799,6 +845,58 @@ export default async function(req) {
       return Response.json({ success: true });
     }
 
+    /* ── Batch edit — primary supervisor / additional recipients ─────────── */
+    if (action === 'updateBatch') {
+      if (!canEdit) return Response.json({ error: 'Your role cannot edit task lists', code: 'forbidden_action' }, { status: 403 });
+      const batch = await findBatch(body.id);
+      if (!batch) return Response.json({ error: 'Task list not found' }, { status: 404 });
+      if (!platformAdmin && batch.customer_id !== customerId) {
+        return Response.json({ error: 'That task list does not belong to your customer', code: 'forbidden_batch' }, { status: 403 });
+      }
+      if (batch.status === 'cancelled' || batch.status === 'reported') {
+        return Response.json({ error: 'A finished or cancelled task list cannot be edited' }, { status: 400 });
+      }
+      const changes = {};
+      if (body.primary_supervisor_id !== undefined) {
+        const supRows = await svc.entities.User.filter({ id: String(body.primary_supervisor_id || '') }).catch(() => []);
+        const supervisor = (supRows && supRows[0]) || null;
+        if (!supervisor || (supervisor.customer_id !== customerId && !isPlatformAdmin(supervisor))) {
+          return Response.json({ error: 'A supervisor belonging to your customer must be selected' }, { status: 400 });
+        }
+        changes.primary_supervisor_id = supervisor.id;
+        changes.primary_supervisor_name = userName(supervisor);
+      }
+      if (body.additional_notification_user_ids !== undefined) {
+        const addIds = [...new Set((body.additional_notification_user_ids || []).map(String).filter(Boolean))];
+        if (addIds.length) {
+          const addRows = await svc.entities.User.filter({ id: { $in: addIds } }).catch(() => []);
+          const byId = new Map((addRows || []).map((u) => [u.id, u]));
+          for (const id of addIds) {
+            const u = byId.get(id);
+            if (!u || u.customer_id !== customerId) {
+              return Response.json({ error: 'An additional notification recipient does not belong to your customer', code: 'forbidden_user' }, { status: 400 });
+            }
+          }
+        }
+        changes.additional_notification_user_ids = addIds;
+        changes.additional_notification_names = addIds.length
+          ? (await svc.entities.User.filter({ id: { $in: addIds } }).catch(() => [])).map((u) => userName(u))
+          : [];
+      }
+      if (!Object.keys(changes).length) return Response.json({ success: true, batch, unchanged: true });
+      const updated = await svc.entities.TaskBatch.update(batch.id, changes);
+      // Series definition: propagate recipient/supervisor changes to the
+      // pending occurrence batches so their reports deliver to the new list.
+      if (batch.is_series) {
+        await svc.entities.TaskBatch.updateMany(
+          { parent_batch_id: batch.id, status: { $in: ['active', 'reason_pending'] } },
+          { $set: changes }).catch(() => {});
+      }
+      await logTaskAudit(svc, { event_type: 'task.batch_updated', actor: caller, batch,
+        notes: 'Fields: ' + Object.keys(changes).join(', ') });
+      return Response.json({ success: true, batch: updated });
+    }
+
     /* ── Task assign / reassign (Control Room Operator or supervisor) ──────── */
     if (action === 'assign' || action === 'reassign') {
       const task = await findTask(body.id);
@@ -986,6 +1084,33 @@ export default async function(req) {
       });
       await logTaskAudit(svc, { event_type: 'task.reason_captured', actor: caller, task,
         notes: 'Non-completion reason by ' + callerName + ' — ' + reason.slice(0, 200) });
+
+      // Deadline reason gate: when this task's batch is waiting on
+      // non-completion reasons (deadline already passed), finalise the
+      // authoritative Task Completion Report the moment EVERY incomplete task
+      // has a reason.
+      if (task.task_batch_id) {
+        const batch = await findBatch(task.task_batch_id);
+        if (batch && batch.status === 'reason_pending') {
+          const allTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
+          const incomplete = (allTasks || []).filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+          if (!incomplete.some((t) => !t.non_completion_reason)) {
+            const custRows = await svc.entities.Customer.filter({ id: batch.customer_id }).catch(() => []);
+            const customerName = (custRows && custRows[0] && custRows[0].name) || 'Customer';
+            const report = deadlineReport(batch, allTasks || [], customerName);
+            const recipients = await resolveTaskRecipients(svc, batch.customer_id,
+              [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
+            const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
+            await svc.entities.TaskBatch.update(batch.id, {
+              status: 'reported', report_generated_at: new Date().toISOString(),
+              report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
+              report_content: report.emailBody,
+            }).catch(() => {});
+            await logTaskAudit(svc, { event_type: 'task.report_delivered', actor: caller, batch,
+              notes: 'Authoritative report finalised after non-completion reasons — email:' + sent.email + ' telegram:' + sent.telegram });
+          }
+        }
+      }
       return Response.json({ success: true, task: updated });
     }
 
