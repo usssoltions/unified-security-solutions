@@ -413,7 +413,8 @@ export async function handleTaskLifecycle(svc, ctx) {
     const flagged = [];
     const flaggedBatchIds = new Set();
     for (const b of batches) {
-      if (!TEST_RE.test(b.title || '')) continue;
+      // Already-archived records have been handled — never re-flag them.
+      if (!TEST_RE.test(b.title || '') || b.archived) continue;
       flaggedBatchIds.add(b.id);
       const bt = tasksByBatch[b.id] || [];
       let deletable = !b.report_generated_at;
@@ -428,7 +429,7 @@ export async function handleTaskLifecycle(svc, ctx) {
     }
     const tasksById = new Map(tasks.map((t) => [t.id, t]));
     for (const t of tasks) {
-      if (!TEST_RE.test(t.title || '') || flaggedBatchIds.has(t.task_batch_id)) continue;
+      if (!TEST_RE.test(t.title || '') || t.archived || flaggedBatchIds.has(t.task_batch_id)) continue;
       const deletable = await taskDeletable(svc, t);
       flagged.push({ type: 'task', id: t.id, title: t.title, status: t.status, archived: !!t.archived,
         scheduled_date: t.scheduled_date, control_room_name: t.control_room_name || null, task_count: 1,
