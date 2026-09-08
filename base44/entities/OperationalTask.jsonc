@@ -1,7 +1,7 @@
 {
   "name": "OperationalTask",
   "type": "object",
-  "description": "CONTROL ROOM TASK SCHEDULING module: One record = one scheduled operational task \u2014 a DISTINCT workflow from guard shift scheduling (Shift records). WORKFLOW: Supervisor creates a TaskBatch allocated to a Control Room \u2192 tasks enter the Control Room queue (status 'queue') \u2192 Control Room Operator assigns \u2192 assigned user starts and performs SIGN-OFF 1 (status 'awaiting_verification' \u2014 NOT completed) \u2192 operator performs SIGN-OFF 2 verification (status 'completed' \u2014 requires BOTH sign-offs by DIFFERENT people) \u2192 immediate supervisor notification \u2192 deadline Task Completion Report. Recurring standalone tasks store a shared series id (recurrence_key) and parent_task_id; occurrences are generated server-side (bounded rolling window, deduplicated by recurrence_key). NULLABLE FIELDS: the gateway legitimately writes explicit nulls (unassigned tasks, optional site/times/notes, cleared fields) \u2014 plain string fields reject nulls on this platform, so these MUST declare type [\"string\",\"null\"]. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record, enforces the TASK_SCHEDULING / OPERATIONS / COMPLETE_SECURITY module licence, validates control-room/site/assignee tenant membership, and fails closed with 403 for cross-tenant access. Direct client access below is platform-admin only.",
+  "description": "CONTROL ROOM TASK SCHEDULING module: One record = one scheduled operational task \u2014 a DISTINCT workflow from guard shift scheduling (Shift records). WORKFLOW: Supervisor creates a TaskBatch allocated to a Control Room \u2192 tasks enter the Control Room queue (status 'queue') \u2192 Control Room Operator assigns \u2192 assigned user starts and performs SIGN-OFF 1 (status 'awaiting_verification' \u2014 NOT completed) \u2192 operator performs SIGN-OFF 2 verification (status 'completed' \u2014 requires BOTH sign-offs by DIFFERENT people) \u2192 immediate supervisor notification \u2192 deadline Task Completion Report. OVERDUE IS NOT TERMINAL: a task carrying Sign-off 1 remains verifiable past its deadline (the sweep flattens awaiting_verification \u2192 overdue); such verification requires a late reason and permanently records completed_late. Recurring standalone tasks store a shared series id (recurrence_key) and parent_task_id; occurrences are generated server-side (bounded rolling window, deduplicated by recurrence_key). NULLABLE FIELDS: the gateway legitimately writes explicit nulls (unassigned tasks, optional site/times/notes, cleared fields) \u2014 plain string fields reject nulls on this platform, so these MUST declare type [\"string\",\"null\"]. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record, enforces the TASK_SCHEDULING / OPERATIONS / COMPLETE_SECURITY module licence, validates control-room/site/assignee tenant membership, and fails closed with 403 for cross-tenant access. Direct client access below is platform-admin only.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -161,7 +161,7 @@
         "null"
       ],
       "format": "date-time",
-      "description": "Optional due deadline (UTC ISO). Open tasks past this point are swept to status 'overdue'."
+      "description": "Optional due deadline (UTC ISO). Open tasks past this point are swept to status 'overdue'. The ORIGINAL deadline is permanently preserved \u2014 late verification never rewrites it."
     },
     "status": {
       "type": "string",
@@ -179,7 +179,7 @@
         "awaiting"
       ],
       "default": "queue",
-      "description": "Lifecycle: queue (Control Room queue) \u2192 assigned \u2192 in_progress \u2192 awaiting_verification (guard sign-off done) \u2192 completed (BOTH sign-offs). Also reopened (operator rejected), overdue (deadline passed without both sign-offs), cancelled. Legacy standalone-task statuses (new/acknowledged/awaiting) remain valid for old records. ARCHIVED tasks keep their status \u2014 the archived flag hides them from active queues while preserving the full audit history."
+      "description": "Lifecycle: queue (Control Room queue) \u2192 assigned \u2192 in_progress \u2192 awaiting_verification (guard sign-off done) \u2192 completed (BOTH sign-offs). Also reopened (operator rejected), overdue (deadline passed without both sign-offs \u2014 NOT terminal: a task with Sign-off 1 remains verifiable late, recorded via completed_late), cancelled. Legacy standalone-task statuses (new/acknowledged/awaiting) remain valid for old records. ARCHIVED tasks keep their status \u2014 the archived flag hides them from active queues while preserving the full audit history."
     },
     "recurrence_type": {
       "type": "string",
@@ -326,6 +326,18 @@
       ],
       "format": "date-time",
       "description": "Final completion timestamp \u2014 set ONLY when both sign-offs exist."
+    },
+    "completed_late": {
+      "type": "boolean",
+      "default": false,
+      "description": "LATE COMPLETION MARKER: true when Control Room Sign-off 2 was performed AFTER the task deadline (due_date). Overdue is NOT a terminal state \u2014 a task with Sign-off 1 remains verifiable after the deadline, but the deadline miss is permanently recorded and reported as 'Completed Late' (never erased, never reported as still outstanding once both sign-offs exist)."
+    },
+    "late_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Mandatory late-completion reason captured by the Control Room Operator when verifying a task past its deadline (the VERIFY LATE COMPLETION flow). Distinct from non_completion_reason, which applies to tasks never completed."
     },
     "non_completion_reason": {
       "type": [

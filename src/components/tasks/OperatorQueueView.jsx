@@ -121,7 +121,17 @@ export default function OperatorQueueView({ data, act, user }) {
                   </Button>
                 </>
               )}
-              {(task.status === "overdue" || (task.status === "reopened" && !task.non_completion_reason)) && (
+              {/* OVERDUE IS NOT TERMINAL: a task with Sign-off 1 stays
+                  verifiable past the deadline — the operator completes the
+                  dual sign-off late (reason captured inside the verify
+                  modal). The standalone Reason action remains only for
+                  overdue tasks with NO sign-off yet. */}
+              {task.status === "overdue" && task.completed_at && (
+                <Button size="sm" onClick={() => { setVerifyMode("verify"); setVerifyTask(task); }} className="flex-1 sm:flex-none">
+                  <ShieldCheck className="w-4 h-4" /> Verify Late Completion
+                </Button>
+              )}
+              {((task.status === "overdue" && !task.completed_at) || (task.status === "reopened" && !task.non_completion_reason)) && (
                 <Button size="sm" variant="outline" onClick={() => setReasonTask(task)}
                   className="flex-1 sm:flex-none text-amber-400 border-amber-500/30 hover:bg-amber-500/10">
                   <FileWarning className="w-4 h-4" /> Reason

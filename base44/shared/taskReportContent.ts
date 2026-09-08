@@ -16,7 +16,10 @@ export function fmtSast(iso) {
 }
 
 export function completionNotification(task, batch, customerName) {
-  const subject = 'Task Completed — ' + task.title + ' (' + (task.control_room_name || 'Control Room') + ')';
+  const lateLine = task.completed_late
+    ? '⚠ This task was verified AFTER its deadline (' + fmtSast(task.due_date) + ') — recorded as COMPLETED LATE. Late reason: ' + (task.late_reason || '—')
+    : '';
+  const subject = 'Task Completed' + (task.completed_late ? ' (Late)' : '') + ' — ' + task.title + ' (' + (task.control_room_name || 'Control Room') + ')';
   const emailBody = [
     'TASK COMPLETED (verified with both sign-offs)',
     '',
@@ -36,8 +39,9 @@ export function completionNotification(task, batch, customerName) {
     'Operator verification notes: ' + (task.verification_notes || '—'),
     'Operator sign-off: ' + (task.verified_by_name || '—') + ' (digital signature captured ' + fmtSast(task.verified_at) + ')',
     '',
-    'Final status: COMPLETED — ' + fmtSast(task.final_completed_at),
-  ].join('\n');
+    'Final status: COMPLETED' + (task.completed_late ? ' (LATE — deadline ' + fmtSast(task.due_date) + ')' : '') + ' — ' + fmtSast(task.final_completed_at),
+    lateLine,
+  ].filter(Boolean).join('\n');
   const telegramText = '✅ *Task Completed*\n' + task.title + '\nControl Room: ' + (task.control_room_name || '—') +
     '\nAssigned to: ' + (task.assigned_to_name || '—') +
     '\nVerified by: ' + (task.verified_by_name || '—') +
@@ -75,15 +79,18 @@ export function deadlineReport(batch, tasks, customerName) {
   const outstanding = tasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
   const overdue = outstanding.filter((t) => t.status === 'overdue');
   const reopened = tasks.filter((t) => t.status === 'reopened');
+  const completedLate = completed.filter((t) => t.completed_late);
+  const completedOnTime = completed.filter((t) => !t.completed_late);
   const pct = total ? Math.round((completed.length / total) * 100) : 100;
 
   const completedSection = completed.map((t) => [
-    '• ' + t.title,
+    '• ' + t.title + (t.completed_late ? ' [COMPLETED LATE — deadline ' + fmtSast(t.due_date) + ']' : ' [COMPLETED ON TIME]'),
     '   Assigned: ' + (t.assigned_to_name || '—') + ' | Completed: ' + fmtSast(t.final_completed_at || t.completed_at),
     '   Guard/User notes: ' + (t.completion_notes || '—'),
     '   Guard/User sign-off: ' + (t.completed_by_name || '—'),
     '   Operator: ' + (t.verified_by_name || '—') + ' | Operator sign-off captured',
     '   Verification notes: ' + (t.verification_notes || '—'),
+    ...(t.completed_late ? ['   Late reason: ' + (t.late_reason || '—')] : []),
   ].join('\n')).join('\n\n');
 
   const outstandingSection = outstanding.map((t) => [
@@ -109,8 +116,9 @@ export function deadlineReport(batch, tasks, customerName) {
     '',
     'SUMMARY',
     'Total tasks: ' + total,
-    'Completed: ' + completed.length,
-    'Outstanding: ' + outstanding.length,
+    'Completed on time: ' + completedOnTime.length,
+    'Completed late: ' + completedLate.length,
+    'Still incomplete / overdue: ' + outstanding.length,
     'Overdue: ' + overdue.length,
     'Reopened: ' + reopened.length,
     'Cancelled: ' + cancelled.length,

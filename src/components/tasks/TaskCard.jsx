@@ -99,6 +99,15 @@ export default function TaskCard({ task, children }) {
               Fully completed {formatDateTime(task.final_completed_at)} (both sign-offs)
             </p>
           )}
+          {task.completed_late && (
+            <div className="mt-1 flex items-start gap-1.5 text-xs text-amber-300/90">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span className="whitespace-pre-wrap">
+                Completed Late — the deadline ({task.due_date ? formatDateTime(task.due_date) : "—"}) was missed.
+                {task.late_reason ? ` Late reason: ${task.late_reason}` : ""}
+              </span>
+            </div>
+          )}
           {task.reopen_reason && (
             <div className="mt-2 flex items-start gap-1.5 text-xs text-orange-300/90">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />

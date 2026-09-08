@@ -17,23 +17,31 @@ export default function VerifyDialog({ open, task, mode, onClose, onSubmit, savi
   const [notes, setNotes] = useState("");
   const [signature, setSignature] = useState(null);
   const [reason, setReason] = useState("");
+  const [lateReason, setLateReason] = useState("");
 
   React.useEffect(() => {
     if (!open) return;
     setNotes(task?.verification_notes || "");
     setSignature(null);
     setReason("");
+    setLateReason("");
   }, [open, task]);
 
   const isVerify = mode === "verify";
-  const valid = isVerify ? !!signature : !!reason.trim();
+  // Single source of truth with the server: verification performed after the
+  // task's original deadline is a LATE COMPLETION — the late reason is
+  // mandatory and the deadline miss is permanently recorded.
+  const isLate = !!task?.due_date && !isNaN(Date.parse(task.due_date)) && Date.parse(task.due_date) < Date.now();
+  const valid = isVerify
+    ? !!signature && (!isLate || lateReason.trim().length > 0)
+    : !!reason.trim();
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-slate-900 border-slate-700 max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {isVerify ? "Verify & Sign Off (Final)" : "Reject / Reopen Task"}
+            {isVerify ? (isLate ? "Verify Late Completion (Final)" : "Verify & Sign Off (Final)") : "Reject / Reopen Task"}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-1">
@@ -45,6 +53,20 @@ export default function VerifyDialog({ open, task, mode, onClose, onSubmit, savi
                 <p><span className="text-slate-300">Sign-off 1:</span> {task?.completed_by_name} · {task?.completed_at ? "completed" : "—"}</p>
                 {task?.completion_notes && <p className="whitespace-pre-wrap">Notes: {task.completion_notes}</p>}
               </div>
+              {isLate && (
+                <p className="text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
+                  The deadline ({task?.due_date ? new Date(task.due_date).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" }) : "—"})
+                  has passed. Verifying now records this task as <b>Completed Late</b> — the original deadline is preserved.
+                </p>
+              )}
+              {isLate && (
+                <div className="space-y-1.5">
+                  <Label className="text-slate-300">Late reason (required)</Label>
+                  <Textarea rows={2} value={lateReason} onChange={(e) => setLateReason(e.target.value)}
+                    placeholder="Why was the verification completed after the deadline?"
+                    className="bg-slate-800 border-slate-700 text-white resize-none" />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-slate-300">Verification notes (optional)</Label>
                 <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
@@ -74,13 +96,17 @@ export default function VerifyDialog({ open, task, mode, onClose, onSubmit, savi
         <DialogFooter>
           <Button variant="outline" onClick={onClose} className="bg-slate-800 border-slate-700 text-slate-200">Cancel</Button>
           <Button onClick={() => isVerify
-            ? onSubmit({ verification_notes: notes.trim() || undefined, signature })
+            ? onSubmit({
+                verification_notes: notes.trim() || undefined,
+                signature,
+                ...(isLate ? { late_reason: lateReason.trim() } : {}),
+              })
             : onSubmit({ reason: reason.trim() })}
             disabled={!valid || saving}
             className={isVerify
               ? "bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-hover)] text-white"
               : "bg-orange-600 hover:bg-orange-700 text-white"}>
-            {saving ? "Saving..." : isVerify ? "Verify & Complete" : "Reject & Reopen"}
+            {saving ? "Saving..." : isVerify ? (isLate ? "Verify Late Completion" : "Verify & Complete") : "Reject & Reopen"}
           </Button>
         </DialogFooter>
       </DialogContent>

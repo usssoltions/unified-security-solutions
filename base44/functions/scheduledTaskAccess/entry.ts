@@ -483,6 +483,30 @@ export default async function(req) {
       const rows = await svc.entities.TaskBatch.filter({ id: String(id) }).catch(() => []);
       return (rows && rows[0]) ? rows[0] : null;
     };
+    /* Reason-gate finalisation (shared by verify + captureReason): once
+       every incomplete task of a reason_pending batch carries a
+       non-completion reason (or nothing is incomplete any more — e.g. the
+       blocker was completed late), generate + deliver the authoritative
+       Task Completion Report. Idempotent — other batch statuses are skipped. */
+    const finaliseBatchIfReasonsComplete = async (batch) => {
+      const allTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
+      const incomplete = (allTasks || []).filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
+      if (incomplete.some((t) => !t.non_completion_reason)) return false;
+      const custRows = await svc.entities.Customer.filter({ id: batch.customer_id }).catch(() => []);
+      const customerName = (custRows && custRows[0] && custRows[0].name) || 'Customer';
+      const report = deadlineReport(batch, allTasks || [], customerName);
+      const recipients = await resolveTaskRecipients(svc, batch.customer_id,
+        [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
+      const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
+      await svc.entities.TaskBatch.update(batch.id, {
+        status: 'reported', report_generated_at: new Date().toISOString(),
+        report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
+        report_content: report.emailBody,
+      }).catch(() => {});
+      await logTaskAudit(svc, { event_type: 'task.report_delivered', actor: caller, batch,
+        notes: 'Authoritative report finalised after non-completion reasons — email:' + sent.email + ' telegram:' + sent.telegram });
+      return true;
+    };
 
     /* Scope assertion. Guards: own tasks only. Operators: tasks in their
        authorised control rooms. Tenant roles: their customer only. */
@@ -1073,7 +1097,18 @@ export default async function(req) {
       const task = await findTask(body.id);
       const gate = assertOperatorOrEdit(task);
       if (gate) return gate;
-      if (task.status !== 'awaiting_verification') {
+      // SIGN-OFF 2 IMMUTABILITY — a completed task can never be verified
+      // again (duplicate Sign-off 2 fails closed with 409).
+      if (task.status === 'completed' || task.verified) {
+        return Response.json({ error: 'Control Room verification has already been completed for this task', code: 'signoff2_exists' }, { status: 409 });
+      }
+      // OVERDUE IS NOT TERMINAL: the deadline sweep flattens
+      // awaiting_verification → overdue, but a task that already carries
+      // Sign-off 1 remains verifiable by the authorised operator. Only the
+      // awaiting-verification and overdue states qualify; the operator must
+      // still be explicitly assigned to the task's control room
+      // (assertOperatorOrEdit above — same tenant, wrong room → 403).
+      if (task.status !== 'awaiting_verification' && task.status !== 'overdue') {
         return Response.json({ error: 'Only a task awaiting verification can be verified' }, { status: 400 });
       }
       if (!task.completed_by) {
@@ -1086,6 +1121,15 @@ export default async function(req) {
       if (!signature || !signature.startsWith('data:image')) {
         return Response.json({ error: 'A digital signature is required to verify this task' }, { status: 400 });
       }
+      // LATE COMPLETION: verification is allowed after the deadline, but the
+      // deadline miss is NEVER erased — the task is recorded as completed
+      // late with the operator's late reason. Sign-off 1 timestamp, notes,
+      // signature and evidence are preserved untouched either way.
+      const isLate = !!task.due_date && !isNaN(Date.parse(task.due_date)) && Date.parse(task.due_date) < Date.now();
+      const lateReason = String(body.late_reason || '').trim();
+      if (isLate && !lateReason) {
+        return Response.json({ error: 'This task is past its deadline — a late-completion reason is required', code: 'late_reason_required' }, { status: 400 });
+      }
       const nowIso = new Date().toISOString();
       const updated = await svc.entities.OperationalTask.update(task.id, {
         status: 'completed',
@@ -1096,10 +1140,12 @@ export default async function(req) {
         verification_notes: String(body.verification_notes || '').trim() || null,
         verification_signature: signature,
         final_completed_at: nowIso,
+        ...(isLate ? { completed_late: true, late_reason: lateReason } : {}),
       });
       await logTaskAudit(svc, { event_type: 'task.control_room_signoff', actor: caller, task,
-        from_status: 'awaiting_verification', to_status: 'completed',
-        notes: 'Sign-off 2 by ' + callerName + ' — task fully completed' });
+        from_status: task.status, to_status: 'completed',
+        notes: 'Sign-off 2 by ' + callerName + ' — task fully completed' +
+          (isLate ? ' (COMPLETED LATE — deadline ' + task.due_date + ', reason: ' + lateReason.slice(0, 200) + ')' : '') });
 
       // Immediate completion notification (module-owned channels; supervisor + configured recipients).
       try {
@@ -1119,6 +1165,14 @@ export default async function(req) {
         }
       } catch (e) {
         console.error('completion notification failed:', e?.message || e);
+      }
+      // REASON GATE FOLLOW-UP: a late verification can remove the last
+      // incomplete blocker of a reason_pending batch — finalise the
+      // authoritative report (which will record this task as completed
+      // late, not outstanding) the moment every reason is satisfied.
+      if (task.task_batch_id && isLate) {
+        const batch = await findBatch(task.task_batch_id);
+        if (batch && batch.status === 'reason_pending') await finaliseBatchIfReasonsComplete(batch);
       }
       return Response.json({ success: true, task: updated });
     }
@@ -1172,25 +1226,7 @@ export default async function(req) {
       // has a reason.
       if (task.task_batch_id) {
         const batch = await findBatch(task.task_batch_id);
-        if (batch && batch.status === 'reason_pending') {
-          const allTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
-          const incomplete = (allTasks || []).filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
-          if (!incomplete.some((t) => !t.non_completion_reason)) {
-            const custRows = await svc.entities.Customer.filter({ id: batch.customer_id }).catch(() => []);
-            const customerName = (custRows && custRows[0] && custRows[0].name) || 'Customer';
-            const report = deadlineReport(batch, allTasks || [], customerName);
-            const recipients = await resolveTaskRecipients(svc, batch.customer_id,
-              [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
-            const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
-            await svc.entities.TaskBatch.update(batch.id, {
-              status: 'reported', report_generated_at: new Date().toISOString(),
-              report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
-              report_content: report.emailBody,
-            }).catch(() => {});
-            await logTaskAudit(svc, { event_type: 'task.report_delivered', actor: caller, batch,
-              notes: 'Authoritative report finalised after non-completion reasons — email:' + sent.email + ' telegram:' + sent.telegram });
-          }
-        }
+        if (batch && batch.status === 'reason_pending') await finaliseBatchIfReasonsComplete(batch);
       }
       return Response.json({ success: true, task: updated });
     }
