@@ -80,7 +80,11 @@ const REMINDER_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const SWEEP_CATCHUP_DAYS = 7;
 
 function isPlatformAdmin(u) {
-  return !!u && (u.role_type === 'platform_admin' || u.admin_level === 'platform');
+  // Mirrors the proven gateways (siteAccess / attendanceAccess / getTenantUsers):
+  // the built-in role 'admin' is the USS Platform Admin alongside explicit
+  // platform_admin role_type / admin_level. Without it, platform oversight (and
+  // the app owner's own access) failed closed with no_scope.
+  return !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
 }
 function isResellerAdmin(u) {
   return !!u && !isPlatformAdmin(u) && (u.role_type === 'reseller_admin' || u.admin_level === 'reseller');
@@ -718,7 +722,8 @@ export default async function(req) {
           ...common, scheduled_date, is_series: false, parent_batch_id: null,
           task_definitions: [], recurrence_key: null, status: 'active',
         });
-        const tasks = buildTasksForOccurrence({ ...common, id: batchRec.id, deadline_time }, scheduled_date, caller);
+        const tasks = buildTasksForOccurrence(
+          { ...common, id: batchRec.id, deadline_time, task_definitions: cleanDefs }, scheduled_date, caller);
         await svc.entities.OperationalTask.bulkCreate(tasks);
         await logTaskAudit(svc, { event_type: 'task.batch_created', actor: caller, batch: batchRec,
           notes: title + ' → ' + room.name + ' (' + tasks.length + ' task(s), ' + active_start_time + '–' + deadline_time + ')' });
@@ -747,8 +752,13 @@ export default async function(req) {
         occurrences = createdOccs.length;
       }
       // The FIRST run's tasks are also needed when the series starts today.
+      // NOTE: is_series:false — the series definition record itself carries the
+      // same recurrence_key (seriesId:start_date), so without this filter the
+      // dedup check matched the series record and today's occurrence was
+      // never generated (live regression, Dogs and All acceptance 2026-09-08).
       const firstKey = seriesId + ':' + scheduled_date;
-      const existingFirst = await svc.entities.TaskBatch.filter({ recurrence_key: firstKey }).catch(() => []);
+      const existingFirst = await svc.entities.TaskBatch.filter(
+        { recurrence_key: firstKey, is_series: false }).catch(() => []);
       if (!(existingFirst || []).length) {
         const occ = await svc.entities.TaskBatch.create(buildOccurrenceBatch(series, scheduled_date, seriesId));
         await svc.entities.OperationalTask.bulkCreate(
