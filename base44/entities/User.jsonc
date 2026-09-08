@@ -31,10 +31,11 @@
         "employer_user",
         "customer_admin",
         "attendance_staff",
+        "control_room_operator",
         null
       ],
       "default": "resident",
-      "description": "Nullable: manageUser remove_access writes null when tenant access is removed."
+      "description": "Nullable: manageUser remove_access writes null when tenant access is removed. control_room_operator works the authorised control rooms' task queues (assign, verify, second sign-off)."
     },
     "admin_level": {
       "type": [

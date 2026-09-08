@@ -37,7 +37,9 @@ export const PAGE_MODULE_MAP = {
   StayAwakeConfiguration: "OPERATIONS",
   GuardIncidents: "OPERATIONS",
   GuardMaintenance: "OPERATIONS",
-  ScheduledTasks: "OPERATIONS",
+  // Task Scheduling is a STANDALONE module (TASK_SCHEDULING); customers with
+  // the OPERATIONS or COMPLETE_SECURITY suites keep it for continuity.
+  ScheduledTasks: ["TASK_SCHEDULING", "OPERATIONS", "COMPLETE_SECURITY"],
 
   // ── PATROL module ───────────────────────────────────────────────
   GuardPatrol: "PATROL",
@@ -121,6 +123,25 @@ export const PAGE_MODULE_MAP = {
   // Profile, Configuration, UserManagement, Home, AndroidDownload,
   // NotificationPreferences, ResellerPortal
 };
+
+/**
+ * Module gate for a page. PAGE_MODULE_MAP values may be a single module key
+ * OR an array (the page is licensed by ANY of the keys — e.g. Scheduled Tasks
+ * is licensed by the standalone TASK_SCHEDULING module OR the
+ * OPERATIONS / COMPLETE_SECURITY suites). Unmapped pages are CORE platform
+ * infrastructure (always visible per role).
+ */
+export function isPageModuleEnabled(entitlements, pageName, isPlatformAdmin = false) {
+  const key = PAGE_MODULE_MAP[pageName];
+  if (!key) return true;
+  if (isPlatformAdmin) return true;
+  if (key === "PLATFORM_ADMIN_ONLY") return false;
+  if (!entitlements || entitlements.length === 0) return false;
+  const keys = Array.isArray(key) ? key : [key];
+  return entitlements.some(
+    (e) => keys.includes(e.module_key) && e.enabled && (!e.status || e.status === "active")
+  );
+}
 
 /* Modules whose operational notifications genuinely use Telegram enrollments.
  * Customers without any of these modules enabled must not see Telegram

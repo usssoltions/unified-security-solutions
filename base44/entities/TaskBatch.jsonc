@@ -1,0 +1,312 @@
+{
+  "name": "TaskBatch",
+  "type": "object",
+  "description": "Task Scheduling module: a supervisor's task list/batch allocated to a specific Control Room (e.g. 'Daily Operational Tasks' 08:00-16:00 for Dogs and All Control Room 1). A recurring series stores its definition once (is_series=true, task_definitions embedded) and generates dated occurrence batches (parent_batch_id set, recurrence_key 'seriesId:YYYY-MM-DD') server-side \u2014 bounded and deduplicated by recurrence_key. Reminders (every 2h inside the active window) and the deadline Task Completion Report are driven per occurrence batch by the scheduled sweep. TENANT ACCESS PATTERN: NO {{user.data.*}} RLS rules \u2014 all tenant access goes through the scheduledTaskAccess gateway (server-side tenant resolution). Direct client access is platform-admin-only.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "control_room_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Control Room this batch is allocated to. Null only for legacy/unscheduled batches."
+    },
+    "control_room_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the control room name for display/reporting."
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scheduled_date": {
+      "type": "string",
+      "format": "date",
+      "description": "SAST calendar date this batch occurrence runs (YYYY-MM-DD)"
+    },
+    "active_start_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "SAST wall-clock start of the active task window (HH:MM)"
+    },
+    "deadline_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "SAST wall-clock deadline (HH:MM) \u2014 the Task Completion Report is generated at this time"
+    },
+    "is_series": {
+      "type": "boolean",
+      "default": false,
+      "description": "True on the series definition record; occurrence batches carry parent_batch_id instead."
+    },
+    "parent_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Series definition record this occurrence was generated from."
+    },
+    "task_definitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_type": {
+            "type": "string",
+            "default": "other"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "default": "medium"
+          },
+          "site_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional site/service area (shared platform infrastructure \u2014 never required)"
+          },
+          "site_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scheduled_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional SAST HH:MM when the task should start"
+          },
+          "due_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional SAST HH:MM when the task is due"
+          },
+          "completion_notes_required": {
+            "type": "boolean",
+            "default": false
+          },
+          "evidence_required": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "default": [],
+      "description": "Embedded task items (series definitions only). Occurrence batches materialise these as OperationalTask records."
+    },
+    "recurrence_type": {
+      "type": "string",
+      "enum": [
+        "none",
+        "daily",
+        "weekly",
+        "weekdays",
+        "monthly",
+        "custom"
+      ],
+      "default": "none"
+    },
+    "recurrence_weekdays": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "default": []
+    },
+    "recurrence_interval_days": {
+      "type": "number",
+      "default": 1
+    },
+    "recurrence_end_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "recurrence_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Series dedup key: '<seriesId>:<scheduled_date>'. Occurrence generation is idempotent \u2014 a key already present is never duplicated."
+    },
+    "primary_supervisor_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Required supervisor who owns this batch and receives the immediate completion notification and the deadline report."
+    },
+    "primary_supervisor_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "additional_notification_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Optional additional authorised recipients (same customer only) for completion notifications and the deadline report."
+    },
+    "additional_notification_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "cancelled",
+        "reported"
+      ],
+      "default": "active",
+      "description": "'reported' = deadline Task Completion Report generated and delivered for this occurrence."
+    },
+    "reminder_count": {
+      "type": "number",
+      "default": 0,
+      "description": "2-hour reminders already sent for this occurrence (sweep increments at most once per 2h boundary)."
+    },
+    "last_reminder_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "report_generated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "report_delivery": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Summary of deadline-report delivery (email/telegram recipients)."
+    },
+    "created_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "customer_id",
+    "title",
+    "control_room_id",
+    "scheduled_date"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -19,8 +19,9 @@
  *    reseller_admin is platform-admin-only and validated separately.
  */
 export const MODULE_ROLE_ACCESS: Record<string, string[]> = {
-  COMPLETE_SECURITY: ["admin", "dispatcher", "guard"],
-  OPERATIONS: ["admin", "dispatcher", "guard"],
+  COMPLETE_SECURITY: ["admin", "dispatcher", "guard", "control_room_operator"],
+  OPERATIONS: ["admin", "dispatcher", "guard", "control_room_operator"],
+  TASK_SCHEDULING: ["admin", "dispatcher", "guard", "control_room_operator"],
   PATROL: ["dispatcher", "guard"],
   ACCESS: ["guard", "reception"],
   ESTATE: ["estate_manager", "resident", "vendor"],

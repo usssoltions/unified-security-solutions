@@ -186,6 +186,13 @@ export const ROUTE_REGISTRY = {
     { title: "Reports", pageKey: "Reports", icon: FileText },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
+  // Control Room Operator — works the authorised control rooms' task queues
+  // (assign, monitor, verify, second sign-off). Rooted on the Task Queue;
+  // module-gated by TASK_SCHEDULING / OPERATIONS / COMPLETE_SECURITY.
+  control_room_operator: [
+    { title: "Task Queue", pageKey: "ScheduledTasks", icon: ClipboardList, isRoot: true },
+    { title: "Profile", pageKey: "Profile", icon: UserCircle },
+  ],
   attendance_staff: [
     { title: "Attendance Register", pageKey: "AttendanceDashboard", icon: ClipboardList, isRoot: true },
     { title: "Attendance Records", pageKey: "AttendanceRecords", icon: FileText },

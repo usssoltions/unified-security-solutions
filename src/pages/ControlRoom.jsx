@@ -21,6 +21,7 @@ import SupervisorChat from "../components/chat/SupervisorChat";
 import SupervisorPatrolPlanner from "../components/patrol/SupervisorPatrolPlanner";
 import SupervisorTrainingManager from "../components/training/SupervisorTrainingManager";
 import ReportTemplateManager from "../components/reports/ReportTemplateManager";
+import TodayTasksPanel from "../components/tasks/TodayTasksPanel";
 
 export default function ControlRoom() {
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
@@ -160,6 +161,11 @@ export default function ControlRoom() {
       </div>
 
       <div className="p-4 lg:p-6 max-w-[1800px] mx-auto space-y-4 lg:space-y-6">
+
+        {/* Task Scheduling — Today's Tasks panel (renders nothing when the
+            module is not enabled or there are no tasks today; the rest of the
+            Control Room dashboard remains fully accessible below) */}
+        <TodayTasksPanel />
 
         {/* Critical Alert Banner */}
         <AnimatePresence>

@@ -16,8 +16,7 @@
  */
 import { createPageUrl } from "@/utils";
 import { ROLE_HOME, ROLE_PAGES } from "@/lib/permissions";
-import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
-import { isModuleEnabled } from "@/hooks/useModuleEntitlements";
+import { isPageModuleEnabled } from "@/lib/moduleMapping";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 
 // Ordered safe fallbacks per role — CORE/utility pages that never require a
@@ -41,18 +40,15 @@ const ROLE_FALLBACK_PAGES = {
   reception: ["MedicalDashboard", "Profile"],
   employer_user: ["EmployerPortal", "Profile"],
   attendance_staff: ["AttendanceDashboard", "Profile"],
+  control_room_operator: ["ScheduledTasks", "Profile"],
 };
 
 function isPageAccessible(user, pageKey, entitlements, platformAdmin) {
   const allowed = ROLE_PAGES[user.role_type];
   if (!allowed || !allowed.has(pageKey)) return false;
-  const moduleKey = PAGE_MODULE_MAP[pageKey];
-  // PLATFORM_ADMIN_ONLY pages are only for platform admins
-  if (moduleKey === "PLATFORM_ADMIN_ONLY") return platformAdmin;
-  // CORE pages (no module) are always accessible per role
-  if (!moduleKey) return true;
-  // Commercial module pages require an entitlement (or platform admin)
-  return platformAdmin || isModuleEnabled(entitlements, moduleKey, false);
+  // Module gate handles CORE pages, PLATFORM_ADMIN_ONLY pages and the
+  // single-key-or-array PAGE_MODULE_MAP values uniformly.
+  return platformAdmin || isPageModuleEnabled(entitlements, pageKey, false);
 }
 
 export function resolveAuthorisedHome(user, entitlements = []) {

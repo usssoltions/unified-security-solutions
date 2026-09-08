@@ -13,6 +13,7 @@
 export const RESELLER_MODULES = [
   { key: "COMPLETE_SECURITY",      label: "Complete Security Suite", description: "Full security operations bundle (incidents, panic, scheduling, patrols)." },
   { key: "OPERATIONS",             label: "Operations",              description: "Control room, incidents, maintenance, panic, scheduling, sites." },
+  { key: "TASK_SCHEDULING",        label: "Task Scheduling",          description: "Standalone Control Room Task Scheduling: task lists allocated to control rooms, operator queues, dual sign-off accountability, 2-hour reminders and deadline completion reports." },
   { key: "PATROL",                 label: "Patrol",                  description: "Patrol dashboard, analytics, checklists, route guidance." },
   { key: "ACCESS",                 label: "Access Control",         description: "Visitor access, QR scanning, access history, blacklist." },
   { key: "CALLING",                label: "Calling",                 description: "Contacts, call history, call recordings." },

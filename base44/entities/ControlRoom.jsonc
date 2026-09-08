@@ -1,0 +1,136 @@
+{
+  "name": "ControlRoom",
+  "type": "object",
+  "description": "Task Scheduling module: a customer's physical Control Room with its own operators, supervisors, service areas (linked sites) and task queue. A customer may operate multiple Control Rooms (e.g. Control Room 1 and Control Room 2) with separate queues. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 session tokens do not reliably expose custom User fields, so template-based tenant scoping is unproven on this platform. ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record (the proven attendanceAccess/scheduledTaskAccess pattern), validates control-room/customer/reseller scope on every operation, and fails closed with 403 for cross-tenant access. Direct client access below is restricted to platform admins only \u2014 Dogs and All can never retrieve or mutate Sauerman's Control Rooms, operators or sites.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ID for multi-tenant isolation"
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Reseller ID for reseller-scoped access. Null for direct platform-managed customers."
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name, e.g. 'Dogs and All Control Room 1'"
+    },
+    "physical_address": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Physical address of this control room (distinct from any site address)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "linked_site_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Service areas: Site IDs this control room serves. OPTIONAL \u2014 a control room may operate on address/service area alone (Site is shared platform infrastructure, never a module dependency of Task Scheduling)."
+    },
+    "supervisor_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "User IDs of supervisors responsible for this control room's task batches. Managed server-side only via scheduledTaskAccess (validated to belong to the same customer)."
+    },
+    "operator_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "User IDs of authorised Control Room Operators. Only these operators (plus supervisors/admins) see and work this control room's queue. Managed server-side only via scheduledTaskAccess (validated to belong to the same customer)."
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_by_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display name of the creating admin (created_by_id/created_date/updated_date are platform built-ins)."
+    }
+  },
+  "required": [
+    "customer_id",
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

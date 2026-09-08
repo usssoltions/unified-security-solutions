@@ -1,27 +1,68 @@
 {
   "name": "OperationalTask",
   "type": "object",
-  "description": "Operations module: Scheduled operational task \u2014 a DISTINCT workflow from guard shift scheduling. One record = one task occurrence. Recurring tasks store a shared series id (recurrence_key prefix) and parent_task_id; occurrences are generated server-side (bounded rolling window, deduplicated by recurrence_key) by the scheduledTaskAccess backend function. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 session tokens do not reliably expose custom User fields (customer_id/reseller_id), so template-based tenant scoping is unproven on this platform. ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record (the proven pattern of attendanceAccess/getTenantUsers), enforces the OPERATIONS / COMPLETE_SECURITY module licence, validates site/assignee tenant membership, and fails closed for unauthorized roles. Direct client access below is restricted to platform admins only \u2014 Customer A can never reach Customer B's tasks.",
+  "description": "CONTROL ROOM TASK SCHEDULING module: One record = one scheduled operational task \u2014 a DISTINCT workflow from guard shift scheduling (Shift records). WORKFLOW: Supervisor creates a TaskBatch allocated to a Control Room \u2192 tasks enter the Control Room queue (status 'queue') \u2192 Control Room Operator assigns \u2192 assigned user starts and performs SIGN-OFF 1 (status 'awaiting_verification' \u2014 NOT completed) \u2192 operator performs SIGN-OFF 2 verification (status 'completed' \u2014 requires BOTH sign-offs by DIFFERENT people) \u2192 immediate supervisor notification \u2192 deadline Task Completion Report. Recurring standalone tasks store a shared series id (recurrence_key) and parent_task_id; occurrences are generated server-side (bounded rolling window, deduplicated by recurrence_key). NULLABLE FIELDS: the gateway legitimately writes explicit nulls (unassigned tasks, optional site/times/notes, cleared fields) \u2014 plain string fields reject nulls on this platform, so these MUST declare type [\"string\",\"null\"]. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record, enforces the TASK_SCHEDULING / OPERATIONS / COMPLETE_SECURITY module licence, validates control-room/site/assignee tenant membership, and fails closed with 403 for cross-tenant access. Direct client access below is platform-admin only.",
   "properties": {
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ID for multi-tenant isolation"
     },
     "reseller_id": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "control_room_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Control Room whose queue this task is allocated to (Task Scheduling workflow). Null for legacy direct-assignment tasks."
+    },
+    "control_room_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the control room name at allocation time."
+    },
+    "task_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "TaskBatch (task list) this task belongs to. Null for legacy standalone tasks."
+    },
+    "task_batch_title": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the task list title for display/reporting."
     },
     "site_id": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional site/service area (shared platform infrastructure \u2014 Task Scheduling never REQUIRES the Sites module)."
     },
     "site_name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "title": {
       "type": "string"
     },
     "description": {
-      "type": "string",
-      "description": "Task instructions / description"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Detailed instructions"
     },
     "task_type": {
       "type": "string",
@@ -48,18 +89,51 @@
       "default": "medium"
     },
     "assigned_to": {
-      "type": "string",
-      "description": "User ID assigned to complete the task"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "User ID of the assigned Guard/User. Null while the task sits in the Control Room queue."
     },
     "assigned_to_name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "assigned_by": {
-      "type": "string",
-      "description": "User ID who created the task"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "User ID who created/allocated the task"
     },
     "assigned_by_name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "assigned_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp the Control Room Operator (or supervisor) assigned the task to the user."
+    },
+    "assigned_by_operator_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Control Room Operator who allocated the task (when allocated by an operator)."
+    },
+    "assigned_by_operator_name": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "scheduled_date": {
       "type": "string",
@@ -67,31 +141,45 @@
       "description": "SAST calendar date the task is scheduled for (YYYY-MM-DD)"
     },
     "scheduled_time": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "SAST local time (HH:MM) the task is scheduled for"
     },
     "scheduled_at": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time",
-      "description": "UTC ISO instant derived from scheduled_date + scheduled_time at the SAST fixed offset (+02:00). Used for sorting and overdue comparison."
+      "description": "UTC ISO instant derived from scheduled_date + scheduled_time at the SAST fixed offset (+02:00). Used for sorting."
     },
     "due_date": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time",
-      "description": "Optional due deadline (UTC ISO). Open tasks past this point are swept to status 'overdue' by scheduledTaskAccess."
+      "description": "Optional due deadline (UTC ISO). Open tasks past this point are swept to status 'overdue'."
     },
     "status": {
       "type": "string",
       "enum": [
+        "queue",
+        "assigned",
+        "in_progress",
+        "awaiting_verification",
+        "completed",
+        "reopened",
+        "overdue",
+        "cancelled",
         "new",
         "acknowledged",
-        "in_progress",
-        "awaiting",
-        "completed",
-        "overdue",
-        "cancelled"
+        "awaiting"
       ],
-      "default": "new"
+      "default": "queue",
+      "description": "Lifecycle: queue (Control Room queue) \u2192 assigned \u2192 in_progress \u2192 awaiting_verification (guard sign-off done) \u2192 completed (BOTH sign-offs). Also reopened (operator rejected), overdue (deadline passed without both sign-offs), cancelled. Legacy standalone-task statuses (new/acknowledged/awaiting) remain valid for old records."
     },
     "recurrence_type": {
       "type": "string",
@@ -104,32 +192,38 @@
         "custom"
       ],
       "default": "none",
-      "description": "Recurrence rule for the series (stored on the parent and every generated occurrence)."
+      "description": "Legacy standalone-task recurrence (TaskBatch-based scheduling is preferred)."
     },
     "recurrence_weekdays": {
       "type": "array",
       "items": {
         "type": "number"
       },
-      "description": "Selected weekdays (0=Sun .. 6=Sat) for 'weekdays' recurrence.",
       "default": []
     },
     "recurrence_interval_days": {
       "type": "number",
-      "default": 1,
-      "description": "Interval in days for 'custom' recurrence."
+      "default": 1
     },
     "recurrence_end_date": {
-      "type": "string",
-      "format": "date",
-      "description": "Optional last date occurrences may be generated for (inclusive)."
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
     },
     "recurrence_key": {
-      "type": "string",
-      "description": "Series dedup key: '<seriesId>:<scheduled_date>'. Occurrence generation is idempotent \u2014 a key already present is never duplicated."
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Series dedup key: '<seriesId>:<scheduled_date>'. Occurrence generation is idempotent."
     },
     "parent_task_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The series parent task id for generated occurrences."
     },
     "completion_notes_required": {
@@ -137,42 +231,188 @@
       "default": false
     },
     "completion_notes": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Guard/User completion notes (SIGN-OFF 1)"
+    },
+    "evidence_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the guard/user must attach evidence to sign off."
+    },
+    "completion_evidence_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Guard/User evidence file URL (SIGN-OFF 1)"
+    },
+    "completion_signature": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Guard/User digital signature (PNG data URL) \u2014 SIGN-OFF 1"
     },
     "completed_at": {
-      "type": "string",
-      "format": "date-time"
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Guard/User sign-off timestamp (SIGN-OFF 1)"
     },
     "completed_by": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Guard/User ID who signed off (SIGN-OFF 1)"
     },
     "completed_by_name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Guard/User full name who signed off (SIGN-OFF 1)"
+    },
+    "verification_notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Control Room Operator verification notes (SIGN-OFF 2)"
+    },
+    "verification_signature": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Control Room Operator digital signature (PNG data URL) \u2014 SIGN-OFF 2, always a DIFFERENT person from SIGN-OFF 1"
     },
     "verified": {
       "type": "boolean",
-      "default": false
+      "default": false,
+      "description": "True once the Control Room Operator has verified (SIGN-OFF 2)"
     },
     "verified_by": {
-      "type": "string",
-      "description": "Supervisor who verified completion"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Control Room Operator ID (SIGN-OFF 2)"
     },
     "verified_by_name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Control Room Operator full name (SIGN-OFF 2)"
     },
     "verified_at": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Control Room Operator sign-off timestamp (SIGN-OFF 2)"
+    },
+    "final_completed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Final completion timestamp \u2014 set ONLY when both sign-offs exist."
+    },
+    "non_completion_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Mandatory reason captured for an outstanding/overdue task at (or after) the deadline."
+    },
+    "reason_captured_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason_captured_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason_captured_at": {
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time"
     },
+    "reopen_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Mandatory rejection reason when the operator rejects the guard/user completion. The task returns to the assigned user; the previous sign-off data and the full audit history are preserved."
+    },
+    "reopened_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reopened_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reopened_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "last_reminder_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp of the last 2-hour outstanding-task reminder for this task."
+    },
+    "additional_notification_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Optional per-task override of the Task Batch's additional notification recipients (same customer only). Empty = inherit the batch recipients."
+    },
     "related_entity": {
-      "type": "string",
-      "description": "Entity type if related (incident, maintenance, shift, etc.)"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional integration link (incident, maintenance, patrol, access activity) \u2014 integrations with other modules are OPTIONAL enhancements, never dependencies."
     },
     "related_id": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "notes": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [

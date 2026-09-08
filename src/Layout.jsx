@@ -22,9 +22,9 @@ import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
 import BackgroundNotificationManager from "@/components/BackgroundNotificationManager";
 import ThemeProvider from "@/components/ThemeProvider";
-import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
+import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
 import { useBranding } from "@/hooks/useBranding";
-import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
+import { isPageModuleEnabled } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
 import { resolveBrand, hexToRgba, darkenHex, lightenHex, PLATFORM_APP_NAME } from "@/lib/branding";
 import BrandLogo from "@/components/branding/BrandLogo";
@@ -331,9 +331,7 @@ export default function Layout({ children, currentPageName }) {
     ? allNavItems
     : allNavItems.filter(item => {
         const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
-        const moduleKey = PAGE_MODULE_MAP[pageName];
-        if (!moduleKey) return true;
-        return isModuleEnabled(entitlements, moduleKey, isPlatformAdmin);
+        return isPageModuleEnabled(entitlements, pageName, isPlatformAdmin);
       });
   // Module-aware home: when the role's marked root page is filtered out by a
   // module entitlement (attendance-only customer_admin has no REPORTING_CORE),
@@ -373,6 +371,7 @@ export default function Layout({ children, currentPageName }) {
     client: "Client", customer_admin: "Customer Administrator",
     reseller_admin: "Reseller Administrator", practice_admin: "Practice Administrator",
     therapist: "Therapist", reception: "Reception", attendance_staff: "Attendance Staff",
+    control_room_operator: "Control Room Operator",
     platform_admin: "Platform Administrator", employer_user: "Employer Portal User",
   }[user.role_type] || user.role_type;
 

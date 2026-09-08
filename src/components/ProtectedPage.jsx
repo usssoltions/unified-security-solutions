@@ -2,8 +2,8 @@ import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { canAccessPage } from "@/lib/permissions";
-import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
-import { PAGE_MODULE_MAP } from "@/lib/moduleMapping";
+import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
+import { isPageModuleEnabled } from "@/lib/moduleMapping";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { resolveAuthorisedHome, needsSetupRequired } from "@/lib/resolveAuthorisedHome";
 import SetupRequired from "@/components/SetupRequired";
@@ -55,9 +55,9 @@ export default function ProtectedPage({ pageKey, children }) {
     return <Navigate to={resolveAuthorisedHome(user, entitlements)} replace />;
   }
 
-  // Layer 2: module entitlement check (platform admins bypass)
-  const moduleKey = PAGE_MODULE_MAP[pageKey];
-  if (moduleKey && !platformAdmin && !isModuleEnabled(entitlements, moduleKey, false)) {
+  // Layer 2: module entitlement check (platform admins bypass; handles
+  // single-key and multi-key (array) PAGE_MODULE_MAP entries uniformly)
+  if (!platformAdmin && !isPageModuleEnabled(entitlements, pageKey, false)) {
     const home = resolveAuthorisedHome(user, entitlements);
     // If the authorised home is the current page we'd loop — show SetupRequired
     // instead. This is the fix for the blank-dashboard self-redirect loop.

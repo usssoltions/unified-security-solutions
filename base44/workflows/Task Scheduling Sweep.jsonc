@@ -1,0 +1,47 @@
+{
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/30 * * * *",
+      "one_time_date": null,
+      "timezone": "Africa/Johannesburg",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "name": "Task Scheduling Sweep",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "task_scheduling_sweep",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_task_sweep": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "scheduledTaskAccess",
+            "args": {
+              "action": "sweep"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Run Task Scheduling sweep",
+            "description": "Reminders, overdue marking, deadline reports"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Control Room Task Scheduling automation: every 30 minutes \u2014 top up recurring task-list occurrences (bounded, deduplicated), send 2-hour outstanding-task reminders inside each batch's active window, and at each batch deadline mark incomplete tasks overdue and generate + deliver the Task Completion Report. Early-exits with no work when no task lists are due, so it costs nothing when the module is unused."
+}

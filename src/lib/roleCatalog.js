@@ -44,6 +44,7 @@ export const ROLE_DESCRIPTIONS = {
   reception: { label: "Reception", text: "Check-in patients, book appointments", color: "sky" },
   employer_user: { label: "Employer Portal User", text: "Refer employees and view authorised reports", color: "amber" },
   attendance_staff: { label: "Attendance Staff", text: "Register worker/patient attendance: scanning, signatures, records", color: "sky" },
+  control_room_operator: { label: "Control Room Operator", text: "Work the control room task queue: assign tasks, review completions, verify and sign off", color: "sky" },
   customer_admin: { label: "Customer Administrator", text: "Administrative access to the customer's enabled modules", color: "purple" },
 };
 
@@ -58,8 +59,9 @@ export const ATTENDANCE_ROLES = [
  * display order of roles in pickers.
  */
 export const MODULE_ROLE_ACCESS = {
-  COMPLETE_SECURITY: ["admin", "dispatcher", "guard"],
-  OPERATIONS: ["admin", "dispatcher", "guard"],
+  COMPLETE_SECURITY: ["admin", "dispatcher", "guard", "control_room_operator"],
+  OPERATIONS: ["admin", "dispatcher", "guard", "control_room_operator"],
+  TASK_SCHEDULING: ["admin", "dispatcher", "guard", "control_room_operator"],
   PATROL: ["dispatcher", "guard"],
   ACCESS: ["guard", "reception"],
   ESTATE: ["estate_manager", "resident", "vendor"],
@@ -73,7 +75,7 @@ export const MODULE_ROLE_ACCESS = {
 };
 
 export const MODULE_ROLE_ORDER = [
-  "COMPLETE_SECURITY", "OPERATIONS", "PATROL", "ACCESS", "ESTATE",
+  "COMPLETE_SECURITY", "OPERATIONS", "TASK_SCHEDULING", "PATROL", "ACCESS", "ESTATE",
   "OCCUPATIONAL_THERAPY", "ATTENDANCE_REGISTER",
 ];
 
@@ -90,6 +92,7 @@ export const INVITE_ROLE_LABELS = {
   therapist: "Therapist",
   reception: "Reception",
   attendance_staff: "Attendance Staff",
+  control_room_operator: "Control Room Operator",
 };
 
 /**
@@ -185,6 +188,7 @@ export const MODULE_LABELS = {
   ACCESS: "Access Control",
   PATROL: "Patrol",
   OPERATIONS: "Operations",
+  TASK_SCHEDULING: "Task Scheduling",
   COMPLETE_SECURITY: "Security Operations",
 };
 
@@ -195,6 +199,7 @@ export const MODULE_DESCRIPTIONS = {
   ACCESS: "Manage visitor access, QR scanning and access history.",
   PATROL: "Manage patrols, checklists and route monitoring.",
   OPERATIONS: "Manage control room operations, incidents, shifts and sites.",
+  TASK_SCHEDULING: "Schedule task lists to control rooms, assign work and enforce dual sign-off accountability.",
   COMPLETE_SECURITY: "Manage security operations, incidents, patrols and shifts.",
 };
 
