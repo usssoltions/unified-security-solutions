@@ -80,7 +80,8 @@ export default function OperatorQueueView({ data, act, user }) {
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-white">Task Queue</h1>
           <p className="text-sm text-slate-400 truncate">
-            {rooms.length === 1 ? roomName(rooms[0].id)
+            {rooms.length === 0 ? "No control rooms assigned to you"
+              : rooms.length === 1 ? roomName(rooms[0].id)
               : rooms.length + " control room(s): " + rooms.map((r) => r.name).join(", ")}
           </p>
         </div>

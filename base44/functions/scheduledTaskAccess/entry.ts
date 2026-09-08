@@ -464,7 +464,8 @@ export default async function(req) {
       if (resellerAdmin) return await svc.entities.ControlRoom.filter({ reseller_id: caller.reseller_id }, 'name', 200).catch(() => []);
       return await svc.entities.ControlRoom.filter({ customer_id: customerId }, 'name', 200).catch(() => []);
     };
-    const operatorRoomIds = (await loadControlRooms() || [])
+    const allRooms = (await loadControlRooms()) || [];
+    const operatorRoomIds = allRooms
       .filter((r) => isOperator ? ((r.operator_user_ids || []).indexOf(caller.id) !== -1) : true)
       .map((r) => r.id);
 
@@ -581,6 +582,11 @@ export default async function(req) {
           id: u.id, name: u.display_name || u.full_name || u.email, role_type: u.role_type,
         }));
         batches = await svc.entities.TaskBatch.filter({ customer_id: customerId }, '-scheduled_date', 100).catch(() => []);
+        // OPERATOR LEAST-PRIVILEGE: a Control Room Operator may only see task
+        // lists belonging to control rooms they are explicitly assigned to
+        // (same-customer is NOT same-as-authorised). Supervisors/customer
+        // admins keep their wider legitimate scope.
+        if (isOperator) batches = (batches || []).filter((b) => operatorRoomIds.indexOf(b.control_room_id) !== -1);
       } else if (platformAdmin) {
         batches = await svc.entities.TaskBatch.list('-scheduled_date', 100).catch(() => []);
       }
@@ -591,7 +597,10 @@ export default async function(req) {
         users,
         staff,
         batches: batches || [],
-        control_rooms: (await loadControlRooms()) || [],
+        // OPERATOR LEAST-PRIVILEGE: an operator's visible control rooms are
+        // EXACTLY the rooms listing them in operator_user_ids — never the
+        // whole customer's rooms. Unassigned operator → zero rooms, zero tasks.
+        control_rooms: isOperator ? allRooms.filter((r) => operatorRoomIds.indexOf(r.id) !== -1) : allRooms,
         operator_room_ids: operatorRoomIds,
         can_manage: canEdit,
         is_operator: isOperator,
@@ -705,6 +714,17 @@ export default async function(req) {
       if (room.status && room.status !== 'active') {
         return Response.json({ error: 'The selected control room is not active' }, { status: 400 });
       }
+      // SERVICE-AREA INHERITANCE: a task definition without an explicit site
+      // inherits the control room's linked service area (first active linked
+      // site), so new tasks show the correct area. Applies to NEW batches
+      // only — historical tasks are never rewritten.
+      let roomSite = null;
+      const linkedIds = (room.linked_site_ids || []).map(String).filter(Boolean);
+      if (linkedIds.length) {
+        const linkedRows = await svc.entities.Site.filter(
+          { id: { $in: linkedIds }, status: 'active' }, 'name', 20).catch(() => []);
+        roomSite = (linkedRows || [])[0] || null;
+      }
       // Primary Supervisor — required; same-customer user (platform admin allowed for oversight).
       const supRows = await svc.entities.User.filter({ id: String(body.primary_supervisor_id || '') }).catch(() => []);
       const supervisor = (supRows && supRows[0]) || null;
@@ -742,6 +762,9 @@ export default async function(req) {
           }
           siteId = site.id;
           siteName = site.name || null;
+        } else if (roomSite) {
+          siteId = roomSite.id;
+          siteName = roomSite.name || null;
         }
         cleanDefs.push({
           title: t,
