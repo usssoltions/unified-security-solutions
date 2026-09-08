@@ -10,6 +10,8 @@
  * (sendComprehensiveNotification), which may be disabled for a customer.
  */
 
+import { resolveTenantBrand, tenantDisplayName } from './tenantBranding.ts';
+
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // Africa/Johannesburg, UTC+2, no DST
 
 /** Current SAST wall clock as ISO (used for date/time-window maths only). */
@@ -72,14 +74,37 @@ export async function sendTaskTelegram(secrets, chatId, text) {
   }
 }
 
-/** Sends one notification to every recipient via email + Telegram. */
-export async function notifyTaskRecipients(svc, secrets, recipients, { subject, emailBody, telegramText }) {
+/** Sends one notification to every recipient via email + Telegram.
+ * emailHtml (the branded template rendering) rides along as the rich body
+ * with emailBody as the plain-text alternative; from_name brands the sender. */
+export async function notifyTaskRecipients(svc, secrets, recipients, { subject, emailBody, emailHtml, telegramText, from_name }) {
   const out = { email: 0, telegram: 0 };
   for (const r of recipients) {
-    if (r.email && await sendTaskEmail(svc, { to: r.email, subject, body: emailBody })) out.email++;
+    if (r.email && await sendTaskEmail(svc, { to: r.email, subject, body: emailBody, html: emailHtml, from_name })) out.email++;
     if (r.telegram_chat_id && await sendTaskTelegram(secrets, r.telegram_chat_id, telegramText)) out.telegram++;
   }
   return out;
+}
+
+/**
+ * Resolves the effective tenant brand context (customer → reseller →
+ * platform default) for one customer. Used by every Task Scheduling email
+ * path so the whole module shares the tenant's branding uniformly.
+ */
+export async function resolveTaskBrandContext(svc, customerId) {
+  const custRows = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);
+  const customer = (custRows && custRows[0]) || null;
+  let reseller = null;
+  if (customer && customer.reseller_id) {
+    const rRows = await svc.entities.Reseller.filter({ id: customer.reseller_id }).catch(() => []);
+    reseller = (rRows && rRows[0]) || null;
+  }
+  return {
+    customer, reseller,
+    brand: resolveTenantBrand(customer, reseller),
+    brandName: tenantDisplayName(customer, reseller) || 'Task Scheduling',
+    customerName: (customer && customer.name) || 'Customer',
+  };
 }
 
 /**

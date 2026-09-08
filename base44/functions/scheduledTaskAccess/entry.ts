@@ -56,12 +56,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from 'base44:runtime';
 import {
-  sastTodayYmd, sastInstantYmd, logTaskAudit, logTaskScopeAudit,
+  sastTodayYmd, logTaskAudit, logTaskScopeAudit,
   resolveTaskRecipients, notifyTaskRecipients, sendTaskEmail, sendTaskTelegram,
+  resolveTaskBrandContext,
 } from '../../shared/taskNotifications.ts';
-import { completionNotification, reminderNotification, deadlineReport, reasonRequiredNotification, assignmentNotification, buildAssignmentEmailHtml } from '../../shared/taskReportContent.ts';
+import { completionNotification, deadlineReport, assignmentNotification, buildAssignmentEmailHtml, buildReopenedEmailHtml } from '../../shared/taskReportContent.ts';
+import {
+  runTaskSweep, addDaysYmd, occurrenceDates, buildOccurrence,
+  buildTasksForOccurrence, buildOccurrenceBatch, DATE_RE, PRIORITIES, ALL_OPEN_STATUSES,
+} from '../../shared/taskSweep.ts';
 import { handleTaskLifecycle } from '../../shared/taskLifecycle.ts';
-import { resolveTenantBrand, tenantDisplayName } from '../../shared/tenantBranding.ts';
 
 const EDIT_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 const OPERATOR_ROLE = 'control_room_operator';
@@ -70,16 +74,11 @@ const OPERATOR_ELIGIBLE_ROLES = [OPERATOR_ROLE, 'dispatcher', 'admin', 'customer
 const SUPERVISOR_ROLES = ['dispatcher', 'admin', 'customer_admin'];
 const MODULE_KEYS = ['TASK_SCHEDULING', 'OPERATIONS', 'COMPLETE_SECURITY'];
 const LEGACY_OPEN_STATUSES = ['new', 'acknowledged', 'in_progress', 'awaiting'];
-const OPEN_STATUSES = LEGACY_OPEN_STATUSES.concat(['queue', 'assigned', 'awaiting_verification', 'reopened']);
-const ALL_OPEN_STATUSES = OPEN_STATUSES.concat(['overdue']);
 const RECURRENCE_TYPES = ['daily', 'weekly', 'weekdays', 'monthly', 'custom'];
-const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 const TASK_MODULE_KEYS = ['TASK_SCHEDULING', 'OPERATIONS', 'COMPLETE_SECURITY'];
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
-const REMINDER_INTERVAL_MS = 2 * 60 * 60 * 1000;
-const SWEEP_CATCHUP_DAYS = 7;
+// DATE_RE, PRIORITIES, ALL_OPEN_STATUSES + all date/occurrence helpers and the
+// scheduled sweep live in the shared sweep module (shared/taskSweep.ts).
 
 function isPlatformAdmin(u) {
   // Mirrors the proven gateways (siteAccess / attendanceAccess / getTenantUsers):
@@ -97,154 +96,14 @@ function userName(u) {
 
 
 
-/* ── Date helpers — YYYY-MM-DD strings are timezone-neutral ─────────────── */
-function ymdToDate(s) {
-  const p = s.split('-');
-  return new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])));
-}
-function addDaysYmd(s, n) {
-  const d = ymdToDate(s);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-function daysBetweenYmd(a, b) {
-  return Math.round((ymdToDate(b) - ymdToDate(a)) / 86400000);
-}
-function todayYmd() {
-  return new Date(Date.now() + SAST_OFFSET_MS).toISOString().slice(0, 10);
-}
-function nextOccurrenceYmd(current, rec) {
-  if (rec.type === 'daily') return addDaysYmd(current, 1);
-  if (rec.type === 'weekly') return addDaysYmd(current, 7);
-  if (rec.type === 'custom') return addDaysYmd(current, Math.max(1, Number(rec.interval) || 1));
-  if (rec.type === 'weekdays') {
-    const allowed = (rec.weekdays && rec.weekdays.length) ? rec.weekdays : [1, 2, 3, 4, 5];
-    let d = addDaysYmd(current, 1);
-    for (let i = 0; i < 7; i++) {
-      if (allowed.indexOf(ymdToDate(d).getUTCDay()) !== -1) return d;
-      d = addDaysYmd(d, 1);
-    }
-    return null;
-  }
-  if (rec.type === 'monthly') {
-    const p = current.split('-');
-    const next = new Date(Date.UTC(Number(p[0]), Number(p[1]), Number(p[2]), 12));
-    return next.toISOString().slice(0, 10);
-  }
-  return null;
-}
-function occurrenceDates(startYmd, rec, endYmd, max) {
-  const out = [];
-  let cur = startYmd;
-  let guard = 0;
-  const cap = max || 62;
-  while (out.length < cap && guard < 500) {
-    guard++;
-    cur = nextOccurrenceYmd(cur, rec);
-    if (!cur) break;
-    if (endYmd && cur > endYmd) break;
-    out.push(cur);
-  }
-  return out;
-}
-/* Occurrence due = occurrence date + the parent's day delta, same wall clock. */
-function occurrenceDue(parent, occurrenceYmd) {
-  if (!parent.due_date || typeof parent.due_date !== 'string') return null;
-  const parts = parent.due_date.split('T');
-  if (parts.length < 2 || !DATE_RE.test(parts[0])) return null;
-  const delta = daysBetweenYmd(parent.scheduled_date, parts[0]);
-  return addDaysYmd(occurrenceYmd, delta) + 'T' + parts[1];
-}
-function buildOccurrence(parent, seriesId, ymd) {
-  return {
-    customer_id: parent.customer_id,
-    reseller_id: parent.reseller_id || null,
-    site_id: parent.site_id || null,
-    site_name: parent.site_name || null,
-    title: parent.title,
-    description: parent.description || null,
-    task_type: parent.task_type || 'other',
-    priority: parent.priority || 'medium',
-    assigned_to: parent.assigned_to || null,
-    assigned_to_name: parent.assigned_to_name || null,
-    assigned_by: parent.assigned_by || null,
-    assigned_by_name: parent.assigned_by_name || null,
-    scheduled_date: ymd,
-    scheduled_time: parent.scheduled_time || null,
-    scheduled_at: parent.scheduled_time ? ymd + 'T' + parent.scheduled_time + ':00+02:00' : null,
-    due_date: occurrenceDue(parent, ymd),
-    status: 'new',
-    recurrence_type: parent.recurrence_type,
-    recurrence_weekdays: parent.recurrence_weekdays || [],
-    recurrence_interval_days: parent.recurrence_interval_days || 1,
-    recurrence_end_date: parent.recurrence_end_date || null,
-    recurrence_key: seriesId + ':' + ymd,
-    parent_task_id: parent.id,
-    notes: parent.notes || null,
-    completion_notes_required: !!parent.completion_notes_required,
-  };
-}
+/* Date/occurrence helpers, series occurrence builders and the scheduled sweep
+   live in shared/taskSweep.ts (imported above). */
 
-/* ── Batch occurrence builders (content builders live in shared/taskReportContent.ts) ─── */
 
-function buildTasksForOccurrence(batchRec, ymd, createdBy) {
-  return (batchRec.task_definitions || []).map((d) => ({
-    customer_id: batchRec.customer_id,
-    reseller_id: batchRec.reseller_id || null,
-    control_room_id: batchRec.control_room_id,
-    control_room_name: batchRec.control_room_name || null,
-    task_batch_id: batchRec.id,
-    task_batch_title: batchRec.title,
-    title: d.title,
-    description: d.description || null,
-    task_type: d.task_type || 'other',
-    priority: PRIORITIES.indexOf(d.priority) !== -1 ? d.priority : 'medium',
-    site_id: d.site_id || null,
-    site_name: d.site_name || null,
-    assigned_to: null,
-    assigned_to_name: null,
-    assigned_by: createdBy.id,
-    assigned_by_name: userName(createdBy),
-    scheduled_date: ymd,
-    scheduled_time: d.scheduled_time || null,
-    scheduled_at: d.scheduled_time ? ymd + 'T' + d.scheduled_time + ':00+02:00' : null,
-    due_date: d.due_time ? ymd + 'T' + d.due_time + ':00+02:00'
-      : (batchRec.deadline_time ? ymd + 'T' + batchRec.deadline_time + ':00+02:00' : null),
-    status: 'queue',
-    recurrence_type: 'none',
-    notes: null,
-    completion_notes_required: !!d.completion_notes_required,
-    evidence_required: !!d.evidence_required,
-  }));
-}
 
-function buildOccurrenceBatch(series, ymd, seriesId) {
-  return {
-    customer_id: series.customer_id,
-    reseller_id: series.reseller_id || null,
-    control_room_id: series.control_room_id,
-    control_room_name: series.control_room_name || null,
-    title: series.title,
-    description: series.description || null,
-    scheduled_date: ymd,
-    active_start_time: series.active_start_time,
-    deadline_time: series.deadline_time,
-    is_series: false,
-    parent_batch_id: series.id,
-    task_definitions: [],
-    recurrence_type: series.recurrence_type,
-    recurrence_weekdays: series.recurrence_weekdays || [],
-    recurrence_interval_days: series.recurrence_interval_days || 1,
-    recurrence_end_date: series.recurrence_end_date || null,
-    recurrence_key: seriesId + ':' + ymd,
-    primary_supervisor_id: series.primary_supervisor_id,
-    primary_supervisor_name: series.primary_supervisor_name || null,
-    additional_notification_user_ids: series.additional_notification_user_ids || [],
-    additional_notification_names: series.additional_notification_names || [],
-    status: 'active',
-    created_by_name: series.created_by_name || null,
-  };
-}
+
+
+
 
 /* ── Main handler ───────────────────────────────────────────────────────── */
 
@@ -271,8 +130,25 @@ export default async function(req) {
        authorization decision below — identical to that user's own session.
        Used for support and identity-exact acceptance testing; every use is
        audit-logged. Platform admins already hold full data oversight, so
-       this grants no additional access. */
+       this grants no additional access.
+
+       SIGN-OFF INTEGRITY (production security rule): a signature or sign-off
+       attributed to an operational user may ONLY be created by that
+       authenticated user personally. Impersonation is therefore HARD-BLOCKED
+       for every attribution-bearing action (Sign-off 1, Sign-off 2, reject,
+       non-completion reason): the test harness / support context can never
+       create a signature, verification or reason recorded as a real user's
+       own act. Blocked attempts are audit-logged as impersonation rejections. */
     if (caller && isPlatformAdmin(caller) && body.as_user_id) {
+      if (['submitCompletion', 'verify', 'reject', 'captureReason'].indexOf(action) !== -1) {
+        await logTaskScopeAudit(svc, { event_type: 'task.impersonation_rejected', actor: caller,
+          notes: 'Blocked impersonated ' + action + ' as user ' + String(body.as_user_id)
+            + ' — sign-offs can only be created by the authenticated user themselves' });
+        return Response.json({
+          error: 'A sign-off can only be created by the authenticated user themselves. Administrative impersonation may never sign off, verify or attribute an action to an operational user.',
+          code: 'impersonation_forbidden',
+        }, { status: 403 });
+      }
       const rows = await svc.entities.User.filter({ id: String(body.as_user_id) }).catch(() => []);
       const target = (rows && rows[0]) || null;
       if (!target) return Response.json({ error: 'Impersonation target user not found' }, { status: 400 });
@@ -283,149 +159,12 @@ export default async function(req) {
     }
 
     /* ──────────────────────────────────────────────────────────────────────
-       SWEEP — scheduled automation (no caller required)
-       ────────────────────────────────────────────────────────────────────── */
+       SWEEP — scheduled automation (no caller required): occurrence top-up,
+       2-hour reminders, deadline overdue marking, reason gate and the
+       authoritative Task Completion Report. Implemented (with all
+       series/occurrence builders and branded emails) in shared/taskSweep.ts. */
     if (action === 'sweep') {
-      const today = sastTodayYmd();
-      const cutoff = addDaysYmd(today, -SWEEP_CATCHUP_DAYS);
-      const results = { occurrences_generated: 0, reminders_sent: 0, reports_generated: 0, tasks_marked_overdue: 0, reasons_required: 0 };
-
-      // 1. Early-exit check FIRST: any recent unreported occurrence batches?
-      //    (Series parents are excluded — occurrences drive the workflow.)
-      const recentBatches = await svc.entities.TaskBatch.filter(
-        { is_series: false, status: 'active' }, '-scheduled_date', 100).catch(() => []);
-      const dueBatches = (recentBatches || []).filter((b) =>
-        b.scheduled_date && b.scheduled_date <= today && b.scheduled_date >= cutoff && !b.archived);
-
-      // 2. Top-up recurring series (bounded, dedup by recurrence_key).
-      const seriesRows = await svc.entities.TaskBatch.filter(
-        { is_series: true, status: 'active' }, '-created_date', 50).catch(() => []);
-      for (const series of (seriesRows || [])) {
-        const rec = { type: series.recurrence_type, weekdays: series.recurrence_weekdays || [], interval: series.recurrence_interval_days || 1 };
-        if (rec.type === 'none' || series.archived) continue;
-        const endYmd = (series.recurrence_end_date && DATE_RE.test(series.recurrence_end_date))
-          ? series.recurrence_end_date : addDaysYmd(today, 30);
-        const dates = occurrenceDates(series.scheduled_date, rec, endYmd, 62);
-        if (!dates.length) continue;
-        const seriesId = series.recurrence_key ? series.recurrence_key.slice(0, series.recurrence_key.lastIndexOf(':')) : series.id;
-        const keys = dates.map((d) => seriesId + ':' + d);
-        const existing = await svc.entities.TaskBatch.filter({ recurrence_key: { $in: keys } }).catch(() => []);
-        const have = new Set((existing || []).map((b) => b.recurrence_key));
-        const missing = dates.filter((d) => !have.has(seriesId + ':' + d));
-        for (const d of missing) {
-          const occ = await svc.entities.TaskBatch.create(buildOccurrenceBatch(series, d, seriesId));
-          const tasks = buildTasksForOccurrence(series, d, { id: series.id, display_name: series.created_by_name || 'System' });
-          if (tasks.length) await svc.entities.OperationalTask.bulkCreate(tasks);
-          results.occurrences_generated++;
-        }
-      }
-
-      if (!dueBatches.length) return Response.json({ success: true, ...results, active_batches: 0 });
-
-      const custRowsCache = {};
-      const getCustomerName = async (customerId) => {
-        if (!custRowsCache[customerId]) {
-          const rows = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);
-          custRowsCache[customerId] = (rows && rows[0] && rows[0].name) || 'Customer';
-        }
-        return custRowsCache[customerId];
-      };
-
-      for (const batch of dueBatches) {
-        if (!batch.deadline_time || !batch.active_start_time) continue;
-        const startMs = sastInstantYmd(batch.scheduled_date, batch.active_start_time);
-        const deadlineMs = sastInstantYmd(batch.scheduled_date, batch.deadline_time);
-        const now = Date.now();
-        if (now < startMs) continue;
-
-        const tasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
-        const allTasks = tasks || [];
-        if (!allTasks.length) continue;
-        const outstanding = allTasks.filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
-
-        if (now < deadlineMs) {
-          // ── Active window: 2-hour reminder cycle ──
-          if (!outstanding.length) continue;
-          const dueReminders = Math.floor((now - startMs) / REMINDER_INTERVAL_MS);
-          if ((batch.reminder_count || 0) >= dueReminders) continue;
-
-          const crRows = await svc.entities.ControlRoom.filter({ id: batch.control_room_id }).catch(() => []);
-          const cr = (crRows && crRows[0]) || null;
-          const operatorIds = (cr && cr.operator_user_ids) || [];
-          const supervisorIds = (cr && cr.supervisor_user_ids) || [];
-          const recipients = await resolveTaskRecipients(svc, batch.customer_id,
-            [batch.primary_supervisor_id].concat(operatorIds, supervisorIds, batch.additional_notification_user_ids || []));
-          if (!recipients.length) continue;
-
-          const customerName = await getCustomerName(batch.customer_id);
-          const content = reminderNotification(batch, outstanding, customerName);
-          const sent = await notifyTaskRecipients(svc, secrets, recipients, content);
-          await svc.entities.TaskBatch.update(batch.id, {
-            reminder_count: dueReminders, last_reminder_at: new Date().toISOString(),
-          }).catch(() => {});
-          await svc.entities.OperationalTask.updateMany(
-            { task_batch_id: batch.id, status: { $in: ALL_OPEN_STATUSES } },
-            { $set: { last_reminder_at: new Date().toISOString() } }).catch(() => {});
-          await logTaskAudit(svc, { event_type: 'task.reminder_sent', actor: null, batch,
-            notes: outstanding.length + ' outstanding task(s) — email:' + sent.email + ' telegram:' + sent.telegram });
-          results.reminders_sent++;
-        } else if (!batch.report_generated_at) {
-          // ── Deadline reached: overdue marking + REASON-GATED report ──
-          if (outstanding.length) {
-            await svc.entities.OperationalTask.updateMany(
-              { task_batch_id: batch.id, status: { $in: ALL_OPEN_STATUSES } },
-              { $set: { status: 'overdue' } }).catch(() => {});
-            for (const t of outstanding) {
-              await logTaskAudit(svc, { event_type: 'task.overdue', actor: null, task: t,
-                from_status: t.status, to_status: 'overdue', notes: 'Deadline ' + batch.deadline_time + ' reached without dual sign-off' });
-            }
-            results.tasks_marked_overdue += outstanding.length;
-          }
-          const freshTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
-          const freshOutstanding = (freshTasks || []).filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
-          const needReason = freshOutstanding.filter((t) => !t.non_completion_reason);
-          const customerName = await getCustomerName(batch.customer_id);
-          if (needReason.length) {
-            // REASON GATE: never silently finalise the deadline report while an
-            // incomplete task has no non-completion reason. Flag the batch
-            // 'reason_pending' and demand reasons from the responsible
-            // operator/supervisor (one exception notification per batch —
-            // never re-spammed). The authoritative report finalises in the
-            // captureReason action once every incomplete task has a reason.
-            if (!batch.reason_required_notified_at) {
-              const crRows = await svc.entities.ControlRoom.filter({ id: batch.control_room_id }).catch(() => []);
-              const cr = (crRows && crRows[0]) || null;
-              const recipients = await resolveTaskRecipients(svc, batch.customer_id,
-                [batch.primary_supervisor_id].concat((cr && cr.operator_user_ids) || [],
-                  (cr && cr.supervisor_user_ids) || [], batch.additional_notification_user_ids || []));
-              const content = reasonRequiredNotification(batch, needReason, customerName);
-              const sent = await notifyTaskRecipients(svc, secrets, recipients, content);
-              await svc.entities.TaskBatch.update(batch.id, {
-                status: 'reason_pending', reason_required_notified_at: new Date().toISOString(),
-              }).catch(() => {});
-              await logTaskAudit(svc, { event_type: 'task.reason_required', actor: null, batch,
-                notes: 'Deadline reached — ' + needReason.length + ' incomplete task(s) need a non-completion reason before the report finalises. email:' + sent.email + ' telegram:' + sent.telegram });
-              results.reasons_required++;
-            }
-          } else {
-            // Every incomplete task already has a reason (or nothing is
-            // incomplete) → finalise the authoritative Task Completion Report.
-            const report = deadlineReport(batch, (freshTasks || []).filter((t) => !t.archived), customerName);
-            const recipients = await resolveTaskRecipients(svc, batch.customer_id,
-              [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
-            const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
-            await svc.entities.TaskBatch.update(batch.id, {
-              status: 'reported', report_generated_at: new Date().toISOString(),
-              report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
-              report_content: report.emailBody,
-            }).catch(() => {});
-            await logTaskAudit(svc, { event_type: 'task.report_delivered', actor: null, batch,
-              notes: 'Report generated at deadline — email:' + sent.email + ' telegram:' + sent.telegram });
-            results.reports_generated++;
-          }
-        }
-      }
-      return Response.json({ success: true, ...results, active_batches: dueBatches.length });
+      return await runTaskSweep(svc, secrets);
     }
 
     /* ──────────────────────────────────────────────────────────────────────
@@ -492,12 +231,11 @@ export default async function(req) {
       const allTasks = await svc.entities.OperationalTask.filter({ task_batch_id: batch.id }).catch(() => []);
       const incomplete = (allTasks || []).filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
       if (incomplete.some((t) => !t.non_completion_reason)) return false;
-      const custRows = await svc.entities.Customer.filter({ id: batch.customer_id }).catch(() => []);
-      const customerName = (custRows && custRows[0] && custRows[0].name) || 'Customer';
-      const report = deadlineReport(batch, allTasks || [], customerName);
+      const brandCtx = await resolveTaskBrandContext(svc, batch.customer_id);
+      const report = deadlineReport(batch, allTasks || [], brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
       const recipients = await resolveTaskRecipients(svc, batch.customer_id,
         [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
-      const sent = await notifyTaskRecipients(svc, secrets, recipients, report);
+      const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...report, from_name: brandCtx.brandName });
       await svc.entities.TaskBatch.update(batch.id, {
         status: 'reported', report_generated_at: new Date().toISOString(),
         report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
@@ -573,7 +311,7 @@ export default async function(req) {
             const seriesId = parent.recurrence_key.slice(0, parent.recurrence_key.lastIndexOf(':'));
             const rec = { type: parent.recurrence_type, weekdays: parent.recurrence_weekdays || [], interval: parent.recurrence_interval_days || 1 };
             const endYmd = (parent.recurrence_end_date && DATE_RE.test(parent.recurrence_end_date))
-              ? parent.recurrence_end_date : addDaysYmd(todayYmd(), 30);
+              ? parent.recurrence_end_date : addDaysYmd(sastTodayYmd(), 30);
             const dates = occurrenceDates(parent.scheduled_date, rec, endYmd, 62);
             if (!dates.length) continue;
             const keys = dates.map((d) => seriesId + ':' + d);
@@ -976,25 +714,19 @@ export default async function(req) {
       // never supplies contact details.
       try {
         const batch = task.task_batch_id ? await findBatch(task.task_batch_id) : null;
-        const custRows = await svc.entities.Customer.filter({ id: task.customer_id }).catch(() => []);
-        const customer = (custRows && custRows[0]) || null;
-        let reseller = null;
-        if (customer && customer.reseller_id) {
-          const rRows = await svc.entities.Reseller.filter({ id: customer.reseller_id }).catch(() => []);
-          reseller = (rRows && rRows[0]) || null;
-        }
         // Tenant branding (customer → reseller → platform default): the
         // assignment email is branded for the tenant, never generic.
-        const brand = resolveTenantBrand(customer, reseller);
-        const brandName = tenantDisplayName(customer, reseller) || 'Task Scheduling';
-        const content = assignmentNotification(updated, batch || {}, callerName);
+        const brandCtx = await resolveTaskBrandContext(svc, task.customer_id);
+        const brand = brandCtx.brand;
+        const brandName = brandCtx.brandName;
+        const content = assignmentNotification(updated, batch || {}, callerName, action === 'reassign');
         const chatId = (assignee.telegram_connected && assignee.telegram_notifications_enabled !== false)
           ? (assignee.telegram_chat_id || null) : null;
         const sentVia = ['in_app'];
         if (assignee.email && await sendTaskEmail(svc, {
           to: assignee.email, subject: content.subject, body: content.emailBody,
           from_name: brandName,
-          html: buildAssignmentEmailHtml(updated, batch || {}, brand, brandName, userName(assignee), callerName),
+          html: buildAssignmentEmailHtml(updated, batch || {}, brand, brandName, userName(assignee), callerName, action === 'reassign'),
         })) sentVia.push('email');
         if (chatId && await sendTaskTelegram(secrets, chatId, content.telegramText)) sentVia.push('telegram');
 
@@ -1150,16 +882,15 @@ export default async function(req) {
       // Immediate completion notification (module-owned channels; supervisor + configured recipients).
       try {
         const batch = await findBatch(task.task_batch_id);
-        const custRows = await svc.entities.Customer.filter({ id: task.customer_id }).catch(() => []);
-        const customerName = (custRows && custRows[0] && custRows[0].name) || 'Customer';
+        const brandCtx = await resolveTaskBrandContext(svc, task.customer_id);
         const recipientIds = [batch && batch.primary_supervisor_id]
           .concat((task.additional_notification_user_ids && task.additional_notification_user_ids.length
             ? task.additional_notification_user_ids
             : (batch && batch.additional_notification_user_ids) || []));
         const recipients = await resolveTaskRecipients(svc, task.customer_id, recipientIds);
         if (recipients.length) {
-          const content = completionNotification(updated, batch || {}, customerName);
-          const sent = await notifyTaskRecipients(svc, secrets, recipients, content);
+          const content = completionNotification(updated, batch || {}, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
+          const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName });
           await logTaskAudit(svc, { event_type: 'task.completion_notified', actor: caller, task,
             notes: 'Supervisor notified — email:' + sent.email + ' telegram:' + sent.telegram });
         }
@@ -1198,6 +929,40 @@ export default async function(req) {
       });
       await logTaskAudit(svc, { event_type: 'task.rejected_reopened', actor: caller, task,
         from_status: 'awaiting_verification', to_status: 'reopened', notes: 'Rejected by ' + callerName + ' — ' + reason });
+
+      // Reopened task notification (unified branded email set): the assignee
+      // is told the completion was rejected and the task returned to them.
+      // The recipient is resolved SERVER-SIDE from the assigned user record.
+      try {
+        if (task.assigned_to) {
+          const rows = await svc.entities.User.filter({ id: task.assigned_to }).catch(() => []);
+          const assignee = (rows && rows[0]) || null;
+          if (assignee && assignee.customer_id === task.customer_id) {
+            const brandCtx = await resolveTaskBrandContext(svc, task.customer_id);
+            await svc.entities.Notification.create({
+              customer_id: task.customer_id, reseller_id: task.reseller_id || null,
+              recipient_id: assignee.id, recipient_name: userName(assignee),
+              type: 'status_change', priority: 'high',
+              title: 'Task Reopened — ' + task.title,
+              message: 'Your completion was rejected by ' + callerName + ' and the task returned to you: ' + reason,
+              related_entity: 'OperationalTask', related_id: task.id,
+              action_url: '/ScheduledTasks', sent_via: ['in_app'],
+            }).catch(() => {});
+            if (assignee.email) {
+              await sendTaskEmail(svc, {
+                to: assignee.email, from_name: brandCtx.brandName,
+                subject: 'Task Reopened — ' + task.title,
+                body: 'TASK REOPENED\n\nTask: ' + task.title + '\nRejected by: ' + callerName +
+                  '\nReason: ' + reason +
+                  '\n\nThe task has been returned to you for rework — open My Tasks in the app.',
+                html: buildReopenedEmailHtml(task, brandCtx.brand, brandCtx.brandName, userName(assignee), callerName, reason),
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('reopened notification failed:', e?.message || e);
+      }
       return Response.json({ success: true, task: updated });
     }
 
