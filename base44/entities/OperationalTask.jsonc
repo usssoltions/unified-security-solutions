@@ -179,7 +179,7 @@
         "awaiting"
       ],
       "default": "queue",
-      "description": "Lifecycle: queue (Control Room queue) \u2192 assigned \u2192 in_progress \u2192 awaiting_verification (guard sign-off done) \u2192 completed (BOTH sign-offs). Also reopened (operator rejected), overdue (deadline passed without both sign-offs), cancelled. Legacy standalone-task statuses (new/acknowledged/awaiting) remain valid for old records."
+      "description": "Lifecycle: queue (Control Room queue) \u2192 assigned \u2192 in_progress \u2192 awaiting_verification (guard sign-off done) \u2192 completed (BOTH sign-offs). Also reopened (operator rejected), overdue (deadline passed without both sign-offs), cancelled. Legacy standalone-task statuses (new/acknowledged/awaiting) remain valid for old records. ARCHIVED tasks keep their status \u2014 the archived flag hides them from active queues while preserving the full audit history."
     },
     "recurrence_type": {
       "type": "string",
@@ -413,6 +413,33 @@
         "string",
         "null"
       ]
+    },
+    "archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "DATA LIFECYCLE \u2014 ARCHIVE: hides this task from every active operational queue/view (operator queue, My Tasks, supervisor active lists, sweep reports) while PRESERVING the full record, both sign-offs, evidence, notes and audit history. Archived tasks stay searchable/viewable by authorised administrators under the Archived view and can be restored. Tasks with operational history (sign-offs/evidence/reasons/reports) must be archived, never destructively deleted \u2014 delete is only permitted for never-actioned tasks."
+    },
+    "archived_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp the task was archived (null when active or restored)."
+    },
+    "archived_by": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "User ID of the administrator who archived this task."
+    },
+    "archived_by_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display name of the administrator who archived this task."
     }
   },
   "required": [

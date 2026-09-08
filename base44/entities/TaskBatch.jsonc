@@ -1,7 +1,7 @@
 {
   "name": "TaskBatch",
   "type": "object",
-  "description": "Task Scheduling module: a supervisor's task list/batch allocated to a specific Control Room (e.g. 'Daily Operational Tasks' 08:00-16:00 for Dogs and All Control Room 1). A recurring series stores its definition once (is_series=true, task_definitions embedded) and generates dated occurrence batches (parent_batch_id set, recurrence_key 'seriesId:YYYY-MM-DD') server-side \u2014 bounded and deduplicated by recurrence_key. Reminders (every 2h inside the active window) and the deadline Task Completion Report are driven per occurrence batch by the scheduled sweep. DEADLINE REASON GATE: at the deadline, if any incomplete task has no non-completion reason, the batch enters status 'reason_pending' (a reason-required exception notification is sent once) and the authoritative Task Completion Report is NOT finalised \u2014 it generates automatically (captureReason action) once every incomplete task has a reason. TENANT ACCESS PATTERN: NO {{user.data.*}} RLS rules \u2014 all tenant access goes through the scheduledTaskAccess gateway (server-side tenant resolution). Direct client access is platform-admin-only.",
+  "description": "Task Scheduling module: a supervisor's task list/batch allocated to a specific Control Room (e.g. 'Daily Operational Tasks' 08:00-16:00 for Dogs and All Control Room 1). A recurring series stores its definition once (is_series=true, task_definitions embedded) and generates dated occurrence batches (parent_batch_id set, recurrence_key 'seriesId:YYYY-MM-DD') server-side \u2014 bounded and deduplicated by recurrence_key. Reminders (every 2h inside the active window) and the deadline Task Completion Report are driven per occurrence batch by the scheduled sweep. DEADLINE REASON GATE: at the deadline, if any incomplete task has no non-completion reason, the batch enters status 'reason_pending' (a reason-required exception notification is sent once) and the authoritative Task Completion Report is NOT finalised \u2014 it generates automatically (captureReason action) once every incomplete task has a reason. DATA LIFECYCLE: ARCHIVE (archived=true) hides the batch and its tasks from active views while preserving all history; DELETE is only permitted server-side when the batch (and, for a series, all its occurrences) contains no sign-offs, evidence, reasons or delivered reports; CANCEL stops reminders, notifications and future occurrence generation while preserving records. TENANT ACCESS PATTERN: NO {{user.data.*}} RLS rules \u2014 all tenant access goes through the scheduledTaskAccess gateway (server-side tenant resolution). Direct client access is platform-admin-only.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -211,7 +211,7 @@
         "reported"
       ],
       "default": "active",
-      "description": "'reason_pending' = deadline passed with incomplete task(s) still missing a non-completion reason \u2014 the authoritative Task Completion Report is held until every incomplete task has a reason (then set to 'reported'). 'reported' = authoritative deadline Task Completion Report generated and delivered."
+      "description": "'reason_pending' = deadline passed with incomplete task(s) still missing a non-completion reason \u2014 the authoritative Task Completion Report is held until every incomplete task has a reason (then set to 'reported'). 'reported' = authoritative deadline Task Completion Report generated and delivered. 'cancelled' = stopped: no further reminders, notifications or (for a series) occurrence generation; records preserved. ARCHIVED batches keep their status \u2014 the archived flag hides them from active views."
     },
     "reason_required_notified_at": {
       "type": [
@@ -259,6 +259,33 @@
         "string",
         "null"
       ]
+    },
+    "archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "DATA LIFECYCLE \u2014 ARCHIVE: hides this task list (and, for a series, its occurrence batches and their tasks) from the normal active Task List view while preserving the full records and history. Archived batches remain viewable under the Archived view and can be restored. Batches with sign-offs, reasons, evidence or delivered reports must be archived, never destructively deleted."
+    },
+    "archived_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp the batch was archived (null when active or restored)."
+    },
+    "archived_by": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "User ID of the administrator who archived this batch."
+    },
+    "archived_by_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display name of the administrator who archived this batch."
     }
   },
   "required": [
