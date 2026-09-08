@@ -138,6 +138,115 @@ export function deadlineReport(batch, tasks, customerName) {
   };
 }
 
+/* ── Assignment notification (immediate, multi-channel) ─────────────────── */
+
+const APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
+export const MY_TASKS_LINK = APP_URL + '/ScheduledTasks';
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+}
+
+function fmtYmd(ymd) {
+  if (!ymd) return '—';
+  const p = String(ymd).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(ymd);
+}
+
+function priorityLabel(p) {
+  const v = String(p || 'medium');
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
+
+function assignmentDeadlineStr(task, batch) {
+  if (task.due_date) return fmtSast(task.due_date);
+  if (batch && batch.deadline_time && batch.scheduled_date) {
+    return fmtSast(batch.scheduled_date + 'T' + batch.deadline_time + ':00+02:00');
+  }
+  return '—';
+}
+
+function assignmentWindowStr(task, batch) {
+  const start = task.scheduled_time || (batch && batch.active_start_time) || null;
+  if (start && batch && batch.deadline_time) return start + ' – ' + batch.deadline_time;
+  return start || '—';
+}
+
+export function assignmentNotification(task, batch, assignedByName) {
+  const cr = task.control_room_name || (batch && batch.control_room_name) || '—';
+  const site = task.site_name || '—';
+  const pri = priorityLabel(task.priority);
+  const deadline = assignmentDeadlineStr(task, batch);
+  const window = assignmentWindowStr(task, batch);
+  const date = fmtYmd(task.scheduled_date);
+  const subject = 'Task Assigned — ' + task.title + ' (' + cr + ')';
+  const emailBody = [
+    'TASK ASSIGNED',
+    '',
+    task.title,
+    '',
+    'Control Room: ' + cr,
+    'Site / service area: ' + site,
+    'Task List: ' + (task.task_batch_title || batch?.title || '—'),
+    'Priority: ' + pri,
+    'Scheduled date: ' + date,
+    'Start time / active window: ' + window,
+    'Deadline: ' + deadline,
+    'Instructions: ' + (task.description || '—'),
+    'Assigned by: ' + (assignedByName || '—'),
+    '',
+    'Open My Tasks to start the task: ' + MY_TASKS_LINK,
+  ].join('\n');
+  const telegramText = '📌 *Task Assigned*\n' + task.title +
+    '\nControl Room: ' + cr +
+    (task.site_name ? '\nSite: ' + site : '') +
+    '\nPriority: ' + pri +
+    (task.scheduled_date ? '\nScheduled: ' + date : '') +
+    ((task.due_date || (batch && batch.deadline_time)) ? '\nDeadline: ' + deadline : '') +
+    '\nAssigned by: ' + (assignedByName || '—') +
+    '\nOpen My Tasks: ' + MY_TASKS_LINK;
+  const inApp = {
+    title: 'Task Assigned — ' + task.title,
+    message: cr + (task.site_name ? ' · ' + site : '') + ' · Priority: ' + pri +
+      ' · Deadline: ' + deadline + ' · Assigned by ' + (assignedByName || '—'),
+  };
+  return { subject, emailBody, telegramText, inApp };
+}
+
+/** Tenant-branded assignment email (customer → reseller → platform default). */
+export function buildAssignmentEmailHtml(task, batch, brand, brandName, assigneeName, assignedByName) {
+  const primary = (brand && brand.primary_color) || '#0ea5e9';
+  const first = String(assigneeName || '').trim().split(/\s+/)[0];
+  const rows = [
+    ['Control Room', task.control_room_name || (batch && batch.control_room_name) || '—'],
+    ['Site / service area', task.site_name || '—'],
+    ['Priority', priorityLabel(task.priority)],
+    ['Scheduled date', fmtYmd(task.scheduled_date)],
+    ['Start time / active window', assignmentWindowStr(task, batch)],
+    ['Deadline', assignmentDeadlineStr(task, batch)],
+    ['Instructions', task.description || '—'],
+    ['Assigned by', assignedByName || '—'],
+  ].map((kv) =>
+    '<tr><td style="padding:6px 14px;color:#64748b;font-size:13px;white-space:nowrap;vertical-align:top">' + escHtml(kv[0]) +
+    '</td><td style="padding:6px 14px;color:#0f172a;font-size:13px;font-weight:600">' + escHtml(kv[1]) + '</td></tr>'
+  ).join('');
+  return '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">' +
+    ((brand && brand.logo_url)
+      ? '<div style="padding:20px;text-align:center;background:#f8fafc"><img src="' + escHtml(brand.logo_url) + '" alt="' + escHtml(brandName) + '" style="max-height:56px;max-width:180px;object-fit:contain"/></div>'
+      : '') +
+    '<div style="padding:24px 28px">' +
+    '<h2 style="color:' + escHtml(primary) + ';margin:0 0 12px">Task Assigned</h2>' +
+    '<p style="color:#334155;margin:0 0 8px">' + (first ? 'Hi ' + escHtml(first) + ',' : 'Hello,') + '</p>' +
+    '<p style="color:#334155;margin:0 0 12px"><b>' + escHtml(task.title) + '</b> has been assigned to you' +
+    (assignedByName ? ' by ' + escHtml(assignedByName) : '') + '.</p>' +
+    '<table style="border-collapse:collapse;margin:0 0 18px">' + rows + '</table>' +
+    '<a href="' + MY_TASKS_LINK + '" style="background:' + escHtml(primary) + ';color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:bold">Open My Tasks</a>' +
+    '</div>' +
+    '<div style="padding:14px 28px;background:#f8fafc;color:#94a3b8;font-size:11px">' +
+    ((brand && brand.support_email) ? 'Questions? Contact ' + escHtml(brand.support_email) + '.' : '') +
+    '</div></div>';
+}
+
 export function reasonRequiredNotification(batch, tasksNeedingReason, customerName) {
   const lines = tasksNeedingReason.map((t) =>
     '- ' + t.title + ' [' + t.status + '] — ' + (t.assigned_to_name || 'unassigned'));

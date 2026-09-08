@@ -39,10 +39,15 @@ export function sastInstantYmd(dateYmd, timeHHMM) {
 
 /** ── Delivery channels (module-owned) ─────────────────────────────────── */
 
-export async function sendTaskEmail(svc, { to, subject, body }) {
+export async function sendTaskEmail(svc, { to, subject, body, html, from_name }) {
   if (!to) return false;
   try {
-    await svc.integrations.Core.SendEmail({ to, subject, body, from_name: 'Task Scheduling' });
+    const payload = { to, subject, from_name: from_name || 'Task Scheduling' };
+    // Branded HTML email: html is the rich body, body rides along as the
+    // plain-text alternative (multipart/alternative). Plain send keeps body.
+    if (html) { payload.html = html; payload.text = body; }
+    else { payload.body = body; }
+    await svc.integrations.Core.SendEmail(payload);
     return true;
   } catch (e) {
     console.error('task email failed:', e?.message || e);

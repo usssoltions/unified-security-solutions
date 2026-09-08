@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Check, Trash2, Settings, AlertTriangle, Wrench, Shield, Clock, GraduationCap, Radio } from "lucide-react";
+import { X, Check, Trash2, Settings, AlertTriangle, Wrench, Shield, Clock, GraduationCap, Radio, ClipboardCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
@@ -96,6 +96,8 @@ export default function NotificationCenter({ user, onClose }) {
       alarm_dispatch: Radio,
       shift_reminder: Clock,
       training_assigned: GraduationCap,
+      task_assigned: ClipboardCheck,
+      task_reassigned: ClipboardCheck,
       system: Shield
     };
     return icons[type] || Shield;

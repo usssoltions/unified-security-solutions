@@ -32,6 +32,8 @@
         "alarm_dispatch",
         "shift_reminder",
         "training_assigned",
+        "task_assigned",
+        "task_reassigned",
         "system"
       ]
     },

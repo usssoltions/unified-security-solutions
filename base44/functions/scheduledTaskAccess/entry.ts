@@ -57,10 +57,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from 'base44:runtime';
 import {
   sastTodayYmd, sastInstantYmd, logTaskAudit, logTaskScopeAudit,
-  resolveTaskRecipients, notifyTaskRecipients,
+  resolveTaskRecipients, notifyTaskRecipients, sendTaskEmail, sendTaskTelegram,
 } from '../../shared/taskNotifications.ts';
-import { completionNotification, reminderNotification, deadlineReport, reasonRequiredNotification } from '../../shared/taskReportContent.ts';
+import { completionNotification, reminderNotification, deadlineReport, reasonRequiredNotification, assignmentNotification, buildAssignmentEmailHtml } from '../../shared/taskReportContent.ts';
 import { handleTaskLifecycle } from '../../shared/taskLifecycle.ts';
+import { resolveTenantBrand, tenantDisplayName } from '../../shared/tenantBranding.ts';
 
 const EDIT_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 const OPERATOR_ROLE = 'control_room_operator';
@@ -916,6 +917,14 @@ export default async function(req) {
       if (ASSIGNABLE_ROLES.indexOf(assignee.role_type) === -1) {
         return Response.json({ error: 'That user role cannot be assigned tasks' }, { status: 400 });
       }
+      // IDEMPOTENCY: assigning to the user who already holds the task is a
+      // no-op — no update, no notification resend. Repeated saves/refreshes
+      // never spam the assignee; only a REAL assignment transition
+      // (assigned_to changes, incl. first assignment from the queue)
+      // proceeds to the notification block below.
+      if (task.assigned_to === assignee.id) {
+        return Response.json({ success: true, task, unchanged: true });
+      }
       const from = task.status;
       const changes = {
         assigned_to: assignee.id,
@@ -931,6 +940,73 @@ export default async function(req) {
       await logTaskAudit(svc, { event_type: action === 'reassign' ? 'task.reassigned' : 'task.assigned',
         actor: caller, task, from_status: from, to_status: changes.status,
         notes: '→ ' + userName(assignee) + (isOperator ? ' (by operator ' + callerName + ')' : '') });
+
+      // ── IMMEDIATE ASSIGNMENT NOTIFICATION (multi-channel) ──────────────
+      // The assignee is notified the moment they are allocated a task:
+      // in-app (badge/bell), branded email and — only when their own
+      // Telegram is connected — Telegram. The module never silently relies
+      // on My Tasks being checked manually. Reached ONLY on a real
+      // assignment transition (the unchanged no-op above returns early),
+      // so repeated saves are idempotent. Recipients are resolved
+      // SERVER-SIDE from the assigned user's own User record — the client
+      // never supplies contact details.
+      try {
+        const batch = task.task_batch_id ? await findBatch(task.task_batch_id) : null;
+        const custRows = await svc.entities.Customer.filter({ id: task.customer_id }).catch(() => []);
+        const customer = (custRows && custRows[0]) || null;
+        let reseller = null;
+        if (customer && customer.reseller_id) {
+          const rRows = await svc.entities.Reseller.filter({ id: customer.reseller_id }).catch(() => []);
+          reseller = (rRows && rRows[0]) || null;
+        }
+        // Tenant branding (customer → reseller → platform default): the
+        // assignment email is branded for the tenant, never generic.
+        const brand = resolveTenantBrand(customer, reseller);
+        const brandName = tenantDisplayName(customer, reseller) || 'Task Scheduling';
+        const content = assignmentNotification(updated, batch || {}, callerName);
+        const chatId = (assignee.telegram_connected && assignee.telegram_notifications_enabled !== false)
+          ? (assignee.telegram_chat_id || null) : null;
+        const sentVia = ['in_app'];
+        if (assignee.email && await sendTaskEmail(svc, {
+          to: assignee.email, subject: content.subject, body: content.emailBody,
+          from_name: brandName,
+          html: buildAssignmentEmailHtml(updated, batch || {}, brand, brandName, userName(assignee), callerName),
+        })) sentVia.push('email');
+        if (chatId && await sendTaskTelegram(secrets, chatId, content.telegramText)) sentVia.push('telegram');
+
+        await svc.entities.Notification.create({
+          customer_id: task.customer_id, reseller_id: task.reseller_id || null,
+          recipient_id: assignee.id, recipient_name: userName(assignee),
+          type: 'task_assigned',
+          priority: updated.priority || 'medium',
+          title: content.inApp.title, message: content.inApp.message,
+          related_entity: 'OperationalTask', related_id: task.id,
+          action_url: '/ScheduledTasks', sent_via: sentVia,
+        });
+
+        // REASSIGNMENT: the previous assignee is told the task moved on and
+        // their stale unread assignment alert(s) for this task are retired.
+        if (task.assigned_to && task.assigned_to !== assignee.id) {
+          const nowIso = new Date().toISOString();
+          await svc.entities.Notification.updateMany(
+            { related_entity: 'OperationalTask', related_id: task.id, recipient_id: task.assigned_to, read: false },
+            { $set: { read: true, read_at: nowIso } }).catch(() => {});
+          await svc.entities.Notification.create({
+            customer_id: task.customer_id, reseller_id: task.reseller_id || null,
+            recipient_id: task.assigned_to, recipient_name: task.assigned_to_name || null,
+            type: 'task_reassigned', priority: 'low',
+            title: 'Task Reassigned',
+            message: '"' + updated.title + '" was reassigned to ' + userName(assignee) + ' by ' + callerName + ' — it is no longer your responsibility.',
+            related_entity: 'OperationalTask', related_id: task.id,
+            action_url: '/ScheduledTasks', sent_via: ['in_app'],
+          }).catch(() => {});
+        }
+        await logTaskAudit(svc, { event_type: 'task.assignment_notified', actor: caller, task: updated,
+          notes: 'Assignee ' + userName(assignee) + ' notified — in_app:1 email:' +
+            (sentVia.indexOf('email') !== -1 ? 1 : 0) + ' telegram:' + (sentVia.indexOf('telegram') !== -1 ? 1 : 0) });
+      } catch (e) {
+        console.error('assignment notification failed:', e?.message || e);
+      }
       return Response.json({ success: true, task: updated });
     }
 
