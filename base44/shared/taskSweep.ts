@@ -243,6 +243,20 @@ export async function runTaskSweep(svc, secrets) {
       if (!recipients.length) continue;
 
       const brandCtx = await getBrandCtx(batch.customer_id);
+      // In-app bell record for every recipient — this also drives the shared
+      // ForegroundAlertBanner (visual alert + chime) while the app is open.
+      for (const r of recipients) {
+        await svc.entities.Notification.create({
+          customer_id: batch.customer_id, reseller_id: batch.reseller_id || null,
+          recipient_id: r.id, recipient_name: r.name,
+          type: 'status_change', priority: 'normal',
+          title: 'OUTSTANDING TASKS — ' + batch.title,
+          message: outstanding.length + ' task(s) still outstanding in ' + (batch.control_room_name || 'your control room') +
+            ' (window ' + batch.active_start_time + '–' + batch.deadline_time + ').',
+          related_entity: 'TaskBatch', related_id: batch.id,
+          action_url: '/ScheduledTasks', sent_via: ['in_app'],
+        }).catch(() => {});
+      }
       const content = reminderNotification(batch, outstanding, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
       const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName,
         eventKey: 'task_reminder:' + batch.id + ':' + dueReminders,
@@ -290,6 +304,19 @@ export async function runTaskSweep(svc, secrets) {
             [batch.primary_supervisor_id].concat((cr && cr.operator_user_ids) || [],
               (cr && cr.supervisor_user_ids) || [], batch.additional_notification_user_ids || []));
           const brandCtx = await getBrandCtx(batch.customer_id);
+          // In-app bell record for every recipient — drives the shared
+          // ForegroundAlertBanner (visual alert + chime) while the app is open.
+          for (const r of recipients) {
+            await svc.entities.Notification.create({
+              customer_id: batch.customer_id, reseller_id: batch.reseller_id || null,
+              recipient_id: r.id, recipient_name: r.name,
+              type: 'status_change', priority: 'high',
+              title: 'TASK REASON REQUIRED — ' + batch.title,
+              message: 'Deadline reached: ' + needReason.length + ' incomplete task(s) need a non-completion reason before the Task Completion Report finalises.',
+              related_entity: 'TaskBatch', related_id: batch.id,
+              action_url: '/ScheduledTasks', sent_via: ['in_app'],
+            }).catch(() => {});
+          }
           const content = reasonRequiredNotification(batch, needReason, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
           const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName,
             eventKey: 'task_reason_required:' + batch.id,

@@ -42,7 +42,10 @@ export default function ForegroundAlertBanner({ user }) {
       seen.current.add(n.id);
       if (document.visibilityState !== "visible") return;
       setBanners((prev) => [{ ...n, _ts: Date.now() }, ...prev].slice(0, 3));
-      if (n.priority === "critical" || n.priority === "high") chime();
+      // Short chime for every operational event (not only critical) — only
+      // explicitly low-priority notices stay silent. Vibration stays
+      // critical-only.
+      if (n.priority !== "low") chime();
       if (n.priority === "critical" && "vibrate" in navigator) {
         try { navigator.vibrate([200, 100, 200]); } catch (_) {}
       }
