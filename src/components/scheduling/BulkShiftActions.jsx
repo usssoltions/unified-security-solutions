@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { notifyShiftCancelled } from "@/lib/shiftNotifications";
 
 const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
@@ -36,17 +37,9 @@ export default function BulkShiftActions({
     mutationFn: async () => {
       // Notify guards and delete
       const deletePromises = selectedShiftData.map(async (shift) => {
-        if (shift.guard_id) {
-          await base44.entities.Alert.create({
-            type: "shift_reminder",
-            priority: "high",
-            title: "❌ Shift Cancelled",
-            message: `Your shift at ${shift.site_name} on ${new Date(shift.start_time).toLocaleString()} has been cancelled.`,
-            guard_id: shift.guard_id,
-            guard_name: shift.guard_name,
-            status: "active"
-          });
-        }
+        // SERVER-SIDE cancelled notification per affected guard (branded
+        // email + in-app + native push; guard resolved/validated server-side).
+        await notifyShiftCancelled(shift);
         return base44.entities.Shift.delete(shift.id);
       });
       

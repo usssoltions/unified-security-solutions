@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { shiftId, guardId, guardEmail, guardName, siteName, startTime, endTime, notificationType, type, status, notes } = body;
+    let { shiftId, guardId, guardEmail, guardName, siteName, startTime, endTime, notificationType, type, status, notes } = body;
 
     // Handle shift acknowledgement notification to admins
     if (type === "ack") {
@@ -65,6 +65,40 @@ Deno.serve(async (req) => {
         }
       }
       return Response.json({ success: true });
+    }
+
+    /* SERVER-SIDE RECIPIENT RESOLUTION — the browser passes only shift FACTS
+       (ids, times, site name). The affected guard's contact details are
+       resolved HERE from their authoritative User record and tenant scope is
+       validated; the frontend never constructs recipients or contact details.
+       A cancelled shift is resolved from the payload (its record is deleted). */
+    if (guardId && type !== 'ack') {
+      if ((!startTime || !endTime || !siteName) && shiftId) {
+        try {
+          const rows = await base44.asServiceRole.entities.Shift.filter({ id: String(shiftId) });
+          const stored = rows && rows[0];
+          if (stored) {
+            if (!startTime) startTime = stored.start_time;
+            if (!endTime) endTime = stored.end_time;
+            if (!siteName) siteName = stored.site_name;
+            if (!guardName) guardName = stored.guard_name;
+          }
+        } catch (_) {}
+      }
+      let guardUser = null;
+      try {
+        const rows = await base44.asServiceRole.entities.User.filter({ id: String(guardId) });
+        guardUser = rows && rows[0];
+      } catch (_) {}
+      if (!guardUser) {
+        return Response.json({ error: 'The affected guard could not be resolved' }, { status: 404 });
+      }
+      const callerPlatform = user.role === 'admin' || user.role_type === 'platform_admin' || user.admin_level === 'platform';
+      if (!callerPlatform && user.customer_id && guardUser.customer_id && guardUser.customer_id !== user.customer_id) {
+        return Response.json({ error: 'That guard does not belong to your customer', code: 'forbidden_guard' }, { status: 403 });
+      }
+      if (!guardEmail) guardEmail = guardUser.email || null;
+      if (!guardName) guardName = guardUser.display_name || guardUser.full_name || null;
     }
 
     let emailSubject, emailBody;
@@ -153,6 +187,34 @@ Deno.serve(async (req) => {
 
 <p><em>SecureGuard System</em></p>
       `;
+    } else if (notificationType === 'cancelled') {
+      emailSubject = '❌ Shift Cancelled';
+      emailBody = `
+<h2>Shift Cancelled</h2>
+
+<p>Hello ${guardName},</p>
+
+<p>Your shift has been cancelled:</p>
+
+<table border="1" cellpadding="10" style="border-collapse: collapse;">
+  <tr>
+    <td><strong>Site:</strong></td>
+    <td>${siteName}</td>
+  </tr>
+  <tr>
+    <td><strong>Start:</strong></td>
+    <td>${new Date(startTime).toLocaleString()}</td>
+  </tr>
+  <tr>
+    <td><strong>End:</strong></td>
+    <td>${new Date(endTime).toLocaleString()}</td>
+  </tr>
+</table>
+
+<p>No action is required — this shift is no longer part of your schedule.</p>
+
+<p><em>SecureGuard System</em></p>
+      `;
     }
 
     // Send email (only if guard has an email and exists in the system)
@@ -176,7 +238,7 @@ Deno.serve(async (req) => {
       recipient_id: guardId,
       recipient_name: guardName,
       type: 'shift_reminder',
-      priority: 'medium',
+      priority: (notificationType === 'assigned' || notificationType === 'cancelled') ? 'high' : 'medium',
       title: emailSubject,
       message: `Shift at ${siteName} on ${new Date(startTime).toLocaleDateString()}`,
       related_entity: 'shift',
@@ -185,13 +247,14 @@ Deno.serve(async (req) => {
     });
 
     // NATIVE PUSH — shared platform service (delivered with the app closed).
-    // assigned → HIGH (awaiting acknowledgement); updated/reminder → NORMAL.
-    if (notificationType === 'assigned' || notificationType === 'updated' || notificationType === 'reminder') {
+    // assigned/cancelled → HIGH (immediate obligation change, foreground banner
+    // + chime); updated/reminder → NORMAL.
+    if (['assigned', 'updated', 'reminder', 'cancelled'].includes(notificationType)) {
       await sendNativePush(base44.asServiceRole, {
         user_id: guardId,
         title: emailSubject,
         body: `Shift at ${siteName} — ${new Date(startTime).toLocaleString('en-ZA')}`,
-        priority: notificationType === 'assigned' ? 'high' : 'normal',
+        priority: (notificationType === 'assigned' || notificationType === 'cancelled') ? 'high' : 'normal',
         action_label: 'Open My Shift', action_url: '/GuardShift',
         event_key: 'shift_' + notificationType + ':' + shiftId + ':' + startTime,
         customer_id: user.customer_id || null,

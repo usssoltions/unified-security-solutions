@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { X, Loader2, Calendar, Users, MessageCircle, CheckCircle2 } from "lucide-react";
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifyGuardShift } from "./ShiftNotifier";
+import { meaningfulShiftChange } from "@/lib/shiftNotifications";
 import { buildAdminLinks, loadWhatsAppContacts, shiftScheduleMessage } from "@/lib/whatsapp";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { getUserDisplayName } from "@/lib/userDisplayName";
@@ -99,9 +100,13 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
         // Update existing shift (single guard)
         const updated = await base44.entities.Shift.update(shift.id, shiftsData);
 
-        if (shiftsData.guard_id && shiftsData.guard_id !== shift.guard_id) {
+        // Notify the affected guard ONLY on a real scheduling change (guard,
+        // site, start or end). An unchanged save notifies nobody — and the
+        // backend event key dedupes the push regardless.
+        if (shiftsData.guard_id && meaningfulShiftChange(shift, updated)) {
+          const guardChanged = shiftsData.guard_id !== shift.guard_id;
           const guard = guards.find(g => g.id === shiftsData.guard_id);
-          if (guard) await notifyGuardShift(updated, guard, "updated");
+          if (guard) await notifyGuardShift(updated, guard, guardChanged ? "assigned" : "updated");
         }
 
         return updated;

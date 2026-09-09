@@ -58,9 +58,10 @@ import { secrets } from 'base44:runtime';
 import {
   sastTodayYmd, logTaskAudit, logTaskScopeAudit,
   resolveTaskRecipients, notifyTaskRecipients, sendTaskEmail, sendTaskTelegram,
-  resolveTaskBrandContext,
+  sendTaskTelegramDeduped, resolveTaskBrandContext,
 } from '../../shared/taskNotifications.ts';
-import { completionNotification, deadlineReport, assignmentNotification, buildAssignmentEmailHtml, buildReopenedEmailHtml } from '../../shared/taskReportContent.ts';
+import { completionNotification, deadlineReport, assignmentNotification, buildAssignmentEmailHtml,
+  buildReopenedEmailHtml, newTaskListNotification, fmtSast, MY_TASKS_LINK } from '../../shared/taskReportContent.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import {
   runTaskSweep, addDaysYmd, occurrenceDates, buildOccurrence,
@@ -237,29 +238,40 @@ export default async function(req) {
         if (!recipients.length) return 0;
         const short = batchRec.title + ' · ' + (batchRec.control_room_name || room.name || '') +
           ' · ' + taskCount + ' task(s) · ' + batchRec.active_start_time + '–' + batchRec.deadline_time;
-        let pushed = 0;
-        for (const r of recipients) {
+        // ACTIVE operators only — suspended/inactive accounts are filtered out.
+        const active = recipients.filter((r) => r.status !== 'suspended' && r.status !== 'inactive');
+        if (!active.length) return 0;
+        const brandCtx = await resolveTaskBrandContext(svc, batchRec.customer_id);
+        const content = newTaskListNotification(batchRec, taskCount, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
+        // In-app bell record for every recipient — HIGH priority drives the
+        // shared ForegroundAlertBanner (visual alert + chime) while the app is open.
+        for (const r of active) {
           await svc.entities.Notification.create({
             customer_id: batchRec.customer_id, reseller_id: batchRec.reseller_id || null,
             recipient_id: r.id, recipient_name: r.name,
-            type: 'status_change', priority: 'normal',
+            type: 'status_change', priority: 'high',
             title: 'NEW TASK LIST — ' + batchRec.title,
             message: short + ' — open your Task Queue.',
             related_entity: 'TaskBatch', related_id: batchRec.id,
             action_url: '/ScheduledTasks', sent_via: ['in_app'],
           }).catch(() => {});
-          const pr = await sendNativePush(svc, {
-            user_id: r.id, title: 'NEW TASK LIST', body: short,
-            priority: 'normal',
-            action_label: 'Open Task Queue', action_url: '/ScheduledTasks',
-            event_key: 'task_batch_created:' + batchRec.id,
-            customer_id: batchRec.customer_id, reseller_id: batchRec.reseller_id || null,
-          }).catch(() => ({ status: 'failed' }));
-          if (pr && pr.status === 'sent') pushed++;
         }
+        // Professional tenant-branded EMAIL + TELEGRAM (per verified mapping)
+        // + NATIVE PUSH — all through the module's shared channel helper with
+        // ONE deterministic event key per batch (idempotent on every channel,
+        // including the shared-chat Telegram dedup).
+        const sent = await notifyTaskRecipients(svc, secrets, active, {
+          ...content, from_name: brandCtx.brandName,
+          eventKey: 'task_batch_created:' + batchRec.id,
+          actionUrl: '/ScheduledTasks',
+          pushTitle: 'NEW TASK LIST — ' + batchRec.title,
+          pushBody: short,
+          priority: 'high',
+          customerId: batchRec.customer_id, resellerId: batchRec.reseller_id || null });
         await logTaskAudit(svc, { event_type: 'task.batch_notified', actor: caller, batch: batchRec,
-          notes: 'Control Room operators notified (' + recipients.length + ') — push:' + pushed });
-        return pushed;
+          notes: 'Active Control Room operators notified (' + active.length + ') — push:' + sent.push +
+            ' email:' + sent.email + ' telegram:' + sent.telegram });
+        return sent.push;
       } catch (e) {
         console.error('new task list notification failed:', e?.message || e);
         return 0;
@@ -278,7 +290,8 @@ export default async function(req) {
       const report = deadlineReport(batch, allTasks || [], brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
       const recipients = await resolveTaskRecipients(svc, batch.customer_id,
         [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
-      const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...report, from_name: brandCtx.brandName });
+      const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...report, from_name: brandCtx.brandName,
+        eventKey: 'task_report:' + batch.id });
       await svc.entities.TaskBatch.update(batch.id, {
         status: 'reported', report_generated_at: new Date().toISOString(),
         report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',
@@ -773,7 +786,11 @@ export default async function(req) {
           from_name: brandName,
           html: buildAssignmentEmailHtml(updated, batch || {}, brand, brandName, userName(assignee), callerName, action === 'reassign'),
         })) sentVia.push('email');
-        if (chatId && await sendTaskTelegram(secrets, chatId, content.telegramText)) sentVia.push('telegram');
+        // Telegram via the shared deduped path — the event key matches the
+        // push event key so the same logical assignment never double-messages
+        // a shared Telegram chat.
+        const assignEventKey = 'task_assigned:' + task.id + ':' + updated.assigned_at + ':' + assignee.id;
+        if (chatId && await sendTaskTelegramDeduped(svc, secrets, assignEventKey, chatId, content.telegramText)) sentVia.push('telegram');
 
         // NATIVE PUSH — shared platform service (delivers with the app closed).
         // Deterministic event key (task id + assignment timestamp + assignee):
@@ -785,7 +802,7 @@ export default async function(req) {
           priority: updated.priority || 'high',
           action_label: 'Open My Tasks',
           action_url: '/ScheduledTasks',
-          event_key: 'task_assigned:' + task.id + ':' + updated.assigned_at + ':' + assignee.id,
+          event_key: assignEventKey,
           customer_id: task.customer_id,
           reseller_id: task.reseller_id || null,
         }).catch(() => ({ status: 'failed' }));
@@ -998,6 +1015,21 @@ export default async function(req) {
         const recipients = await resolveTaskRecipients(svc, task.customer_id, recipientIds);
         if (recipients.length) {
           const content = completionNotification(updated, batch || {}, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
+          // IN-APP Notification Centre record for every recipient — one
+          // logical completion notification. Informational (priority normal):
+          // no foreground chime for completion unless a customer configures it.
+          for (const r of recipients) {
+            await svc.entities.Notification.create({
+              customer_id: task.customer_id, reseller_id: task.reseller_id || null,
+              recipient_id: r.id, recipient_name: r.name,
+              type: 'status_change', priority: 'normal',
+              title: 'TASK COMPLETED — ' + updated.title,
+              message: 'Verified with both sign-offs by ' + callerName +
+                (updated.completed_late ? ' — COMPLETED LATE (deadline ' + fmtSast(updated.due_date) + ').' : '.'),
+              related_entity: 'OperationalTask', related_id: task.id,
+              action_url: '/ScheduledTasks', sent_via: ['in_app'],
+            }).catch(() => {});
+          }
           const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName,
             eventKey: 'task_completed:' + task.id + ':' + nowIso,
             actionUrl: '/ScheduledTasks',
@@ -1082,6 +1114,19 @@ export default async function(req) {
               event_key: 'task_reopened:' + task.id + ':' + updated.reopened_at,
               customer_id: task.customer_id, reseller_id: task.reseller_id || null,
             }).catch(() => {});
+            // TELEGRAM — shared verified mapping; event-key + chat idempotency
+            // means one physical chat never receives duplicate copies of the
+            // same reopened event, even when several users share that chat.
+            const reopenedChatId = (assignee.telegram_connected && assignee.telegram_notifications_enabled !== false)
+              ? (assignee.telegram_chat_id || null) : null;
+            if (reopenedChatId) {
+              await sendTaskTelegramDeduped(svc, secrets, 'task_reopened:' + task.id + ':' + updated.reopened_at,
+                reopenedChatId,
+                '🔁 *Task Reopened* — ' + task.title +
+                '\nRejected by: ' + callerName +
+                '\nReason: ' + reason +
+                '\nOpen My Tasks: ' + MY_TASKS_LINK).catch(() => {});
+            }
           }
         }
       } catch (e) {

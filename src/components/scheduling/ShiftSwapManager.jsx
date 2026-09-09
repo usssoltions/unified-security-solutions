@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RefreshCw, Plus, Check, X, Clock, AlertCircle, User, MapPin } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { notifyShiftCreated } from "@/lib/shiftNotifications";
 
 export default function ShiftSwapManager({ user }) {
   const queryClient = useQueryClient();
@@ -162,6 +163,26 @@ export default function ShiftSwapManager({ user }) {
           await base44.entities.Shift.update(request.offered_shift_id, {
             guard_id: request.requesting_guard_id,
             guard_name: request.requesting_guard_name
+          });
+        }
+
+        // Notify each affected guard through the server-side notification
+        // system — each guard's NEW assignment after the approved swap
+        // (branded email + in-app + native push; the backend resolves each
+        // guard and any missing shift facts from the stored records).
+        await notifyShiftCreated({
+          id: request.original_shift_id,
+          guard_id: request.target_guard_id,
+          guard_name: request.target_guard_name,
+          site_name: request.original_shift_details?.site_name,
+          start_time: request.original_shift_details?.start_time,
+          end_time: request.original_shift_details?.end_time,
+        });
+        if (request.offered_shift_id) {
+          await notifyShiftCreated({
+            id: request.offered_shift_id,
+            guard_id: request.requesting_guard_id,
+            guard_name: request.requesting_guard_name,
           });
         }
 

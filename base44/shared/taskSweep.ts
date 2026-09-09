@@ -339,7 +339,8 @@ export async function runTaskSweep(svc, secrets) {
         const report = deadlineReport(batch, (freshTasks || []).filter((t) => !t.archived), brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
         const recipients = await resolveTaskRecipients(svc, batch.customer_id,
           [batch.primary_supervisor_id].concat(batch.additional_notification_user_ids || []));
-        const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...report, from_name: brandCtx.brandName });
+        const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...report, from_name: brandCtx.brandName,
+          eventKey: 'task_report:' + batch.id });
         await svc.entities.TaskBatch.update(batch.id, {
           status: 'reported', report_generated_at: new Date().toISOString(),
           report_delivery: 'email:' + sent.email + ' telegram:' + sent.telegram + ' to ' + recipients.length + ' recipient(s)',

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { X, Edit2, Save, Trash2, MapPin, User, Clock, AlertCircle, Share2, Mail, MessageSquare, Printer, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { notifyShiftUpdated, notifyShiftCancelled } from "@/lib/shiftNotifications";
 import { buildWhatsAppLink, guardShiftAssignedMessage, shiftScheduleMessage } from "@/lib/whatsapp";
 import { MessageCircle, Send } from "lucide-react";
 
@@ -70,21 +71,12 @@ export default function ShiftDetailsModal({ shift, onClose }) {
         status: data.status
       };
 
-      await base44.entities.Shift.update(shift.id, updateData);
+      const updated = await base44.entities.Shift.update(shift.id, updateData);
 
-      // Send notification to guard
-      if (selectedGuard) {
-        await base44.entities.Alert.create({
-          type: "shift_reminder",
-          priority: "medium",
-          title: "✏️ Shift Updated",
-          message: `Your shift at ${selectedSite?.name} has been updated. New time: ${new Date(data.start_time).toLocaleString()} - ${new Date(data.end_time).toLocaleTimeString()}`,
-          guard_id: selectedGuard.id,
-          guard_name: getUserDisplayName(selectedGuard),
-          shift_id: shift.id,
-          status: "active"
-        });
-      }
+      // SERVER-SIDE shift-changed notification (branded email + in-app +
+      // native push; the guard is resolved/validated server-side). An
+      // unchanged save notifies nobody.
+      await notifyShiftUpdated(shift, updated);
 
       return updateData;
     },
@@ -97,20 +89,10 @@ export default function ShiftDetailsModal({ shift, onClose }) {
 
   const deleteShiftMutation = useMutation({
     mutationFn: async () => {
-      // In-app notification to guard
-      if (shift.guard_id) {
-        await base44.entities.Notification.create({
-          recipient_id: shift.guard_id,
-          recipient_name: shift.guard_name,
-          type: "shift_reminder",
-          priority: "high",
-          title: "❌ Shift Cancelled",
-          message: `Your shift at ${shift.site_name} on ${new Date(shift.start_time).toLocaleDateString("en-ZA")} has been cancelled.`,
-          read: false,
-          related_entity: "shift",
-          related_id: shift.id,
-        }).catch(() => {});
-      }
+      // SERVER-SIDE shift-cancelled notification (branded email + in-app +
+      // native push) — sent BEFORE the delete so the backend can still resolve
+      // shift facts from the stored record when needed.
+      await notifyShiftCancelled(shift);
       await base44.entities.Shift.delete(shift.id);
     },
     onSuccess: () => {

@@ -75,6 +75,35 @@ export async function sendTaskTelegram(secrets, chatId, text) {
   }
 }
 
+/** Telegram delivery with EVENT-KEY + CHAT idempotency. When several
+ * same-tenant app users share ONE physical Telegram chat (the verified
+ * shared-chat mapping), the SAME logical event (event_key) reaches that chat
+ * exactly once — per-user in-app records, per-user email and per-user audit
+ * recipient records stay separate. Every attempt is logged to
+ * NotificationDelivery (channel 'telegram'). */
+export async function sendTaskTelegramDeduped(svc, secrets, eventKey, chatId, text) {
+  if (!chatId) return false;
+  const idempKey = String(eventKey || ('tg_' + Date.now())) + ':tg:' + chatId;
+  try {
+    const existing = await svc.entities.NotificationDelivery.filter(
+      { idempotency_key: idempKey }, '-created_date', 1).catch(() => []);
+    if (existing && existing.length && existing[0].status === 'sent') return true;
+  } catch (_) { /* idempotency check failure never blocks delivery */ }
+  const ok = await sendTaskTelegram(secrets, chatId, text);
+  try {
+    await svc.entities.NotificationDelivery.create({
+      event_key: eventKey || ('telegram_' + Date.now()),
+      channel: 'telegram',
+      status: ok ? 'sent' : 'failed',
+      recipient_id: chatId,
+      send_time: new Date().toISOString(),
+      idempotency_key: idempKey,
+      retries: 0,
+    });
+  } catch (_) { /* delivery logging must never break the notification */ }
+  return ok;
+}
+
 /** Sends one notification to every recipient via email + Telegram +
  * NATIVE PUSH (shared platform service — reaches the phone with the app
  * closed). emailHtml (the branded template rendering) rides along as the
@@ -87,7 +116,16 @@ export async function notifyTaskRecipients(svc, secrets, recipients, { subject, 
   const out = { email: 0, telegram: 0, push: 0 };
   for (const r of recipients) {
     if (r.email && await sendTaskEmail(svc, { to: r.email, subject, body: emailBody, html: emailHtml, from_name })) out.email++;
-    if (r.telegram_chat_id && await sendTaskTelegram(secrets, r.telegram_chat_id, telegramText)) out.telegram++;
+    if (r.telegram_chat_id) {
+      // SAME-CHAT DEDUPLICATION: when several same-tenant users share ONE
+      // physical Telegram chat, the same logical event (event_key) reaches
+      // that chat exactly once — per-user in-app/email/audit records stay
+      // separate. Callers without an event key send per recipient as before.
+      const tgOk = eventKey
+        ? await sendTaskTelegramDeduped(svc, secrets, eventKey, r.telegram_chat_id, telegramText)
+        : await sendTaskTelegram(secrets, r.telegram_chat_id, telegramText);
+      if (tgOk) out.telegram++;
+    }
     if (push && r.id && pushTitle && pushBody) {
       const pr = await sendNativePush(svc, {
         user_id: r.id, title: pushTitle, body: pushBody,
@@ -137,6 +175,7 @@ export async function resolveTaskRecipients(svc, customerId, userIds) {
       id: u.id,
       name: u.display_name || u.full_name || u.email,
       email: u.email,
+      status: u.status || null,
       telegram_chat_id: (u.telegram_connected && u.telegram_notifications_enabled !== false) ? (u.telegram_chat_id || null) : null,
     }));
 }

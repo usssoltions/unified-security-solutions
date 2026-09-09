@@ -379,6 +379,49 @@ export function reasonRequiredNotification(batch, tasksNeedingReason, customerNa
   return { subject, emailBody, emailHtml, telegramText };
 }
 
+/* ── New Task List Published (supervisor → the room's ACTIVE operators) ─── */
+
+export function newTaskListNotification(batch, taskCount, customerName, brand, brandName) {
+  const subject = 'New Task List — ' + batch.title;
+  const emailHtml = renderTaskEmail({
+    brand, brandName,
+    heading: 'New Task List',
+    badgeHtml: statusBadge(taskCount + ' TASK' + (taskCount === 1 ? '' : 'S'), 'info'),
+    introHtml: '<p style="color:#334155;font-size:14px;margin:0 0 16px">A new task list has been published to your Control Room queue.</p>',
+    bodyHtml: infoTable([
+      ['Customer', customerName],
+      ['Control Room', batch.control_room_name || '—'],
+      ['Task List', batch.title],
+      ['Scheduled Date', fmtYmd(batch.scheduled_date)],
+      ['Active Window', (batch.active_start_time || '—') + ' – ' + (batch.deadline_time || '—')],
+      ['Tasks in Queue', String(taskCount)],
+      ['Primary Supervisor', batch.primary_supervisor_name || '—'],
+      ['Published By', batch.created_by_name || '—'],
+    ]),
+    ctaLabel: 'Open Task Queue', ctaUrl: MY_TASKS_LINK,
+  });
+  const emailBody = [
+    'NEW TASK LIST PUBLISHED',
+    '',
+    'Customer: ' + customerName,
+    'Control Room: ' + (batch.control_room_name || '—'),
+    'Task List: ' + batch.title,
+    'Scheduled date: ' + fmtYmd(batch.scheduled_date),
+    'Active window: ' + (batch.active_start_time || '—') + ' – ' + (batch.deadline_time || '—'),
+    'Tasks in queue: ' + taskCount,
+    'Primary supervisor: ' + (batch.primary_supervisor_name || '—'),
+    'Published by: ' + (batch.created_by_name || '—'),
+    '',
+    'Open your Task Queue to assign the tasks: ' + MY_TASKS_LINK,
+  ].join('\n');
+  const telegramText = '📋 *New Task List* — ' + batch.title +
+    '\nControl Room: ' + (batch.control_room_name || '—') +
+    '\nTasks: ' + taskCount +
+    '\nWindow: ' + (batch.active_start_time || '—') + ' – ' + (batch.deadline_time || '—') +
+    '\nOpen your Task Queue: ' + MY_TASKS_LINK;
+  return { subject, emailBody, emailHtml, telegramText };
+}
+
 /* ── Assignment / Reassignment (immediate, multi-channel) ────────────────── */
 
 export function assignmentNotification(task, batch, assignedByName, isReassign) {
