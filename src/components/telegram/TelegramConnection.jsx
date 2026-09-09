@@ -38,6 +38,7 @@ export default function TelegramConnection({ user, externalRecipientId }) {
   const [startCommand, setStartCommand] = useState(null);
   const [copied, setCopied] = useState(false);
   const [waitingForConnection, setWaitingForConnection] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   const isExternal = Boolean(externalRecipientId);
 
@@ -64,10 +65,11 @@ export default function TelegramConnection({ user, externalRecipientId }) {
       attempts++;
       try {
         const me = await base44.auth.me();
-        if (me?.telegram_connected) {
-          setWaitingForConnection(false);
-          queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-        }
+            if (me?.telegram_connected) {
+              setWaitingForConnection(false);
+              queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+              queryClient.invalidateQueries({ queryKey: ["telegramLiveStatus"] });
+            }
       } catch (_) {}
       if (attempts >= maxAttempts) {
         setWaitingForConnection(false);
@@ -83,6 +85,7 @@ export default function TelegramConnection({ user, externalRecipientId }) {
       if (event.data?.id === user.id && event.data?.telegram_connected) {
         setWaitingForConnection(false);
         queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+        queryClient.invalidateQueries({ queryKey: ["telegramLiveStatus"] });
       }
     });
     return unsub;
@@ -101,6 +104,9 @@ export default function TelegramConnection({ user, externalRecipientId }) {
         setCopied(false);
         window.open(res.deep_link, "_blank");
         setWaitingForConnection(true);
+      } else {
+        // Token generation failed — surface the real safe error, never silence.
+        setTestResult({ success: false, message: res?.error || "Unable to create Telegram enrollment. Please try again." });
       }
     } catch (e) {
       setTestResult({ success: false, message: e.message || "Failed to start enrollment" });
@@ -139,6 +145,30 @@ export default function TelegramConnection({ user, externalRecipientId }) {
       setTesting(false);
     }
   }, [isExternal, externalRecipientId, user?.id]);
+
+  // Manual authoritative check — refetches the live backend record. Never
+  // trusts cached local state.
+  const handleCheckConnection = useCallback(async () => {
+    setChecking(true);
+    try {
+      const me = await base44.auth.me();
+      queryClient.invalidateQueries({ queryKey: ["telegramLiveStatus"] });
+      if (me?.telegram_connected) {
+        setWaitingForConnection(false);
+        setTestResult({ success: true, message: "Telegram connected successfully." });
+        queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      } else {
+        setTestResult({
+          success: false,
+          message: "Not connected yet. Make sure you sent the Step 2 command in the bot chat, then check again.",
+        });
+      }
+    } catch (e) {
+      setTestResult({ success: false, message: e.message || "Could not check connection status." });
+    } finally {
+      setChecking(false);
+    }
+  }, [queryClient]);
 
   const copyStartCommand = useCallback(async () => {
     if (!startCommand) return;

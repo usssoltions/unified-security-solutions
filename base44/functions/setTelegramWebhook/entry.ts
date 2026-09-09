@@ -18,9 +18,14 @@ export default async function(req: Request): Promise<Response> {
     const botToken = secrets.get('TELEGRAM_BOT_TOKEN');
     if (!botToken) return Response.json({ error: 'TELEGRAM_BOT_TOKEN not configured' }, { status: 503 });
 
-    // Construct webhook URL from the incoming request URL
-    const url = new URL(req.url);
-    const webhookUrl = `${url.protocol}//${url.host}/api/functions/telegramWebhook`;
+    // The webhook must point at THIS app's published function URL. Deriving
+    // it from the incoming request URL is unreliable: invoked through the
+    // platform's internal dispatcher, req.url yields the workers.dev host,
+    // which Telegram accepts but can never route back to this app — the cause
+    // of the live defect where every /start <token> vanished and all
+    // enrollments stayed 'pending' (2026-09-09).
+    const PUBLISHED_APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
+    const webhookUrl = `${PUBLISHED_APP_URL}/functions/telegramWebhook`;
 
     const resp = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
       method: 'POST',
