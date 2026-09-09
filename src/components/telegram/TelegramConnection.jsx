@@ -98,15 +98,20 @@ export default function TelegramConnection({ user, externalRecipientId }) {
       const res = await base44.functions.invoke("createTelegramEnrollment", {
         externalRecipientId: isExternal ? externalRecipientId : undefined,
       });
-      if (res?.deep_link) {
-        setDeepLink(res.deep_link);
-        setStartCommand(res.start_command || null);
+      // The SDK returns an axios-shaped response — the function's JSON body
+      // lives under res.data (same unwrap pattern as attendanceApi/siteApi).
+      // Reading res.deep_link directly is ALWAYS undefined, which made every
+      // SUCCESSFUL enrollment creation show as "Unable to create...".
+      const d = res?.data !== undefined ? res.data : res;
+      if (d?.deep_link) {
+        setDeepLink(d.deep_link);
+        setStartCommand(d.start_command || null);
         setCopied(false);
-        window.open(res.deep_link, "_blank");
+        window.open(d.deep_link, "_blank");
         setWaitingForConnection(true);
       } else {
         // Token generation failed — surface the real safe error, never silence.
-        setTestResult({ success: false, message: res?.error || "Unable to create Telegram enrollment. Please try again." });
+        setTestResult({ success: false, message: d?.error || "Unable to create Telegram enrollment. Please try again." });
       }
     } catch (e) {
       setTestResult({ success: false, message: e.message || "Failed to start enrollment" });
@@ -131,7 +136,8 @@ export default function TelegramConnection({ user, externalRecipientId }) {
         moduleKey: "security",
         eventKey: `telegram_test_${Date.now()}`,
       });
-      const tgResult = res?.results?.find((r) => r.channel === "telegram");
+      const d = res?.data !== undefined ? res.data : res;
+      const tgResult = d?.results?.find((r) => r.channel === "telegram");
       if (tgResult?.status === "sent") {
         setTestResult({ success: true, message: "Test sent successfully. Check your Telegram." });
       } else if (tgResult?.status === "failed") {
