@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -98,6 +99,20 @@ export default async function(req) {
         });
       }
     } catch (_) {}
+
+    // NATIVE PUSH — shared platform service: a shift that ended without a
+    // clock-out requires supervisor attention even with the app closed.
+    // The ended_notified gate keeps the whole event exactly-once.
+    for (const admin of admins) {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: admin.id,
+        title,
+        body: message,
+        priority: priority === 'high' ? 'high' : 'normal',
+        action_label: 'Open Scheduling', action_url: '/Scheduling',
+        event_key: 'shift_end:' + shiftId,
+      }).catch(() => {});
+    }
 
     return Response.json({ success: true, notified, ended_notified_at: now });
   } catch (error) {

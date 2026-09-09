@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -64,22 +65,23 @@ Deno.serve(async (req) => {
       read: false
     });
 
-    // Send push notification if enabled
+    // Send push notification if enabled — NATIVE PUSH via the shared platform
+    // service (replaces the retired OneSignal path; delivered with the app
+    // closed). User preferences and quiet hours above still govern delivery.
     if (userPref?.[type]?.push !== false) {
       try {
-        await base44.asServiceRole.functions.invoke('sendPushNotification', {
-          user_ids: [recipient_id],
+        const pr = await sendNativePush(base44.asServiceRole, {
+          user_id: recipient_id,
           title,
           body: message,
           priority: priority || 'medium',
-          data: {
-            type,
-            notification_id: notification.id,
-            related_entity,
-            related_id
-          }
+          action_label: action_url ? 'Open' : undefined,
+          action_url: action_url || undefined,
+          event_key: 'generic:' + notification.id,
+          customer_id: user.customer_id || null,
+          reseller_id: user.reseller_id || null,
         });
-        notification.sent_via.push('push');
+        if (pr.status === 'sent') notification.sent_via.push('push');
       } catch (error) {
         console.error('Push notification failed:', error);
       }

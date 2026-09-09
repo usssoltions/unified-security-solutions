@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A'; // Red from logo
@@ -210,6 +211,22 @@ Deno.serve(async (req) => {
     });
 
     const results = await Promise.all(notificationPromises);
+
+    // NATIVE PUSH — shared platform service: management is alerted to a new
+    // Start of Shift report even with the app closed. Minute-precision event
+    // key: retries within the same minute dedupe, later submissions never do.
+    for (const admin of adminUsers) {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: admin.id,
+        title: `Start of Shift Report — ${user.full_name}`,
+        body: `${user.full_name} submitted their start of shift report for ${reportData.site_name}.`,
+        priority: 'high',
+        action_label: 'Open Report History', action_url: '/StartOfShiftHistory',
+        event_key: 'sos_report:' + user.id + ':' + new Date().toISOString().slice(0, 16),
+        customer_id: user.customer_id || null,
+        reseller_id: user.reseller_id || null,
+      }).catch(() => {});
+    }
 
     return Response.json({ 
       success: true,

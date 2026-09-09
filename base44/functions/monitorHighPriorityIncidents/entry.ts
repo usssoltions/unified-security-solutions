@@ -10,6 +10,7 @@
  * Google Maps button) instead of the old plain-text body.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -139,6 +140,21 @@ Deno.serve(async (req) => {
       );
 
     await Promise.all([...notifPromises, ...emailPromises]);
+
+    // NATIVE PUSH — shared platform service. A CRITICAL incident must reach
+    // management with the app closed (CRITICAL policy priority). Deterministic
+    // event key + the notification_sent gate make retries impossible to
+    // double-send on any channel.
+    for (const admin of recipients) {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: admin.id,
+        title: `Critical Incident: ${incident.title}`,
+        body: `${incident.category}: ${incident.title} at ${incident.site_name} — ${incident.guard_name}`,
+        priority: 'critical',
+        action_label: 'Open Incidents', action_url: '/AdminIncidents',
+        event_key: 'incident_critical:' + incident.id,
+      }).catch(() => {});
+    }
 
     await base44.asServiceRole.entities.Incident.update(incident.id, {
       notification_sent: true,

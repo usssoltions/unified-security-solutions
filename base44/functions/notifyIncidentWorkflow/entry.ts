@@ -12,6 +12,7 @@
  * (accept / decline / resolve). Uses asServiceRole throughout.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -170,6 +171,35 @@ Deno.serve(async (req) => {
       );
 
     await Promise.all([...notifPromises, ...emailPromises]);
+
+    // NATIVE PUSH — shared platform service. Action-required events only:
+    // assigned/reassigned → the assignee; declined → management (reassignment
+    // required). Accepted/resolved are informational — deliberately no push.
+    if (action === 'assigned' || action === 'reassigned') {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: assigneeId,
+        title: notifTitle,
+        body: notifMsg,
+        priority: 'high',
+        action_label: 'Open Incidents', action_url: '/GuardIncidents',
+        event_key: 'incident_' + action + ':' + incidentId + ':' + assigneeId,
+        customer_id: user.customer_id || null,
+        reseller_id: user.reseller_id || null,
+      }).catch(() => {});
+    } else if (action === 'declined') {
+      for (const r of recipients) {
+        await sendNativePush(base44.asServiceRole, {
+          user_id: r.id,
+          title: notifTitle,
+          body: notifMsg,
+          priority: 'high',
+          action_label: 'Open Incidents', action_url: '/AdminIncidents',
+          event_key: 'incident_declined:' + incidentId,
+          customer_id: user.customer_id || null,
+          reseller_id: user.reseller_id || null,
+        }).catch(() => {});
+      }
+    }
 
     return Response.json({ success: true, action, notificationsSent: recipients.length });
   } catch (error) {

@@ -11,6 +11,7 @@
  * (accept / decline / complete). Uses asServiceRole throughout.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -160,6 +161,35 @@ Deno.serve(async (req) => {
       );
 
     await Promise.all([...notifPromises, ...emailPromises]);
+
+    // NATIVE PUSH — shared platform service. Action-required events only:
+    // assigned → the assignee; declined → management (reassignment required).
+    // Accepted/completed are informational — deliberately no push.
+    if (action === 'assigned') {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: assigneeId,
+        title: notifTitle,
+        body: notifMsg,
+        priority: 'high',
+        action_label: 'Open Maintenance', action_url: '/GuardMaintenance',
+        event_key: 'maintenance_assigned:' + maintenanceId + ':' + assigneeId,
+        customer_id: user.customer_id || null,
+        reseller_id: user.reseller_id || null,
+      }).catch(() => {});
+    } else if (action === 'declined') {
+      for (const r of recipients) {
+        await sendNativePush(base44.asServiceRole, {
+          user_id: r.id,
+          title: notifTitle,
+          body: notifMsg,
+          priority: 'high',
+          action_label: 'Open Maintenance', action_url: '/AdminIncidents',
+          event_key: 'maintenance_declined:' + maintenanceId,
+          customer_id: user.customer_id || null,
+          reseller_id: user.reseller_id || null,
+        }).catch(() => {});
+      }
+    }
 
     return Response.json({ success: true, action, notificationsSent: recipients.length });
   } catch (error) {

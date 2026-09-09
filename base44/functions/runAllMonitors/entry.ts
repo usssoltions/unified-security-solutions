@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -65,6 +66,18 @@ Deno.serve(async (req) => {
               site_id: patrol.site_id, status: 'active',
               metadata: { patrol_id: patrol.id, checkpoints_completed: completed, total_checkpoints: total }
             });
+            // NATIVE PUSH — shared platform service. A critical overdue patrol
+            // reaches supervisors with the app closed; deterministic event key.
+            for (const sup of supervisors) {
+              await sendNativePush(base44.asServiceRole, {
+                user_id: sup.id,
+                title: '⏰ Overdue Patrol Route',
+                body: `${patrol.assigned_to_name} patrol at ${patrol.site_name} is overdue. ${completed}/${total} checkpoints completed.`,
+                priority: 'critical',
+                action_label: 'Open Patrol Monitoring', action_url: '/PatrolMonitoring',
+                event_key: 'patrolplan_overdue:' + patrol.id,
+              }).catch(() => {});
+            }
             await Promise.all(supervisors.filter(s => s.email).map(sup =>
               base44.asServiceRole.integrations.Core.SendEmail({
                 from_name: 'SecureGuard Alerts', to: sup.email,
@@ -107,6 +120,18 @@ Deno.serve(async (req) => {
               guard_id: shift.guard_id, guard_name: shift.guard_name,
               site_id: shift.site_id, shift_id: shift.id, status: 'active'
             });
+            // NATIVE PUSH — shared platform service: a missed clock-in needs
+            // dispatcher attention even with the app closed.
+            for (const admin of admins) {
+              await sendNativePush(base44.asServiceRole, {
+                user_id: admin.id,
+                title: '⚠️ Missed Clock-In',
+                body: `${shift.guard_name || 'Guard'} missed clock-in at ${shift.site_name}. Scheduled: ${new Date(shift.start_time).toLocaleString('en-ZA')}`,
+                priority: 'high',
+                action_label: 'Open Scheduling', action_url: '/Scheduling',
+                event_key: 'missed_clockin:' + shift.id,
+              }).catch(() => {});
+            }
             await Promise.all(admins.filter(a => a.email).map(admin =>
               base44.asServiceRole.integrations.Core.SendEmail({
                 from_name: 'SecureGuard Alerts', to: admin.email,
@@ -195,6 +220,16 @@ Deno.serve(async (req) => {
               subject: `⏰ Shift Reminder — ${shift.site_name}`,
               body: `Hi ${shift.guard_name || guard.full_name},\n\nYour shift starts in approximately 2 hours.\n\nSite: ${shift.site_name}\nStart: ${new Date(shift.start_time).toLocaleString('en-ZA')}\nEnd: ${new Date(shift.end_time).toLocaleString('en-ZA')}\n\nPlease ensure you arrive on time and clock in via the SecureGuard app.`
             }).catch(err => console.error(`Reminder failed:`, err.message));
+            // NATIVE PUSH — shared platform service: the 2-hour shift reminder
+            // reaches the guard with the app closed (NORMAL priority reminder).
+            await sendNativePush(base44.asServiceRole, {
+              user_id: shift.guard_id,
+              title: `⏰ Shift Reminder — ${shift.site_name}`,
+              body: `Your shift starts in ~2 hours. Site: ${shift.site_name}. Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}.`,
+              priority: 'normal',
+              action_label: 'Open My Shift', action_url: '/GuardShift',
+              event_key: 'shift_reminder:' + shift.id,
+            }).catch(() => {});
             await base44.asServiceRole.entities.Shift.update(shift.id, { reminder_sent: true }).catch(() => {});
             remindersSent++;
           }
@@ -253,11 +288,41 @@ Deno.serve(async (req) => {
                       sent_via: ['in_app'],
                     }).catch(() => {})
                   ));
+                  // NATIVE PUSH — shared platform service: a MISSED patrol is
+                  // a high-priority operational exception.
+                  for (const sup of supervisors) {
+                    await sendNativePush(base44.asServiceRole, {
+                      user_id: sup.id,
+                      title: `⚠️ Missed Patrol — ${patrol.site_name}`,
+                      body: `${patrol.guard_name} missed patrol #${patrol.patrol_number} at ${patrol.site_name}.`,
+                      priority: 'high',
+                      action_label: 'Open Patrol Monitoring', action_url: '/PatrolMonitoring',
+                      event_key: 'patrol_missed:' + patrol.id,
+                    }).catch(() => {});
+                  }
                 }
               }
             } else if (minsLate > overdueThreshold) {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'overdue' });
               markedOverdue++;
+              // NATIVE PUSH — shared platform service: an overdue (not yet
+              // missed) patrol needs supervisor attention with the app closed.
+              if (patrol.guard_name) {
+                if (!supervisors) {
+                  const allUsers = await base44.asServiceRole.entities.User.list();
+                  supervisors = allUsers.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type)).slice(0, 3);
+                }
+                for (const sup of supervisors) {
+                  await sendNativePush(base44.asServiceRole, {
+                    user_id: sup.id,
+                    title: `⏰ Patrol Overdue — ${patrol.site_name}`,
+                    body: `${patrol.guard_name}'s patrol #${patrol.patrol_number} at ${patrol.site_name} is overdue.`,
+                    priority: 'high',
+                    action_label: 'Open Patrol Monitoring', action_url: '/PatrolMonitoring',
+                    event_key: 'patrol_overdue:' + patrol.id,
+                  }).catch(() => {});
+                }
+              }
             } else if (minsLate >= 0 && patrol.status === 'upcoming') {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'due' });
             }
@@ -283,6 +348,17 @@ Deno.serve(async (req) => {
               related_entity: 'ScheduledPatrol',
               related_id: patrol.id,
               sent_via: ['in_app'],
+            }).catch(() => {});
+            // NATIVE PUSH — shared platform service: the configured 10-minute
+            // pre-patrol alert reaches the guard with the app closed. Voice
+            // guidance inside the patrol flow is untouched.
+            await sendNativePush(base44.asServiceRole, {
+              user_id: patrol.guard_id,
+              title: '🛡️ Patrol Due in 10 Minutes',
+              body: `Patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString('en-ZA')}.`,
+              priority: 'normal',
+              action_label: 'Start Patrol', action_url: '/GuardPatrol',
+              event_key: 'patrol_due10:' + patrol.id,
             }).catch(() => {});
             await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, {
               alerts_sent: [...(patrol.alerts_sent || []), '10min'],

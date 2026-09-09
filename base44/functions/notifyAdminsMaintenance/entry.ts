@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -117,6 +118,22 @@ Deno.serve(async (req) => {
       );
 
     await Promise.all([...notificationPromises, ...emailPromises]);
+
+    // NATIVE PUSH — shared platform service. A NEW maintenance fault report
+    // requires review/action even with the app closed. Routine metadata
+    // changes never route through here.
+    for (const admin of admins) {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: admin.id,
+        title: `Maintenance Request — ${maintenanceType}`,
+        body: `${guardName} submitted: ${maintenanceType} at ${siteName}. Review required.`,
+        priority: 'high',
+        action_label: 'Open Maintenance', action_url: '/AdminMaintenance',
+        event_key: 'maintenance_new:' + maintenanceId,
+        customer_id: user.customer_id || null,
+        reseller_id: user.reseller_id || null,
+      }).catch(() => {});
+    }
 
     return Response.json({ success: true, notificationsSent: admins.length });
   } catch (error) {

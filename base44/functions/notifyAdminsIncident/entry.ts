@@ -11,6 +11,7 @@
  * header, logo, location with Google Maps button).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -138,6 +139,24 @@ Deno.serve(async (req) => {
       );
 
     await Promise.all([...notifPromises, ...emailPromises]);
+
+    // NATIVE PUSH — shared platform service (delivered with the app closed).
+    // Only SERIOUS incidents push (critical/high); minor reports stay
+    // in-app + email only. Deterministic event key — retries never double-push.
+    if (priority === 'critical' || priority === 'high') {
+      for (const admin of recipients) {
+        await sendNativePush(base44.asServiceRole, {
+          user_id: admin.id,
+          title: notifTitle,
+          body: notifMsg,
+          priority: priority === 'critical' ? 'critical' : 'high',
+          action_label: 'Open Incidents', action_url: '/AdminIncidents',
+          event_key: 'incident_new:' + incidentId,
+          customer_id: user.customer_id || null,
+          reseller_id: user.reseller_id || null,
+        }).catch(() => {});
+      }
+    }
 
     // Mark incident as notified (service role bypasses RLS)
     await base44.asServiceRole.entities.Incident.update(incidentId, {

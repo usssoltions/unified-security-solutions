@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -45,6 +46,24 @@ Deno.serve(async (req) => {
           });
         }
       } catch (_) {}
+
+      // NATIVE PUSH — shared platform service. A DECLINED shift acknowledgement
+      // requires management action even with the app closed. Accepted acks are
+      // informational — deliberately no push.
+      if (status === "declined") {
+        for (const admin of admins) {
+          await sendNativePush(base44.asServiceRole, {
+            user_id: admin.id,
+            title: `Shift ${statusLabel} — ${guardName}`,
+            body: `${guardName} has ${statusLabel} their shift at ${siteName}.${notes ? ` Note: ${notes}` : ""}`,
+            priority: 'high',
+            action_label: 'Open Scheduling', action_url: '/Scheduling',
+            event_key: 'shift_ack:' + shiftId + ':' + status,
+            customer_id: user.customer_id || null,
+            reseller_id: user.reseller_id || null,
+          }).catch(() => {});
+        }
+      }
       return Response.json({ success: true });
     }
 
@@ -164,6 +183,21 @@ Deno.serve(async (req) => {
       related_id: shiftId,
       sent_via: emailSent ? ['email', 'in_app'] : ['in_app']
     });
+
+    // NATIVE PUSH — shared platform service (delivered with the app closed).
+    // assigned → HIGH (awaiting acknowledgement); updated/reminder → NORMAL.
+    if (notificationType === 'assigned' || notificationType === 'updated' || notificationType === 'reminder') {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: guardId,
+        title: emailSubject,
+        body: `Shift at ${siteName} — ${new Date(startTime).toLocaleString('en-ZA')}`,
+        priority: notificationType === 'assigned' ? 'high' : 'normal',
+        action_label: 'Open My Shift', action_url: '/GuardShift',
+        event_key: 'shift_' + notificationType + ':' + shiftId + ':' + startTime,
+        customer_id: user.customer_id || null,
+        reseller_id: user.reseller_id || null,
+      }).catch(() => {});
+    }
 
     return Response.json({ success: true, emailSent });
   } catch (error) {

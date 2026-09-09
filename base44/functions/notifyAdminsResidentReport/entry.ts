@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -139,6 +140,24 @@ Deno.serve(async (req) => {
       );
 
     await Promise.all([...notificationPromises, ...emailPromises]);
+
+    // NATIVE PUSH — shared platform service. Only urgent resident reports
+    // (critical/high incident or high/critical-urgency maintenance) push —
+    // ordinary informational resident activity never does.
+    if (!isMaintenance ? (severity === 'critical' || severity === 'high') : (severity === 'high' || severity === 'critical')) {
+      for (const admin of recipients) {
+        await sendNativePush(base44.asServiceRole, {
+          user_id: admin.id,
+          title: notifTitle,
+          body: notifMsg,
+          priority: severity === 'critical' ? 'critical' : 'high',
+          action_label: 'Open Estate Dashboard', action_url: '/EstateManagerDashboard',
+          event_key: 'resident_report:' + reportId,
+          customer_id: user.customer_id || null,
+          reseller_id: user.reseller_id || null,
+        }).catch(() => {});
+      }
+    }
 
     return Response.json({ success: true, notificationsSent: recipients.length });
   } catch (error) {
