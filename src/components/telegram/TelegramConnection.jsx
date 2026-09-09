@@ -189,6 +189,7 @@ export default function TelegramConnection({ user, externalRecipientId }) {
       });
       setShowDisconnectDialog(false);
       queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      queryClient.invalidateQueries({ queryKey: ["telegramLiveStatus"] });
       setTestResult(null);
     } catch (e) {
       setTestResult({ success: false, message: e.message || "Disconnect failed" });
@@ -228,37 +229,68 @@ export default function TelegramConnection({ user, externalRecipientId }) {
           )}
         </div>
 
-        {/* Waiting indicator */}
-        {waitingForConnection && !isConnected && (
-          <div className="flex items-center gap-2 p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
-            <Loader2 className="w-4 h-4 text-sky-400 animate-spin" />
-            <span className="text-sky-300 text-sm">
-              Waiting for Telegram connection... Open the link and tap START in Telegram. If the chat is already open, send the command below instead.
-            </span>
-          </div>
-        )}
-
-        {/* Manual /start command — Telegram only auto-sends the deep-link
+        {/* Manual enrollment panel — Telegram only auto-sends the deep-link
             start parameter the FIRST time a bot chat is opened. For an
-            existing chat (reconnect, or a second user of the same Telegram
-            account) the user must send /start <token> themselves. */}
-        {startCommand && !isConnected && (
-          <div className="p-3 bg-slate-900/60 border border-slate-700 rounded-lg space-y-2">
-            <p className="text-slate-400 text-xs">
-              No START button in the bot chat? Copy this and send it as a message to the bot:
-            </p>
+            existing bot chat (reconnect, or a second user of the same
+            Telegram account) the user must send /start <token> themselves,
+            so the command is ALWAYS shown — never rely on a START button
+            appearing in Telegram. */}
+        {deepLink && !isConnected && (
+          <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-4 space-y-4">
             <div className="flex items-center gap-2">
-              <code className="flex-1 min-w-0 text-[11px] leading-snug text-sky-300 bg-slate-950 border border-slate-700 rounded px-2 py-1.5 break-all">
-                {startCommand}
-              </code>
+              {waitingForConnection && <Loader2 className="w-4 h-4 text-sky-400 animate-spin" />}
+              <p className="text-white text-sm font-semibold">Connect Telegram</p>
+            </div>
+
+            {/* Step 1 — open the bot (button, not just auto-open: the popup
+                open can be blocked by the Android WebView) */}
+            <div className="space-y-2">
+              <p className="text-slate-300 text-xs font-medium">Step 1: Open the USS Telegram bot</p>
+              <Button
+                type="button"
+                onClick={() => window.open(deepLink, "_blank")}
+                className="bg-sky-600 hover:bg-sky-700 active:scale-95"
+              >
+                <ExternalLink className="w-4 h-4 mr-2" /> Open Telegram
+              </Button>
+            </div>
+
+            {/* Step 2 — the exact command, never hidden */}
+            {startCommand && (
+              <div className="space-y-2">
+                <p className="text-slate-300 text-xs font-medium">
+                  Step 2: Copy and send this exact command in the bot chat:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 min-w-0 text-[11px] leading-snug text-sky-300 bg-slate-950 border border-slate-700 rounded px-2 py-1.5 break-all">
+                    {startCommand}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-slate-600 text-slate-200 hover:bg-slate-700 active:scale-95 shrink-0"
+                    onClick={copyStartCommand}
+                  >
+                    {copied ? "Copied" : "Copy Command"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 — authoritative backend re-check */}
+            <div className="space-y-2">
+              <p className="text-slate-300 text-xs font-medium">Step 3: After sending it, return here.</p>
               <Button
                 type="button"
                 variant="outline"
-                className="border-slate-600 text-slate-200 hover:bg-slate-700 active:scale-95 shrink-0"
-                onClick={copyStartCommand}
+                className="border-sky-500/40 text-sky-300 hover:bg-sky-500/10 active:scale-95"
+                onClick={handleCheckConnection}
+                disabled={checking}
               >
-                {copied ? "Copied" : "Copy"}
+                {checking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Check Connection
               </Button>
+              <p className="text-slate-500 text-xs">Also checked automatically every 10 seconds.</p>
             </div>
           </div>
         )}
