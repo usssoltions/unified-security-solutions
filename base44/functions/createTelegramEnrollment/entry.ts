@@ -88,20 +88,26 @@ export default async function(req: Request): Promise<Response> {
 
     // Log audit
     await base44.asServiceRole.entities.PlatformAuditLog.create({
-      action: subjectType === 'user' ? 'TELEGRAM_CONNECT_REQUESTED' : 'EXTERNAL_RECIPIENT_TELEGRAM_INVITE',
+      event_type: 'telegram.enrollment_requested',
+      user_id: caller.id,
+      user_name: caller.display_name || caller.full_name || caller.email,
       entity_name: 'TelegramEnrollment',
       entity_id: enrollment.id,
-      performed_by_id: caller.id,
-      performed_by_name: caller.display_name || caller.full_name || caller.email,
+      action: 'connect_requested',
       customer_id: customerId,
       reseller_id: resellerId,
-      details: JSON.stringify({ subject_type: subjectType, subject_id: subjectId }),
+      notes: `One-time enrollment token created (subject_type=${subjectType})`,
     }).catch(() => {});
 
+    // start_command is shown to the user for manual sending: Telegram only
+    // auto-sends the deep-link start parameter when a bot chat is opened for
+    // the FIRST time. For an existing chat the user must send /start <token>
+    // themselves — this is the reconnect path.
     return Response.json({
       success: true,
       enrollment_id: enrollment.id,
       deep_link: deepLink,
+      start_command: `/start ${token}`,
       bot_username: botUsername,
       expires_at: expiresAt,
     });

@@ -35,14 +35,25 @@ export default function TelegramConnection({ user, externalRecipientId }) {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [deepLink, setDeepLink] = useState(null);
+  const [startCommand, setStartCommand] = useState(null);
+  const [copied, setCopied] = useState(false);
   const [waitingForConnection, setWaitingForConnection] = useState(false);
 
   const isExternal = Boolean(externalRecipientId);
-  const isConnected = isExternal
-    ? user?.telegram_connected
-    : user?.telegram_connected;
 
-  const telegramUsername = user?.telegram_username;
+  // Authoritative status: refetch the live backend record on every mount so
+  // the badge reflects the REAL active mapping, never a stale frontend flag.
+  const { data: liveMe } = useQuery({
+    queryKey: ["telegramLiveStatus", user?.id],
+    queryFn: () => base44.auth.me(),
+    enabled: !isExternal && Boolean(user?.id),
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+  const statusUser = (!isExternal && liveMe) ? liveMe : user;
+  const isConnected = Boolean(statusUser?.telegram_connected);
+
+  const telegramUsername = statusUser?.telegram_username;
 
   // Light refetch to detect connection after user opens Telegram
   useEffect(() => {
@@ -86,6 +97,8 @@ export default function TelegramConnection({ user, externalRecipientId }) {
       });
       if (res?.deep_link) {
         setDeepLink(res.deep_link);
+        setStartCommand(res.start_command || null);
+        setCopied(false);
         window.open(res.deep_link, "_blank");
         setWaitingForConnection(true);
       }
@@ -126,6 +139,17 @@ export default function TelegramConnection({ user, externalRecipientId }) {
       setTesting(false);
     }
   }, [isExternal, externalRecipientId, user?.id]);
+
+  const copyStartCommand = useCallback(async () => {
+    if (!startCommand) return;
+    try {
+      await navigator.clipboard.writeText(startCommand);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch (_) {
+      setCopied(false);
+    }
+  }, [startCommand]);
 
   const handleDisconnect = useCallback(async () => {
     setDisconnecting(true);
@@ -179,8 +203,33 @@ export default function TelegramConnection({ user, externalRecipientId }) {
           <div className="flex items-center gap-2 p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg">
             <Loader2 className="w-4 h-4 text-sky-400 animate-spin" />
             <span className="text-sky-300 text-sm">
-              Waiting for Telegram connection... Open the link and tap START in Telegram.
+              Waiting for Telegram connection... Open the link and tap START in Telegram. If the chat is already open, send the command below instead.
             </span>
+          </div>
+        )}
+
+        {/* Manual /start command — Telegram only auto-sends the deep-link
+            start parameter the FIRST time a bot chat is opened. For an
+            existing chat (reconnect, or a second user of the same Telegram
+            account) the user must send /start <token> themselves. */}
+        {startCommand && !isConnected && (
+          <div className="p-3 bg-slate-900/60 border border-slate-700 rounded-lg space-y-2">
+            <p className="text-slate-400 text-xs">
+              No START button in the bot chat? Copy this and send it as a message to the bot:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 min-w-0 text-[11px] leading-snug text-sky-300 bg-slate-950 border border-slate-700 rounded px-2 py-1.5 break-all">
+                {startCommand}
+              </code>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-slate-600 text-slate-200 hover:bg-slate-700 active:scale-95 shrink-0"
+                onClick={copyStartCommand}
+              >
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </div>
           </div>
         )}
 

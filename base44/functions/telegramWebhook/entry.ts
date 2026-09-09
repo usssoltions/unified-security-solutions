@@ -69,6 +69,20 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ ok: true, processed: true, result: 'expired_token' });
       }
 
+      // Shared-chat guard — one Telegram chat MAY serve multiple app users of
+      // the SAME tenant (outbound notifications only; each user keeps their own
+      // mapping and is never overwritten). A chat already mapped to a user of
+      // a DIFFERENT tenant is rejected so notifications can never leak across
+      // tenant boundaries. The token is NOT consumed on rejection.
+      const chatUsers = await base44.asServiceRole.entities.User.filter({ telegram_chat_id: chatId }).catch(() => []);
+      const chatExts = await base44.asServiceRole.entities.ExternalRecipient.filter({ telegram_chat_id: chatId }).catch(() => []);
+      const otherTenantOwner = [...chatUsers, ...chatExts].some(x => x.customer_id && x.customer_id !== enrollment.customer_id);
+      if (otherTenantOwner) {
+        await replyTelegram(botToken, chatId, '❌ This Telegram account is already connected to another app user in a different organisation. That user must disconnect it first, or connect with a different Telegram account.');
+        return Response.json({ ok: true, processed: true, result: 'chat_owned_by_other_tenant' });
+      }
+      const sharedWithOthers = chatUsers.filter(u => u.id !== enrollment.user_id).length + chatExts.length;
+
       // Consume the token — update enrollment
       await base44.asServiceRole.entities.TelegramEnrollment.update(enrollment.id, {
         status: 'completed',
@@ -99,27 +113,36 @@ export default async function(req: Request): Promise<Response> {
         }).catch(() => {});
         // Log audit
         await base44.asServiceRole.entities.PlatformAuditLog.create({
-          action: 'EXTERNAL_RECIPIENT_TELEGRAM_CONNECTED',
+          event_type: 'telegram.connected',
+          user_id: enrollment.external_recipient_id,
+          user_name: tgUsername || tgFirstName || 'Telegram user',
           entity_name: 'ExternalRecipient',
           entity_id: enrollment.external_recipient_id,
+          action: 'connect',
           customer_id: enrollment.customer_id,
           reseller_id: enrollment.reseller_id,
-          details: JSON.stringify({ enrollment_id: enrollment.id }),
+          notes: `Enrollment ${enrollment.id} completed (external recipient)`,
         }).catch(() => {});
       } else if (enrollment.user_id) {
         await base44.asServiceRole.entities.User.update(enrollment.user_id, telegramData).catch(() => {});
         await base44.asServiceRole.entities.PlatformAuditLog.create({
-          action: 'TELEGRAM_CONNECTED',
+          event_type: 'telegram.connected',
+          user_id: enrollment.user_id,
+          user_name: tgUsername || tgFirstName || 'Telegram user',
           entity_name: 'User',
           entity_id: enrollment.user_id,
-          performed_by_id: enrollment.user_id,
+          action: 'connect',
           customer_id: enrollment.customer_id,
           reseller_id: enrollment.reseller_id,
-          details: JSON.stringify({ enrollment_id: enrollment.id, telegram_username: tgUsername }),
+          notes: `Enrollment ${enrollment.id} completed` +
+            (sharedWithOthers > 0 ? ` — Telegram chat shared with ${sharedWithOthers} other recipient(s) in the same organisation (outbound-only)` : ''),
         }).catch(() => {});
       }
 
-      await replyTelegram(botToken, chatId, '✅ Telegram notifications have been successfully connected to Unified Security Solutions. You will now receive automatic USS notifications here.');
+      const sharedNote = sharedWithOthers > 0
+        ? '\n\nℹ️ Note: this Telegram account is also connected to another app user in the same organisation. Each user receives only their own notifications here.'
+        : '';
+      await replyTelegram(botToken, chatId, '✅ Telegram notifications have been successfully connected to Unified Security Solutions. You will now receive automatic USS notifications here.' + sharedNote);
       return Response.json({ ok: true, processed: true, result: 'connected' });
     }
 

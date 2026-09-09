@@ -27,11 +27,13 @@ export default async function(req: Request): Promise<Response> {
       if (!isPlatformAdmin && ext.customer_id && ext.customer_id !== caller.customer_id) {
         return Response.json({ error: 'Cross-tenant access denied' }, { status: 403 });
       }
+      // IMPORTANT: undefined keys are dropped by the SDK and do NOT clear stored
+      // values (this is how a stale chat_id previously survived disconnect).
+      // Clear with explicit empty strings — the engine treats falsy chat_id as unmapped.
       await base44.asServiceRole.entities.ExternalRecipient.update(externalRecipientId, {
-        telegram_chat_id: undefined,
+        telegram_chat_id: '',
         telegram_connected: false,
-        telegram_connected_at: undefined,
-        telegram_username: undefined,
+        telegram_username: '',
       });
       // Revoke pending enrollments
       const pending = await base44.asServiceRole.entities.TelegramEnrollment.filter({
@@ -42,23 +44,27 @@ export default async function(req: Request): Promise<Response> {
         await base44.asServiceRole.entities.TelegramEnrollment.update(e.id, { status: 'revoked' }).catch(() => {});
       }
       await base44.asServiceRole.entities.PlatformAuditLog.create({
-        action: 'TELEGRAM_DISCONNECTED',
+        event_type: 'telegram.disconnected',
+        user_id: caller.id,
+        user_name: caller.display_name || caller.full_name || caller.email,
         entity_name: 'ExternalRecipient',
         entity_id: externalRecipientId,
-        performed_by_id: caller.id,
-        performed_by_name: caller.display_name || caller.full_name,
+        action: 'disconnect',
         customer_id: ext.customer_id,
-        details: JSON.stringify({ subject: 'external_recipient' }),
+        reseller_id: ext.reseller_id,
+        notes: 'Telegram mapping cleared. Notifications already dispatched before disconnect may still be delivered by Telegram.',
       }).catch(() => {});
     } else {
       // User disconnecting themselves
+      // IMPORTANT: undefined keys are dropped by the SDK and do NOT clear stored
+      // values (this is how a stale chat_id previously survived disconnect).
+      // Clear with explicit empty strings — the engine treats falsy chat_id as unmapped.
       await base44.asServiceRole.entities.User.update(caller.id, {
-        telegram_chat_id: undefined,
+        telegram_chat_id: '',
         telegram_connected: false,
-        telegram_connected_at: undefined,
-        telegram_username: undefined,
-        telegram_first_name: undefined,
-        telegram_last_name: undefined,
+        telegram_username: '',
+        telegram_first_name: '',
+        telegram_last_name: '',
       });
       // Revoke pending enrollments
       const pending = await base44.asServiceRole.entities.TelegramEnrollment.filter({
@@ -69,13 +75,15 @@ export default async function(req: Request): Promise<Response> {
         await base44.asServiceRole.entities.TelegramEnrollment.update(e.id, { status: 'revoked' }).catch(() => {});
       }
       await base44.asServiceRole.entities.PlatformAuditLog.create({
-        action: 'TELEGRAM_DISCONNECTED',
+        event_type: 'telegram.disconnected',
+        user_id: caller.id,
+        user_name: caller.display_name || caller.full_name || caller.email,
         entity_name: 'User',
         entity_id: caller.id,
-        performed_by_id: caller.id,
-        performed_by_name: caller.display_name || caller.full_name,
+        action: 'disconnect',
         customer_id: caller.customer_id,
-        details: JSON.stringify({ subject: 'user' }),
+        reseller_id: caller.reseller_id,
+        notes: 'Telegram mapping cleared (chat_id emptied, connected=false). Notifications already dispatched before disconnect may still be delivered by Telegram.',
       }).catch(() => {});
     }
 
