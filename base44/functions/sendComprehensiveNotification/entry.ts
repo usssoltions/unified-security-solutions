@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 /**
  * sendComprehensiveNotification — Central multi-channel notification engine.
@@ -171,9 +172,9 @@ export default async function(req: Request): Promise<Response> {
     // Telegram previews and push lock-screen text must not leak sensitive data.
     const { safeTitle, safeMessage } = buildSafePreview(moduleKey, title, message, metadata);
 
-    // ---- OneSignal config -------------------------------------------------
-    const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');
-    const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
+    // ---- Channel config — NATIVE PUSH needs no client credentials (Base44
+    //      delivers per user id via the platform push registry); Telegram
+    //      uses the shared bot token ----------------------------------------
     const TG_BOT_TOKEN = secrets.get('TELEGRAM_BOT_TOKEN');
 
     // ---- Delivery ---------------------------------------------------------
@@ -243,36 +244,33 @@ export default async function(req: Request): Promise<Response> {
         }
       }
 
-      // --- PUSH (only for application users with a push token) ---
-      if (channels.push && r.kind === 'user' && r.pushToken && ONESIGNAL_APP_ID && ONESIGNAL_API_KEY) {
-        const idempKey = `${evKey}:user:${r.id}:push`;
+      // --- PUSH — Base44 NATIVE push (shared platform service) ------------
+      // Delivers to the user's registered devices with the app closed; policy
+      // gate skips informational/low priorities; idempotent per event+user.
+      if (channels.push && r.kind === 'user') {
         try {
-          if (await alreadyDelivered(base44, idempKey)) {
-            results.push({ recipient: r.id, channel: 'push', status: 'deduped' });
-          } else {
-            const isCritical = priority === 'critical';
-            const resp = await fetch('https://onesignal.com/api/v1/notifications', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${ONESIGNAL_API_KEY}` },
-              body: JSON.stringify({
-                app_id: ONESIGNAL_APP_ID,
-                include_player_ids: [r.pushToken],
-                headings: { en: safeTitle },
-                contents: { en: safeMessage },
-                priority: isCritical ? 10 : 5,
-                ttl: isCritical ? 0 : 3600,
-                android_channel_id: isCritical ? 'emergency' : 'default',
-                android_visibility: 1,
-                data: { type, relatedEntity, relatedId, actionUrl },
-              }),
-            });
-            const pr = await resp.json();
-            if (pr.errors) throw new Error(JSON.stringify(pr.errors));
-            await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'push', idempKey, JSON.stringify(pr));
+          const pr = await sendNativePush(base44.asServiceRole, {
+            user_id: r.id,
+            title: safeTitle,
+            body: safeMessage,
+            priority,
+            action_label: 'Open',
+            action_url: actionUrl,
+            event_key: evKey,
+            customer_id: recipientScope.customer_id,
+            reseller_id: recipientScope.reseller_id,
+          });
+          if (pr.status === 'sent') {
             results.push({ recipient: r.id, channel: 'push', status: 'sent' });
+          } else if (pr.status === 'deduped') {
+            results.push({ recipient: r.id, channel: 'push', status: 'deduped' });
+          } else if (pr.status === 'failed') {
+            results.push({ recipient: r.id, channel: 'push', status: 'failed', error: pr.error });
+          } else {
+            results.push({ recipient: r.id, channel: 'push', status: 'skipped', reason: pr.reason });
           }
         } catch (e) {
-          await logDelivery(base44, evKey, notificationId, r, 'failed', recipientScope, 'push', null, e.message);
+          // Push failure never breaks the business notification or other channels.
           results.push({ recipient: r.id, channel: 'push', status: 'failed', error: e.message });
         }
       }

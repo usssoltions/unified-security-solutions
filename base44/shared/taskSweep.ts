@@ -244,7 +244,14 @@ export async function runTaskSweep(svc, secrets) {
 
       const brandCtx = await getBrandCtx(batch.customer_id);
       const content = reminderNotification(batch, outstanding, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
-      const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName });
+      const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName,
+        eventKey: 'task_reminder:' + batch.id + ':' + dueReminders,
+        actionUrl: '/ScheduledTasks',
+        pushTitle: 'OUTSTANDING TASKS — ' + batch.title,
+        pushBody: outstanding.length + ' task(s) still outstanding in ' + (batch.control_room_name || 'your control room') +
+          ' (window ' + batch.active_start_time + '–' + batch.deadline_time + ').',
+        priority: 'normal',
+        customerId: batch.customer_id, resellerId: batch.reseller_id || null });
       await svc.entities.TaskBatch.update(batch.id, {
         reminder_count: dueReminders, last_reminder_at: new Date().toISOString(),
       }).catch(() => {});
@@ -284,7 +291,13 @@ export async function runTaskSweep(svc, secrets) {
               (cr && cr.supervisor_user_ids) || [], batch.additional_notification_user_ids || []));
           const brandCtx = await getBrandCtx(batch.customer_id);
           const content = reasonRequiredNotification(batch, needReason, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
-          const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName });
+          const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName,
+            eventKey: 'task_reason_required:' + batch.id,
+            actionUrl: '/ScheduledTasks',
+            pushTitle: 'TASK REASON REQUIRED — ' + batch.title,
+            pushBody: 'Deadline reached: ' + needReason.length + ' incomplete task(s) need a non-completion reason before the Task Completion Report finalises.',
+            priority: 'high',
+            customerId: batch.customer_id, resellerId: batch.reseller_id || null });
           await svc.entities.TaskBatch.update(batch.id, {
             status: 'reason_pending', reason_required_notified_at: new Date().toISOString(),
           }).catch(() => {});

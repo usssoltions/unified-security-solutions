@@ -1,0 +1,153 @@
+{
+  "name": "PushRegistration",
+  "type": "object",
+  "description": "SHARED PLATFORM SERVICE \u2014 per-device native push registration registry. Base44 native push (Core integrations.SendPushNotification) delivers by USER id and manages the real FCM/APNs provider tokens server-side \u2014 raw provider tokens are NEVER stored in this app. This registry tracks each authenticated user's registered devices (a user may have phone + tablet + replacement devices simultaneously), the OS notification-permission state per device, and the user's push on/off preference, for UX status, delivery policy and admin diagnostics. Registering a new device NEVER deactivates other valid devices. A registration NEVER grants tenant access \u2014 recipient identity is always resolved server-side from the authenticated USS user record. NULLABLE FIELDS: registerPushDevice legitimately writes explicit nulls (unregistered_at, unregistered_reason, device_label, app_version, tenant scope when unset) \u2014 plain string fields reject nulls on this platform, so these MUST declare type [\"string\",\"null\"].",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "USS User ID. One user may hold many active device registrations."
+    },
+    "customer_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Tenant scope resolved server-side from the authenticated user at registration time."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "device_fingerprint": {
+      "type": "string",
+      "description": "Client-generated stable device id (crypto UUID persisted in device storage). NOT a push token \u2014 provider tokens stay inside the Base44 platform. Survives page reloads; a new install/storage wipe generates a new fingerprint (old registration goes stale and is superseded by re-registration)."
+    },
+    "device_platform": {
+      "type": "string",
+      "enum": [
+        "android",
+        "ios",
+        "web",
+        "other"
+      ],
+      "default": "web"
+    },
+    "device_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional friendly label (e.g. 'Samsung Galaxy A54')."
+    },
+    "app_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notification_permission": {
+      "type": "string",
+      "enum": [
+        "granted",
+        "denied",
+        "default"
+      ],
+      "default": "default",
+      "description": "OS notification permission state as reported by this device at last registration/heartbeat."
+    },
+    "push_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "User's in-app push on/off preference (category-level preferences are separate). CRITICAL security alerts for defined operational roles may be mandatory per policy \u2014 the delivery service enforces that, not this flag alone."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active",
+      "description": "'inactive' = unregistered (logout, user-disabled, reinstall or superseded). Inactive registrations are never deleted \u2014 they retain the diagnostic history."
+    },
+    "last_active_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "registered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "unregistered_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "unregistered_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "logout | user_disabled | reinstall | other."
+    },
+    "last_push_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp of the last successful native push delivered to this user (diagnostics). Per-device delivery reports stay inside the Base44 push platform; this field records user-level last success from this app's perspective."
+    }
+  },
+  "required": [
+    "user_id",
+    "device_fingerprint",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    }
+  }
+}

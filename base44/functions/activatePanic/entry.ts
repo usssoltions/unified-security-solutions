@@ -14,6 +14,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { buildPanicEmail, esc } from '../../shared/panicEmailTemplate.ts';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -128,45 +129,27 @@ Deno.serve(async (req) => {
 
     const successCount = notifResults.filter(r => r.status === 'fulfilled').length;
 
-    // 4. Send push notification via OneSignal directly (sendPushNotification
-    //    requires user auth which asServiceRole doesn't have, so we call
-    //    OneSignal directly here).
-    try {
-      const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');
-      const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
-      if (ONESIGNAL_APP_ID && ONESIGNAL_API_KEY) {
-        const playerIds = recipients.map(u => u.onesignal_player_id).filter(Boolean);
-        if (playerIds.length > 0) {
-          await fetch('https://onesignal.com/api/v1/notifications', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Basic ${ONESIGNAL_API_KEY}`
-            },
-            body: JSON.stringify({
-              app_id: ONESIGNAL_APP_ID,
-              include_player_ids: playerIds,
-              headings: { en: `🚨 PANIC ALERT — ${userName}` },
-              contents: { en: `EMERGENCY: ${userName} has triggered a PANIC alert. ${googleMapsUrl ? `Location: ${googleMapsUrl}` : 'Immediate response required!'}` },
-              priority: 10,
-              ttl: 0,
-              android_channel_id: 'emergency',
-              android_visibility: 1,
-              android_led_color: 'FFFF0000',
-              android_accent_color: 'FFC41E3A',
-              data: {
-                type: 'panic',
-                panicId: panic.id,
-                userName: userName,
-                location: location,
-                timestamp: nowIso
-              }
-            })
-          }).catch(e => console.error('OneSignal push failed:', e));
-        }
-      }
-    } catch (e) {
-      console.error('Push notification dispatch failed:', e);
+    // 4. NATIVE PUSH — Base44 native push (shared platform service).
+    //    CRITICAL security alert: force-pushed to every authorised recipient,
+    //    delivered by user id on all their registered devices and reaches the
+    //    phone with the app fully closed once the native push builds are
+    //    active. Deterministic event key (panic + recipient) — exactly one
+    //    push per recipient per panic; failures are logged and never break
+    //    the panic transaction.
+    for (const recipient of recipients) {
+      await sendNativePush(base44.asServiceRole, {
+        user_id: recipient.id,
+        title: `🚨 PANIC ALERT — ${userName}`,
+        body: `EMERGENCY: ${userName} triggered a PANIC alert at ${siteName || user.site_name || 'Unknown Location'}` +
+          (googleMapsUrl ? `. Location: ${googleMapsUrl}` : '. Immediate response required!'),
+        priority: 'critical',
+        force: true,
+        action_label: 'Open Panic Queue',
+        action_url: '/PanicManagement',
+        event_key: 'panic:' + panic.id + ':' + recipient.id,
+        customer_id: user.customer_id || null,
+        reseller_id: user.reseller_id || null,
+      }).catch(e => console.error('native panic push failed:', e?.message || e));
     }
 
     // 5. Mark notification_sent + record the ONE-TIME initial notification

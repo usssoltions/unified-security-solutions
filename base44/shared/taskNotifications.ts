@@ -11,6 +11,7 @@
  */
 
 import { resolveTenantBrand, tenantDisplayName } from './tenantBranding.ts';
+import { sendNativePush } from './nativePush.ts';
 
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // Africa/Johannesburg, UTC+2, no DST
 
@@ -74,14 +75,28 @@ export async function sendTaskTelegram(secrets, chatId, text) {
   }
 }
 
-/** Sends one notification to every recipient via email + Telegram.
- * emailHtml (the branded template rendering) rides along as the rich body
- * with emailBody as the plain-text alternative; from_name brands the sender. */
-export async function notifyTaskRecipients(svc, secrets, recipients, { subject, emailBody, emailHtml, telegramText, from_name }) {
-  const out = { email: 0, telegram: 0 };
+/** Sends one notification to every recipient via email + Telegram +
+ * NATIVE PUSH (shared platform service — reaches the phone with the app
+ * closed). emailHtml (the branded template rendering) rides along as the
+ * rich body with emailBody as the plain-text alternative; from_name brands
+ * the sender. Native push fires only when pushTitle/pushBody are provided;
+ * eventKey makes every channel idempotent per recipient (refresh/API/sweep
+ * retries can never double-send). */
+export async function notifyTaskRecipients(svc, secrets, recipients, { subject, emailBody, emailHtml, telegramText, from_name,
+    eventKey, actionUrl, pushTitle, pushBody, push = true, priority = 'normal', customerId, resellerId }) {
+  const out = { email: 0, telegram: 0, push: 0 };
   for (const r of recipients) {
     if (r.email && await sendTaskEmail(svc, { to: r.email, subject, body: emailBody, html: emailHtml, from_name })) out.email++;
     if (r.telegram_chat_id && await sendTaskTelegram(secrets, r.telegram_chat_id, telegramText)) out.telegram++;
+    if (push && r.id && pushTitle && pushBody) {
+      const pr = await sendNativePush(svc, {
+        user_id: r.id, title: pushTitle, body: pushBody,
+        priority, action_label: 'Open', action_url: actionUrl,
+        event_key: eventKey || null,
+        customer_id: customerId || null, reseller_id: resellerId || null,
+      }).catch(() => ({ status: 'failed' }));
+      if (pr && pr.status === 'sent') out.push++;
+    }
   }
   return out;
 }

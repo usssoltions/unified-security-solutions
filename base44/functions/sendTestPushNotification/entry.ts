@@ -1,71 +1,54 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { sendNativePush } from '../../shared/nativePush.ts';
 
-Deno.serve(async (req) => {
+/**
+ * sendTestPushNotification — DIAGNOSTIC native test push.
+ *
+ * Sends a REAL Base44 native push (no fake business event, no records
+ * created beyond the delivery log) to the selected user's registered
+ * devices. Any authenticated user may test THEIR OWN device; targeting
+ * ANOTHER user requires platform-admin authority. Intended for the admin
+ * diagnostics surface (registered devices / last push state) and the
+ * user's own Profile test button.
+ */
+export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    
-    if (!user || user.role_type !== 'admin') {
-      return Response.json({ error: 'Unauthorized' }, { status: 403 });
+    const caller = await base44.auth.me();
+    if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const body = await req.json().catch(() => ({}));
+    const isPlatformAdmin =
+      caller.role_type === 'admin' ||
+      caller.role_type === 'platform_admin' ||
+      caller.admin_level === 'platform';
+
+    const targetUserId = String(body.userId || body.user_id || caller.id);
+    if (targetUserId !== caller.id && !isPlatformAdmin) {
+      return Response.json({ error: 'Only platform administrators may send a test push to another user' }, { status: 403 });
     }
 
-    const { title, message, playerId } = await req.json();
-
-    const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');
-    const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
-
-    if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
-      return Response.json({ 
-        success: false, 
-        error: 'OneSignal not configured - check secrets' 
-      });
-    }
-
-    if (!playerId) {
-      return Response.json({ 
-        success: false, 
-        error: 'No player ID - user not subscribed' 
-      });
-    }
-
-    const response = await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${ONESIGNAL_API_KEY}`
-      },
-      body: JSON.stringify({
-        app_id: ONESIGNAL_APP_ID,
-        include_player_ids: [playerId],
-        headings: { en: title || "Test Notification" },
-        contents: { en: message || "This is a test" },
-        data: {
-          type: 'test',
-          timestamp: new Date().toISOString()
-        }
-      })
+    // Unique event key per test — diagnostic sends are never deduped.
+    const pr = await sendNativePush(base44.asServiceRole, {
+      user_id: targetUserId,
+      title: String(body.title || 'USS Test Notification'),
+      body: String(body.message || 'This is a diagnostic test push from your USS app. If you can read this with the app closed, native push is working.'),
+      priority: 'normal',
+      force: true,
+      action_label: 'Open App',
+      action_url: '/',
+      event_key: 'test_push:' + targetUserId + ':' + Date.now(),
+      customer_id: caller.customer_id || null,
+      reseller_id: caller.reseller_id || null,
     });
 
-    const result = await response.json();
-
-    if (result.errors) {
-      return Response.json({ 
-        success: false, 
-        error: result.errors[0] || 'Unknown error',
-        details: result
-      });
-    }
-
-    return Response.json({ 
-      success: true,
-      recipients: result.recipients || 1,
-      onesignal_response: result
+    return Response.json({
+      success: pr.status === 'sent',
+      status: pr.status,
+      reason: pr.reason || null,
+      error: pr.error || null,
     });
-
   } catch (error) {
-    return Response.json({ 
-      success: false, 
-      error: error.message 
-    }, { status: 500 });
+    return Response.json({ error: error.message }, { status: 500 });
   }
-});
+}

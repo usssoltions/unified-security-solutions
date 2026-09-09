@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
+import ForegroundAlertBanner from "@/components/notifications/ForegroundAlertBanner";
+import PushPermissionManager from "@/components/notifications/PushPermissionManager";
 import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
 import RealTimeAlertMonitor from "@/components/alerts/RealTimeAlertMonitor";
 import GlobalPanicButton from "@/components/GlobalPanicButton";
@@ -243,6 +245,12 @@ export default function Layout({ children, currentPageName }) {
     //    (no stale menu, no cached role, no reachable Back to admin pages).
     try { queryClientInstance.clear(); } catch (_) {}
     try { queryClientInstance.invalidateQueries(); } catch (_) {}
+    // Unregister THIS device's push registration before wiping storage —
+    // other devices' registrations are untouched (multi-device aware).
+    try {
+      const fp = localStorage.getItem("uss_push_device_fingerprint");
+      if (fp) await base44.functions.invoke("registerPushDevice", { action: "unregister", reason: "logout", device_fingerprint: fp });
+    } catch (_) {}
     try { localStorage.clear(); } catch (_) {}
     try { sessionStorage.clear(); } catch (_) {}
     try { await base44.auth.logout(); } catch (_) {}
@@ -386,6 +394,8 @@ export default function Layout({ children, currentPageName }) {
           {user && <PermissionEnforcement />}
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
+          <ForegroundAlertBanner user={user} />
+          <PushPermissionManager variant="prompt" user={user} />
 
 
           <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 w-full max-w-full overflow-x-hidden">

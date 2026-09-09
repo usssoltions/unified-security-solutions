@@ -61,6 +61,7 @@ import {
   resolveTaskBrandContext,
 } from '../../shared/taskNotifications.ts';
 import { completionNotification, deadlineReport, assignmentNotification, buildAssignmentEmailHtml, buildReopenedEmailHtml } from '../../shared/taskReportContent.ts';
+import { sendNativePush } from '../../shared/nativePush.ts';
 import {
   runTaskSweep, addDaysYmd, occurrenceDates, buildOccurrence,
   buildTasksForOccurrence, buildOccurrenceBatch, DATE_RE, PRIORITIES, ALL_OPEN_STATUSES,
@@ -221,6 +222,48 @@ export default async function(req) {
       if (!id) return null;
       const rows = await svc.entities.TaskBatch.filter({ id: String(id) }).catch(() => []);
       return (rows && rows[0]) ? rows[0] : null;
+    };
+    /* NEW TASK LIST notification — every ACTIVE operator of the allocated
+       control room is told a new task list has arrived in their queue
+       (in-app bell + NATIVE PUSH, deep link to the Task Queue). Recipients
+       are resolved SERVER-SIDE from the room's operator list — the client
+       never nominates recipients. Deterministic event key per batch makes
+       retries idempotent. Push/notification failures never break creation. */
+    const notifyNewTaskList = async (batchRec, taskCount, room) => {
+      try {
+        const operatorIds = ((room && room.operator_user_ids) || []).map(String);
+        if (!operatorIds.length) return 0;
+        const recipients = await resolveTaskRecipients(svc, batchRec.customer_id, operatorIds);
+        if (!recipients.length) return 0;
+        const short = batchRec.title + ' · ' + (batchRec.control_room_name || room.name || '') +
+          ' · ' + taskCount + ' task(s) · ' + batchRec.active_start_time + '–' + batchRec.deadline_time;
+        let pushed = 0;
+        for (const r of recipients) {
+          await svc.entities.Notification.create({
+            customer_id: batchRec.customer_id, reseller_id: batchRec.reseller_id || null,
+            recipient_id: r.id, recipient_name: r.name,
+            type: 'status_change', priority: 'normal',
+            title: 'NEW TASK LIST — ' + batchRec.title,
+            message: short + ' — open your Task Queue.',
+            related_entity: 'TaskBatch', related_id: batchRec.id,
+            action_url: '/ScheduledTasks', sent_via: ['in_app'],
+          }).catch(() => {});
+          const pr = await sendNativePush(svc, {
+            user_id: r.id, title: 'NEW TASK LIST', body: short,
+            priority: 'normal',
+            action_label: 'Open Task Queue', action_url: '/ScheduledTasks',
+            event_key: 'task_batch_created:' + batchRec.id,
+            customer_id: batchRec.customer_id, reseller_id: batchRec.reseller_id || null,
+          }).catch(() => ({ status: 'failed' }));
+          if (pr && pr.status === 'sent') pushed++;
+        }
+        await logTaskAudit(svc, { event_type: 'task.batch_notified', actor: caller, batch: batchRec,
+          notes: 'Control Room operators notified (' + recipients.length + ') — push:' + pushed });
+        return pushed;
+      } catch (e) {
+        console.error('new task list notification failed:', e?.message || e);
+        return 0;
+      }
     };
     /* Reason-gate finalisation (shared by verify + captureReason): once
        every incomplete task of a reason_pending batch carries a
@@ -567,6 +610,7 @@ export default async function(req) {
         await svc.entities.OperationalTask.bulkCreate(tasks);
         await logTaskAudit(svc, { event_type: 'task.batch_created', actor: caller, batch: batchRec,
           notes: title + ' → ' + room.name + ' (' + tasks.length + ' task(s), ' + active_start_time + '–' + deadline_time + ')' });
+        await notifyNewTaskList(batchRec, tasks.length, room);
         return Response.json({ success: true, batch: batchRec, tasks_created: tasks.length });
       }
 
@@ -607,6 +651,7 @@ export default async function(req) {
       }
       await logTaskAudit(svc, { event_type: 'task.batch_created', actor: caller, batch: series,
         notes: title + ' (recurring ' + recurrence_type + ') → ' + room.name + ' — ' + occurrences + ' occurrence(s) generated' });
+      await notifyNewTaskList(series, cleanDefs.length, room);
       return Response.json({ success: true, batch: series, occurrences_generated: occurrences });
     }
 
@@ -730,6 +775,22 @@ export default async function(req) {
         })) sentVia.push('email');
         if (chatId && await sendTaskTelegram(secrets, chatId, content.telegramText)) sentVia.push('telegram');
 
+        // NATIVE PUSH — shared platform service (delivers with the app closed).
+        // Deterministic event key (task id + assignment timestamp + assignee):
+        // repeated saves/API retries can never double-push.
+        const pushRes = await sendNativePush(svc, {
+          user_id: assignee.id,
+          title: (action === 'reassign' ? 'TASK REASSIGNED — ' : 'TASK ASSIGNED — ') + updated.title,
+          body: content.inApp.message,
+          priority: updated.priority || 'high',
+          action_label: 'Open My Tasks',
+          action_url: '/ScheduledTasks',
+          event_key: 'task_assigned:' + task.id + ':' + updated.assigned_at + ':' + assignee.id,
+          customer_id: task.customer_id,
+          reseller_id: task.reseller_id || null,
+        }).catch(() => ({ status: 'failed' }));
+        if (pushRes && pushRes.status === 'sent') sentVia.push('push');
+
         await svc.entities.Notification.create({
           customer_id: task.customer_id, reseller_id: task.reseller_id || null,
           recipient_id: assignee.id, recipient_name: userName(assignee),
@@ -759,7 +820,8 @@ export default async function(req) {
         }
         await logTaskAudit(svc, { event_type: 'task.assignment_notified', actor: caller, task: updated,
           notes: 'Assignee ' + userName(assignee) + ' notified — in_app:1 email:' +
-            (sentVia.indexOf('email') !== -1 ? 1 : 0) + ' telegram:' + (sentVia.indexOf('telegram') !== -1 ? 1 : 0) });
+            (sentVia.indexOf('email') !== -1 ? 1 : 0) + ' telegram:' + (sentVia.indexOf('telegram') !== -1 ? 1 : 0) +
+            ' push:' + (sentVia.indexOf('push') !== -1 ? 1 : 0) });
       } catch (e) {
         console.error('assignment notification failed:', e?.message || e);
       }
@@ -821,6 +883,52 @@ export default async function(req) {
       await logTaskAudit(svc, { event_type: 'task.guard_signoff', actor: caller, task,
         from_status: task.status, to_status: 'awaiting_verification',
         notes: 'Sign-off 1 by ' + callerName + (notes ? ' — ' + notes.slice(0, 200) : '') });
+
+      // TASK AWAITING VERIFICATION — notify the control room's ACTIVE
+      // operators across ALL channels (in-app bell, NATIVE PUSH, Telegram,
+      // branded email) the moment Sign-off 1 lands. Recipients are resolved
+      // SERVER-SIDE from the task's control room operator list. Deterministic
+      // event key (task id + sign-off 1 timestamp) — refresh/retry can never
+      // double-notify. Sign-off 2 itself is NEVER automated: this only
+      // alerts the authorised humans.
+      try {
+        if (task.control_room_id) {
+          const crRows = await svc.entities.ControlRoom.filter({ id: task.control_room_id }).catch(() => []);
+          const cr = (crRows && crRows[0]) || null;
+          const recipients = await resolveTaskRecipients(svc, task.customer_id, ((cr && cr.operator_user_ids) || []));
+          if (recipients.length) {
+            const brandCtx = await resolveTaskBrandContext(svc, task.customer_id);
+            const short = '"' + task.title + '" — ' + callerName + ' completed Sign-off 1. Verify in Task Queue → Awaiting Verification.';
+            const eventKey = 'awaiting_verification:' + task.id + ':' + updated.completed_at;
+            for (const r of recipients) {
+              await svc.entities.Notification.create({
+                customer_id: task.customer_id, reseller_id: task.reseller_id || null,
+                recipient_id: r.id, recipient_name: r.name,
+                type: 'status_change', priority: 'high',
+                title: 'TASK AWAITING VERIFICATION — ' + task.title,
+                message: short,
+                related_entity: 'OperationalTask', related_id: task.id,
+                action_url: '/ScheduledTasks', sent_via: ['in_app'],
+              }).catch(() => {});
+            }
+            await notifyTaskRecipients(svc, secrets, recipients, {
+              subject: 'TASK AWAITING VERIFICATION — ' + task.title,
+              emailBody: short + '\n\nOpen Task Queue → Awaiting Verification to perform Sign-off 2.',
+              telegramText: '⏳ TASK AWAITING VERIFICATION\n' + short,
+              from_name: brandCtx.brandName,
+              eventKey, actionUrl: '/ScheduledTasks',
+              pushTitle: 'TASK AWAITING VERIFICATION',
+              pushBody: short,
+              priority: 'high',
+              customerId: task.customer_id, resellerId: task.reseller_id || null,
+            });
+            await logTaskAudit(svc, { event_type: 'task.verification_notified', actor: caller, task,
+              notes: 'Sign-off 1 awaiting Control Room verification — ' + recipients.length + ' operator(s) notified' });
+          }
+        }
+      } catch (e) {
+        console.error('awaiting-verification notification failed:', e?.message || e);
+      }
       return Response.json({ success: true, task: updated });
     }
 
@@ -890,7 +998,13 @@ export default async function(req) {
         const recipients = await resolveTaskRecipients(svc, task.customer_id, recipientIds);
         if (recipients.length) {
           const content = completionNotification(updated, batch || {}, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
-          const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName });
+          const sent = await notifyTaskRecipients(svc, secrets, recipients, { ...content, from_name: brandCtx.brandName,
+            eventKey: 'task_completed:' + task.id + ':' + nowIso,
+            actionUrl: '/ScheduledTasks',
+            pushTitle: 'TASK COMPLETED — ' + updated.title,
+            pushBody: content.telegramText || content.emailBody,
+            priority: 'normal',
+            customerId: task.customer_id, resellerId: task.reseller_id || null });
           await logTaskAudit(svc, { event_type: 'task.completion_notified', actor: caller, task,
             notes: 'Supervisor notified — email:' + sent.email + ' telegram:' + sent.telegram });
         }
@@ -958,6 +1072,16 @@ export default async function(req) {
                 html: buildReopenedEmailHtml(task, brandCtx.brand, brandCtx.brandName, userName(assignee), callerName, reason),
               });
             }
+            // NATIVE PUSH — the assignee's phone, even with the app closed.
+            await sendNativePush(svc, {
+              user_id: assignee.id,
+              title: 'TASK REOPENED — ' + task.title,
+              body: 'Your completion was rejected by ' + callerName + ' and the task returned to you: ' + reason,
+              priority: 'high',
+              action_label: 'Open My Tasks', action_url: '/ScheduledTasks',
+              event_key: 'task_reopened:' + task.id + ':' + updated.reopened_at,
+              customer_id: task.customer_id, reseller_id: task.reseller_id || null,
+            }).catch(() => {});
           }
         }
       } catch (e) {

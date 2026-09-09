@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, User, Mail, Shield, Headphones, Phone, Globe } from "lucide-react";
 import TelegramConnection from "@/components/telegram/TelegramConnection";
+import PushPermissionManager from "@/components/notifications/PushPermissionManager";
 import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
 import { TELEGRAM_MODULE_KEYS } from "@/lib/moduleMapping";
 import { getRoleDisplay } from "@/lib/roleCatalog";
@@ -109,6 +110,9 @@ export default function Profile() {
 
         {/* Telegram Notifications — only for modules that use Telegram */}
         {telegramRelevant && <TelegramConnection user={user} />}
+
+        {/* Push Notifications — shared platform service, every module */}
+        <PushPermissionManager user={user} />
 
         {/* Support & Branding */}
         {(branding?.support_name || branding?.support_email || branding?.support_phone || branding?.website) && (
