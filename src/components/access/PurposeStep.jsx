@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Briefcase, Plus, CheckCircle2, RefreshCw, MapPin } from "lucide-react";
 import AddDestinationModal from "@/components/access/AddDestinationModal";
 
-export default function PurposeStep({ destinations = [], workTypes = [], onApprove, busy, eventType, canAddDestination = false }) {
+export default function PurposeStep({ destinations = [], workTypes = [], onApprove, busy, eventType, canAddDestination = false, buttonLabel }) {
   const [purpose, setPurpose] = useState(null);
   const [destination, setDestination] = useState("");
   const [workType, setWorkType] = useState("");
@@ -106,7 +106,7 @@ export default function PurposeStep({ destinations = [], workTypes = [], onAppro
           className="w-full bg-emerald-500 hover:bg-emerald-600 h-12 text-base"
         >
           {busy ? <RefreshCw className="w-5 h-5 mr-2 animate-spin" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
-          Approve {eventType === "exit" ? "Exit" : "Entry"}
+          {buttonLabel || `Approve ${eventType === "exit" ? "Exit" : "Entry"}`}
         </Button>
       )}
 

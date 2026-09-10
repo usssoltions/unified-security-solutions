@@ -12,7 +12,38 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  *  - audit entry
  *
  * Preserves existing business logic. Does NOT modify Barkoder.
+ *
+ * COMPULSORY VISITOR MOBILE NUMBER: every entry of a person who is not a
+ * resident/guard (vehicle, pedestrian, expected/QR, unexpected, contractor,
+ * delivery, service provider, manual) is rejected unless a valid mobile
+ * number is supplied. The number is normalised to E.164 (default country
+ * South Africa +27) before it is persisted to the AccessLog entry record and
+ * the Visitor profile. This is THE central server-side enforcement point —
+ * no UI/API/module can complete a visitor entry without it.
  */
+
+/* Validate + normalise a visitor mobile number to E.164 where practical.
+ * Accepts SA local formats (0821234567 / 27821234567 / +27821234567) and
+ * legitimate international numbers (+countrycode, 8-15 digits). */
+function validateVisitorPhone(raw) {
+  const digits = String(raw || '').replace(/[\s()\-.]/g, '');
+  if (!digits) {
+    return { ok: false, error: 'Visitor mobile number is required before entry can be completed.' };
+  }
+  if (/[a-zA-Z]/.test(digits)) {
+    return { ok: false, error: 'Enter a valid mobile number, e.g. 0821234567 or +27821234567.' };
+  }
+  let e164 = null;
+  if (/^0\d{9}$/.test(digits)) e164 = '+27' + digits.slice(1);
+  else if (/^\+27\d{9}$/.test(digits)) e164 = digits;
+  else if (/^27\d{9}$/.test(digits)) e164 = '+' + digits;
+  else if (/^\+\d{8,15}$/.test(digits)) e164 = digits;
+  if (!e164) {
+    return { ok: false, error: 'Enter a valid mobile number, e.g. 0821234567 or +27821234567.' };
+  }
+  return { ok: true, value: e164 };
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -30,18 +61,25 @@ export default async function(req: Request): Promise<Response> {
 
     if (action === 'entry') {
       const { site_id, gate_name, site_name, person_type, person_name, person_phone,
-              scan_method, visitor_id, destination, visit_or_work, work_type,
+              person_id, scan_method, visitor_id, destination, visit_or_work, work_type,
               vehicle_registration, sa_id_number, driver_licence_number,
+              vehicle_licence_disc_number, vehicle_vin, vehicle_make, vehicle_model,
+              vehicle_colour, vehicle_licence_number, visitor_type, scanned_data,
+              parsed_json, confidence, device, notes,
               photo_url, qr_code, location, unit_number, company } = access_data;
 
       if (!gate_name || !person_type || !person_name) {
         return Response.json({ error: 'gate_name, person_type, person_name required' }, { status: 400 });
       }
 
-      // Mandatory visitor phone
-      if (person_type === 'visitor' && !person_phone) {
-        return Response.json({ error: 'Visitor telephone number is required before entry' }, { status: 400 });
+      // COMPULSORY VISITOR MOBILE NUMBER — enforced centrally for every
+      // entering person who is not a resident or guard. Rejects entry
+      // completion with no number or an invalid one; normalises to E.164.
+      const phoneCheck = validateVisitorPhone(person_phone);
+      if (person_type !== 'resident' && person_type !== 'guard' && !phoneCheck.ok) {
+        return Response.json({ error: phoneCheck.error }, { status: 400 });
       }
+      const e164Phone = phoneCheck.ok ? phoneCheck.value : (person_phone || '');
 
       // Check for duplicate active entry (person already inside)
       if (sa_id_number || driver_licence_number || vehicle_registration) {
@@ -74,7 +112,7 @@ export default async function(req: Request): Promise<Response> {
       if (visitor_id) {
         try {
           await base44.asServiceRole.entities.Visitor.update(visitor_id, {
-            visitor_phone: person_phone,
+            visitor_phone: e164Phone,
             entered_at: now,
             status: 'entered'
           });
@@ -90,7 +128,8 @@ export default async function(req: Request): Promise<Response> {
         status: blacklistMatch ? 'blacklisted' : 'inside',
         person_type,
         person_name,
-        person_phone,
+        person_phone: e164Phone,
+        person_id,
         visitor_id,
         unit_number,
         gate_name,
@@ -99,12 +138,24 @@ export default async function(req: Request): Promise<Response> {
         sa_id_number,
         driver_licence_number,
         vehicle_registration,
+        vehicle_licence_disc_number,
+        vehicle_vin,
+        vehicle_make,
+        vehicle_model,
+        vehicle_colour,
+        vehicle_licence_number,
+        visitor_type,
+        scanned_data,
+        parsed_json,
+        confidence,
+        device,
         destination,
         visit_or_work: visit_or_work || 'none',
         work_type,
         company,
         photo_url,
         qr_code,
+        notes,
         location,
         entry_time: now,
         timestamp: now,

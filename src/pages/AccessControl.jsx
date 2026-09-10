@@ -20,7 +20,9 @@ import StepCard from "@/components/access/StepCard";
 import { resolveOrCreateVisitor, getGPS, getDeviceDescriptor, countPreviousVisits, findActiveInsideRecords, checkBlacklist } from "@/lib/accessVisitor";
 import ExitConfirmModal from "@/components/access/ExitConfirmModal";
 import OverrideModal from "@/components/access/OverrideModal";
+import MobileStep from "@/components/access/MobileStep";
 import { can, PERMISSIONS } from "@/lib/permissions";
+import { useToast } from "@/components/ui/use-toast";
 
 const MODES = [
   { id: "vehicle", label: "Vehicle Entry", icon: Car, desc: "Licence → Disc → Visit/Work" },
@@ -91,7 +93,10 @@ export default function AccessControl() {
   const [qrVisitor, setQrVisitor] = useState(null);
   const [qrPayload, setQrPayload] = useState(null);
   const [qrStatus, setQrStatus] = useState(null);
+  const [finalizeArgs, setFinalizeArgs] = useState(null);
+  const [stepError, setStepError] = useState(null);
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
@@ -137,7 +142,7 @@ export default function AccessControl() {
     setLicenceScan(null); setDiscFields(null);
     setActiveRecord(null); setExitCandidates([]);
     setQrVisitor(null); setQrPayload(null);
-    setQrStatus(null);
+    setQrStatus(null); setFinalizeArgs(null); setStepError(null);
   };
 
   const startMode = (m) => {
@@ -295,12 +300,24 @@ export default function AccessControl() {
     setStep("qr_confirm");
   };
 
-  const confirmQrEntry = () => finalizeEntry({ purpose: "none", destination: qrVisitor?.destination || "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload });
+  // The compulsory visitor mobile number is captured as the FINAL required
+  // visitor-information step before entry completion — for every entry type
+  // (vehicle, pedestrian, expected/QR, contractor, delivery, manual). A stored
+  // number (pre-registration / resident invitation / existing profile)
+  // pre-fills the field; the guard confirms or corrects it before the entry
+  // is finalised. Exit flow never asks for it.
+  const beginMobileStep = (args) => {
+    setFinalizeArgs(args);
+    setStepError(null);
+    setStep("mobile");
+  };
+
+  const confirmQrEntry = () => beginMobileStep({ purpose: "none", destination: qrVisitor?.destination || "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload });
   const denyQrEntry = () => finalizeEntry({ purpose: "none", destination: qrVisitor?.destination || "", workType: "", visitor: qrVisitor, scan: licenceScan, qrPayload, denied: true });
   const scanAgain = () => { setQrStatus(null); setQrVisitor(null); setQrPayload(null); setStep("qr"); openScanner("qr"); };
 
   const onApprove = (purpose, { destination, workType }) => {
-    finalizeEntry({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
+    beginMobileStep({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
   };
 
   const confirmExit = () => { if (activeRecord) finalizeExit(activeRecord, { scan: licenceScan }); };
@@ -346,30 +363,22 @@ export default function AccessControl() {
     }
   };
 
-  // Entry = CREATE a new record with status "inside" (or "denied").
-  const finalizeEntry = async ({ purpose, destination, workType, visitor, scan, qrPayload, denied }) => {
+  // Entry = finalise through the CENTRAL server-side gateway
+  // (finalizeAccessEntry), which enforces the compulsory visitor mobile
+  // number, normalises it to E.164, re-checks duplicates/blacklist and
+  // creates the authoritative AccessLog. No client path can complete an
+  // entry without a valid mobile number. The manual QR DENY keeps its direct
+  // audit write — a denial is not an entry completion and needs no number.
+  const finalizeEntry = async ({ purpose, destination, workType, visitor, scan, qrPayload, denied, mobile }) => {
     setBusy(true);
     try {
       const mapped = scan?.mappedFields || licenceScan?.mappedFields || {};
       const disc = discFields || {};
-      const gps = await getGPS();
-      const device = getDeviceDescriptor();
       const v = visitor || pendingVisitor;
       const personType = v ? "visitor" : "unknown";
-      const now = new Date().toISOString();
-      const blacklist = await checkBlacklist({
-        saId: v?.visitor_id_number || mapped.visitor_id_number,
-        driverLicence: mapped.driver_licence_number,
-        vehicleReg: v?.vehicle_registration || disc.registration_number,
-      });
-      const isBlacklisted = !!blacklist;
-      const isDenied = !!denied || isBlacklisted;
 
-      // Prevent duplicate entries: if this visitor already has an active
-      // "inside" record (not yet exited), block the new entry instead of
-      // creating a second open record. The guard is told the person is
-      // already on site so they can't be waved through a second time.
-      if (v?.id && !isDenied) {
+      // Duplicate pre-check (fast UX path only; the gateway re-checks).
+      if (v?.id && !denied) {
         const active = await findActiveInsideRecords(v.id);
         if (active && active.length > 0) {
           const rec = active[0];
@@ -390,25 +399,84 @@ export default function AccessControl() {
         }
       }
 
-      const log = {
-        customer_id: user?.customer_id || "",
-        reseller_id: user?.reseller_id || "",
+      // Manual QR deny — audit record only, entry NOT completed.
+      if (denied) {
+        const gps = await getGPS();
+        const now = new Date().toISOString();
+        const log = {
+          customer_id: user?.customer_id || "",
+          reseller_id: user?.reseller_id || "",
+          site_id: user?.site_id || "",
+          site_name: user?.site_name || "",
+          event_type: "denied",
+          status: "denied",
+          person_type: personType,
+          person_id: v?.id || "",
+          person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
+          person_phone: v?.visitor_phone || "",
+          visitor_id: v?.id || "",
+          unit_number: v?.unit_number || "",
+          gate_name: gate,
+          scan_method: "qr_code",
+          scanned_data: qrPayload || scan?.result?.textualData || "",
+          qr_code: qrPayload || "",
+          driver_licence_number: mapped.driver_licence_number || "",
+          sa_id_number: v?.visitor_id_number || mapped.visitor_id_number || "",
+          vehicle_registration: disc.registration_number || v?.vehicle_registration || "",
+          vehicle_licence_disc_number: disc.licence_number || "",
+          vehicle_vin: disc.vin || "",
+          vehicle_make: disc.make || "",
+          vehicle_model: disc.model || "",
+          vehicle_colour: disc.colour || "",
+          vehicle_licence_number: disc.licence_number || "",
+          destination: destination || v?.destination || "",
+          visitor_type: v?.visitor_entry_type || "",
+          visit_or_work: purpose || "none",
+          work_type: workType || "",
+          parsed_json: scan?.result?.formattedJSONRaw || licenceScan?.result?.formattedJSONRaw || "",
+          confidence: (scan?.result?.parsed || licenceScan?.result?.parsed) ? 100 : 40,
+          device: getDeviceDescriptor(),
+          photo_url: scan?.photoUrl || licenceScan?.photoUrl || "",
+          location: gps,
+          entry_time: now,
+          exit_time: null,
+          time_on_site_minutes: null,
+          timestamp: now,
+          guard_id: user?.id,
+          guard_name: getUserDisplayName(user),
+          flagged: true,
+          flag_reason: "QR not recognised",
+          blacklist_match_id: "",
+          notes: "",
+        };
+        const created = await base44.entities.AccessLog.create(log);
+        setResult({ ...log, id: created?.id });
+        resetWorkflow();
+        qc.invalidateQueries(["access_logs_recent"]);
+        setTimeout(() => setResult(null), 8000);
+        return;
+      }
+
+      // ENTRY — central gateway call. The number captured/confirmed on the
+      // final mobile step is supplied as person_phone; the gateway validates,
+      // normalises to E.164 and persists it to both the AccessLog entry
+      // record (historical snapshot for THIS entry) and the Visitor profile.
+      const gps = await getGPS();
+      const access_data = {
         site_id: user?.site_id || "",
+        gate_name: gate,
         site_name: user?.site_name || "",
-        event_type: isDenied ? "denied" : "entry",
-        status: isBlacklisted ? "blacklisted" : (denied ? "denied" : "inside"),
         person_type: personType,
         person_id: v?.id || "",
         person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
-        person_phone: v?.visitor_phone || "",
+        person_phone: mobile || v?.visitor_phone || "",
         visitor_id: v?.id || "",
         unit_number: v?.unit_number || "",
-        gate_name: gate,
-        scan_method: denied ? "qr_code" : (scan?.resolvedProfileId === "qr" ? "qr_code" : scan?.resolvedProfileId === "sa_id" ? "sa_id" : scan?.resolvedProfileId === "vehicle_disc" ? "vehicle_disc" : "drivers_licence"),
+        scan_method: scan?.resolvedProfileId === "qr" ? "qr_code" : scan?.resolvedProfileId === "sa_id" ? "sa_id" : scan?.resolvedProfileId === "vehicle_disc" ? "vehicle_disc" : "drivers_licence",
         scanned_data: qrPayload || scan?.result?.textualData || "",
         qr_code: qrPayload || "",
-        driver_licence_number: mapped.driver_licence_number || "",
         sa_id_number: v?.visitor_id_number || mapped.visitor_id_number || "",
+        driver_licence_number: mapped.driver_licence_number || "",
         vehicle_registration: disc.registration_number || v?.vehicle_registration || "",
         vehicle_licence_disc_number: disc.licence_number || "",
         vehicle_vin: disc.vin || "",
@@ -420,32 +488,50 @@ export default function AccessControl() {
         visitor_type: v?.visitor_entry_type || "",
         visit_or_work: purpose || "none",
         work_type: workType || "",
+        company: "",
+        photo_url: scan?.photoUrl || licenceScan?.photoUrl || "",
         parsed_json: scan?.result?.formattedJSONRaw || licenceScan?.result?.formattedJSONRaw || "",
         confidence: (scan?.result?.parsed || licenceScan?.result?.parsed) ? 100 : 40,
-        device,
-        photo_url: scan?.photoUrl || licenceScan?.photoUrl || "",
-        location: gps,
-        entry_time: now,
-        exit_time: null,
-        time_on_site_minutes: null,
-        timestamp: now,
-        guard_id: user?.id,
-        guard_name: getUserDisplayName(user),
-        flagged: isDenied,
-        flag_reason: isBlacklisted ? `Blacklisted: ${blacklist.reason}` : (denied ? "QR not recognised" : ""),
-        blacklist_match_id: isBlacklisted ? blacklist.id : "",
+        device: getDeviceDescriptor(),
         notes: "",
+        location: gps,
       };
-      const created = await base44.entities.AccessLog.create(log);
-      if (v?.id && !isDenied) {
-        try { await base44.entities.Visitor.update(v.id, { status: "entered", entered_at: now }); } catch (_) {}
+      const res = await base44.functions.invoke("finalizeAccessEntry", { action: "entry", access_data });
+      const d = res?.data !== undefined ? res.data : res;
+      if (d?.error) {
+        if (d.duplicate) {
+          setResult({
+            flagged: true,
+            flag_reason: "Already on site — duplicate entry blocked",
+            person_name: v?.visitor_name || "Unknown",
+            person_type: "visitor",
+            event_type: "entry",
+            status: "denied",
+            gate_name: gate,
+            timestamp: new Date().toISOString(),
+          });
+          resetWorkflow();
+          setTimeout(() => setResult(null), 8000);
+        } else {
+          // Server rejected the entry (e.g. missing/invalid mobile number):
+          // keep the guard on the final step and show the server's message.
+          setStepError(d.error);
+        }
+        qc.invalidateQueries(["access_logs_recent"]);
+        return;
       }
-      setResult({ ...log, id: created?.id });
+      const log = d.access_log;
+      setResult({
+        ...log,
+        flagged: log.status !== "inside",
+        flag_reason: d.blacklist_match ? `Blacklisted: ${d.blacklist_match.reason}` : "",
+      });
       resetWorkflow();
       qc.invalidateQueries(["access_logs_recent"]);
       setTimeout(() => setResult(null), 8000);
     } catch (e) {
       console.error("[access] finalize failed", e);
+      toast({ title: "Entry failed", description: e?.message || "Please try again.", variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -615,6 +701,7 @@ export default function AccessControl() {
                   onApprove={onApprove}
                   busy={busy}
                   eventType={eventType}
+                  buttonLabel="Continue"
                   canAddDestination={["admin", "estate_manager"].includes(user?.role_type)}
                 />
               </div>
@@ -622,6 +709,21 @@ export default function AccessControl() {
 
             {mode === "qr" && step === "qr" && (
               <StepCard icon={QrCode} title="Scan QR Code" subtitle="Expected visitor pass" onScan={() => openScanner("qr")} busy={busy} />
+            )}
+
+            {/* FINAL required step — compulsory visitor mobile number, before
+                the entry record is created. Never shown on the exit flow. */}
+            {step === "mobile" && (
+              <div className="space-y-3">
+                <p className="text-slate-300 text-sm font-medium">Final Step — Visitor Mobile Number</p>
+                <MobileStep
+                  initialPhone={(finalizeArgs?.visitor || pendingVisitor)?.visitor_phone || ""}
+                  busy={busy}
+                  serverError={stepError}
+                  onBack={() => { setStepError(null); setStep(mode === "qr" ? "qr_confirm" : "purpose"); }}
+                  onConfirm={(phone) => finalizeEntry({ ...finalizeArgs, mobile: phone })}
+                />
+              </div>
             )}
 
             {step === "qr_invalid" && qrStatus && (
