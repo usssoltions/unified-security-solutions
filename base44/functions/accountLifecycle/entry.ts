@@ -40,11 +40,14 @@ import {
  *                           emailed link can NEVER create a removal request:
  *                           email security scanners, accidental opens and
  *                           forwarded links are completely inert.
- *   publicConfirmRemoval — explicit deliberate confirmation: consumes the
- *                           single-use token (replay impossible) and only
- *                           then creates the SAME AccountDeletionRequest
- *                           through the SAME central gateway (approval
- *                           hierarchy applies)
+ *   publicConfirmRemoval — explicit deliberate confirmation, one atomic
+ *                           idempotent operation: creates (or reuses) the
+ *                           SAME AccountDeletionRequest through the SAME
+ *                           central gateway FIRST, and marks the single-use
+ *                           token consumed ONLY after the request exists —
+ *                           a failure can never leave a consumed token with
+ *                           no removal request. Retries return the existing
+ *                           pending request and never duplicate it.
  */
 
 const PUBLIC_APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
@@ -185,21 +188,42 @@ export default async function(req: Request): Promise<Response> {
 
     if (action === 'publicConfirmRemoval') {
       const token = String(body.token || '').trim();
-      if (!token) {
-        return Response.json({ error: 'This verification link is invalid or has expired. Please start again.' }, { status: 400 });
-      }
+      const invalid = () => Response.json(
+        { error: 'This verification link is invalid or has expired. Please start again.' },
+        { status: 400 });
+      if (!token) return invalid();
       const tokenHash = await sha256Hex(token);
       const rows = await svc.entities.PublicRemovalVerification
-        .filter({ token_hash: tokenHash, status: 'pending' }).catch(() => []);
+        .filter({ token_hash: tokenHash }).catch(() => []);
       const verification = (rows || [])[0];
-      if (!verification || !verification.expires_at || new Date(verification.expires_at).getTime() < Date.now()) {
-        return Response.json({ error: 'This verification link is invalid or has expired. Please start again.' }, { status: 400 });
+      if (!verification) return invalid();
+
+      // ATOMICITY: the request is created/reused FIRST; the token is marked
+      // consumed ONLY AFTER the AccountDeletionRequest exists durably (see
+      // below). The consume-on-failure window is therefore impossible.
+      // IDEMPOTENT REPLAY: a token already consumed by a successful
+      // confirmation returns that same pending request (double tap, network
+      // retry, browser retry never create duplicates and never dead-end the
+      // user after a lost response).
+      if (verification.status === 'consumed') {
+        const consumedUser = await svc.entities.User
+          .filter({ id: verification.user_id }).catch(() => []);
+        const consumedTarget = (consumedUser || [])[0];
+        if (consumedTarget) {
+          const existing = await svc.entities.AccountDeletionRequest
+            .filter({ user_id: consumedTarget.id, status: 'pending' }).catch(() => []);
+          if ((existing || []).length) {
+            return Response.json({ success: true, request: existing[0], alreadyPending: true });
+          }
+        }
+        return Response.json(
+          { error: 'This verification link has already been used. Please start again.' },
+          { status: 400 });
       }
-      // Single-use: consume BEFORE creating anything so the link can never be replayed.
-      await svc.entities.PublicRemovalVerification.update(verification.id, {
-        status: 'consumed',
-        consumed_at: new Date().toISOString(),
-      }).catch(() => {});
+      if (verification.status !== 'pending' ||
+          !verification.expires_at || new Date(verification.expires_at).getTime() < Date.now()) {
+        return invalid();
+      }
 
       const userRows = await svc.entities.User.filter({ id: verification.user_id }).catch(() => []);
       const target = (userRows || [])[0];
@@ -207,7 +231,16 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'This account no longer exists. No further action is required.' }, { status: 404 });
       }
 
+      // Create (or reuse) the removal request. Any failure here THROWS before
+      // the token is consumed — the link stays pending and safely retryable,
+      // and the retry reuses the existing pending request instead of
+      // duplicating it. The token is consumed only on the line after this.
       const { request, alreadyPending } = await createRemovalRequest(svc, target, body.reason);
+      await svc.entities.PublicRemovalVerification.update(verification.id, {
+        status: 'consumed',
+        consumed_at: new Date().toISOString(),
+      }).catch(() => {});
+
       if (!alreadyPending) {
         const approvers = await resolveApprovers(svc, target);
         await notifyUsers(svc, approvers,
