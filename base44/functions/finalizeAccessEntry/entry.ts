@@ -72,11 +72,18 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'gate_name, person_type, person_name required' }, { status: 400 });
       }
 
-      // COMPULSORY VISITOR MOBILE NUMBER — enforced centrally for every
-      // entering person who is not a resident or guard. Rejects entry
-      // completion with no number or an invalid one; normalises to E.164.
+      // COMPULSORY VISITOR MOBILE NUMBER — enforced centrally and EXPLICITLY
+      // for the application's authoritative visitor-class person types only
+      // (AccessLog.person_type enum): visitor (incl. expected/invited,
+      // pedestrian, vehicle driver, delivery, service provider and temporary
+      // visitors processed as 'visitor'), contractor, vendor and unknown
+      // (manual/unrecognised entrants processed through Access Control).
+      // resident, guard and any FUTURE non-visitor person type (employee/
+      // staff/system) are deliberately NOT in this allowlist and stay exempt
+      // unless actually processed as a visitor class.
+      const VISITOR_PERSON_TYPES = ['visitor', 'contractor', 'vendor', 'unknown'];
       const phoneCheck = validateVisitorPhone(person_phone);
-      if (person_type !== 'resident' && person_type !== 'guard' && !phoneCheck.ok) {
+      if (VISITOR_PERSON_TYPES.includes(person_type) && !phoneCheck.ok) {
         return Response.json({ error: phoneCheck.error }, { status: 400 });
       }
       const e164Phone = phoneCheck.ok ? phoneCheck.value : (person_phone || '');
