@@ -4,9 +4,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
 import { Building2, Briefcase, Plus, Trash2, Shield, Phone, Mail, Ban } from "lucide-react";
 import AddDestinationModal from "@/components/access/AddDestinationModal";
 import BlacklistManager from "@/components/access/BlacklistManager";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 const DEFAULT_WORK_TYPES = [
   "Contractor", "Delivery", "Maintenance", "Gardener", "Cleaning",
@@ -15,8 +17,11 @@ const DEFAULT_WORK_TYPES = [
 
 export default function AccessSettings() {
   const qc = useQueryClient();
+  const { toast } = useToast();
+  const { withTenant } = useTenantContext();
   const [tab, setTab] = useState("general");
   const [newWorkType, setNewWorkType] = useState("");
+  const [addingWorkType, setAddingWorkType] = useState(false);
   const [addingDefaults, setAddingDefaults] = useState(false);
 
   const { data: destinations = [] } = useQuery({
@@ -33,14 +38,27 @@ export default function AccessSettings() {
     qc.invalidateQueries(["work_types"]);
   };
 
+  // Work Types must be created with the caller's tenant scope (same tenant-safe
+  // path as Destinations). Without customer_id the server's tenant check
+  // rejects the create — the previous regression: payload had no tenant ids,
+  // the error was swallowed, and the list never updated.
   const addWorkType = async () => {
     const name = newWorkType.trim();
-    if (!name) return;
+    if (!name || addingWorkType) return;
+    setAddingWorkType(true);
+    const optimisticId = `tmp-${Date.now()}`;
+    qc.setQueryData(["work_types"], (old = []) => [...old, { id: optimisticId, name, active: true }]);
     try {
-      await base44.entities.WorkType.create({ name, active: true });
+      const created = await base44.entities.WorkType.create(withTenant({ name, active: true }));
+      qc.setQueryData(["work_types"], (old = []) => old.map((w) => (w.id === optimisticId ? created : w)));
       setNewWorkType("");
-      refresh();
-    } catch (e) { console.warn(e); }
+    } catch (e) {
+      qc.setQueryData(["work_types"], (old = []) => old.filter((w) => w.id !== optimisticId));
+      toast({ title: "Couldn't add work type", description: e?.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setAddingWorkType(false);
+      qc.invalidateQueries(["work_types"]);
+    }
   };
 
   const seedDefaults = async () => {
@@ -48,9 +66,11 @@ export default function AccessSettings() {
     const existing = new Set(workTypes.map((w) => w.name.toLowerCase()));
     const toAdd = DEFAULT_WORK_TYPES.filter((n) => !existing.has(n.toLowerCase()));
     try {
-      if (toAdd.length) await base44.entities.WorkType.bulkCreate(toAdd.map((name) => ({ name, active: true })));
+      if (toAdd.length) await base44.entities.WorkType.bulkCreate(toAdd.map((name) => withTenant({ name, active: true })));
       refresh();
-    } catch (e) { console.warn(e); }
+    } catch (e) {
+      toast({ title: "Couldn't add default work types", description: e?.message || "Please try again.", variant: "destructive" });
+    }
     finally { setAddingDefaults(false); }
   };
 
@@ -58,7 +78,9 @@ export default function AccessSettings() {
     try { await base44.entities.Destination.delete(id); refresh(); } catch (e) { console.warn(e); }
   };
   const deleteWorkType = async (id) => {
-    try { await base44.entities.WorkType.delete(id); refresh(); } catch (e) { console.warn(e); }
+    try { await base44.entities.WorkType.delete(id); refresh(); } catch (e) {
+      toast({ title: "Couldn't delete work type", description: e?.message || "Please try again.", variant: "destructive" });
+    }
   };
 
   return (
@@ -134,10 +156,11 @@ export default function AccessSettings() {
               value={newWorkType}
               onChange={(e) => setNewWorkType(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addWorkType()}
+              disabled={addingWorkType}
               className="bg-slate-900 border-slate-700 text-white"
             />
-            <Button onClick={addWorkType} className="bg-amber-500 hover:bg-amber-600 shrink-0">
-              <Plus className="w-4 h-4 mr-1" /> Add
+            <Button onClick={addWorkType} disabled={addingWorkType || !newWorkType.trim()} className="bg-amber-500 hover:bg-amber-600 shrink-0">
+              <Plus className="w-4 h-4 mr-1" /> {addingWorkType ? "Adding…" : "Add"}
             </Button>
           </div>
           {workTypes.length === 0 && (
