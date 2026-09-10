@@ -26,43 +26,175 @@ import {
  * Google Play account-deletion capability is preserved: every user can request
  * removal of their account in-app; final removal is completed through this
  * authorised organisation-management process.
+ *
+ * PUBLIC actions (Google Play external account-deletion resource — these run
+ * WITHOUT an authenticated caller, for users who can no longer access the
+ * installed app; identity is verified by a single-use emailed link before
+ * anything is bound to an account):
+ *   publicInitiateRemoval — emails a one-time verification link to the
+ *                           account address (anti-enumeration: the response
+ *                           is identical whether or not the email is known)
+ *   publicConfirmRemoval — consumes the single-use link token and creates
+ *                           the SAME AccountDeletionRequest through the SAME
+ *                           central gateway (approval hierarchy applies)
  */
+
+const PUBLIC_APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
+const VERIFICATION_TTL_MINUTES = 30;
+const RESEND_THROTTLE_MINUTES = 2;
+
+async function sha256Hex(value) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* THE ONE removal-request record creator — shared by the in-app self-service
+ * action and the verified public web action, so both flows produce identical
+ * AccountDeletionRequest records through the same central gateway. */
+async function createRemovalRequest(svc, target, reason) {
+  const existing = await svc.entities.AccountDeletionRequest
+    .filter({ user_id: target.id, status: 'pending' }).catch(() => []);
+  if ((existing || []).length) {
+    return { request: existing[0], alreadyPending: true };
+  }
+  const deps = await collectDependencies(svc, target);
+  const request = await svc.entities.AccountDeletionRequest.create({
+    user_id: target.id,
+    user_email: target.email,
+    user_name: target.display_name || target.full_name || target.email,
+    user_role: target.role_type || target.role || null,
+    customer_id: target.customer_id || null,
+    reseller_id: target.reseller_id || null,
+    organisation_name: await resolveOrganisationName(svc, target),
+    requested_at: new Date().toISOString(),
+    requested_by: target.id,
+    reason: (reason || '').toString().trim().slice(0, 500) || null,
+    status: 'pending',
+    dependency_summary: deps.summary,
+  });
+  return { request, alreadyPending: false };
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
-    const caller = await base44.auth.me();
-    if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-
     const body = await req.json().catch(() => ({})) || {};
     const action = body.action;
     const svc = base44.asServiceRole;
 
+    /* ── PUBLIC (unauthenticated) — external account-deletion resource ───── */
+    if (action === 'publicInitiateRemoval') {
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return Response.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+      }
+      // Anti-enumeration: the response is identical whether or not the email
+      // belongs to a registered USS account.
+      const rows = await svc.entities.User.filter({ email }).catch(() => []);
+      const target = (rows || [])[0];
+      if (target) {
+        // Throttle resend abuse: a link issued less than 2 minutes ago is not
+        // re-sent, but the response stays generic either way.
+        const existingTokens = await svc.entities.PublicRemovalVerification
+          .filter({ email, status: 'pending' }, '-created_date', 5).catch(() => []);
+        const recent = (existingTokens || []).find(v => v.expires_at &&
+          new Date(v.expires_at).getTime() - (VERIFICATION_TTL_MINUTES - RESEND_THROTTLE_MINUTES) * 60000 > Date.now());
+        if (!recent) {
+          // Supersede older pending links so only the newest one works.
+          await svc.entities.PublicRemovalVerification.updateMany(
+            { email, status: 'pending' }, { $set: { status: 'expired' } }
+          ).catch(() => {});
+          const token = randomToken();
+          const tokenHash = await sha256Hex(token);
+          await svc.entities.PublicRemovalVerification.create({
+            email,
+            user_id: target.id,
+            token_hash: tokenHash,
+            status: 'pending',
+            expires_at: new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60000).toISOString(),
+            user_agent: (req.headers.get('user-agent') || '').slice(0, 250) || null,
+          });
+          const verifyUrl = `${PUBLIC_APP_URL}/account-removal?token=${token}`;
+          await svc.integrations.Core.SendEmail({
+            to: email,
+            subject: 'Verify your account removal request — Unified Security Solutions',
+            html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+              <h2 style="color:#0f172a;margin:0 0 16px">Unified Security Solutions</h2>
+              <p style="color:#334155">A request to remove your USS user account and personal information was initiated from our public account-removal page.</p>
+              <p style="color:#334155"><b>This link is single-use and expires in 30 minutes.</b> If you did not request this, you can safely ignore this email — no request is created until you open the link and confirm.</p>
+              <p style="margin:32px 0">
+                <a href="${verifyUrl}" style="background:#b45309;color:#ffffff;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">Verify and continue</a>
+              </p>
+              <p style="color:#64748b;font-size:12px">If the button does not work, copy this link into your browser:<br>${verifyUrl}</p>
+              <p style="color:#64748b;font-size:12px">Account removal is never instant: your organisation's authorised administrator reviews every request. Security and audit records may be retained where required by law.</p>
+            </div>`,
+            text: `Unified Security Solutions — verify your account removal request. Open this single-use link within 30 minutes: ${verifyUrl}. If you did not request this, ignore this email.`,
+          }).catch(() => {});
+        }
+      }
+      return Response.json({
+        success: true,
+        message: 'If this email address belongs to a registered Unified Security Solutions account, a verification link has been sent. Please check your inbox (and spam folder).',
+      });
+    }
+
+    if (action === 'publicConfirmRemoval') {
+      const token = String(body.token || '').trim();
+      if (!token) {
+        return Response.json({ error: 'This verification link is invalid or has expired. Please start again.' }, { status: 400 });
+      }
+      const tokenHash = await sha256Hex(token);
+      const rows = await svc.entities.PublicRemovalVerification
+        .filter({ token_hash: tokenHash, status: 'pending' }).catch(() => []);
+      const verification = (rows || [])[0];
+      if (!verification || !verification.expires_at || new Date(verification.expires_at).getTime() < Date.now()) {
+        return Response.json({ error: 'This verification link is invalid or has expired. Please start again.' }, { status: 400 });
+      }
+      // Single-use: consume BEFORE creating anything so the link can never be replayed.
+      await svc.entities.PublicRemovalVerification.update(verification.id, {
+        status: 'consumed',
+        consumed_at: new Date().toISOString(),
+      }).catch(() => {});
+
+      const userRows = await svc.entities.User.filter({ id: verification.user_id }).catch(() => []);
+      const target = (userRows || [])[0];
+      if (!target) {
+        return Response.json({ error: 'This account no longer exists. No further action is required.' }, { status: 404 });
+      }
+
+      const { request, alreadyPending } = await createRemovalRequest(svc, target, body.reason);
+      if (!alreadyPending) {
+        const approvers = await resolveApprovers(svc, target);
+        await notifyUsers(svc, approvers,
+          'Account removal request',
+          `${target.display_name || target.full_name || target.email} requested removal of their user account and personal information (verified via the public web form). Review it under Account Removal Requests.`,
+          '/UserManagement');
+        await auditAccountEvent(svc, 'account.deletion_requested', target, target,
+          'Self-service account removal requested via the public web form with verified email ownership (pending administrator review). The request itself does not change the account.');
+      }
+      return Response.json({ success: true, request, alreadyPending: !!alreadyPending });
+    }
+
+    /* ── AUTHENTICATED ACTIONS (unchanged central gateway) ────────────────── */
+    const caller = await base44.auth.me();
+    if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
     /* ── SELF-SERVICE REQUEST (Google Play account-deletion capability) ─── */
     if (action === 'requestAccountRemoval') {
       const target = caller;
-      const existing = await svc.entities.AccountDeletionRequest
-        .filter({ user_id: target.id, status: 'pending' }).catch(() => []);
-      if ((existing || []).length) {
+      const { request, alreadyPending } = await createRemovalRequest(svc, target, body.reason);
+      if (alreadyPending) {
         return Response.json({
           error: 'You already have an account removal request pending review.',
-          request: existing[0],
+          request,
         }, { status: 409 });
       }
-      const deps = await collectDependencies(svc, target);
-      const request = await svc.entities.AccountDeletionRequest.create({
-        user_id: target.id,
-        user_email: target.email,
-        user_name: target.display_name || target.full_name || target.email,
-        user_role: target.role_type || target.role || null,
-        customer_id: target.customer_id || null,
-        reseller_id: target.reseller_id || null,
-        organisation_name: await resolveOrganisationName(svc, target),
-        requested_at: new Date().toISOString(),
-        requested_by: target.id,
-        reason: (body.reason || '').toString().trim().slice(0, 500) || null,
-        status: 'pending',
-        dependency_summary: deps.summary,
-      });
       const approvers = await resolveApprovers(svc, target);
       await notifyUsers(svc, approvers,
         'Account removal request',
@@ -290,7 +422,7 @@ export default async function(req: Request): Promise<Response> {
     }
 
     return Response.json({
-      error: 'Invalid action. Supported: requestAccountRemoval, myRequest, cancelAccountRemovalRequest, listRequests, approveAccountRemoval, rejectAccountRemoval, suspendUser, deactivateUser, reactivateUser, removeUserAccount',
+      error: 'Invalid action. Supported: publicInitiateRemoval, publicConfirmRemoval, requestAccountRemoval, myRequest, cancelAccountRemovalRequest, listRequests, approveAccountRemoval, rejectAccountRemoval, suspendUser, deactivateUser, reactivateUser, removeUserAccount',
     }, { status: 400 });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

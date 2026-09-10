@@ -49,6 +49,7 @@ import TestDataCleanup from './pages/TestDataCleanup';
 import ProtectedPage from '@/components/ProtectedPage';
 import RoleHomeRedirect from '@/components/RoleHomeRedirect';
 import PreLoginBrandShell from '@/components/branding/PreLoginBrandShell';
+import PublicAccountRemoval from './pages/PublicAccountRemoval';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -60,6 +61,14 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 
 const AuthenticatedApp = () => {
   const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin } = useAuth();
+
+  // PUBLIC ROUTE — external account-removal request resource (Google Play
+  // Data Safety → Account Deletion URL). Rendered OUTSIDE the authenticated
+  // app: no login, no layout, no auth redirect. Identity is verified by a
+  // single-use emailed link inside the accountLifecycle gateway.
+  if (window.location.pathname.startsWith('/account-removal')) {
+    return <PublicAccountRemoval />;
+  }
 
   // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {

@@ -1,0 +1,114 @@
+{
+  "name": "PublicRemovalVerification",
+  "type": "object",
+  "description": "SHARED PLATFORM SERVICE \u2014 single-use email-verification tokens for the PUBLIC account-removal request page (Google Play external account-deletion resource). A token binds a public removal request to an account ONLY after the account owner opens the single-use link emailed to the address on file \u2014 a requester who merely knows an email address can never create a bound request. Tokens are hashed at rest (SHA-256); the plaintext exists only inside the emailed link, which expires after 30 minutes and can be used once. Created and consumed EXCLUSIVELY by the accountLifecycle gateway (service role) \u2014 the same central lifecycle service as the in-app flow. NO client access: every RLS operation is restricted to USS Platform Administrators.",
+  "properties": {
+    "email": {
+      "type": "string",
+      "description": "Account email the verification link was sent to (normalised trim + lowercase)."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "USS User the token binds to \u2014 resolved server-side from the email lookup, never client-supplied."
+    },
+    "token_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the one-time plaintext token. Plaintext is never stored."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "consumed",
+        "expired"
+      ],
+      "default": "pending",
+      "description": "pending = link emailed and still usable. consumed = link used once (replays impossible). expired = superseded by a newer link or past expiry."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiry timestamp (30 minutes after issue)."
+    },
+    "consumed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp the single-use link was consumed (null while pending/expired)."
+    },
+    "user_agent": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Requesting user agent captured at initiation (abuse diagnostics only)."
+    }
+  },
+  "required": [
+    "email",
+    "user_id",
+    "token_hash",
+    "status",
+    "expires_at"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}
