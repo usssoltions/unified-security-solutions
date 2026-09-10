@@ -1,5 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { getAllowedRolesForModules } from '../../shared/tenantRoles.ts';
+import {
+  performAccountRemoval, applyDeactivation, findLastAdminViolation, collectDependencies,
+} from '../../shared/accountLifecycle.ts';
 
 /**
  * manageUser — Secure user management backend function.
@@ -162,17 +165,10 @@ export default async function(req: Request): Promise<Response> {
       }
 
       case 'deactivate': {
-        // Soft delete — set a flag that prevents login without destroying audit history
-        result = await base44.asServiceRole.entities.User.update(target_user_id, {
-          stay_awake_enabled: false,
-          is_clocked_in: false,
-          // Store deactivation marker — the auth layer should check this
-          custom_contacts: [...(targetUser.custom_contacts || []), {
-            name: '__DEACTIVATED__',
-            phone: new Date().toISOString(),
-            role: 'deactivated_by'
-          }]
-        });
+        // CENTRAL LIFECYCLE SERVICE — one deactivation implementation shared
+        // with the accountLifecycle gateway (login disabled, account/history
+        // retained). Never duplicated per module.
+        result = await applyDeactivation(base44.asServiceRole, targetUser);
         await auditLog('user.deactivated', 'deactivate', null, null,
           `User ${targetUser.email} deactivated by ${caller.display_name || caller.full_name}`);
         break;
@@ -229,14 +225,29 @@ export default async function(req: Request): Promise<Response> {
       }
 
       case 'delete': {
-        // Hard delete — platform admin only
+        // Hard delete — platform admin only, routed through the CENTRAL
+        // LIFECYCLE SERVICE: last-admin protection, operational dependency
+        // validation, safe resolutions (membership pulls, future schedule
+        // cancellation) and PII/channel cleanup — never a bare User.delete.
         if (caller.role !== 'admin' && caller.role_type !== 'platform_admin') {
           return Response.json({ error: 'Forbidden: only platform admin can permanently delete users' }, { status: 403 });
         }
-        await base44.asServiceRole.entities.User.delete(target_user_id);
+        const svc = base44.asServiceRole;
+        const lastAdminError = await findLastAdminViolation(svc, targetUser);
+        if (lastAdminError) {
+          return Response.json({ error: lastAdminError }, { status: 403 });
+        }
+        const deps = await collectDependencies(svc, targetUser);
+        if (deps.blockers.length) {
+          return Response.json({
+            error: 'This account has active operational dependencies that must be resolved first: ' + deps.blockers.join('; '),
+            blockers: deps.blockers,
+          }, { status: 409 });
+        }
+        await performAccountRemoval(svc, targetUser);
         result = { deleted: true };
         await auditLog('user.deleted', 'delete', null, null,
-          `User ${targetUser.email} permanently deleted by ${caller.display_name || caller.full_name}`);
+          `User ${targetUser.email} permanently deleted by ${caller.display_name || caller.full_name}. Operational and audit history preserved.`);
         break;
       }
 

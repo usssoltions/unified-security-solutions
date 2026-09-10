@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, User, Mail, Shield, Headphones, Phone, Globe } from "lucide-react";
+import { User, Mail, Shield, Headphones, Phone, Globe } from "lucide-react";
 import TelegramConnection from "@/components/telegram/TelegramConnection";
 import PushPermissionManager from "@/components/notifications/PushPermissionManager";
 import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
@@ -14,8 +14,7 @@ import { TELEGRAM_MODULE_KEYS } from "@/lib/moduleMapping";
 import { getRoleDisplay } from "@/lib/roleCatalog";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useBranding } from "@/hooks/useBranding";
-import { isPlatformAdminUser } from "@/lib/platformAdmin";
-import DeleteAccountSection from "@/components/account/DeleteAccountSection";
+import RequestAccountRemovalSection from "@/components/account/RequestAccountRemovalSection";
 
 const ROLE_LABELS = {
   admin: "Administrator",
@@ -39,7 +38,6 @@ export default function Profile() {
     queryFn: () => base44.auth.me(),
   });
   const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
-  const isPlatformAdmin = isPlatformAdminUser(user);
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
   // Telegram settings only appear where an enabled module genuinely uses
   // Telegram notifications (hidden for Attendance Register-only customers).
@@ -162,37 +160,9 @@ export default function Profile() {
           </Card>
         )}
 
-        {/* Account Deactivation Request */}
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-slate-400" />
-              Account Management
-            </CardTitle>
-            <CardDescription className="text-slate-400">
-              Request account deactivation or contact your administrator
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-slate-400 text-sm mb-4">
-              To deactivate or remove your account, please contact your organisation administrator. Account deactivation is managed securely through the User Management module to maintain audit integrity.
-            </p>
-            {branding?.support_email ? (
-              <a href={`mailto:${branding.support_email}`} className="text-sky-400 text-sm hover:underline">
-                Contact {branding.support_name || "support"}
-              </a>
-            ) : isPlatformAdmin ? (
-              <a href="mailto:support@base44.com" className="text-sky-400 text-sm hover:underline">
-                Contact support
-              </a>
-            ) : (
-              <span className="text-slate-500 text-sm">Contact your organisation administrator.</span>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Google Play compliant self-service account deletion (authenticated user only) */}
-        <DeleteAccountSection user={user} />
+        {/* Google Play compliant account removal REQUEST workflow —
+            organisation-managed lifecycle (never instant self-deletion) */}
+        <RequestAccountRemovalSection user={user} />
       </div>
     </div>
   );

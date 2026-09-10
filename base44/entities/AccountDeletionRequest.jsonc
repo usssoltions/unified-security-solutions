@@ -1,0 +1,190 @@
+{
+  "name": "AccountDeletionRequest",
+  "type": "object",
+  "description": "SHARED PLATFORM SERVICE \u2014 organisation-managed account lifecycle. One record = one self-service ACCOUNT REMOVAL REQUEST created by the authenticated user in-app (Google Play account-deletion capability). The request itself NEVER destroys anything: final removal is performed ONLY by an authorised administrator through the accountLifecycle gateway (approveAccountRemoval), which enforces the approval hierarchy, last-admin protection, operational dependency validation, safe resolutions and audit. Applies to ALL roles (guards, operators, staff, customer/reseller/platform administrators) and every current or future module \u2014 no module may implement its own deletion path. TENANT ACCESS PATTERN: tenant reads go through the accountLifecycle backend function (server-side tenant resolution, fails closed 403 on cross-tenant attempts); direct client access below is limited to the requesting user reading/cancelling their OWN request plus platform administration.",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User ID of the account the removal request is about (always the requester \u2014 self-service only)."
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Snapshot of the requester email (display + invitation cleanup reference)."
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Snapshot of the requester display name at request time."
+    },
+    "user_role": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the requester role at request time."
+    },
+    "customer_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Tenant/customer scope resolved server-side from the requester's User record."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "organisation_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the customer/reseller organisation name at request time (admin review display)."
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "requested_by": {
+      "type": "string",
+      "description": "User ID who submitted the request (same as user_id for self-service)."
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional reason provided by the requester. No unnecessary sensitive information is stored."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "cancelled",
+        "completed"
+      ],
+      "default": "pending",
+      "description": "pending = awaiting review by the authorised administrator. approved/completed = removal performed (completed set when the account removal finished). rejected = refused by the reviewer. cancelled = withdrawn by the requester."
+    },
+    "dependency_summary": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Server-computed summary of the requester's operational dependencies at request time (active shifts, tasks, panics, memberships). Recomputed authoritatively at approval."
+    },
+    "reviewed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "reviewed_by": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "User ID of the administrator who reviewed the request."
+    },
+    "reviewed_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Reviewer note (rejection reason / approval note)."
+    },
+    "completed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Timestamp the account removal was completed."
+    }
+  },
+  "required": [
+    "user_id",
+    "requested_at",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

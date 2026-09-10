@@ -11,6 +11,7 @@ import PullToRefresh from "@/components/PullToRefresh";
 import UserForm from "../components/users/UserForm";
 import UserCard from "../components/users/UserCard";
 import TenantUserInviteForm from "@/components/users/TenantUserInviteForm";
+import AccountRemovalRequestsPanel from "@/components/account/AccountRemovalRequestsPanel";
 import { getTenantUserManagementRoles, isAttendanceOnlyCustomer, ROLE_DESCRIPTIONS, getRoleDisplay } from "@/lib/roleCatalog";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
@@ -248,6 +249,11 @@ export default function UserManagement() {
             </TabsContent>
           ))}
         </Tabs>
+
+        {/* Account Removal Requests — server-scoped review area
+            (customer admins: own customer; reseller admins: own scope;
+            platform admins: oversight) */}
+        <AccountRemovalRequestsPanel />
 
         {showUserForm && editingUser && (
           <UserForm

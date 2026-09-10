@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, UserPlus, Mail, Phone, ShieldCheck } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import ResellerAdminInvite from "@/components/reseller/ResellerAdminInvite";
+import AccountRemovalRequestsPanel from "@/components/account/AccountRemovalRequestsPanel";
 
 const ROLE_LABEL = {
   reseller_admin: "Reseller Administrator", customer_admin: "Customer Administrator", admin: "Operations Administrator",
@@ -27,7 +28,8 @@ export default function ResellerUsers({ resellerId, resellerName, users, onRefre
     if (!window.confirm(`Deactivate ${u.email}? They will lose access.`)) return;
     setBusy(u.id);
     try {
-      const res = await base44.functions.invoke("manageUser", { action: "deactivate", target_user_id: u.id });
+      // CENTRAL LIFECYCLE GATEWAY — one server-side deactivation path
+      const res = await base44.functions.invoke("accountLifecycle", { action: "deactivateUser", target_user_id: u.id });
       const d = res?.data || res;
       if (!d?.success && d?.error) throw new Error(d.error);
       toast({ title: "User deactivated" });
@@ -80,6 +82,9 @@ export default function ResellerUsers({ resellerId, resellerName, users, onRefre
           resellerId={resellerId} resellerName={resellerName}
           customers={[]} allowResellerAdmin={canCreateResellerAdmin} />
       )}
+
+      {/* Account Removal Requests — server-scoped review area */}
+      <AccountRemovalRequestsPanel />
     </div>
   );
 }
