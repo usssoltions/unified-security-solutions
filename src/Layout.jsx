@@ -33,6 +33,8 @@ import BrandLogo from "@/components/branding/BrandLogo";
 import PreLoginBrandShell from "@/components/branding/PreLoginBrandShell";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { getNavItems } from "@/lib/routeRegistry";
+import PageTransition from "@/components/PageTransition";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 
 const TabStateContext = React.createContext({ tabStates: {}, updateTabState: () => {}, navigateToTab: () => {} });
@@ -51,6 +53,7 @@ export default function Layout({ children, currentPageName }) {
 
   const location = useLocation();
   const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -546,7 +549,7 @@ export default function Layout({ children, currentPageName }) {
 
               <main className="flex-1 min-h-screen w-full max-w-full overflow-x-hidden">
                 <div className="pb-24 md:pb-6 w-full max-w-full">
-                  {children}
+                  <PageTransition routeKey={location.pathname}>{children}</PageTransition>
                 </div>
               </main>
             </div>
@@ -556,10 +559,17 @@ export default function Layout({ children, currentPageName }) {
             )}
 
             {/* Mobile Drawer */}
-            {mobileMenuOpen && (
+            <AnimatePresence>
+              {mobileMenuOpen && (
               <div className="fixed inset-0 z-50 lg:hidden">
                 <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
-                <div className="absolute top-0 left-0 bottom-0 w-72 bg-slate-900 border-r border-slate-700 flex flex-col">
+                <motion.div
+                  className="absolute top-0 left-0 bottom-0 w-72 bg-slate-900 border-r border-slate-700 flex flex-col"
+                  initial={reduceMotion ? false : { x: "-100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: reduceMotion ? 0 : "-100%" }}
+                  transition={{ duration: 0.22, ease: "easeOut" }}
+                >
                   <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})` }}>
@@ -597,9 +607,10 @@ export default function Layout({ children, currentPageName }) {
                       Sign Out
                     </button>
                   </div>
-                </div>
+                </motion.div>
               </div>
-            )}
+              )}
+            </AnimatePresence>
 
             {/* Mobile Bottom Navigation */}
             {mobileNavItems.length > 0 && (

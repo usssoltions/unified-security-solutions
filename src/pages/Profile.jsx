@@ -15,6 +15,7 @@ import { getRoleDisplay } from "@/lib/roleCatalog";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useBranding } from "@/hooks/useBranding";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
+import DeleteAccountSection from "@/components/account/DeleteAccountSection";
 
 const ROLE_LABELS = {
   admin: "Administrator",
@@ -189,6 +190,9 @@ export default function Profile() {
             )}
           </CardContent>
         </Card>
+
+        {/* Google Play compliant self-service account deletion (authenticated user only) */}
+        <DeleteAccountSection user={user} />
       </div>
     </div>
   );

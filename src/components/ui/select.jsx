@@ -13,8 +13,11 @@ import { cn } from "@/lib/utils"
  *    `position="popper"` (never a detached bottom sheet / drawer).
  *  - Radix collision detection automatically flips the menu above the field
  *    when there is not enough room below, and keeps it inside the viewport.
- *  - Long lists scroll vertically inside the menu (max-h-96 + Viewport
- *    scroll buttons). Menu width follows the trigger (min trigger width).
+ *  - Long lists scroll vertically inside the menu (height capped at the
+ *    space ACTUALLY available in the viewport via the Radix available-height
+ *    variable, so a dropdown near the bottom of a small screen never renders
+ *    off-screen or under the bottom navigation; collision padding keeps a
+ *    margin from the viewport edges). Menu width follows the trigger.
  *  - High z-index keeps it above dialogs/modals (menus render inside them).
  *  - Items keep a 44px touch target (min-h-11) so it stays finger-friendly
  *    on Android Chrome / WebView without the mobile bottom-sheet pattern.
@@ -62,12 +65,13 @@ const SelectScrollDownButton = React.forwardRef(({ className, ...props }, ref) =
 ))
 SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayName
 
-const SelectContent = React.forwardRef(({ className, children, position = "popper", ...props }, ref) => (
+const SelectContent = React.forwardRef(({ className, children, position = "popper", collisionPadding = 8, ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
+      collisionPadding={collisionPadding}
       className={cn(
-        "z-[9999] max-h-96 min-w-[8rem] overflow-hidden rounded-md border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl",
+        "z-[9999] max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-y-auto rounded-md border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -81,7 +85,7 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
       <SelectScrollUpButton />
       <SelectPrimitive.Viewport
         className={cn("p-1", position === "popper" &&
-          "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]")}>
+          "w-full min-w-[var(--radix-select-trigger-width)]")}>
         {children}
       </SelectPrimitive.Viewport>
       <SelectScrollDownButton />

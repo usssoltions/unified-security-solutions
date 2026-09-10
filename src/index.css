@@ -220,3 +220,25 @@ summary {
   outline: 2px solid var(--brand-focus);
   outline-offset: 2px;
 }
+
+/* ── Store readiness: accessibility & touch targets ─────────────────────────
+   1. prefers-reduced-motion is honoured globally: all animations and
+      transitions collapse to (near) instant and looping animations run once
+      (complements PageTransition, which disables its own motion natively).
+   2. Coarse pointers (phones/tablets): dropdown-menu items get a real 44px
+      touch target (Select items already carry min-h-11; buttons already get
+      the enlarged invisible hit area above). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (pointer: coarse) {
+  [role="menuitem"] {
+    min-height: 44px;
+  }
+}
