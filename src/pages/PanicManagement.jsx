@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertTriangle, MapPin, CheckCircle2, UserCheck,
   Loader2, Users, Zap
@@ -209,18 +210,22 @@ function PanicCard({ panic, user, assignees, onAction, resellerName, customerNam
         {showAssign && (
           <div className="bg-slate-900/50 rounded-lg p-3 space-y-2">
             <p className="text-slate-400 text-xs font-semibold">Select Responder</p>
-            <select
-              value={selectedAssignee}
-              onChange={(e) => setSelectedAssignee(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-sm"
+            <Select
+              value={selectedAssignee || "__none__"}
+              onValueChange={(v) => setSelectedAssignee(v === "__none__" ? "" : v)}
             >
-              <option value="">Choose a responder...</option>
-              {assignees.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.display_name || a.full_name} ({a.role_type})
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white text-sm h-10">
+                <SelectValue placeholder="Choose a responder..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="text-slate-500 italic">Choose a responder...</SelectItem>
+                {assignees.map(a => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.display_name || a.full_name} ({a.role_type})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button size="sm" onClick={handleAssign} disabled={!selectedAssignee || acting} className="w-full bg-sky-600 hover:bg-sky-700">
               {acting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               Confirm Assignment

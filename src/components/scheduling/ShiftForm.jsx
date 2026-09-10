@@ -91,6 +91,12 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
           });
           return [...optimisticShifts, ...old];
         });
+      } else {
+        // OPTIMISTIC UPDATE — the edited shift reflects the intended change in
+        // the list immediately; the server stays authoritative and onError
+        // restores the previous list if the save fails.
+        queryClient.setQueryData(['shifts'], (old = []) =>
+          old.map(s => (s.id === shift.id ? { ...s, ...newShift } : s)));
       }
 
       return { previousShifts };

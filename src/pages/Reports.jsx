@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle,
@@ -307,17 +308,21 @@ export default function Reports() {
           <CardContent className="p-6 space-y-4">
             <div>
               <label className="text-sm text-slate-300 block mb-2">New Status</label>
-              <select
+              <Select
                 value={newStatus}
-                onChange={(e) => setNewStatus(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2.5"
+                onValueChange={setNewStatus}
               >
-                {statuses.map(status => (
-                  <option key={status} value={status}>
-                    {status.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {statuses.map(status => (
+                    <SelectItem key={status} value={status}>
+                      {status.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-sm text-slate-300 block mb-2">Notes</label>
@@ -496,12 +501,17 @@ export default function Reports() {
               className="pl-10 bg-slate-800/50 border-slate-700 text-white"
             />
           </div>
-          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-slate-800/50 border border-slate-700 text-white rounded-md px-4 py-2">
-            <option value="all">All Time</option>
-            <option value="today">Today</option>
-            <option value="week">Last 7 Days</option>
-            <option value="month">Last 30 Days</option>
-          </select>
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="w-[130px] bg-slate-800/50 border-slate-700 text-white h-10 px-4">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="week">Last 7 Days</SelectItem>
+              <SelectItem value="month">Last 30 Days</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Tabs defaultValue="all">

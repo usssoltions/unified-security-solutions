@@ -70,9 +70,25 @@ export default function MedicalPatients() {
 
   const handleSave = async () => {
     if (!formData.first_names || !formData.surname) return;
+    if (saving) return; // duplicate-submit prevention
     setSaving(true);
+    // OPTIMISTIC UI: the new patient appears in the list immediately while
+    // the server mutation runs. The server stays authoritative — on success
+    // the list is reconciled from the server response; on failure the
+    // optimistic entry is rolled back, a clear error is shown and the form
+    // is preserved for retry.
+    const employer = employers.find(e => e.id === formData.employer_id);
+    const optimisticId = `temp-${Date.now()}`;
+    const optimisticPatient = {
+      id: optimisticId,
+      ...formData,
+      customer_id: user?.customer_id,
+      employer_name: employer?.company_name || "",
+      identity_verification_status: "pending",
+      status: "active",
+    };
+    setPatients(prev => [optimisticPatient, ...prev]);
     try {
-      const employer = employers.find(e => e.id === formData.employer_id);
       await base44.entities.Patient.create({
         ...formData,
         customer_id: user.customer_id,
@@ -88,6 +104,8 @@ export default function MedicalPatients() {
       });
       await loadData();
     } catch (e) {
+      // Rollback the optimistic entry; the form stays intact for retry.
+      setPatients(prev => prev.filter(p => p.id !== optimisticId));
       console.error("Failed to create patient:", e);
       alert("Failed to create patient: " + e.message);
     } finally {

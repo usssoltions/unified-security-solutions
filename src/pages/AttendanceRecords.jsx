@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X, Trash2
@@ -221,19 +222,27 @@ export default function AttendanceRecords() {
           </div>
           <div>
             <label className="text-slate-400 text-xs mb-1 block">Medical Centre</label>
-            <select value={filterMedical} onChange={e => setFilterMedical(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-2 py-1.5 text-sm">
-              <option value="">All</option>
-              {dropdowns.medicalCentres.map(mc => <option key={mc} value={mc}>{mc}</option>)}
-            </select>
+            <Select value={filterMedical || "__all__"} onValueChange={v => setFilterMedical(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All</SelectItem>
+                {dropdowns.medicalCentres.map(mc => <SelectItem key={mc} value={mc}>{mc}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="col-span-2">
             <label className="text-slate-400 text-xs mb-1 block">Assessment Type</label>
-            <select value={filterAssessment} onChange={e => setFilterAssessment(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-2 py-1.5 text-sm">
-              <option value="">All</option>
-              {dropdowns.assessmentTypes.map(at => <option key={at} value={at}>{at}</option>)}
-            </select>
+            <Select value={filterAssessment || "__all__"} onValueChange={v => setFilterAssessment(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All</SelectItem>
+                {dropdowns.assessmentTypes.map(at => <SelectItem key={at} value={at}>{at}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       )}

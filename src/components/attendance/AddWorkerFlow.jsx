@@ -17,6 +17,7 @@ import React, { useState } from "react";
 import { attendanceCall } from "@/lib/attendanceApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ScanLine, CheckCircle2, ChevronLeft, ChevronRight, AlertCircle,
   Loader2, Eye
@@ -226,13 +227,17 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
             </div>
             <div>
               <label className="text-slate-400 text-xs mb-1 block">Document Type</label>
-              <select value={idType} onChange={e => setIdType(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm">
-                <option value="sa_id">SA ID</option>
-                <option value="drivers_licence">Driver's Licence</option>
-                <option value="passport">Passport</option>
-                <option value="other">Other</option>
-              </select>
+              <Select value={idType} onValueChange={setIdType}>
+                <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sa_id">SA ID</SelectItem>
+                  <SelectItem value="drivers_licence">Driver's Licence</SelectItem>
+                  <SelectItem value="passport">Passport</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>

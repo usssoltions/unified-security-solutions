@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -240,16 +241,20 @@ export default function ShiftHandover() {
                 className="bg-slate-900 border-slate-700 text-white text-sm"
               />
               <div className="flex gap-2">
-                <select
+                <Select
                   value={newIssue.urgency}
-                  onChange={(e) => setNewIssue({ ...newIssue, urgency: e.target.value })}
-                  className="flex-1 bg-slate-900 border border-slate-700 text-white rounded-md p-2 text-sm"
+                  onValueChange={(v) => setNewIssue({ ...newIssue, urgency: v })}
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
-                </select>
+                  <SelectTrigger className="flex-1 bg-slate-900 border-slate-700 text-white text-sm h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   size="sm"
                   onClick={() => {

@@ -24,7 +24,7 @@ L.Icon.Default.mergeOptions({
 
 const getComputedColor = (colorVar, fallback) => {
   if (typeof window === 'undefined') return fallback;
-  const rgb = getComputedStyle(document.documentElement).getPropertyValue(colorVar);
+  const rgb = window.getComputedStyle(document.documentElement).getPropertyValue(colorVar);
   return rgb ? `rgb(${rgb})` : fallback;
 };
 
@@ -563,12 +563,15 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                     No active guards available
                   </div>
                 ) : (
-                  <select
-                    value={formData.assigned_to}
-                    onChange={(e) => setFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
-                    className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2"
+                  <Select
+                    value={formData.assigned_to || "__none__"}
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, assigned_to: v === "__none__" ? "" : v }))}
                   >
-                    <option value="">Select guard...</option>
+                    <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-10">
+                      <SelectValue placeholder="Select guard..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="__none__" className="text-slate-500 italic">Select guard...</SelectItem>
                     {activeGuards.map((guard) => {
                       const dist = formData.location?.lat && guard.guard_location?.lat 
                         ? calculateDistance(
@@ -580,13 +583,14 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
                         : null;
                       
                       return (
-                        <option key={guard.guard_id} value={guard.guard_id}>
+                        <SelectItem key={guard.guard_id} value={guard.guard_id}>
                           {guard.guard_full_name} - {guard.site_name}
                           {dist !== null && dist > 0 ? ` (${dist.toFixed(1)}km away)` : ''}
-                        </option>
+                        </SelectItem>
                       );
                     })}
-                  </select>
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             </div>

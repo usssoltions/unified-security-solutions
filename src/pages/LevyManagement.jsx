@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditCard, Plus, Search, AlertTriangle, CheckCircle2, X } from "lucide-react";
@@ -110,16 +111,19 @@ export default function LevyManagement() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <select
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded-md p-2.5"
-                onChange={e => {
-                  const r = residents.find(r => r.id === e.target.value);
+              <Select
+                onValueChange={v => {
+                  const r = residents.find(r => r.id === v);
                   if (r) setNewForm({ ...newForm, resident_id: r.id, resident_name: r.full_name, unit_number: r.unit_number });
                 }}
               >
-                <option value="">Select resident...</option>
-                {residents.map(r => <option key={r.id} value={r.id}>{r.full_name} – Unit {r.unit_number}</option>)}
-              </select>
+                <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-11">
+                  <SelectValue placeholder="Select resident..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {residents.map(r => <SelectItem key={r.id} value={r.id}>{r.full_name} – Unit {r.unit_number}</SelectItem>)}
+                </SelectContent>
+              </Select>
               <Input placeholder="Unit number" value={newForm.unit_number} onChange={e => setNewForm({ ...newForm, unit_number: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Input type="number" placeholder="Monthly levy (R)" value={newForm.monthly_levy} onChange={e => setNewForm({ ...newForm, monthly_levy: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Button className="w-full bg-emerald-600" onClick={() => createAccountMutation.mutate(newForm)} disabled={!newForm.unit_number || !newForm.monthly_levy}>Create Account</Button>

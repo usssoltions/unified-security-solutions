@@ -17,6 +17,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Zap, RefreshCw, AlertCircle, Loader2, ScanLine } from "lucide-react";
 import * as scanner from "@/lib/documentScannerService";
 import DocumentScanReview from "@/components/documents/DocumentScanReview";
@@ -323,12 +324,17 @@ export default function DocumentScanner({
       {status !== "result" && (
         <div className="shrink-0 p-3 flex items-center gap-2" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
           {showCameraPicker && (
-            <select value={selectedCamera || ""} onChange={(e) => handleCameraChange(e.target.value)}
-              className="flex-1 bg-slate-800 text-slate-200 text-xs rounded-lg px-3 py-2.5 border border-slate-700">
-              {cameras.map((c) => (
-                <option key={c.id || c.deviceId} value={c.id || c.deviceId}>{c.label || "Camera"}</option>
-              ))}
-            </select>
+            <Select value={selectedCamera || "__none__"} onValueChange={(v) => { if (v !== "__none__") handleCameraChange(v); }}>
+              <SelectTrigger className="flex-1 bg-slate-800 border-slate-700 text-slate-200 text-xs h-11 px-3">
+                <SelectValue placeholder="Select camera…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="text-slate-500 italic">Select camera…</SelectItem>
+                {cameras.map((c) => (
+                  <SelectItem key={c.id || c.deviceId} value={c.id || c.deviceId}>{c.label || "Camera"}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           <button onClick={handleFlashToggle}
             className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${flashOn ? "bg-amber-500 text-white" : "bg-slate-800 text-slate-300"}`}

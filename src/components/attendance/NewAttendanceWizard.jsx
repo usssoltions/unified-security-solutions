@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { attendanceCall } from "@/lib/attendanceApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   ScanLine, User, FileText, ClipboardList, PenTool, CheckCircle2,
@@ -328,13 +329,17 @@ export default function NewAttendanceWizard({
             </div>
             <div>
               <label className="text-slate-400 text-xs mb-1 block">Document Type</label>
-              <select value={idType} onChange={e => setIdType(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm">
-                <option value="sa_id">SA ID</option>
-                <option value="drivers_licence">Driver's Licence</option>
-                <option value="passport">Passport</option>
-                <option value="other">Other</option>
-              </select>
+              <Select value={idType} onValueChange={setIdType}>
+                <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sa_id">SA ID</SelectItem>
+                  <SelectItem value="drivers_licence">Driver's Licence</SelectItem>
+                  <SelectItem value="passport">Passport</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>
@@ -416,19 +421,27 @@ export default function NewAttendanceWizard({
           <h2 className="text-white text-xl font-bold">Attendance Details</h2>
           <div>
             <label className="text-slate-400 text-xs mb-1 block">Medical Centre *</label>
-            <select value={medicalCentre} onChange={e => setMedicalCentre(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-3 text-sm">
-              <option value="">Select Medical Centre…</option>
-              {medicalCentres.map(mc => <option key={mc} value={mc}>{mc}</option>)}
-            </select>
+            <Select value={medicalCentre || "__none__"} onValueChange={v => setMedicalCentre(v === "__none__" ? "" : v)}>
+              <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-12">
+                <SelectValue placeholder="Select Medical Centre…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="text-slate-500 italic">Select Medical Centre…</SelectItem>
+                {medicalCentres.map(mc => <SelectItem key={mc} value={mc}>{mc}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-slate-400 text-xs mb-1 block">Assessment Type *</label>
-            <select value={assessmentType} onChange={e => setAssessmentType(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-3 text-sm">
-              <option value="">Select Assessment Type…</option>
-              {assessmentTypes.map(at => <option key={at} value={at}>{at}</option>)}
-            </select>
+            <Select value={assessmentType || "__none__"} onValueChange={v => setAssessmentType(v === "__none__" ? "" : v)}>
+              <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-12">
+                <SelectValue placeholder="Select Assessment Type…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="text-slate-500 italic">Select Assessment Type…</SelectItem>
+                {assessmentTypes.map(at => <SelectItem key={at} value={at}>{at}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-slate-400 text-xs mb-1 block">Additional Information</label>
