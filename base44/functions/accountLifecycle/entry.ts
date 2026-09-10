@@ -34,9 +34,17 @@ import {
  *   publicInitiateRemoval — emails a one-time verification link to the
  *                           account address (anti-enumeration: the response
  *                           is identical whether or not the email is known)
- *   publicConfirmRemoval — consumes the single-use link token and creates
- *                           the SAME AccountDeletionRequest through the SAME
- *                           central gateway (approval hierarchy applies)
+ *   publicVerifyRemovalToken — validates the single-use link token (expiry,
+ *                           not consumed/revoked) and establishes the
+ *                           verified account context ONLY. Opening the
+ *                           emailed link can NEVER create a removal request:
+ *                           email security scanners, accidental opens and
+ *                           forwarded links are completely inert.
+ *   publicConfirmRemoval — explicit deliberate confirmation: consumes the
+ *                           single-use token (replay impossible) and only
+ *                           then creates the SAME AccountDeletionRequest
+ *                           through the SAME central gateway (approval
+ *                           hierarchy applies)
  */
 
 const PUBLIC_APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
@@ -142,6 +150,37 @@ export default async function(req: Request): Promise<Response> {
         success: true,
         message: 'If this email address belongs to a registered Unified Security Solutions account, a verification link has been sent. Please check your inbox (and spam folder).',
       });
+    }
+
+    /* Verify the emailed link WITHOUT consuming it and WITHOUT creating
+     * anything — opening the link only establishes the verified account
+     * context shown on the confirmation page. Email-security scanners,
+     * accidental opens and forwarded links therefore stay inert: the
+     * AccountDeletionRequest is created ONLY by the explicit deliberate
+     * publicConfirmRemoval action. */
+    if (action === 'publicVerifyRemovalToken') {
+      const token = String(body.token || '').trim();
+      const invalid = () => Response.json(
+        { error: 'This verification link is invalid or has expired. Please start again.' },
+        { status: 400 });
+      if (!token) return invalid();
+      const tokenHash = await sha256Hex(token);
+      const rows = await svc.entities.PublicRemovalVerification
+        .filter({ token_hash: tokenHash, status: 'pending' }).catch(() => []);
+      const verification = (rows || [])[0];
+      if (!verification || !verification.expires_at ||
+          new Date(verification.expires_at).getTime() < Date.now()) {
+        return invalid();
+      }
+      const userRows = await svc.entities.User.filter({ id: verification.user_id }).catch(() => []);
+      const target = (userRows || [])[0];
+      if (!target) return invalid();
+      // Masked email only — establishes the verified context without exposing
+      // the full address to anyone merely holding (but not owning) the link.
+      const email = String(target.email || verification.email || '');
+      const at = email.indexOf('@');
+      const maskedEmail = at > 0 ? email.slice(0, 1) + '***' + email.slice(at) : '';
+      return Response.json({ success: true, verified: true, email: maskedEmail });
     }
 
     if (action === 'publicConfirmRemoval') {
@@ -422,7 +461,7 @@ export default async function(req: Request): Promise<Response> {
     }
 
     return Response.json({
-      error: 'Invalid action. Supported: publicInitiateRemoval, publicConfirmRemoval, requestAccountRemoval, myRequest, cancelAccountRemovalRequest, listRequests, approveAccountRemoval, rejectAccountRemoval, suspendUser, deactivateUser, reactivateUser, removeUserAccount',
+      error: 'Invalid action. Supported: publicInitiateRemoval, publicVerifyRemovalToken, publicConfirmRemoval, requestAccountRemoval, myRequest, cancelAccountRemovalRequest, listRequests, approveAccountRemoval, rejectAccountRemoval, suspendUser, deactivateUser, reactivateUser, removeUserAccount',
     }, { status: 400 });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
