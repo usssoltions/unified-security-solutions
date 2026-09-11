@@ -367,12 +367,21 @@ export default function PanicManagement() {
   };
 
   // Apply the server-resolved operator scope to every view/count.
+  // STRICT ATTRIBUTION (no blanket siteless visibility): an operator sees a
+  // panic ONLY when it is authoritatively attributable to one of her
+  // explicitly assigned control rooms — via panic.site_id linking to one of
+  // her rooms' service-area sites, or via panic.control_room_id (stored at
+  // activation for operator-originated panics) matching one of her rooms.
+  // A panic with neither scope is hidden from ALL customer operators and
+  // stays with the explicitly authorised configured responders / customer
+  // emergency oversight (every other responder role keeps its view).
   const scopedPanics = React.useMemo(() => {
     if (!scope || scope.scope !== "control_room") return panics;
-    const mine = new Set(scope.site_ids || []);
-    const otherRooms = new Set(scope.other_linked_site_ids || []);
+    const myRooms = new Set(scope.control_room_ids || []);
+    const mySites = new Set(scope.site_ids || []);
     return panics.filter(p =>
-      !p.site_id || mine.has(p.site_id) || !otherRooms.has(p.site_id)
+      (p.control_room_id && myRooms.has(p.control_room_id)) ||
+      (p.site_id && mySites.has(p.site_id))
     );
   }, [panics, scope]);
 

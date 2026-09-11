@@ -173,6 +173,24 @@ Deno.serve(async (req) => {
       if (siteRows[0] && siteRows[0].name) resolvedSiteName = siteRows[0].name;
     }
 
+    // CONTROL ROOM SCOPE RETENTION — an OPERATOR-ORIGINATED panic records the
+    // sender's UNAMBIGUOUS control room assignment at activation time (exactly
+    // one active room with the sender in operator_user_ids). This stored scope
+    // governs which operators may view/respond: only operators assigned to
+    // that room. Ambiguity (zero or multiple rooms) is NEVER guessed — nothing
+    // is stored and the panic is NOT shown to customer operators at large,
+    // only to explicitly authorised configured responders / customer emergency
+    // oversight. Guard/site panics scope via panic.site_id → linked control
+    // rooms at view time (panicScope). Delivery/recipient resolution is NOT
+    // touched by this block.
+    let senderControlRoomId = null;
+    if (user.role_type === 'control_room_operator' && user.customer_id) {
+      const senderRooms = (await svc.entities.ControlRoom
+        .filter({ customer_id: user.customer_id, status: 'active' }).catch(() => [])) || [];
+      const mineRooms = senderRooms.filter((r) => (r.operator_user_ids || []).includes(user.id));
+      if (mineRooms.length === 1) senderControlRoomId = mineRooms[0].id;
+    }
+
     // 1. Create the PanicAlert record IMMEDIATELY (before any notifications)
     //    — the durable event always exists even if every channel fails.
     const panic = await svc.entities.PanicAlert.create({
@@ -184,6 +202,7 @@ Deno.serve(async (req) => {
       site_id: senderSiteId,
       site_name: resolvedSiteName,
       shift_id: shiftId || '',
+      control_room_id: senderControlRoomId,
       status: 'active',
       priority: 'critical',
       notes: notes || '',

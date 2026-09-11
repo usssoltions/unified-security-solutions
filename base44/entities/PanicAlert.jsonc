@@ -1,7 +1,7 @@
 {
   "name": "PanicAlert",
   "type": "object",
-  "description": "Emergency panic alert with a simple lifecycle: active \u2192 acknowledged \u2192 resolved (or cancelled). There is NO automatic escalation \u2014 a panic is submitted ONCE, the initial notification is sent immediately, and the Control Room Panic Queue provides visual urgency. initial_notification_sent_at is the durable marker that the single initial notification event occurred (audit + idempotency). The next_escalation_at / escalation_count / escalated fields are retained for historical data only and are no longer used by any active automation. Platform oversight: the built-in role 'admin' (USS Platform Admin) plus users with admin_level 'platform' / role_type 'platform_admin' may read/update/delete ANY panic across all tenants for emergency oversight. Tenant isolation for reseller/customer operational users is enforced via reseller_id/customer_id matching; the activator and the assigned responder can always access their own panic.",
+  "description": "Emergency panic alert with a simple lifecycle: active \u2192 acknowledged \u2192 resolved (or cancelled). There is NO automatic escalation \u2014 a panic is submitted ONCE, the initial notification is sent immediately, and the Control Room Panic Queue provides visual urgency. initial_notification_sent_at is the durable marker that the single initial notification event occurred (audit + idempotency). The next_escalation_at / escalation_count / escalated fields are retained for historical data only and are no longer used by any active automation. Platform oversight: the built-in role 'admin' (USS Platform Admin) plus users with admin_level 'platform' / role_type 'platform_admin' may read/update/delete ANY panic across all tenants for emergency oversight. Tenant isolation for reseller/customer operational users is enforced via reseller_id/customer_id matching; the activator and the assigned responder can always access their own panic. CANCEL POLICY: accidental cancellation is ORIGINATOR-ONLY (managePanic enforces server-side) \u2014 only the original sender may cancel their own panic; responders may acknowledge/assign/resolve but never cancel someone else's panic.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -33,6 +33,13 @@
     },
     "shift_id": {
       "type": "string"
+    },
+    "control_room_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "OPERATOR SCOPE RETENTION: for a panic triggered by a Control Room Operator, the SINGLE control room unambiguously assigned to the sender at activation time (null when the sender has zero or multiple active room assignments \u2014 ambiguity is never guessed). Together with site_id this defines which Control Room Operators may view/respond in the Panic Queue: an operator sees only panics attributable to one of her explicitly assigned rooms \u2014 via panic.site_id linked to one of her rooms' service-area sites, or via this field matching one of her assigned rooms. A panic with NEITHER valid site scope NOR valid control-room scope is NOT shown to customer operators at large \u2014 only to explicitly authorised configured responders / customer emergency oversight."
     },
     "status": {
       "type": "string",

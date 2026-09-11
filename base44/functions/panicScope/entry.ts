@@ -10,9 +10,15 @@
  *     (ControlRoom.operator_user_ids contains the caller). Her visible
  *     panics are those of the sites/service areas linked to HER rooms; a
  *     panic whose site is linked only to a room she is NOT assigned to
- *     (e.g. CR2) is out of scope. A panic with no resolvable site remains
- *     visible — mirroring the delivery resolver, which fans such panics to
- *     all authorised tenant responders. Tenant isolation itself is NEVER
+ *     (e.g. CR2) is out of scope. STRICT ATTRIBUTION: an operator sees a
+ *     panic ONLY when it is authoritatively attributable to one of her
+ *     assigned rooms — via panic.site_id linked to one of her rooms'
+ *     service-area sites, or via panic.control_room_id (stored at
+ *     activation for operator-originated panics) matching one of her
+ *     assigned rooms. A panic with NEITHER valid site scope NOR valid
+ *     control-room scope is NOT exposed to customer operators at large —
+ *     it remains with explicitly authorised configured responders /
+ *     customer emergency oversight only. Tenant isolation itself is NEVER
  *     derived here — cross-tenant access is blocked by PanicAlert RLS and
  *     the managePanic server-side authorization.
  *

@@ -214,8 +214,19 @@ Deno.serve(async (req) => {
         break;
 
       case 'cancel':
-        if (panic.user_id !== user.id && !isOperational) {
-          return Response.json({ error: 'Not authorized to cancel this panic' }, { status: 403 });
+        // ACCIDENTAL CANCEL — ORIGINATOR ONLY (hardened). An authorised
+        // responder (control_room_operator, customer_admin, supervisor, ...)
+        // may acknowledge/assign/resolve, but may NEVER cancel someone else's
+        // panic: cancellation withdraws the emergency itself and is reserved
+        // to the ORIGINAL SENDER (panic.user_id). Platform admins retain
+        // emergency oversight; tenant fail-closed scope rules unchanged.
+        if (panic.user_id !== user.id && !isPlatformSender) {
+          return Response.json({ error: 'Forbidden — only the original panic sender may cancel a panic' }, { status: 403 });
+        }
+        // Cancel is available only while the panic is still open — a resolved
+        // or already-cancelled panic can never be cancelled again.
+        if (['resolved', 'cancelled'].includes(panic.status)) {
+          return Response.json({ error: 'Panic already closed — cancellation not permitted' }, { status: 409 });
         }
         updateFields.status = 'cancelled';
         updateFields.resolved_by = user.id;
@@ -226,7 +237,7 @@ Deno.serve(async (req) => {
         logEntry.action = 'cancelled';
         logEntry.from_status = panic.status;
         logEntry.to_status = 'cancelled';
-        logEntry.notes = 'Cancelled by activator/management';
+        logEntry.notes = `Cancelled by originator ${userName}`;
         {
           const allUsersCancel = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
           notifyUserIds = allUsersCancel.filter(u => OPERATIONAL_ROLES.includes(u.role_type)).map(u => u.id);
