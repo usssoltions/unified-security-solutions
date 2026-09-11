@@ -19,7 +19,9 @@
  * entry, and notifies the relevant parties (tenant-scoped).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { secrets } from 'base44:runtime';
 import { buildPanicEmail, esc } from '../../shared/panicEmailTemplate.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 // Post-module-split responder authority: control_room_operator and
 // customer_admin are the primary operational responders of a modern tenant
@@ -46,6 +48,25 @@ function callerCanManagePanic(user, panic) {
   if (user.reseller_id && panic.reseller_id && panic.reseller_id === user.reseller_id) return true;
   return false;
 }
+
+const sastTime = (iso) =>
+  new Date(iso).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' });
+
+// Friendly role labels — never expose raw role keys in customer-facing text.
+const ROLE_LABELS = {
+  control_room_operator: 'Control Room Operator',
+  customer_admin: 'Customer Administrator',
+  reseller_admin: 'Reseller Administrator',
+  guard: 'Security Guard',
+  dispatcher: 'Dispatcher',
+  supervisor: 'Supervisor',
+  admin: 'Platform Administrator',
+  platform_admin: 'Platform Administrator',
+  practice_admin: 'Practice Administrator',
+  estate_manager: 'Estate Manager',
+  management: 'Management',
+};
+const roleLabel = (r) => ROLE_LABELS[r || ''] || r || 'user';
 
 async function audit(base44, user, panic, action, notes) {
   try {
@@ -207,13 +228,14 @@ Deno.serve(async (req) => {
         logEntry.from_status = panic.status;
         logEntry.to_status = 'resolved';
         logEntry.notes = resolutionNotes;
-        {
-          const allUsersResolve = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
-          notifyUserIds = allUsersResolve.filter(u => OPERATIONAL_ROLES.includes(u.role_type)).map(u => u.id);
-          if (!notifyUserIds.includes(panic.user_id)) notifyUserIds.push(panic.user_id);
-        }
+        // notifyUserIds is NOT recomputed from the tenant here — resolve
+        // recipients come from the original delivery audit in the dispatch
+        // section below (authoritative, no broad re-resolution).
         notifyTitle = `✓ PANIC resolved — ${panic.user_name}`;
         notifyMessage = `The PANIC alert from ${panic.user_name} has been resolved by ${userName}. Notes: ${resolutionNotes}`;
+        // RECIPIENT SAFETY: resolve/cancel recipients are resolved AFTER the
+        // status write from the AUTHORITATIVE original panic delivery audit
+        // (see dispatch) — never broad tenant re-resolution.
         sendEmailToUser = false;
         break;
 
@@ -241,12 +263,11 @@ Deno.serve(async (req) => {
         logEntry.from_status = panic.status;
         logEntry.to_status = 'cancelled';
         logEntry.notes = `Cancelled by originator ${userName}`;
-        {
-          const allUsersCancel = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
-          notifyUserIds = allUsersCancel.filter(u => OPERATIONAL_ROLES.includes(u.role_type)).map(u => u.id);
-        }
+        // notifyUserIds is NOT recomputed from the tenant here — cancel
+        // recipients come from the original delivery audit in the dispatch
+        // section below (authoritative, no broad re-resolution).
         notifyTitle = `PANIC cancelled — ${panic.user_name}`;
-        notifyMessage = `The PANIC alert from ${panic.user_name} has been cancelled.`;
+        notifyMessage = `The PANIC alert from ${panic.user_name} has been cancelled by the originating user.`;
         sendEmailToUser = false;
         break;
 
@@ -286,10 +307,83 @@ Deno.serve(async (req) => {
     // Audit every lifecycle action (platform-wide audit, service-role write).
     await audit(base44, user, { ...panic, id: panicId }, action, logEntry.notes);
 
-    // Dispatch notifications to relevant parties (panic-tenant-scoped lookup)
-    if (notifyUserIds.length > 0) {
+    // ── NOTIFICATION DISPATCH ─────────────────────────────────────────────
+    // LIFECYCLE RECIPIENT SAFETY: resolve/cancel never re-resolve broad
+    // tenant recipients. The AUTHORITATIVE original alert recipients are
+    // recovered from the original panic delivery audit (the in-app
+    // Notification records created at activation — related_entity 'panic',
+    // related_id = this panic), plus the panic sender for resolve. No
+    // unrelated customer / reseller / control room / platform admin can
+    // ever receive a lifecycle update.
+    let lifecycleRecipientIds: string[] = [];
+    if (action === 'resolve' || action === 'cancel') {
+      const auditNotifs = (await base44.asServiceRole.entities.Notification
+        .filter({ related_entity: 'panic', related_id: panicId }).catch(() => [])) || [];
+      lifecycleRecipientIds = Array.from(new Set(
+        auditNotifs.map((n: any) => n?.recipient_id).filter(Boolean)
+      ));
+      if (action === 'resolve' && panic.user_id && !lifecycleRecipientIds.includes(panic.user_id)) {
+        lifecycleRecipientIds.push(panic.user_id);
+      }
+    }
+
+    // LIFECYCLE PARITY TELEGRAM — deterministic event keys with the SAME
+    // physical event_key + telegram_chat_id same-chat dedupe as panic
+    // activation (one logical lifecycle event = ONE physical message per
+    // chat; per-user in-app/email/audit records stay separate).
+    const lifecycleTelegram =
+      action === 'acknowledge' ? {
+        key: `panic_acknowledged:${panicId}`,
+        text: [
+          '✓ *PANIC ACKNOWLEDGED*',
+          '',
+          'Your emergency alert has been acknowledged.',
+          '',
+          `Acknowledged by: ${userName} (${roleLabel(user.role_type)})`,
+          `Time: ${sastTime(nowIso)} (SAST)`,
+          `Reference: ${panic.panic_number}`,
+        ].join('\n'),
+      } :
+      action === 'resolve' ? {
+        key: `panic_resolved:${panicId}`,
+        text: [
+          '✅ *PANIC RESOLVED*',
+          '',
+          `Person: ${panic.user_name}`,
+          `Resolved by: ${userName} (${roleLabel(user.role_type)})`,
+          `Resolved: ${sastTime(nowIso)} (SAST)`,
+          `Reference: ${panic.panic_number}`,
+          `Resolution: ${resolutionNotes}`,
+        ].join('\n'),
+      } :
+      action === 'cancel' ? {
+        key: `panic_cancelled:${panicId}`,
+        text: [
+          '🚫 *PANIC CANCELLED*',
+          '',
+          'The emergency alert was cancelled by the originating user.',
+          '',
+          `Person: ${panic.user_name}`,
+          `Cancelled by: ${userName}`,
+          `Cancelled: ${sastTime(nowIso)} (SAST)`,
+          `Reference: ${panic.panic_number}`,
+        ].join('\n'),
+      } : null;
+
+    const targetIds = Array.from(new Set([...notifyUserIds, ...lifecycleRecipientIds]));
+    if (targetIds.length > 0) {
       const allUsers = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
-      const targets = allUsers.filter(u => notifyUserIds.includes(u.id));
+      const targets = allUsers.filter(u => targetIds.includes(u.id));
+      // Audit recipients may sit outside the caller's tenant filter (e.g. a
+      // platform-sender panic) — resolve them explicitly by id so the
+      // AUTHORITATIVE recipients are never silently dropped.
+      const foundIds = new Set(targets.map(t => t.id));
+      for (const id of targetIds.filter(i => !foundIds.has(i))) {
+        try {
+          const extra = await base44.asServiceRole.entities.User.get(id);
+          if (extra) targets.push(extra);
+        } catch (_) {}
+      }
 
       await Promise.allSettled(targets.map(async (target) => {
         try {
@@ -307,13 +401,23 @@ Deno.serve(async (req) => {
             sent_via: ['in_app']
           });
 
-          if (sendEmailToUser && target.email) {
+          // EMAIL — branded panic template. Acknowledge keeps the existing
+          // verified sender email byte-identical (no lifecycle override);
+          // resolve/cancel email the authoritative original recipients
+          // (+ sender) with the SAME branded template rendered as a
+          // lifecycle CLOSURE — never a new emergency activation.
+          const sendLifecycleEmail = action === 'resolve' || action === 'cancel';
+          if ((sendEmailToUser || sendLifecycleEmail) && target.email) {
             const emailBody = buildPanicEmail({
               userName: panic.user_name, userRole: panic.user_role, badgeNumber: panic.badge_number,
               siteName: panic.site_name, panicNumber: panic.panic_number, activatedAt: panic.activated_at,
-              location: updateFields.location || panic.location, gpsAccuracy: panic.gps_accuracy,
-              notes: panic.notes, status: updateFields.status || panic.status,
-              isEscalation: action === 'escalate'
+              location: panic.location, gpsAccuracy: panic.gps_accuracy,
+              notes: action === 'resolve' ? resolutionNotes : panic.notes,
+              status: updateFields.status || panic.status,
+              isEscalation: action === 'escalate',
+              lifecycleAction: sendLifecycleEmail ? action : undefined,
+              responderName: sendLifecycleEmail ? userName : undefined,
+              lifecycleAt: sendLifecycleEmail ? nowIso : undefined,
             });
             await base44.asServiceRole.integrations.Core.SendEmail({
               to: target.email,
@@ -321,6 +425,15 @@ Deno.serve(async (req) => {
               subject: notifyTitle,
               body: emailBody
             }).catch(e => console.error(`Panic workflow email failed for ${target.email}:`, e));
+          }
+
+          // TELEGRAM (lifecycle parity) — the SENDER for acknowledge; the
+          // authoritative original recipients (+ sender) for resolve/cancel.
+          // Same verified Telegram mapping and event_key + chat dedupe as
+          // panic activation; failure is fully isolated from in-app/email.
+          if (lifecycleTelegram && target.telegram_connected && target.telegram_notifications_enabled !== false && target.telegram_chat_id) {
+            await sendTaskTelegramDeduped(base44.asServiceRole, secrets, lifecycleTelegram.key, target.telegram_chat_id, lifecycleTelegram.text)
+              .catch(e => console.error(`Panic lifecycle telegram failed for ${target.id}:`, e));
           }
         } catch (e) {
           console.error(`Panic workflow notification failed for ${target.id}:`, e);

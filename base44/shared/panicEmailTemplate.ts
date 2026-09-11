@@ -26,12 +26,18 @@ interface PanicEmailParams {
   notes?: string;
   status?: string;
   isEscalation?: boolean;
+  /** Lifecycle CLOSURE emails (managePanic resolve/cancel): renders the
+   * banner and footer as a closure notice — never as a new activation. */
+  lifecycleAction?: 'resolve' | 'cancel';
+  responderName?: string;
+  lifecycleAt?: string;
 }
 
 export function buildPanicEmail(params: PanicEmailParams): string {
   const {
     userName, userRole, badgeNumber, siteName, customerName, panicNumber,
-    activatedAt, location, gpsAccuracy, notes, status, isEscalation
+    activatedAt, location, gpsAccuracy, notes, status, isEscalation,
+    lifecycleAction, responderName, lifecycleAt
   } = params;
 
   const googleMapsUrl = location?.lat && location?.lng
@@ -58,7 +64,11 @@ export function buildPanicEmail(params: PanicEmailParams): string {
         <p style="margin: 0; color: #7f1d1d; font-size: 14px;">⚠️ Location not yet available — being captured</p>
       </div>`;
 
-  const bannerText = isEscalation
+  const bannerText = lifecycleAction === 'resolve'
+    ? "✓ PANIC RESOLVED — EMERGENCY CLOSED"
+    : lifecycleAction === 'cancel'
+    ? "PANIC CANCELLED — EMERGENCY WITHDRAWN BY SENDER"
+    : isEscalation
     ? "🚨 PANIC ALERT — UNACKNOWLEDGED ESCALATION"
     : "🚨 PANIC ALERT — IMMEDIATE RESPONSE REQUIRED";
 
@@ -124,6 +134,15 @@ export function buildPanicEmail(params: PanicEmailParams): string {
                 <td style="padding: 8px 0; color: #7f1d1d; font-weight: bold;">📊 Status:</td>
                 <td style="padding: 8px 0; color: #C41E3A; font-weight: bold;">${esc(status || 'ACTIVE')}</td>
               </tr>
+              ${lifecycleAction && responderName ? `
+              <tr>
+                <td style="padding: 8px 0; color: #7f1d1d; font-weight: bold;">${lifecycleAction === 'resolve' ? '✅ Resolved by:' : '🚫 Cancelled by:'}</td>
+                <td style="padding: 8px 0; color: #1f2937;">${esc(responderName)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #7f1d1d; font-weight: bold;">⏰ ${lifecycleAction === 'resolve' ? 'Resolved:' : 'Cancelled:'}</td>
+                <td style="padding: 8px 0; color: #1f2937;">${lifecycleAt ? new Date(lifecycleAt).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' }) : ''}</td>
+              </tr>` : ''}
               ${notes ? `
               <tr>
                 <td colspan="2" style="padding: 15px 0 0 0;">
@@ -141,10 +160,15 @@ export function buildPanicEmail(params: PanicEmailParams): string {
             ${locationBlock}
           </div>
 
+          ${lifecycleAction ? `
+          <div style="background: linear-gradient(135deg, #065f46 0%, #064e3b 100%); padding: 20px; border-radius: 12px; text-align: center;">
+            <p style="color: white; font-weight: bold; margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px;">${lifecycleAction === 'resolve' ? '✓ Emergency Closed' : 'Panic Cancelled'}</p>
+            <p style="color: #d1fae5; margin: 10px 0 0 0; font-size: 14px;">${lifecycleAction === 'resolve' ? 'This alert has been resolved — no further response required' : 'This alert was cancelled by the originating user — no response required'}</p>
+          </div>` : `
           <div style="background: linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%); padding: 20px; border-radius: 12px; text-align: center;">
             <p style="color: white; font-weight: bold; margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px;">⚠️ Critical Emergency</p>
             <p style="color: #fef2f2; margin: 10px 0 0 0; font-size: 14px;">Dispatch immediate response • Contact person • Verify situation</p>
-          </div>
+          </div>`}
         </div>
 
         <div style="background-color: #1a1a1a; padding: 20px; text-align: center;">
