@@ -309,21 +309,97 @@ Deno.serve(async (req) => {
 
     // ── NOTIFICATION DISPATCH ─────────────────────────────────────────────
     // LIFECYCLE RECIPIENT SAFETY: resolve/cancel never re-resolve broad
-    // tenant recipients. The AUTHORITATIVE original alert recipients are
-    // recovered from the original panic delivery audit (the in-app
-    // Notification records created at activation — related_entity 'panic',
-    // related_id = this panic), plus the panic sender for resolve. No
-    // unrelated customer / reseller / control room / platform admin can
-    // ever receive a lifecycle update.
+    // tenant recipients. The AUTHORITATIVE original delivery audit (the
+    // in-app Notification records created at activation — related_entity
+    // 'panic', related_id = this panic) supplies CANDIDATE recipient ids
+    // ONLY. Every candidate is REVALIDATED server-side against the panic's
+    // authoritative organisation context before any channel is sent:
+    //   - same customer (or reseller) scope as the panic,
+    //   - active account (user_status active, tenant access not removed),
+    //   - genuine original delivery record.
+    // A candidate that can no longer be resolved safely is SKIPPED and the
+    // skip is AUDITED — a user id in a historical delivery record NEVER
+    // bypasses tenant filtering. The ONLY id-based resolution allowed is
+    // the panic SENDER (their own lifecycle notification, subject to
+    // account validity) — never a broad escalation recipient.
     let lifecycleRecipientIds: string[] = [];
     if (action === 'resolve' || action === 'cancel') {
       const auditNotifs = (await base44.asServiceRole.entities.Notification
         .filter({ related_entity: 'panic', related_id: panicId }).catch(() => [])) || [];
-      lifecycleRecipientIds = Array.from(new Set(
+      const candidateIds = Array.from(new Set(
         auditNotifs.map((n: any) => n?.recipient_id).filter(Boolean)
       ));
-      if (action === 'resolve' && panic.user_id && !lifecycleRecipientIds.includes(panic.user_id)) {
-        lifecycleRecipientIds.push(panic.user_id);
+
+      // The panic's AUTHORITATIVE organisation scope — resolved from the
+      // panic record itself (never from the caller or the candidates). A
+      // platform-originated panic (no tenant ids) scopes to the platform
+      // emergency-oversight users, mirroring activation — never unrelated
+      // tenant/reseller users.
+      let scopeUsers: any[] = [];
+      if (panic.customer_id) {
+        scopeUsers = (await base44.asServiceRole.entities.User
+          .filter({ customer_id: panic.customer_id }).catch(() => [])) || [];
+      } else if (panic.reseller_id) {
+        scopeUsers = (await base44.asServiceRole.entities.User
+          .filter({ reseller_id: panic.reseller_id }).catch(() => [])) || [];
+      } else if (panic.user_role === 'admin' || panic.user_role === 'platform_admin') {
+        const allScope = (await base44.asServiceRole.entities.User.filter({}).catch(() => [])) || [];
+        scopeUsers = allScope.filter((u: any) =>
+          u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
+      }
+      const scopeById = new Map(scopeUsers.map((u: any) => [u.id, u]));
+
+      // Account validity: active status and tenant access not removed.
+      const isValidAccount = (u: any) =>
+        !!u && (u.user_status || 'active') === 'active' &&
+        u.role_type !== null && u.role_type !== undefined;
+
+      const skipped: Array<{ recipient_id: string; reason: string }> = [];
+
+      for (const candidateId of candidateIds) {
+        if (candidateId === panic.user_id) continue; // sender handled below
+        const candidate = scopeById.get(candidateId);
+        if (!candidate) {
+          skipped.push({ recipient_id: candidateId, reason: "outside the panic's authoritative organisation scope" });
+          continue;
+        }
+        if (!isValidAccount(candidate)) {
+          skipped.push({ recipient_id: candidateId, reason: 'account inactive, suspended or tenant access removed' });
+          continue;
+        }
+        lifecycleRecipientIds.push(candidateId);
+      }
+
+      // SENDER — may always receive their OWN lifecycle notification,
+      // subject to normal authenticated account validity. Never a broad
+      // escalation recipient.
+      if (panic.user_id && !lifecycleRecipientIds.includes(panic.user_id)) {
+        let senderUser = scopeById.get(panic.user_id) || null;
+        if (!senderUser) {
+          try { senderUser = await base44.asServiceRole.entities.User.get(panic.user_id); } catch (_) {}
+        }
+        if (senderUser && isValidAccount(senderUser)) {
+          lifecycleRecipientIds.push(panic.user_id);
+        } else {
+          skipped.push({ recipient_id: panic.user_id, reason: 'sender account invalid or no longer resolvable' });
+        }
+      }
+
+      // AUDIT every skipped candidate — a lifecycle recipient skip is an
+      // audited security event, never a silent drop.
+      if (skipped.length) {
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'panic.lifecycle_recipient_skipped',
+          user_id: user.id,
+          user_name: userName,
+          customer_id: panic.customer_id || null,
+          reseller_id: panic.reseller_id || null,
+          module_key: 'PANIC',
+          entity_name: 'PanicAlert',
+          entity_id: panicId,
+          action: `LIFECYCLE_RECIPIENT_SKIPPED_${action.toUpperCase()}`,
+          notes: JSON.stringify({ panic_id: panicId, lifecycle_action: action, skipped }),
+        }).catch(e => console.error('Panic lifecycle recipient-skip audit failed:', e));
       }
     }
 
@@ -372,18 +448,11 @@ Deno.serve(async (req) => {
 
     const targetIds = Array.from(new Set([...notifyUserIds, ...lifecycleRecipientIds]));
     if (targetIds.length > 0) {
+      // TENANT SAFETY: targets are the intersection of the candidate
+      // recipients and the tenant-scoped user query — NO user is fetched or
+      // sent to merely by id (the old id-based bypass is removed).
       const allUsers = await base44.asServiceRole.entities.User.filter(panicTenantFilter);
       const targets = allUsers.filter(u => targetIds.includes(u.id));
-      // Audit recipients may sit outside the caller's tenant filter (e.g. a
-      // platform-sender panic) — resolve them explicitly by id so the
-      // AUTHORITATIVE recipients are never silently dropped.
-      const foundIds = new Set(targets.map(t => t.id));
-      for (const id of targetIds.filter(i => !foundIds.has(i))) {
-        try {
-          const extra = await base44.asServiceRole.entities.User.get(id);
-          if (extra) targets.push(extra);
-        } catch (_) {}
-      }
 
       await Promise.allSettled(targets.map(async (target) => {
         try {
