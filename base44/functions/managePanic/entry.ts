@@ -130,6 +130,10 @@ Deno.serve(async (req) => {
         updateFields.acknowledged_by = user.id;
         updateFields.acknowledged_by_name = userName;
         updateFields.acknowledged_at = nowIso;
+        // ADDITIVE display snapshot only — the sender overlay shows the
+        // responder's role. Null on records acknowledged before this field
+        // existed; no acknowledgement logic, routing or idempotency changes.
+        updateFields.acknowledged_by_role = user.role_type || null;
         logEntry.action = 'acknowledged';
         logEntry.from_status = panic.status;
         logEntry.to_status = 'acknowledged';

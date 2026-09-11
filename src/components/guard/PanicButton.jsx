@@ -1,11 +1,13 @@
-import React, { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, CheckCircle2, XCircle, Loader2, MapPin, X } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import React, { useRef } from "react";
+import { AlertTriangle } from "lucide-react";
 import {
   activatePanic, updatePanicLocation, requestFreshLocation,
-  hapticFeedback, managePanic
+  hapticFeedback
 } from "@/lib/panicService";
+import {
+  setActivating, setActivationFailed, adoptNewPanic
+} from "@/lib/senderPanicState";
+import { useSenderPanicState } from "@/hooks/useSenderPanicState";
 
 /**
  * Big emergency Panic button for the Guard Shift screen.
@@ -13,92 +15,55 @@ import {
  * One press → IMMEDIATE local UI feedback (vibration + visual flash +
  * "🚨 PANIC ACTIVATED") → backend call fires WITHOUT waiting for GPS →
  * fresh GPS requested in parallel and updates the record when available.
- *
  * An activation lock (useRef) prevents repeated taps from creating multiple
- * Panic records. The button stays disabled/locked until the current
- * activation completes or fails.
+ * Panic records.
+ *
+ * The sender STATUS (sent / waiting / acknowledged / cancelled / resolved)
+ * lives in the shared AUTHORITATIVE sender panic store and renders through
+ * the global SenderPanicStatusOverlay — restored from the PanicAlert record
+ * on load, it survives refresh, navigation and app restart. While an open
+ * panic is tracked the big button is LOCKED so a second panic record can
+ * never be created while one is already live.
  */
 export default function PanicButton({ shiftId, siteId, siteName }) {
-  const [panicState, setPanicState] = useState("idle"); // idle | activating | activated | acknowledged | failed
-  const [panicId, setPanicId] = useState(null);
-  const [panicNumber, setPanicNumber] = useState(null);
-  const [acknowledgedBy, setAcknowledgedBy] = useState(null);
-  const [location, setLocation] = useState(null);
-  const [showCancel, setShowCancel] = useState(false);
-
+  const panic = useSenderPanicState();
   const lockRef = useRef(false);
 
-  // Realtime subscription: listen for acknowledgement / status changes
-  useEffect(() => {
-    if (!panicId) return;
-    const unsub = base44.entities.PanicAlert.subscribe((event) => {
-      if (!event.data || event.data.id !== panicId) return;
-      if (event.type === "update") {
-        if (event.data.status === "acknowledged" && event.data.acknowledged_by_name) {
-          setAcknowledgedBy(event.data.acknowledged_by_name);
-          setPanicState("acknowledged");
-          hapticFeedback([100, 50, 100]);
-        } else if (event.data.status === "resolved" || event.data.status === "cancelled") {
-          setPanicState("idle");
-          setPanicId(null);
-          setAcknowledgedBy(null);
-        }
-        if (event.data.location && event.data.location_updated) {
-          setLocation(event.data.location);
-        }
-      }
-    });
-    return unsub;
-  }, [panicId]);
-
-  // Show cancel option for 5 seconds after activation
-  useEffect(() => {
-    if (panicState === "activated" || panicState === "no_recipients") {
-      setShowCancel(true);
-      const timer = setTimeout(() => setShowCancel(false), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [panicState]);
-
-  // NOTE: Automatic client-side escalation was removed. A panic is submitted
-  // ONCE; the Control Room Panic Queue provides the visual urgency. No
-  // setTimeout re-sends the panic notification after any delay.
+  const openPanic = panic.record
+    && ["active", "acknowledged", "assigned", "accepted"].includes(panic.record.status);
+  // A zero-recipient panic keeps the trigger available for a retry attempt
+  // (existing behaviour); a normal open panic locks it.
+  const triggerBlocked = openPanic && panic.phase !== "no_recipients";
 
   const handlePanicPress = async () => {
     // Activation lock — prevents duplicate panics from rapid tapping
     if (lockRef.current) return;
-    if (panicState === "activating" || panicState === "activated") return;
+    if (["activating", "activated", "acknowledged"].includes(panic.phase)) return;
+    if (triggerBlocked) return;
     lockRef.current = true;
 
     // IMMEDIATE local UI feedback — before any network call
-    setPanicState("activating");
+    setActivating();
     hapticFeedback([300, 100, 300, 100, 300]);
 
     // Fire backend call immediately (no GPS wait)
     try {
       const result = await activatePanic({ shiftId, siteId, siteName });
-      setPanicId(result.panicId);
-      setPanicNumber(result.panicNumber);
-      // Zero authorised recipients → SAFE CRITICAL state. The UI must NEVER
-      // claim the Control Room was notified when nobody could be reached.
+      adoptNewPanic(result);
+      // Zero authorised recipients → SAFE CRITICAL state.
       if (result.recipientConfigurationMissing || result.recipientCount === 0) {
-        setPanicState("no_recipients");
         hapticFeedback([500, 200, 500]);
       } else {
-        setPanicState("activated");
         hapticFeedback([200, 50, 200]);
       }
 
       // Request fresh GPS in parallel — update the record when available
       requestFreshLocation().then((freshLoc) => {
-        if (freshLoc) {
-          setLocation(freshLoc);
-          updatePanicLocation(result.panicId, freshLoc);
-        }
+        if (freshLoc) updatePanicLocation(result.panicId, freshLoc);
       });
     } catch (error) {
       console.error("Panic activation failed:", error);
-      setPanicState("failed");
+      setActivationFailed();
       hapticFeedback([500]);
     } finally {
       // Release lock after a short delay so the UI settles
@@ -106,170 +71,26 @@ export default function PanicButton({ shiftId, siteId, siteName }) {
     }
   };
 
-  const handleCancel = async () => {
-    if (!panicId) return;
-    try {
-      await managePanic(panicId, "cancel");
-      setPanicState("idle");
-      setPanicId(null);
-      setPanicNumber(null);
-      setAcknowledgedBy(null);
-    } catch (e) {
-      console.error("Cancel failed:", e);
-    }
-  };
-
-  const handleRetry = () => {
-    setPanicState("idle");
-    lockRef.current = false;
-  };
-
-  // ── Active states (after press) ──────────────────────────────────────
-  if (panicState !== "idle") {
-    return (
-      <div className="w-full">
-        <AnimatePresence mode="wait">
-          {panicState === "activating" && (
-            <motion.div
-              key="activating"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 text-center shadow-2xl shadow-red-500/50"
-            >
-              <Loader2 className="w-10 h-10 text-white mx-auto mb-2 animate-spin" />
-              <p className="text-white text-xl font-bold">🚨 PANIC ACTIVATED</p>
-              <p className="text-red-100 text-sm mt-1">Emergency alert is being sent...</p>
-            </motion.div>
-          )}
-
-          {panicState === "activated" && (
-            <motion.div
-              key="activated"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 text-center shadow-2xl shadow-red-500/50 border-2 border-red-400 animate-pulse"
-            >
-              <AlertTriangle className="w-10 h-10 text-white mx-auto mb-2" />
-              <p className="text-white text-xl font-bold">🚨 PANIC SENT</p>
-              <p className="text-red-100 text-sm mt-1">Control Room has been notified.</p>
-              {panicNumber && (
-                <p className="text-red-200 text-xs mt-1 font-mono">Ref: {panicNumber}</p>
-              )}
-              {location && (
-                <a
-                  href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 mt-2 text-xs text-white underline"
-                >
-                  <MapPin className="w-3 h-3" /> View Location
-                </a>
-              )}
-              {showCancel && (
-                <button
-                  onClick={handleCancel}
-                  className="mt-3 inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-lg transition active:scale-95"
-                >
-                  <X className="w-4 h-4" /> Cancel (accidental?)
-                </button>
-              )}
-              <p className="text-red-200 text-xs mt-2">Waiting for acknowledgement...</p>
-            </motion.div>
-          )}
-
-          {panicState === "no_recipients" && (
-            <motion.div
-              key="no_recipients"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 text-center shadow-2xl shadow-red-500/50 border-2 border-orange-400 animate-pulse"
-            >
-              <AlertTriangle className="w-10 h-10 text-white mx-auto mb-2" />
-              <p className="text-white text-xl font-bold">🚨 PANIC ACTIVATED</p>
-              <p className="text-orange-300 text-sm mt-1 font-semibold">
-                No configured responder could be reached.
-              </p>
-              {panicNumber && (
-                <p className="text-red-200 text-xs mt-1 font-mono">Ref: {panicNumber}</p>
-              )}
-              {location && (
-                <a
-                  href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 mt-2 text-xs text-white underline"
-                >
-                  <MapPin className="w-3 h-3" /> View Location
-                </a>
-              )}
-              <p className="text-slate-200 text-xs mt-2">
-                If you are in immediate danger, please call emergency services directly.
-              </p>
-              {showCancel && (
-                <button
-                  onClick={handleCancel}
-                  className="mt-3 inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-lg transition active:scale-95"
-                >
-                  <X className="w-4 h-4" /> Cancel (accidental?)
-                </button>
-              )}
-            </motion.div>
-          )}
-
-          {panicState === "acknowledged" && (
-            <motion.div
-              key="acknowledged"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full bg-gradient-to-r from-emerald-600 to-emerald-800 rounded-2xl p-6 text-center shadow-2xl shadow-emerald-500/50"
-            >
-              <CheckCircle2 className="w-10 h-10 text-white mx-auto mb-2" />
-              <p className="text-white text-xl font-bold">✓ ACKNOWLEDGED</p>
-              <p className="text-emerald-100 text-sm mt-1">
-                Your Panic has been acknowledged by {acknowledgedBy || "Control Room"}.
-              </p>
-              <p className="text-emerald-200 text-xs mt-2">Help is on the way. Stay safe.</p>
-            </motion.div>
-          )}
-
-          {panicState === "failed" && (
-            <motion.div
-              key="failed"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full bg-gradient-to-r from-orange-600 to-red-800 rounded-2xl p-6 text-center shadow-2xl"
-            >
-              <XCircle className="w-10 h-10 text-white mx-auto mb-2" />
-              <p className="text-white text-xl font-bold">⚠️ ALERT NOT SENT</p>
-              <p className="text-orange-100 text-sm mt-1">
-                Network error. Tap retry or call emergency services directly.
-              </p>
-              <button
-                onClick={handleRetry}
-                className="mt-3 bg-white text-red-700 font-bold px-6 py-3 rounded-lg active:scale-95 transition"
-              >
-                RETRY PANIC
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
-
-  // ── Idle state — the big button ──────────────────────────────────────
   return (
     <button
       onClick={handlePanicPress}
-      disabled={lockRef.current}
+      disabled={lockRef.current || triggerBlocked}
       className="w-full bg-gradient-to-r from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 text-white rounded-2xl shadow-2xl shadow-red-500/40 active:scale-95 transition-all touch-manipulation select-none"
       style={{ minHeight: "96px" }}
     >
-      <div className="flex flex-col items-center justify-center gap-1 py-5">
-        <AlertTriangle className="w-10 h-10 mb-1" />
-        <span className="text-2xl font-bold tracking-wide">🚨 PANIC</span>
-        <span className="text-xs text-red-100 font-medium">Press for emergency</span>
-      </div>
+      {triggerBlocked ? (
+        <div className="flex flex-col items-center justify-center gap-1 py-5">
+          <AlertTriangle className="w-10 h-10 mb-1 animate-pulse" />
+          <span className="text-2xl font-bold tracking-wide">🚨 PANIC ACTIVE</span>
+          <span className="text-xs text-red-100 font-medium">Your emergency status is showing on screen</span>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-1 py-5">
+          <AlertTriangle className="w-10 h-10 mb-1" />
+          <span className="text-2xl font-bold tracking-wide">🚨 PANIC</span>
+          <span className="text-xs text-red-100 font-medium">Press for emergency</span>
+        </div>
+      )}
     </button>
   );
 }
