@@ -53,7 +53,7 @@ export default function PanicButton({ shiftId, siteId, siteName }) {
 
   // Show cancel option for 5 seconds after activation
   useEffect(() => {
-    if (panicState === "activated") {
+    if (panicState === "activated" || panicState === "no_recipients") {
       setShowCancel(true);
       const timer = setTimeout(() => setShowCancel(false), 5000);
       return () => clearTimeout(timer);
@@ -79,8 +79,15 @@ export default function PanicButton({ shiftId, siteId, siteName }) {
       const result = await activatePanic({ shiftId, siteId, siteName });
       setPanicId(result.panicId);
       setPanicNumber(result.panicNumber);
-      setPanicState("activated");
-      hapticFeedback([200, 50, 200]);
+      // Zero authorised recipients → SAFE CRITICAL state. The UI must NEVER
+      // claim the Control Room was notified when nobody could be reached.
+      if (result.recipientConfigurationMissing || result.recipientCount === 0) {
+        setPanicState("no_recipients");
+        hapticFeedback([500, 200, 500]);
+      } else {
+        setPanicState("activated");
+        hapticFeedback([200, 50, 200]);
+      }
 
       // Request fresh GPS in parallel — update the record when available
       requestFreshLocation().then((freshLoc) => {
@@ -167,6 +174,45 @@ export default function PanicButton({ shiftId, siteId, siteName }) {
                 </button>
               )}
               <p className="text-red-200 text-xs mt-2">Waiting for acknowledgement...</p>
+            </motion.div>
+          )}
+
+          {panicState === "no_recipients" && (
+            <motion.div
+              key="no_recipients"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 text-center shadow-2xl shadow-red-500/50 border-2 border-orange-400 animate-pulse"
+            >
+              <AlertTriangle className="w-10 h-10 text-white mx-auto mb-2" />
+              <p className="text-white text-xl font-bold">🚨 PANIC ACTIVATED</p>
+              <p className="text-orange-300 text-sm mt-1 font-semibold">
+                No configured responder could be reached.
+              </p>
+              {panicNumber && (
+                <p className="text-red-200 text-xs mt-1 font-mono">Ref: {panicNumber}</p>
+              )}
+              {location && (
+                <a
+                  href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 mt-2 text-xs text-white underline"
+                >
+                  <MapPin className="w-3 h-3" /> View Location
+                </a>
+              )}
+              <p className="text-slate-200 text-xs mt-2">
+                If you are in immediate danger, please call emergency services directly.
+              </p>
+              {showCancel && (
+                <button
+                  onClick={handleCancel}
+                  className="mt-3 inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-lg transition active:scale-95"
+                >
+                  <X className="w-4 h-4" /> Cancel (accidental?)
+                </button>
+              )}
             </motion.div>
           )}
 

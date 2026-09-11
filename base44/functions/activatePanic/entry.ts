@@ -22,11 +22,21 @@
  *     managers), narrowed to the CONTROL ROOM(s) linked to the sender's site
  *     when that linkage exists, so Control Room 1 is not auto-alerted for a
  *     Control Room 2 panic. customer_admins always stay in scope.
- *   - Zero-recipient emergency fallback → the reseller's administrators,
- *     then platform administrators, so a panic is NEVER silently dropped.
+ *   - ZERO-RECIPIENT POLICY: there is NO organisational-hierarchy fallback.
+ *     A customer panic is NEVER auto-disclosed to reseller administrators,
+ *     platform administrators or unrelated management users merely because
+ *     the resolver returned zero users. When zero authorised recipients
+ *     remain, the panic record is still created and retained, a CRITICAL
+ *     PANIC_RECIPIENT_CONFIGURATION_MISSING delivery/configuration failure
+ *     is recorded in the platform audit log (panic_id, customer_id, site_id,
+ *     control_room_id, sender, timestamp, recipient_count = 0), and the
+ *     sender UI is told to show a safe critical state instead of a false
+ *     'Control Room has been notified'. Reseller/platform escalation may
+ *     happen ONLY via recipients explicitly configured/authorised for that
+ *     customer/site/control room — never inferred from hierarchy.
  *
  * TENANT ISOLATION: a customer panic can only ever reach users of the same
- * customer (plus the documented emergency fallbacks). Cross-tenant recipient
+ * customer. Cross-tenant recipient
  * ids supplied by callers are ignored completely — recipients are derived
  * from server-side data only.
  *
@@ -50,10 +60,10 @@ const RECIPIENT_ROLES = [
   'admin', 'dispatcher', 'supervisor', 'estate_manager', 'management',
   'customer_admin', 'control_room_operator',
 ];
-/** Platform-level emergency oversight recipients (platform sender case). */
+/** Platform-level emergency oversight recipients — used ONLY for a platform
+ * sender's own panic (the sender's own scope), never as a fallback for
+ * tenant panics. */
 const PLATFORM_RECIPIENT_ROLES = ['admin', 'platform_admin'];
-/** Zero-recipient emergency fallback (in order). */
-const RESELLER_FALLBACK_ROLES = ['reseller_admin'];
 
 const isPlatformSender = (u) =>
   u.role_type === 'platform_admin' || u.admin_level === 'platform';
@@ -62,13 +72,15 @@ const sastTime = (iso) =>
   new Date(iso).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' });
 
 /**
- * Resolves the authoritative recipient list for one panic, entirely from
- * server-side tenant/site/control-room data. Order of preference:
- *   1. tenant RECIPIENT_ROLES users (site-narrowed to the linked control
- *      room's operators/supervisors when a linkage exists; customer_admins
- *      always included),
- *   2. — never empty: reseller admins of the tenant's reseller,
- *   3. — never empty: platform emergency oversight admins.
+ * Resolves the AUTHORITATIVE, EXPLICITLY AUTHORISED recipient list for one
+ * panic, entirely from server-side tenant/site/control-room data:
+ *   - platform sender → platform-level emergency oversight users only
+ *     (the sender's own scope — not a fallback),
+ *   - tenant sender → same-customer RECIPIENT_ROLES users, site-narrowed to
+ *     the linked control room's operators/supervisors when a linkage exists
+ *     (customer_admins always included).
+ * The result may legitimately be EMPTY — there is NO hierarchy fallback.
+ * The caller records PANIC_RECIPIENT_CONFIGURATION_MISSING when it is.
  */
 async function resolvePanicRecipients(svc, sender, siteId) {
   const seen = new Set();
@@ -88,14 +100,8 @@ async function resolvePanicRecipients(svc, sender, siteId) {
   }
 
   const customerId = sender.customer_id;
-  const resellerId = sender.reseller_id;
-  if (!customerId && !resellerId) {
-    // No tenant scope at all (should not happen for operational users) —
-    // escalate straight to platform oversight so the panic is never lost.
-    const all = await svc.entities.User.filter({}).catch(() => []);
-    return add(all.filter((u) =>
-      PLATFORM_RECIPIENT_ROLES.includes(u.role_type) || u.admin_level === 'platform'));
-  }
+  // A sender with no customer scope has no authorised tenant recipients —
+  // NO hierarchy fallback. The caller records the configuration failure.
 
   // 2. Tenant recipients — same customer only.
   let recipients = [];
@@ -107,7 +113,7 @@ async function resolvePanicRecipients(svc, sender, siteId) {
     // Site-aware CONTROL ROOM narrowing: when the sender's site is linked to
     // active control room(s), only THOSE rooms' operators/supervisors are
     // alerted (plus the customer administrators). No linkage → all tenant
-    // recipients (never zero).
+    // recipients. Either way the result can be empty (no hierarchy fallback).
     if (siteId && base.length) {
       const rooms = (await svc.entities.ControlRoom
         .filter({ customer_id: customerId, status: 'active' }).catch(() => [])) || [];
@@ -129,19 +135,11 @@ async function resolvePanicRecipients(svc, sender, siteId) {
     }
   }
 
-  // 3. Zero-recipient emergency fallback — first the reseller's own
-  //    administrators, then platform emergency oversight. A panic is NEVER
-  //    silently dropped because a tenant has no configured responders yet.
-  if (!recipients.length && resellerId) {
-    const resellerUsers = (await svc.entities.User
-      .filter({ reseller_id: resellerId }).catch(() => [])) || [];
-    recipients = add(resellerUsers.filter((u) => RESELLER_FALLBACK_ROLES.includes(u.role_type)));
-  }
-  if (!recipients.length) {
-    const all = await svc.entities.User.filter({}).catch(() => []);
-    recipients = add(all.filter((u) =>
-      PLATFORM_RECIPIENT_ROLES.includes(u.role_type) || u.admin_level === 'platform'));
-  }
+  // NO reseller/platform fallback — a zero result is a CRITICAL configuration
+  // failure handled (and audited) by the caller. Escalation outside the
+  // customer may only ever come from recipients EXPLICITLY configured or
+  // authorised for this customer/site/control room, never inferred from
+  // organisational hierarchy.
   return recipients;
 }
 
@@ -214,6 +212,44 @@ Deno.serve(async (req) => {
 
     // 3. Resolve the AUTHORITATIVE recipients (server-side only).
     const recipients = await resolvePanicRecipients(svc, user, siteId || user.site_id || '');
+
+    // 3b. ZERO-RECIPIENT POLICY — no hierarchy fallback was applied (there
+    //     is none). The panic record is already durable above. Record the
+    //     CRITICAL delivery/configuration failure for authorised platform
+    //     oversight — WITHOUT sending the customer's panic content to any
+    //     unauthorised reseller/platform recipient.
+    if (!recipients.length) {
+      const roomSiteId = siteId || user.site_id || '';
+      let controlRoomIds = null;
+      if (user.customer_id && roomSiteId) {
+        const rooms = (await svc.entities.ControlRoom
+          .filter({ customer_id: user.customer_id, status: 'active' }).catch(() => [])) || [];
+        const linked = rooms.filter((r) => (r.linked_site_ids || []).includes(roomSiteId));
+        controlRoomIds = linked.length ? linked.map((r) => r.id).join(',') : null;
+      }
+      const failureAudit = {
+        panic_id: panic.id,
+        customer_id: user.customer_id || null,
+        site_id: roomSiteId || null,
+        control_room_id: controlRoomIds,
+        sender_id: user.id,
+        sender_name: userName,
+        timestamp: new Date().toISOString(),
+        recipient_count: 0,
+      };
+      await svc.entities.PlatformAuditLog.create({
+        event_type: 'panic.recipient_configuration_missing',
+        user_id: user.id,
+        user_name: userName,
+        customer_id: user.customer_id || undefined,
+        reseller_id: user.reseller_id || undefined,
+        module_key: 'PANIC',
+        entity_name: 'PanicAlert',
+        entity_id: panic.id,
+        action: 'PANIC_RECIPIENT_CONFIGURATION_MISSING',
+        notes: JSON.stringify(failureAudit),
+      }).catch(e => console.error('Panic recipient-configuration audit log failed:', e));
+    }
 
     const googleMapsUrl = location?.lat && location?.lng
       ? `https://www.google.com/maps?q=${location.lat},${location.lng}`
@@ -302,30 +338,49 @@ Deno.serve(async (req) => {
     }));
 
     const successCount = notifResults.filter(r => r.status === 'fulfilled').length;
+    const noRecipients = recipients.length === 0;
 
     // 5. Mark notification_sent + record the ONE-TIME initial notification
-    //    event. There is no automatic escalation/re-send; this timestamp is
-    //    the durable marker that the single initial notification occurred.
-    await svc.entities.PanicAlert.update(panic.id, {
-      notification_sent: successCount > 0,
-      initial_notification_sent_at: nowIso,
-      activity_log: [...(panic.activity_log || []), {
-        timestamp: new Date().toISOString(),
-        action: 'notifications_sent',
-        by_user_id: 'system',
-        by_user_name: 'System',
-        from_status: 'active',
-        to_status: 'active',
-        notes: `Initial notifications sent to ${successCount}/${recipients.length} recipients`
-      }]
-    });
+    //    event — ONLY when at least one authorised recipient was resolved.
+    //    With zero recipients no notification event occurred: the failure is
+    //    recorded on the panic itself and initial_notification_sent_at stays
+    //    unset. No automatic escalation/re-send in either case.
+    const activityEntry = noRecipients
+      ? {
+          timestamp: new Date().toISOString(),
+          action: 'PANIC_RECIPIENT_CONFIGURATION_MISSING',
+          by_user_id: 'system',
+          by_user_name: 'System',
+          from_status: 'active',
+          to_status: 'active',
+          notes: 'No authorised emergency recipients configured (0/0) — CRITICAL delivery/configuration failure recorded for platform oversight'
+        }
+      : {
+          timestamp: new Date().toISOString(),
+          action: 'notifications_sent',
+          by_user_id: 'system',
+          by_user_name: 'System',
+          from_status: 'active',
+          to_status: 'active',
+          notes: `Initial notifications sent to ${successCount}/${recipients.length} recipients`
+        };
+    const panicUpdate = {
+      notification_sent: !noRecipients && successCount > 0,
+      activity_log: [...(panic.activity_log || []), activityEntry]
+    };
+    if (!noRecipients) panicUpdate.initial_notification_sent_at = nowIso;
+    await svc.entities.PanicAlert.update(panic.id, panicUpdate);
 
     return Response.json({
       success: true,
       panicId: panic.id,
       panicNumber: panicNumber,
       recipientCount: recipients.length,
-      notificationsSent: successCount
+      notificationsSent: successCount,
+      // Sender-UI signal for the SAFE CRITICAL state — the UI must never
+      // claim 'Control Room has been notified' when this is true. No
+      // technical detail leaks to the sender through this flag.
+      recipientConfigurationMissing: noRecipients
     });
 
   } catch (error) {

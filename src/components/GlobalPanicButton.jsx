@@ -47,7 +47,7 @@ export default function GlobalPanicButton({ user }) {
   }, [panicId]);
 
   useEffect(() => {
-    if (panicState === "activated") {
+    if (panicState === "activated" || panicState === "no_recipients") {
       setShowCancel(true);
       const timer = setTimeout(() => setShowCancel(false), 5000);
       return () => clearTimeout(timer);
@@ -74,8 +74,15 @@ export default function GlobalPanicButton({ user }) {
       });
       setPanicId(result.panicId);
       setPanicNumber(result.panicNumber);
-      setPanicState("activated");
-      hapticFeedback([200, 50, 200]);
+      // Zero authorised recipients → SAFE CRITICAL state. The UI must NEVER
+      // claim the Control Room was notified when nobody could be reached.
+      if (result.recipientConfigurationMissing || result.recipientCount === 0) {
+        setPanicState("no_recipients");
+        hapticFeedback([500, 200, 500]);
+      } else {
+        setPanicState("activated");
+        hapticFeedback([200, 50, 200]);
+      }
 
       requestFreshLocation().then((freshLoc) => {
         if (freshLoc) updatePanicLocation(result.panicId, freshLoc);
@@ -111,7 +118,7 @@ export default function GlobalPanicButton({ user }) {
   const handleClose = () => {
     if (panicState === "activating") return; // Can't close while activating
     setShowOverlay(false);
-    if (panicState === "failed") {
+    if (panicState === "failed" || panicState === "no_recipients") {
       setPanicState("idle");
       lockRef.current = false;
     }
@@ -171,6 +178,40 @@ export default function GlobalPanicButton({ user }) {
                     </button>
                   )}
                   <p className="text-slate-500 text-xs mt-4">Waiting for acknowledgement...</p>
+                  {!showCancel && (
+                    <button
+                      onClick={handleClose}
+                      className="mt-4 text-slate-500 text-xs underline"
+                    >
+                      Close
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {panicState === "no_recipients" && (
+                <div className="p-8 text-center">
+                  <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                    <AlertTriangle className="w-8 h-8 text-white" />
+                  </div>
+                  <h2 className="text-white text-2xl font-bold">🚨 PANIC ACTIVATED</h2>
+                  <p className="text-orange-300 text-sm mt-2 font-semibold">
+                    No configured responder could be reached.
+                  </p>
+                  {panicNumber && (
+                    <p className="text-slate-500 text-xs mt-1 font-mono">Ref: {panicNumber}</p>
+                  )}
+                  <p className="text-slate-400 text-xs mt-3">
+                    If you are in immediate danger, please call emergency services directly.
+                  </p>
+                  {showCancel && (
+                    <button
+                      onClick={handleCancel}
+                      className="mt-4 inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white text-sm font-medium px-4 py-2 rounded-lg transition active:scale-95"
+                    >
+                      <X className="w-4 h-4" /> Cancel (accidental?)
+                    </button>
+                  )}
                   {!showCancel && (
                     <button
                       onClick={handleClose}
