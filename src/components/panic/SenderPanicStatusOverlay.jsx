@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, CheckCircle2, XCircle, Loader2, X, MapPin } from "lucide-react";
 import { closeOverlay } from "@/lib/senderPanicState";
@@ -49,7 +50,14 @@ export default function SenderPanicStatusOverlay({ panic, onCancel, onRetry }) {
     ? `https://www.google.com/maps?q=${record.location.lat},${record.location.lng}`
     : null;
 
-  return (
+  // PORTAL — the overlay must live at the document root, NOT inside the
+  // Layout header. The header carries `backdrop-blur-xl` (backdrop-filter),
+  // and any ancestor with a filter/backdrop-filter/transform becomes the
+  // CONTAINING BLOCK for position:fixed descendants — so a fixed overlay
+  // rendered inside the header is sized and clipped to the header's ~64px
+  // box (only its border shell remained visible). Portalling to
+  // document.body makes fixed inset-0 truly viewport-relative again.
+  return createPortal(
     <AnimatePresence>
       {visible && (
         <motion.div
@@ -67,7 +75,7 @@ export default function SenderPanicStatusOverlay({ panic, onCancel, onRetry }) {
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="w-full max-w-sm my-auto max-h-full overflow-y-auto overscroll-contain bg-slate-900 rounded-3xl border-2 border-red-500/50 shadow-2xl"
+            className="w-full max-w-sm shrink-0 max-h-full overflow-y-auto overscroll-contain bg-slate-900 rounded-3xl border-2 border-red-500/50 shadow-2xl"
           >
             {/* ACTIVATING — record being created */}
             {phase === "activating" && (
@@ -256,6 +264,7 @@ export default function SenderPanicStatusOverlay({ panic, onCancel, onRetry }) {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
-  );
-}
+    </AnimatePresence>,
+    document.body
+    );
+    }
