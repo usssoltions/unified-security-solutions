@@ -18,6 +18,7 @@ interface PanicEmailParams {
   userRole?: string;
   badgeNumber?: string;
   siteName?: string;
+  customerName?: string;
   panicNumber: string;
   activatedAt: string;
   location?: { lat: number; lng: number } | null;
@@ -29,7 +30,7 @@ interface PanicEmailParams {
 
 export function buildPanicEmail(params: PanicEmailParams): string {
   const {
-    userName, userRole, badgeNumber, siteName, panicNumber,
+    userName, userRole, badgeNumber, siteName, customerName, panicNumber,
     activatedAt, location, gpsAccuracy, notes, status, isEscalation
   } = params;
 
@@ -106,6 +107,11 @@ export function buildPanicEmail(params: PanicEmailParams): string {
                 <td style="padding: 8px 0; color: #7f1d1d; font-weight: bold;">🏢 Site:</td>
                 <td style="padding: 8px 0; color: #1f2937;">${esc(siteName || 'Unknown')}</td>
               </tr>
+              ${customerName ? `
+              <tr>
+                <td style="padding: 8px 0; color: #7f1d1d; font-weight: bold;">🏛️ Customer:</td>
+                <td style="padding: 8px 0; color: #1f2937;">${esc(customerName)}</td>
+              </tr>` : ''}
               <tr>
                 <td style="padding: 8px 0; color: #7f1d1d; font-weight: bold;">📋 Ref:</td>
                 <td style="padding: 8px 0; color: #1f2937; font-family: monospace;">${esc(panicNumber)}</td>

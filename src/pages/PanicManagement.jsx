@@ -39,7 +39,10 @@ function PanicCard({ panic, user, assignees, onAction, resellerName, customerNam
 
   const config = STATUS_CONFIG[panic.status] || STATUS_CONFIG.active;
   const isActive = ["active", "acknowledged", "assigned", "accepted"].includes(panic.status);
-  const canManage = ["admin", "dispatcher", "supervisor", "estate_manager", "management"].includes(user?.role_type);
+  // Post-split responder authority: control_room_operator and customer_admin
+  // are the primary operational responders of a modern tenant (legacy roles
+  // remain for migrated tenants).
+  const canManage = ["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin", "customer_admin", "control_room_operator"].includes(user?.role_type);
   const canAccept = panic.assigned_to === user?.id;
 
   const handleAcknowledge = async () => {

@@ -213,8 +213,9 @@ export default function Layout({ children, currentPageName }) {
   const PANIC_ACTIVE_STATUSES = ["active", "acknowledged", "assigned", "accepted"];
   const loadPanicCount = async () => {
     if (!user) return;
-    // Only show the indicator to roles that can manage panics.
-    if (!["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin"].includes(user.role_type)) {
+    // Only show the indicator to roles that can manage panics (includes the
+    // post-split responder roles customer_admin and control_room_operator).
+    if (!["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin", "customer_admin", "control_room_operator"].includes(user.role_type)) {
       setPanicCount(0);
       return;
     }
@@ -372,6 +373,18 @@ export default function Layout({ children, currentPageName }) {
     return [];
   };
 
+  // ── PANIC TRIGGER SCOPE ────────────────────────────────────────────────
+  // Attendance Register is a PROTECTED module with NO panic capability: a
+  // panic trigger must never be reachable from Attendance pages, and an
+  // attendance-only user (attendance_staff) never sees a panic button at
+  // all. All other operational roles keep the global panic button on every
+  // non-Attendance page. This is the ONLY Attendance change — no other
+  // Attendance behaviour is touched here.
+  const ATTENDANCE_PAGES = ["/AttendanceDashboard", "/AttendanceRecords", "/AttendanceWorkers", "/AttendanceReports", "/AttendanceSettings"];
+  const panicTriggerExcluded =
+    user?.role_type === "attendance_staff" ||
+    ATTENDANCE_PAGES.some((p) => location.pathname.startsWith(p));
+
   const mobileNavItems = getMobileNavItems();
 
   // Friendly role display names — never expose raw role keys (customer_admin,
@@ -461,9 +474,9 @@ export default function Layout({ children, currentPageName }) {
                     <Menu className="w-6 h-6" />
                   </button>
 
-                  <GlobalPanicButton user={user} />
+                  {!panicTriggerExcluded && <GlobalPanicButton user={user} />}
 
-                  {["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin"].includes(user?.role_type) && (
+                  {["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin", "customer_admin", "control_room_operator"].includes(user?.role_type) && (
                     <button
                       onClick={() => navigate("/PanicManagement")}
                       title={panicCount > 0 ? `${panicCount} active panic alert${panicCount > 1 ? "s" : ""} — open Panic Queue` : "Panic Queue"}

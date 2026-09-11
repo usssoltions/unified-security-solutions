@@ -21,7 +21,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { buildPanicEmail, esc } from '../../shared/panicEmailTemplate.ts';
 
-const OPERATIONAL_ROLES = ['admin', 'platform_admin', 'dispatcher', 'supervisor', 'estate_manager', 'management', 'practice_admin'];
+// Post-module-split responder authority: control_room_operator and
+// customer_admin are the primary operational responders of a modern tenant
+// (the legacy roles remain for migrated tenants). The pre-split omission of
+// these two roles also blocked authorised responders from acknowledging
+// panics (403 "Not authorized to acknowledge panics").
+const OPERATIONAL_ROLES = ['admin', 'platform_admin', 'dispatcher', 'supervisor', 'estate_manager', 'management', 'practice_admin', 'customer_admin', 'control_room_operator'];
 
 function isPlatformAdminCaller(user) {
   return !!user && (
