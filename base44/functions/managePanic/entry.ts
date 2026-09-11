@@ -214,13 +214,12 @@ Deno.serve(async (req) => {
         break;
 
       case 'cancel':
-        // ACCIDENTAL CANCEL — ORIGINATOR ONLY (hardened). An authorised
-        // responder (control_room_operator, customer_admin, supervisor, ...)
-        // may acknowledge/assign/resolve, but may NEVER cancel someone else's
-        // panic: cancellation withdraws the emergency itself and is reserved
-        // to the ORIGINAL SENDER (panic.user_id). Platform admins retain
-        // emergency oversight; tenant fail-closed scope rules unchanged.
-        if (panic.user_id !== user.id && !isPlatformSender) {
+        // ACCIDENTAL CANCEL — ORIGINATOR ONLY, NO ROLE BYPASS. Cancellation
+        // withdraws the emergency itself and is reserved STRICTLY to the
+        // ORIGINAL SENDER: panic.user_id === caller.id, with NO exception for
+        // any role — not platform admin, not tenant admin, not responder.
+        // Emergency administrative intervention uses RESOLVE, never CANCEL.
+        if (panic.user_id !== user.id) {
           return Response.json({ error: 'Forbidden — only the original panic sender may cancel a panic' }, { status: 403 });
         }
         // Cancel is available only while the panic is still open — a resolved
