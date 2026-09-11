@@ -30,12 +30,20 @@ function elapsed(activatedAt) {
   return `${secs}s`;
 }
 
-function PanicCard({ panic, user, assignees, onAction, resellerName, customerName }) {
+function PanicCard({ panic, user, assignees, onAction, resellerName, customerName, siteName, highlight }) {
   const [showAssign, setShowAssign] = useState(false);
   const [showResolve, setShowResolve] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [selectedAssignee, setSelectedAssignee] = useState("");
   const [acting, setActing] = useState(false);
+  const cardRef = React.useRef(null);
+
+  // Deep-link target (?panic=<id>): scroll the exact panic into view once.
+  React.useEffect(() => {
+    if (highlight && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlight]);
 
   const config = STATUS_CONFIG[panic.status] || STATUS_CONFIG.active;
   const isActive = ["active", "acknowledged", "assigned", "accepted"].includes(panic.status);
@@ -79,10 +87,11 @@ function PanicCard({ panic, user, assignees, onAction, resellerName, customerNam
 
   return (
     <motion.div
+      ref={cardRef}
       layout
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`rounded-2xl border-2 ${config.border} bg-slate-800/50 overflow-hidden`}
+      className={`rounded-2xl border-2 ${config.border} bg-slate-800/50 overflow-hidden${highlight ? " ring-2 ring-red-400" : ""}`}
     >
       {/* Header */}
       <div className={`px-4 py-3 ${config.color} bg-opacity-10 flex items-center justify-between`}>
@@ -103,7 +112,7 @@ function PanicCard({ panic, user, assignees, onAction, resellerName, customerNam
           </div>
           <div>
             <p className="text-slate-500 text-xs">Site</p>
-            <p className="text-white font-semibold">{panic.site_name || "Unknown"}</p>
+            <p className="text-white font-semibold">{siteName || "Unknown"}</p>
           </div>
           <div className="col-span-2 grid grid-cols-2 gap-3 pt-1 border-t border-slate-700/50 mt-1">
             <div>
@@ -262,6 +271,8 @@ export default function PanicManagement() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
   const [filter, setFilter] = useState("active");
+  // Deep link (/PanicManagement?panic=<id>) — the exact panic highlighted.
+  const [highlightId] = useState(() => new URLSearchParams(window.location.search).get("panic"));
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -292,6 +303,22 @@ export default function PanicManagement() {
     staleTime: 0,
   });
 
+  // SERVER-SIDE PANIC SCOPE (panicScope gateway — read-only): a Control Room
+  // Operator's queue is narrowed to her EXPLICITLY assigned control rooms and
+  // their linked service areas. She never sees another room's (CR2) panics
+  // unless assigned there; every other responder role keeps the existing
+  // tenant-wide view. Cross-tenant isolation remains enforced by RLS +
+  // managePanic — this gateway only narrows WITHIN the tenant.
+  const { data: scope } = useQuery({
+    queryKey: ["panicScope", user?.id],
+    queryFn: async () => {
+      const res = await base44.functions.invoke("panicScope", {});
+      return res?.data !== undefined ? res.data : res;
+    },
+    enabled: !!user,
+    staleTime: 60 * 1000,
+  });
+
   // Realtime subscription
   useEffect(() => {
     if (!user) return;
@@ -306,8 +333,10 @@ export default function PanicManagement() {
     queryKey: ["panicAssignees"],
     queryFn: async () => {
       const users = await base44.entities.User.list();
+      // Post-split responder catalog: customer_admin / control_room_operator
+      // are assignable responders of a modern tenant (legacy roles remain).
       return users.filter(u =>
-        ["admin", "dispatcher", "supervisor", "guard", "estate_manager", "management"].includes(u.role_type)
+        ["admin", "platform_admin", "dispatcher", "supervisor", "guard", "estate_manager", "management", "customer_admin", "control_room_operator"].includes(u.role_type)
       );
     },
     enabled: !!user,
@@ -337,7 +366,22 @@ export default function PanicManagement() {
     queryClient.invalidateQueries(["panics"]);
   };
 
-  const activePanics = panics.filter(p => ["active", "acknowledged", "assigned", "accepted"].includes(p.status));
+  // Apply the server-resolved operator scope to every view/count.
+  const scopedPanics = React.useMemo(() => {
+    if (!scope || scope.scope !== "control_room") return panics;
+    const mine = new Set(scope.site_ids || []);
+    const otherRooms = new Set(scope.other_linked_site_ids || []);
+    return panics.filter(p =>
+      !p.site_id || mine.has(p.site_id) || !otherRooms.has(p.site_id)
+    );
+  }, [panics, scope]);
+
+  // Display resolution: a panic with a valid site_id but no site_name
+  // snapshot shows the real Site name from the server-provided tenant map.
+  const resolveSiteName = (p) =>
+    p.site_name || (scope?.site_names && scope.site_names[p.site_id]) || "";
+
+  const activePanics = scopedPanics.filter(p => ["active", "acknowledged", "assigned", "accepted"].includes(p.status));
   const hasActive = activePanics.length > 0;
 
   return (
@@ -397,7 +441,7 @@ export default function PanicManagement() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
         </div>
-      ) : panics.length === 0 ? (
+      ) : scopedPanics.length === 0 ? (
         <div className="text-center py-12">
           <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-2" />
           <p className="text-slate-400">No panic alerts in this category</p>
@@ -405,7 +449,7 @@ export default function PanicManagement() {
       ) : (
         <div className="space-y-3">
           <AnimatePresence>
-            {panics.map(panic => (
+            {scopedPanics.map(panic => (
               <PanicCard
                 key={panic.id}
                 panic={panic}
@@ -414,6 +458,8 @@ export default function PanicManagement() {
                 onAction={handleAction}
                 resellerName={resellerMap[panic.reseller_id]}
                 customerName={customerMap[panic.customer_id]}
+                siteName={resolveSiteName(panic)}
+                highlight={highlightId === panic.id}
               />
             ))}
           </AnimatePresence>

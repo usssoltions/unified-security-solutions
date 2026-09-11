@@ -159,6 +159,20 @@ Deno.serve(async (req) => {
     const panicNumber = `PNC-${Date.now()}`;
     const userName = user.display_name || user.full_name || 'Unknown User';
 
+    // Server-side SITE resolution. The sender's authoritative site assignment
+    // (User.site_id) applies when the trigger supplied no site context, and a
+    // valid site_id is ALWAYS paired with its resolved Site name — a panic
+    // must never display "Site: Unknown" when real site data exists (live
+    // trace 2026-09-11: a guard panic carried a valid site_id but an empty
+    // site_name because the User record holds site_id without site_name).
+    const senderSiteId = siteId || user.site_id || '';
+    let resolvedSiteName = siteName || user.site_name || '';
+    if (senderSiteId && !resolvedSiteName) {
+      const siteRows = (await svc.entities.Site
+        .filter({ id: senderSiteId }).catch(() => [])) || [];
+      if (siteRows[0] && siteRows[0].name) resolvedSiteName = siteRows[0].name;
+    }
+
     // 1. Create the PanicAlert record IMMEDIATELY (before any notifications)
     //    — the durable event always exists even if every channel fails.
     const panic = await svc.entities.PanicAlert.create({
@@ -167,8 +181,8 @@ Deno.serve(async (req) => {
       user_name: userName,
       user_role: user.role_type || '',
       badge_number: user.badge_number || '',
-      site_id: siteId || '',
-      site_name: siteName || user.site_name || '',
+      site_id: senderSiteId,
+      site_name: resolvedSiteName,
       shift_id: shiftId || '',
       status: 'active',
       priority: 'critical',
@@ -211,7 +225,7 @@ Deno.serve(async (req) => {
     }
 
     // 3. Resolve the AUTHORITATIVE recipients (server-side only).
-    const recipients = await resolvePanicRecipients(svc, user, siteId || user.site_id || '');
+    const recipients = await resolvePanicRecipients(svc, user, senderSiteId);
 
     // 3b. ZERO-RECIPIENT POLICY — no hierarchy fallback was applied (there
     //     is none). The panic record is already durable above. Record the
@@ -254,12 +268,12 @@ Deno.serve(async (req) => {
     const googleMapsUrl = location?.lat && location?.lng
       ? `https://www.google.com/maps?q=${location.lat},${location.lng}`
       : null;
-    const contextLine = [siteName || user.site_name, customerName]
+    const contextLine = [resolvedSiteName, customerName]
       .filter(Boolean).join(' — ') || 'Unknown location';
 
     const emailBody = buildPanicEmail({
       userName, userRole: user.role_type, badgeNumber: user.badge_number,
-      siteName: siteName || user.site_name, panicNumber, activatedAt: nowIso,
+      siteName: resolvedSiteName, panicNumber, activatedAt: nowIso,
       location, gpsAccuracy: gps_accuracy, notes, status: 'ACTIVE',
       customerName,
     });
@@ -288,11 +302,13 @@ Deno.serve(async (req) => {
           type: 'system',
           priority: 'critical',
           title: `🚨 PANIC ALERT — ${userName}`,
-          message: `EMERGENCY: ${userName} (${user.role_type || 'user'}) triggered a PANIC alert at ${sastTime(nowIso)}${siteName ? ` — site: ${siteName}` : ''}${customerName ? ` — ${customerName}` : ''}. Immediate response required!`,
+          message: `EMERGENCY: ${userName} (${user.role_type || 'user'}) triggered a PANIC alert at ${sastTime(nowIso)}${resolvedSiteName ? ` — site: ${resolvedSiteName}` : ''}${customerName ? ` — ${customerName}` : ''}. Immediate response required!`,
           read: false,
           related_entity: 'panic',
           related_id: panic.id,
-          action_url: '/PanicManagement',
+          // Exact-panic deep link: Bell → tap → Panic Queue with this exact
+          // panic highlighted/opened (now reachable by control_room_operator).
+          action_url: '/PanicManagement?panic=' + panic.id,
           sent_via: ['in_app']
         });
       } catch (e) {
@@ -328,7 +344,7 @@ Deno.serve(async (req) => {
         priority: 'critical',
         force: true,
         action_label: 'Open Panic Queue',
-        action_url: '/PanicManagement',
+        action_url: '/PanicManagement?panic=' + panic.id,
         event_key: eventKey + ':' + recipient.id,
         customer_id: user.customer_id || null,
         reseller_id: user.reseller_id || null,

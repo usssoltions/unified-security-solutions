@@ -187,10 +187,13 @@ export const ROUTE_REGISTRY = {
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   // Control Room Operator — works the authorised control rooms' task queues
-  // (assign, monitor, verify, second sign-off). Rooted on the Task Queue;
+  // (assign, monitor, verify, second sign-off) AND responds to the Panics of
+  // her explicitly assigned control rooms. Rooted on the Task Queue;
   // module-gated by TASK_SCHEDULING / OPERATIONS / COMPLETE_SECURITY.
+  // Deliberately MINIMAL: no Customer Administrator functionality.
   control_room_operator: [
     { title: "Task Queue", pageKey: "ScheduledTasks", icon: ClipboardList, isRoot: true },
+    { title: "Panic Queue", pageKey: "PanicManagement", icon: Zap },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   attendance_staff: [
