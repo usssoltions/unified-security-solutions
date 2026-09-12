@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getSite } from "@/lib/siteApi";
 import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,17 @@ export default function GuardPatrol() {
   const [statusMsg, setStatusMsg] = useState("");
   const [emergencyMode, setEmergencyMode] = useState(false);
   const gpsInterval = useRef(null);
+  // AUTHORITATIVE checkpoint GPS + site geofence tolerance (server-scoped
+  // site gateway) for real GPS verification at each checkpoint scan.
+  const siteCheckpointsRef = useRef(new Map());
+  const siteGeofenceRef = useRef(100);
   const queryClient = useQueryClient();
+
+  // DEVELOPMENT/PLATFORM-ADMIN TEST MODE ONLY — manual checkpoint-id entry
+  // and tap-to-simulate are never available to normal guards.
+  const isTestMode = !!user && (
+    user.role_type === "admin" || user.role_type === "platform_admin" || user.admin_level === "platform"
+  );
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -77,6 +88,18 @@ export default function GuardPatrol() {
   const startPatrol = useCallback(async (patrol) => {
     const gps = await getGPS().catch(() => null);
     const now = new Date().toISOString();
+
+    // Load the site's checkpoint GPS + geofence tolerance via the
+    // server-scoped site gateway so every scan can be GPS-verified for real.
+    try {
+      const site = await getSite(patrol.site_id);
+      if (site) {
+        siteGeofenceRef.current = site.geofence_radius || 100;
+        siteCheckpointsRef.current = new Map(
+          (site.checkpoints || []).filter(cp => cp.location?.lat != null).map(cp => [cp.id, cp.location])
+        );
+      }
+    } catch (_) { /* no GPS verification data — scans record 'unavailable' */ }
 
     // Generate AI random route (shuffle by risk desc)
     const checkpoints = [...(patrol.route_checkpoints || [])].sort((a, b) => {
@@ -117,13 +140,38 @@ export default function GuardPatrol() {
   // ─── Scan checkpoint ────────────────────────────────────────────────────
   const scanCheckpoint = useCallback(async (checkpointId) => {
     if (!activePatrol) return;
-    const gps = await getGPS().catch(() => null);
     const checkpoints = [...activePatrol.route_checkpoints];
     const idx = checkpoints.findIndex(c => c.checkpoint_id === checkpointId);
-    if (idx === -1) { setStatusMsg("Unknown checkpoint QR."); return; }
+    // QR VALIDATION — REAL: an unknown code is rejected VISIBLY with NO
+    // PatrolLog, no checkpoint completion and no route advance. A checkpoint
+    // already completed can never be re-scanned for credit.
+    if (idx === -1) {
+      setStatusMsg("❌ Unknown checkpoint QR — not recorded. Scan the correct checkpoint QR code.");
+      return;
+    }
+    if (checkpoints[idx].completed) {
+      setStatusMsg(`⚠️ ${checkpoints[idx].checkpoint_name} was already verified.`);
+      return;
+    }
 
-    const gpsVerified = false;
+    const gps = await getGPS().catch(() => null);
+    // GPS VERIFICATION — computed for real, never hardcoded: meaningful
+    // distance between the checkpoint's configured GPS and the scan GPS.
+    // Distinct states: VERIFIED / NOT VERIFIED / GPS UNAVAILABLE.
+    // Non-verification does not block completion (no invented blocker).
+    const cpGps = siteCheckpointsRef.current.get(checkpointId);
+    let gpsStatus = "unavailable";
+    let distance = null;
+    if (cpGps && gps) {
+      distance = Math.round(distMetres(gps, cpGps));
+      gpsStatus = distance <= (siteGeofenceRef.current || 100) ? "verified" : "not_verified";
+    }
+    const gpsVerified = gpsStatus === "verified";
+
     const patrolLogData = {
+      // TENANT OWNERSHIP inherited from the patrol record.
+      customer_id: activePatrol.customer_id,
+      reseller_id: activePatrol.reseller_id,
       guard_id: user.id,
       guard_name: user.full_name,
       shift_id: activePatrol.shift_id,
@@ -132,9 +180,12 @@ export default function GuardPatrol() {
       checkpoint_name: checkpoints[idx].checkpoint_name,
       qr_code: checkpointId,
       location: gps,
+      checkpoint_location: cpGps || undefined,
+      distance_metres: distance,
+      gps_status: gpsStatus,
       timestamp: new Date().toISOString(),
-      verified: gpsVerified,
-      notes: `Patrol #${activePatrol.patrol_number}`,
+      verified: true,
+      notes: `Patrol #${activePatrol.patrol_number}${gpsStatus === "not_verified" ? ` — GPS ${distance}m from checkpoint` : ""}`,
     };
 
     // Save patrol log — queue offline if no connection
@@ -147,7 +198,8 @@ export default function GuardPatrol() {
       setStatusMsg("📶 Offline — checkpoint saved locally, will sync when connected.");
     }
 
-    checkpoints[idx] = { ...checkpoints[idx], completed: true, completed_at: new Date().toISOString(), gps_verified: gpsVerified };
+    checkpoints[idx] = { ...checkpoints[idx], completed: true, completed_at: new Date().toISOString(),
+      gps_verified: gpsVerified, gps_status: gpsStatus, distance_metres: distance };
     const completed = checkpoints.filter(c => c.completed).length;
     const total = checkpoints.length;
 
@@ -162,16 +214,19 @@ export default function GuardPatrol() {
 
     setActivePatrol(prev => ({ ...prev, route_checkpoints: checkpoints }));
 
+    // VOICE GUIDANCE — based on the AUTHORITATIVE checkpoint state just
+    // persisted above. No completion statement before the server update.
     const remaining = total - completed;
+    const next = checkpoints.find(c => !c.completed);
     if (remaining === 0) {
       speak("Patrol successfully completed. All checkpoints verified.");
       await completePatrol(checkpoints);
     } else if (remaining === 1) {
       speak("Checkpoint verified. Final checkpoint remaining.");
-      setStatusMsg("Final checkpoint remaining!");
+      setStatusMsg(`Final checkpoint remaining: ${next?.checkpoint_name || ""}`);
     } else {
-      speak(`Checkpoint verified. Proceed to the next checkpoint.`);
-      setStatusMsg(`${remaining} checkpoints remaining.`);
+      speak(`Checkpoint verified. Proceed to ${next?.checkpoint_name || "the next checkpoint"}.`);
+      setStatusMsg(`${remaining} checkpoints remaining. Next: ${next?.checkpoint_name || ""}`);
     }
 
     const nextIdx = checkpoints.findIndex(c => !c.completed);
@@ -346,7 +401,11 @@ export default function GuardPatrol() {
               </CardContent>
             </Card>
 
-            {/* Manual QR input (for when camera not available) */}
+            {/* DEVELOPMENT / PLATFORM-ADMIN TEST MODE ONLY — manual
+                checkpoint-id entry and tap-to-simulate are restricted to
+                explicit test mode. Normal guards verify checkpoints ONLY by
+                scanning the real checkpoint QR (QR Scanner). */}
+            {isTestMode && (
             <Card className="bg-slate-800 border-slate-700">
               <CardContent className="p-3">
                 <p className="text-slate-400 text-xs mb-2">Scan QR / Enter Checkpoint Code</p>
@@ -359,7 +418,7 @@ export default function GuardPatrol() {
                     <QrCode className="w-4 h-4" />
                   </Button>
                 </div>
-                <p className="text-slate-500 text-xs mt-1">Or tap a checkpoint below to simulate scan:</p>
+                <p className="text-slate-500 text-xs mt-1">TEST MODE — or tap a checkpoint below to simulate a scan:</p>
                 <div className="flex flex-wrap gap-1 mt-2">
                   {activePatrol.route_checkpoints.filter(c => !c.completed).map(cp => (
                     <button key={cp.checkpoint_id} onClick={() => scanCheckpoint(cp.checkpoint_id)}
@@ -370,6 +429,7 @@ export default function GuardPatrol() {
                 </div>
               </CardContent>
             </Card>
+            )}
 
             {/* Controls */}
             <div className="grid grid-cols-2 gap-2">

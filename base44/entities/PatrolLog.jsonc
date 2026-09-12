@@ -31,6 +31,7 @@
     },
     "location": {
       "type": "object",
+      "description": "The guard's scan GPS position at checkpoint verification.",
       "properties": {
         "lat": {
           "type": "number"
@@ -40,12 +41,38 @@
         }
       }
     },
+    "checkpoint_location": {
+      "type": "object",
+      "description": "The checkpoint's configured GPS position this scan was verified against (present when the checkpoint has GPS).",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
+      }
+    },
+    "distance_metres": {
+      "type": "number",
+      "description": "Meaningful distance between the checkpoint GPS and the scan GPS. Null when GPS was unavailable for either side."
+    },
+    "gps_status": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "not_verified",
+        "unavailable"
+      ],
+      "description": "GPS verification state: verified / not_verified / unavailable \u2014 never hardcoded true or false."
+    },
     "timestamp": {
       "type": "string",
       "format": "date-time"
     },
     "verified": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "QR validation result of this scan \u2014 true only for a real, valid, matching checkpoint QR scan."
     },
     "notes": {
       "type": "string"

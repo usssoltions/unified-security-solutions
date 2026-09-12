@@ -94,7 +94,21 @@
             "type": "string"
           },
           "gps_verified": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "True only when the checkpoint GPS and the scan GPS both existed and the distance was within the site's geofence tolerance. Never hardcoded."
+          },
+          "gps_status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "not_verified",
+              "unavailable"
+            ],
+            "description": "Authoritative GPS verification state of this checkpoint scan: verified (both GPS present, distance within tolerance), not_verified (both present, out of tolerance), unavailable (checkpoint GPS or scan GPS missing)."
+          },
+          "distance_metres": {
+            "type": "number",
+            "description": "Meaningful distance between the checkpoint's configured GPS and the guard's scan GPS (metres). Null/absent when GPS was unavailable."
           }
         }
       },

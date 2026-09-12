@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,17 +19,45 @@ export default function ChecklistTemplateForm({ template, sites, onClose, onSucc
 
   const [newItem, setNewItem] = useState({ text: "", type: "checkbox", required: true });
   const [selectedSite, setSelectedSite] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  // The creating admin's own tenant scope (used for tenant-wide templates).
+  const [myScope, setMyScope] = useState({ customer_id: null, reseller_id: null });
+
+  useEffect(() => {
+    base44.auth.me()
+      .then(u => setMyScope({ customer_id: u?.customer_id || null, reseller_id: u?.reseller_id || null }))
+      .catch(() => {});
+  }, []);
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
+      // TENANT OWNERSHIP — derived authoritatively: a selected site's tenant
+      // wins (sites are tenant-scoped server-side by the siteAccess gateway);
+      // a tenant-wide template inherits the creating admin's own customer/
+      // reseller scope. Server RLS rejects any mismatched scope.
+      const site = sites.find(s => s.id === data.site_id);
+      const scope = site && site.customer_id
+        ? { customer_id: site.customer_id, reseller_id: site.reseller_id }
+        : myScope;
+      const payload = {
+        ...data,
+        customer_id: scope.customer_id || undefined,
+        reseller_id: scope.reseller_id || undefined,
+      };
       if (template) {
-        return await base44.entities.ChecklistTemplate.update(template.id, data);
+        return await base44.entities.ChecklistTemplate.update(template.id, payload);
       } else {
-        return await base44.entities.ChecklistTemplate.create(data);
+        return await base44.entities.ChecklistTemplate.create(payload);
       }
     },
     onSuccess: () => {
+      setSaveError(null);
       onSuccess();
+    },
+    onError: (err) => {
+      // VISIBLE error — the form stays open and fully preserved; the
+      // isPending duplicate-submit lock prevents double saves.
+      setSaveError(err?.response?.data?.error || err?.message || "Failed to save the checklist. Please try again.");
     }
   });
 
@@ -220,6 +248,12 @@ export default function ChecklistTemplateForm({ template, sites, onClose, onSucc
                 />
                 <label className="text-sm text-slate-300">Require signature on completion</label>
               </div>
+
+              {saveError && (
+                <div className="p-3 bg-rose-900/40 border border-rose-700 rounded-lg text-rose-300 text-sm">
+                  {saveError}
+                </div>
+              )}
 
               <div className="flex gap-3 pt-4">
                 <Button

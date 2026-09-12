@@ -194,6 +194,9 @@ export default function GuardPatrolChecklist() {
     const timeSpent = Math.round((new Date() - new Date(activePatrol.started_at)) / 60000);
 
     completeMutation.mutate({
+      // TENANT OWNERSHIP inherited from the active shift.
+      customer_id: activeShift.customer_id || undefined,
+      reseller_id: activeShift.reseller_id || undefined,
       template_id: activePatrol.id,
       template_name: activePatrol.name,
       guard_id: user.id,
@@ -203,6 +206,7 @@ export default function GuardPatrolChecklist() {
       checkpoint_id: activePatrol.checkpoint_id,
       completed_items: Object.values(completedItems),
       signature: signature ? { data_url: signature, timestamp: new Date().toISOString(), method: "digital" } : null,
+      location: location || undefined,
       completed_at: new Date().toISOString(),
       status: "completed",
       notes,

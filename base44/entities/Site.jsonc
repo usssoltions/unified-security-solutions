@@ -121,6 +121,20 @@
                 "items": {
                   "type": "number"
                 }
+              },
+              "random_timing": {
+                "type": "boolean",
+                "default": false,
+                "description": "TRUE RANDOM PATROL TIMING: when true the generator produces unpredictable (but deterministic/idempotent per site+date) patrol times inside this schedule's operational window instead of fixed start_time + frequency_minutes intervals."
+              },
+              "patrol_count": {
+                "type": "number",
+                "description": "Number of patrols to generate inside the window when random_timing is on. Falls back to the frequency-derived count when unset."
+              },
+              "min_spacing_minutes": {
+                "type": "number",
+                "default": 45,
+                "description": "Minimum spacing between randomly-timed patrols (enforced by construction of the generation slots)."
               }
             }
           },

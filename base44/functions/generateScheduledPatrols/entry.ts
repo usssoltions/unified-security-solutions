@@ -40,6 +40,52 @@ function dayKey(iso) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+/** Deterministic seed hash → [0,1). Same input always yields the same
+ * jitter, so randomly-timed patrol generation is IDEMPOTENT across
+ * scheduler retries (the 5-minute dedupe never sees drifted times). */
+function seededHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+/** Patrol minute-offsets for one schedule on one day.
+ *  FIXED cadence: start + frequency intervals (existing production rule).
+ *  RANDOM TIMING: `count` seeded, unpredictable times inside the window with
+ *  the configured minimum spacing enforced by slot construction — never
+ *  start_time + fixed frequency when random timing is enabled.
+ *  Overnight windows (end < start, e.g. 18:00–06:00) are handled by adding
+ *  a day to the end. */
+function schedulePatrolOffsets(schedule, siteId, dateKey, schedIdx) {
+  const startMins = timeToMins(schedule.start_time || '06:00');
+  let endMins = timeToMins(schedule.end_time || '18:00');
+  if (endMins < startMins) endMins += 24 * 60; // overnight operational window
+  const windowMins = endMins - startMins;
+  if (windowMins <= 0) return [];
+
+  if (!schedule.random_timing) {
+    const freqMins = schedule.frequency_minutes || 60;
+    const offsets = [];
+    for (let m = 0; m <= windowMins; m += freqMins) offsets.push(startMins + m);
+    return offsets;
+  }
+
+  const count = Math.max(1, schedule.patrol_count ||
+    Math.max(1, Math.floor(windowMins / (schedule.frequency_minutes || 60))));
+  const minSpacing = Math.max(1, schedule.min_spacing_minutes || 45);
+  const slotWidth = windowMins / count;
+  const jitterRange = Math.max(0, slotWidth - minSpacing);
+  const offsets = [];
+  for (let i = 0; i < count; i++) {
+    const r = seededHash(`${siteId}:${dateKey}:${schedIdx}:${i}`);
+    offsets.push(Math.round(startMins + i * slotWidth + r * jitterRange));
+  }
+  return offsets.sort((a, b) => a - b);
+}
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -210,15 +256,17 @@ export default async function(req: Request): Promise<Response> {
         const dayStart = new Date(shift.start_time);
         dayStart.setHours(0, 0, 0, 0);
 
-        for (const schedule of cfg.schedules) {
-          const startMins = timeToMins(schedule.start_time || '06:00');
-          const endMins = timeToMins(schedule.end_time || '18:00');
-          const freqMins = schedule.frequency_minutes || 60;
+        // PATROL TIMING: fixed cadence (unchanged production behaviour) OR
+        // TRUE RANDOM TIMING when the schedule enables it — deterministic
+        // seeded times inside the window (idempotent across retries), with
+        // the configured minimum spacing enforced by slot construction.
+        for (let schedIdx = 0; schedIdx < cfg.schedules.length; schedIdx++) {
+          const schedule = cfg.schedules[schedIdx];
+          const patrolOffsets = schedulePatrolOffsets(schedule, site.id, dayKey(shift.start_time), schedIdx);
 
-          let patrolMins = startMins;
           let patrolNum = 1;
 
-          while (patrolMins <= endMins) {
+          for (const patrolMins of patrolOffsets) {
             const scheduledStart = new Date(dayStart);
             scheduledStart.setMinutes(scheduledStart.getMinutes() + patrolMins);
 
@@ -248,7 +296,12 @@ export default async function(req: Request): Promise<Response> {
               const scheduledEnd = new Date(scheduledStart);
               scheduledEnd.setMinutes(scheduledEnd.getMinutes() + (cfg.duration_target_minutes || 30));
 
+              // TENANT OWNERSHIP — inherited server-side from the
+              // AUTHORITATIVE Site record (never from the caller or event),
+              // so the guard AND the customer admin see this patrol.
               const patrol = await base44.asServiceRole.entities.ScheduledPatrol.create({
+                customer_id: site.customer_id,
+                reseller_id: site.reseller_id,
                 site_id: site.id,
                 site_name: site.name,
                 guard_id: shift.guard_id,
@@ -268,7 +321,6 @@ export default async function(req: Request): Promise<Response> {
               audit.patrolsCreated++;
             }
 
-            patrolMins += freqMins;
             patrolNum++;
           }
         }

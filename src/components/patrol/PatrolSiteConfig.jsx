@@ -48,11 +48,13 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
 
   // Calculate patrols per day for a schedule
   const calcPatrols = (s) => {
-    if (!s.start_time || !s.end_time || !s.frequency_minutes) return 0;
+    if (!s.start_time || !s.end_time) return 0;
     const [sh, sm] = s.start_time.split(":").map(Number);
     const [eh, em] = s.end_time.split(":").map(Number);
     let mins = (eh * 60 + em) - (sh * 60 + sm);
     if (mins <= 0) mins += 24 * 60;
+    if (s.random_timing) return s.patrol_count || Math.max(1, Math.floor(mins / (s.frequency_minutes || 60)));
+    if (!s.frequency_minutes) return 0;
     return Math.floor(mins / s.frequency_minutes);
   };
 
@@ -120,6 +122,33 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+                </div>
+
+                {/* Random patrol timing — unpredictable (deterministic/idempotent)
+                    patrol times inside the window with a minimum spacing. */}
+                <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-slate-700/60 pt-2">
+                  <label className="flex items-center gap-1.5">
+                    <Switch checked={!!s.random_timing}
+                      onCheckedChange={v => updateSchedule(i, { random_timing: v, ...(v && !s.patrol_count ? { patrol_count: 4 } : {}) })} />
+                    <span className="text-slate-300 text-xs">Random Patrol Timing</span>
+                  </label>
+                  {s.random_timing && (
+                    <>
+                      <label className="flex items-center gap-1">
+                        <span className="text-slate-400 text-xs">Patrols</span>
+                        <Input type="number" min="1" value={s.patrol_count || ""}
+                          placeholder={String(calcPatrols(s) || 4)}
+                          onChange={e => updateSchedule(i, { patrol_count: parseInt(e.target.value) || undefined })}
+                          className="bg-slate-800 border-slate-600 text-white h-8 text-sm w-16" />
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <span className="text-slate-400 text-xs">Min spacing (min)</span>
+                        <Input type="number" min="1" value={s.min_spacing_minutes ?? 45}
+                          onChange={e => updateSchedule(i, { min_spacing_minutes: parseInt(e.target.value) || 45 })}
+                          className="bg-slate-800 border-slate-600 text-white h-8 text-sm w-20" />
+                      </label>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -259,8 +261,63 @@ Deno.serve(async (req) => {
           let markedOverdue = 0;
           let markedMissed = 0;
 
-          // Supervisors fetched lazily — only when a missed patrol needs notifying
-          let supervisors = null;
+          // TENANT-SCOPED RECIPIENT RESOLUTION (server-side): a patrol's
+          // operational recipients are the assigned guard plus SAME-CUSTOMER
+          // supervisors/dispatchers/customer admins (platform oversight
+          // always permitted). No cross-tenant recipient is ever notified.
+          const allUsers = (await base44.asServiceRole.entities.User.list().catch(() => [])) || [];
+          const isPlatformUser = (u) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
+          const resolvePatrolRecipients = (patrol) => ({
+            guard: allUsers.find(u => u.id === patrol.guard_id) || null,
+            supervisors: allUsers.filter(u =>
+              ['admin', 'dispatcher', 'supervisor', 'customer_admin'].includes(u.role_type) &&
+              (isPlatformUser(u) || !patrol.customer_id || u.customer_id === patrol.customer_id)),
+          });
+
+          // Multi-channel patrol exception dispatch — every channel is
+          // FAILURE-ISOLATED (a Telegram/email/in-app failure never blocks
+          // the others or the status update), and the deterministic event
+          // key (patrol_missed/patrol_overdue:<id>) makes each channel
+          // idempotent per patrol + recipient across sweep retries.
+          const dispatchPatrolException = async (patrol, targets, kind, title, body) => {
+            for (const t of targets.filter(Boolean)) {
+              // IN-APP — tenant-owned record
+              await base44.asServiceRole.entities.Notification.create({
+                recipient_id: t.id,
+                recipient_name: t.display_name || t.full_name,
+                type: 'system',
+                priority: 'high',
+                title, message: body, read: false,
+                related_entity: 'ScheduledPatrol', related_id: patrol.id,
+                action_url: '/PatrolMonitoring', sent_via: ['in_app'],
+                customer_id: patrol.customer_id || undefined,
+                reseller_id: patrol.reseller_id || undefined,
+              }).catch(() => {});
+              // NATIVE PUSH — additional channel, never depended on
+              await sendNativePush(base44.asServiceRole, {
+                user_id: t.id, title, body, priority: 'high',
+                action_label: 'Open Patrol Monitoring', action_url: '/PatrolMonitoring',
+                event_key: kind + ':' + patrol.id,
+                customer_id: patrol.customer_id || undefined,
+                reseller_id: patrol.reseller_id || undefined,
+              }).catch(() => {});
+              // TELEGRAM — verified per-user mapping; same-chat dedupe by
+              // event_key + chat; each separate user keeps their own event.
+              if (t.telegram_connected && t.telegram_notifications_enabled !== false && t.telegram_chat_id) {
+                await sendTaskTelegramDeduped(base44.asServiceRole, secrets, kind + ':' + patrol.id,
+                  t.telegram_chat_id,
+                  `${title}\n\n${body}\nPatrol #${patrol.patrol_number} — ${patrol.site_name}`)
+                  .catch(() => {});
+              }
+              // EMAIL — important operational exceptions only (missed/overdue)
+              if (t.email) {
+                await base44.asServiceRole.integrations.Core.SendEmail({
+                  from_name: 'USS Patrol Alerts', to: t.email, subject: title, body,
+                }).catch(() => {});
+              }
+            }
+          };
+
           for (const patrol of todayPatrols) {
             if (patrol.status !== 'upcoming' && patrol.status !== 'due') continue;
             const minsLate = (now - new Date(patrol.scheduled_start)) / 60000;
@@ -268,60 +325,20 @@ Deno.serve(async (req) => {
             if (minsLate > missedThreshold) {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'missed' });
               markedMissed++;
-              if (patrol.guard_name) {
-                if (!supervisors) {
-                  const allUsers = await base44.asServiceRole.entities.User.list();
-                  supervisors = allUsers.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type)).slice(0, 3);
-                }
-                if (supervisors.length > 0) {
-                  await Promise.all(supervisors.map(sup =>
-                    base44.asServiceRole.entities.Notification.create({
-                      recipient_id: sup.id,
-                      recipient_name: sup.full_name,
-                      type: 'system',
-                      priority: 'high',
-                      title: `⚠️ Missed Patrol — ${patrol.site_name}`,
-                      message: `${patrol.guard_name} missed patrol #${patrol.patrol_number} at ${patrol.site_name}.`,
-                      read: false,
-                      related_entity: 'ScheduledPatrol',
-                      related_id: patrol.id,
-                      sent_via: ['in_app'],
-                    }).catch(() => {})
-                  ));
-                  // NATIVE PUSH — shared platform service: a MISSED patrol is
-                  // a high-priority operational exception.
-                  for (const sup of supervisors) {
-                    await sendNativePush(base44.asServiceRole, {
-                      user_id: sup.id,
-                      title: `⚠️ Missed Patrol — ${patrol.site_name}`,
-                      body: `${patrol.guard_name} missed patrol #${patrol.patrol_number} at ${patrol.site_name}.`,
-                      priority: 'high',
-                      action_label: 'Open Patrol Monitoring', action_url: '/PatrolMonitoring',
-                      event_key: 'patrol_missed:' + patrol.id,
-                    }).catch(() => {});
-                  }
-                }
+              const { guard, supervisors } = resolvePatrolRecipients(patrol);
+              if (patrol.guard_name || guard) {
+                await dispatchPatrolException(patrol, [guard, ...supervisors], 'patrol_missed',
+                  `⚠️ Missed Patrol — ${patrol.site_name}`,
+                  `${patrol.guard_name || 'The assigned guard'} missed patrol #${patrol.patrol_number} at ${patrol.site_name}.`);
               }
             } else if (minsLate > overdueThreshold) {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'overdue' });
               markedOverdue++;
-              // NATIVE PUSH — shared platform service: an overdue (not yet
-              // missed) patrol needs supervisor attention with the app closed.
-              if (patrol.guard_name) {
-                if (!supervisors) {
-                  const allUsers = await base44.asServiceRole.entities.User.list();
-                  supervisors = allUsers.filter(u => ['admin', 'dispatcher', 'supervisor'].includes(u.role_type)).slice(0, 3);
-                }
-                for (const sup of supervisors) {
-                  await sendNativePush(base44.asServiceRole, {
-                    user_id: sup.id,
-                    title: `⏰ Patrol Overdue — ${patrol.site_name}`,
-                    body: `${patrol.guard_name}'s patrol #${patrol.patrol_number} at ${patrol.site_name} is overdue.`,
-                    priority: 'high',
-                    action_label: 'Open Patrol Monitoring', action_url: '/PatrolMonitoring',
-                    event_key: 'patrol_overdue:' + patrol.id,
-                  }).catch(() => {});
-                }
+              const { guard, supervisors } = resolvePatrolRecipients(patrol);
+              if (patrol.guard_name || guard) {
+                await dispatchPatrolException(patrol, [guard, ...supervisors], 'patrol_overdue',
+                  `⏰ Patrol Overdue — ${patrol.site_name}`,
+                  `${patrol.guard_name || 'The assigned guard'}'s patrol #${patrol.patrol_number} at ${patrol.site_name} is overdue.`);
               }
             } else if (minsLate >= 0 && patrol.status === 'upcoming') {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'due' });
@@ -338,8 +355,10 @@ Deno.serve(async (req) => {
             !p.alerts_sent?.includes('10min')
           );
           for (const patrol of dueAlerts) {
+            const guardUser = allUsers.find(u => u.id === patrol.guard_id) || null;
             await base44.asServiceRole.entities.Notification.create({
               recipient_id: patrol.guard_id,
+              recipient_name: guardUser?.display_name || guardUser?.full_name || patrol.guard_name,
               type: 'patrol_due',
               priority: 'high',
               title: '🛡️ Patrol Due in 10 Minutes',
@@ -347,6 +366,9 @@ Deno.serve(async (req) => {
               read: false,
               related_entity: 'ScheduledPatrol',
               related_id: patrol.id,
+              action_url: '/GuardPatrol',
+              customer_id: patrol.customer_id || undefined,
+              reseller_id: patrol.reseller_id || undefined,
               sent_via: ['in_app'],
             }).catch(() => {});
             // NATIVE PUSH — shared platform service: the configured 10-minute
@@ -360,6 +382,15 @@ Deno.serve(async (req) => {
               action_label: 'Start Patrol', action_url: '/GuardPatrol',
               event_key: 'patrol_due10:' + patrol.id,
             }).catch(() => {});
+            // TELEGRAM — automatic reminder channel to the guard (no email:
+            // repetitive reminders stay off email by default). Same verified
+            // per-user mapping; failure never blocks the alert bookkeeping.
+            if (guardUser && guardUser.telegram_connected && guardUser.telegram_notifications_enabled !== false && guardUser.telegram_chat_id) {
+              await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'patrol_reminder10:' + patrol.id,
+                guardUser.telegram_chat_id,
+                `🛡️ Patrol Due in 10 Minutes\n\nPatrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString('en-ZA')}.`)
+                .catch(() => {});
+            }
             await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, {
               alerts_sent: [...(patrol.alerts_sent || []), '10min'],
             }).catch(() => {});

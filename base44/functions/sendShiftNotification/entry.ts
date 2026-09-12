@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -260,6 +262,21 @@ Deno.serve(async (req) => {
         customer_id: user.customer_id || null,
         reseller_id: user.reseller_id || null,
       }).catch(() => {});
+    }
+
+    // TELEGRAM — automatic operational channel to the guard (verified
+    // per-user mapping; same-chat dedupe by the SAME deterministic event
+    // key as push; failure-isolated from email/in-app/push and from the
+    // scheduling transaction).
+    if (['assigned', 'updated', 'cancelled'].includes(notificationType) && guardUser) {
+      if (guardUser.telegram_connected && guardUser.telegram_notifications_enabled !== false && guardUser.telegram_chat_id) {
+        const dateFmt = (iso) => iso ? new Date(iso).toLocaleString('en-ZA') : '';
+        await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+          'shift_' + notificationType + ':' + shiftId + ':' + startTime,
+          guardUser.telegram_chat_id,
+          `${emailSubject}\n\nSite: ${siteName}\nStart: ${dateFmt(startTime)}\nEnd: ${dateFmt(endTime)}\n\nOpen the app (My Shift) for details.`)
+          .catch(() => {});
+      }
     }
 
     return Response.json({ success: true, emailSent });
