@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -66,16 +68,21 @@ export default async function(req) {
     const title = `⏰ Shift ended — ${guardName} @ ${siteName}`;
     const message = `${guardName}'s shift at ${siteName} ended at ${endTime.toLocaleString('en-ZA')} (${minsOver} min ago) and has not yet been clocked out.`;
 
-    // Notify all supervisor-role users (in-app + email).
+    // TENANT-SCOPED recipients — the shift's OWN customer's operational
+    // supervisors (platform oversight always permitted). No cross-tenant
+    // shift-end notifications.
     const allUsers = await base44.asServiceRole.entities.User.list();
-    const admins = (allUsers || []).filter(u => SUPERVISOR_ROLES.includes(u.role_type));
+    const isPlatformUser = (u) => u.role_type === 'platform_admin' || u.admin_level === 'platform';
+    const admins = (allUsers || []).filter(u =>
+      SUPERVISOR_ROLES.includes(u.role_type) &&
+      (isPlatformUser(u) || !shift.customer_id || u.customer_id === shift.customer_id));
 
     let notified = 0;
     for (const admin of admins) {
       try {
         await base44.asServiceRole.entities.Notification.create({
           recipient_id: admin.id,
-          recipient_name: admin.full_name,
+          recipient_name: admin.display_name || admin.full_name,
           type: 'shift_reminder',
           priority,
           title,
@@ -83,9 +90,23 @@ export default async function(req) {
           read: false,
           related_entity: 'shift',
           related_id: shiftId,
+          action_url: '/Scheduling',
+          sent_via: ['in_app'],
+          customer_id: shift.customer_id || undefined,
+          reseller_id: shift.reseller_id || undefined,
         });
         notified++;
       } catch (_) {}
+    }
+
+    // TELEGRAM — automatic operational channel to the same scoped recipients;
+    // failure-isolated from in-app/email/push; exactly-once via ended_notified
+    // plus the deterministic event key.
+    for (const admin of admins) {
+      if (!admin.telegram_connected || admin.telegram_notifications_enabled === false || !admin.telegram_chat_id) continue;
+      await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'shift_end:' + shiftId,
+        admin.telegram_chat_id, `${title}\n\n${message}`)
+        .catch(() => {});
     }
 
     try {

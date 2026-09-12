@@ -96,7 +96,12 @@ export default function GuardPatrol() {
       if (site) {
         siteGeofenceRef.current = site.geofence_radius || 100;
         siteCheckpointsRef.current = new Map(
-          (site.checkpoints || []).filter(cp => cp.location?.lat != null).map(cp => [cp.id, cp.location])
+          // Placeholder 0/0 coordinates are NOT valid checkpoint GPS — they
+          // are excluded so those scans record 'unavailable', never a
+          // falsely-verified or falsely-failed distance.
+          (site.checkpoints || []).filter(cp =>
+            cp.location?.lat != null && !(cp.location.lat === 0 && cp.location.lng === 0)
+          ).map(cp => [cp.id, cp.location])
         );
       }
     } catch (_) { /* no GPS verification data — scans record 'unavailable' */ }
@@ -247,6 +252,19 @@ export default function GuardPatrol() {
       completion_score: score,
       gps_track: gpsTrack.map(g => ({ ...g, timestamp: new Date().toISOString() })),
     });
+
+    // SERVER-SIDE lifecycle notification to monitoring roles — the guard's
+    // client cannot create notifications for other users (RLS), so the
+    // completion/exception notice is dispatched server-side. FAILURE-ISOLATED:
+    // the patrol record itself is already authoritative above; this call can
+    // never block or roll back completion.
+    base44.functions.invoke("notifyPatrolEvent", {
+      action: status === "completed" ? "completed" : "exception",
+      patrolId: activePatrol.id,
+      summary: status === "completed"
+        ? `Patrol #${activePatrol.patrol_number} at ${activePatrol.site_name} completed — ${completedCp}/${totalCp} checkpoints.`
+        : `Patrol #${activePatrol.patrol_number} at ${activePatrol.site_name} ended early — only ${completedCp}/${totalCp} checkpoints completed.`,
+    }).catch(() => {});
 
     clearInterval(gpsInterval.current);
     setActivePatrol(null);

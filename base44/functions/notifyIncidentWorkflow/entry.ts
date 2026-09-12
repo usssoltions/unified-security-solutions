@@ -12,7 +12,9 @@
  * (accept / decline / resolve). Uses asServiceRole throughout.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -199,6 +201,19 @@ Deno.serve(async (req) => {
           reseller_id: user.reseller_id || null,
         }).catch(() => {});
       }
+    }
+
+    // TELEGRAM — automatic operational channel. Tenant scope already enforced
+    // by the recipient resolution above; channel failure-isolated; the
+    // deterministic event key per action+incident dedupes shared chats and
+    // user/scheduler retries.
+    for (const r of recipients) {
+      if (!r.telegram_connected || r.telegram_notifications_enabled === false || !r.telegram_chat_id) continue;
+      await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+        'incident_' + action + ':' + incidentId,
+        r.telegram_chat_id,
+        `${notifTitle}\n\n${notifMsg}`)
+        .catch(() => {});
     }
 
     return Response.json({ success: true, action, notificationsSent: recipients.length });

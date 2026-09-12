@@ -245,6 +245,7 @@ Deno.serve(async (req) => {
       message: `Shift at ${siteName} on ${new Date(startTime).toLocaleDateString()}`,
       related_entity: 'shift',
       related_id: shiftId,
+      action_url: '/GuardShift',
       sent_via: emailSent ? ['email', 'in_app'] : ['in_app']
     });
 

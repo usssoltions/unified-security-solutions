@@ -47,7 +47,14 @@ Deno.serve(async (req) => {
             base44.asServiceRole.entities.User.list(),
             base44.asServiceRole.entities.Alert.filter({ type: 'patrol_overdue', status: 'active' })
           ]);
-          const supervisors = allUsers.filter(u => u.role_type === 'dispatcher' || u.role_type === 'admin');
+          // TENANT-SCOPED — legacy PatrolPlan route overdue alerts reach only
+          // the patrol's own customer's operational roles (platform oversight
+          // always permitted). When a legacy plan carries no customer scope,
+          // the previous behaviour is preserved (fail-open for legacy data).
+          const isPlatformUser = (u) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
+          const scopedSupervisors = (patrol) => allUsers.filter(u =>
+            ['dispatcher', 'admin', 'supervisor', 'customer_admin'].includes(u.role_type) &&
+            (isPlatformUser(u) || !patrol.customer_id || u.customer_id === patrol.customer_id));
           const alertedPatrolIds = new Set(existingOverdueAlerts.map(a => a.metadata?.patrol_id).filter(Boolean));
           const OVERDUE_THRESHOLD_MINUTES = 30;
           let overdueAlerts = 0;
@@ -70,7 +77,7 @@ Deno.serve(async (req) => {
             });
             // NATIVE PUSH — shared platform service. A critical overdue patrol
             // reaches supervisors with the app closed; deterministic event key.
-            for (const sup of supervisors) {
+            for (const sup of scopedSupervisors(patrol)) {
               await sendNativePush(base44.asServiceRole, {
                 user_id: sup.id,
                 title: '⏰ Overdue Patrol Route',
@@ -80,7 +87,7 @@ Deno.serve(async (req) => {
                 event_key: 'patrolplan_overdue:' + patrol.id,
               }).catch(() => {});
             }
-            await Promise.all(supervisors.filter(s => s.email).map(sup =>
+            await Promise.all(scopedSupervisors(patrol).filter(s => s.email).map(sup =>
               base44.asServiceRole.integrations.Core.SendEmail({
                 from_name: 'SecureGuard Alerts', to: sup.email,
                 subject: '🚨 Overdue Patrol Alert',
@@ -110,7 +117,13 @@ Deno.serve(async (req) => {
             base44.asServiceRole.entities.User.list(),
             base44.asServiceRole.entities.Alert.filter({ type: 'missed_checkin', status: 'active' })
           ]);
-          const admins = allUsers.filter(u => u.role_type === 'admin' || u.role_type === 'dispatcher');
+          // TENANT-SCOPED operational recipients: same-customer admin/
+          // dispatcher/supervisor/customer admin (platform oversight always
+          // permitted). No cross-tenant missed-clock-in notifications.
+          const isPlatformUser = (u) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
+          const scopedAdmins = (shift) => allUsers.filter(u =>
+            ['admin', 'dispatcher', 'supervisor', 'customer_admin'].includes(u.role_type) &&
+            (isPlatformUser(u) || !shift.customer_id || u.customer_id === shift.customer_id));
           const alertedShiftIds = new Set(existingMissedAlerts.map(a => a.shift_id).filter(Boolean));
           let clockinAlerts = 0;
           for (const shift of missedShifts) {
@@ -122,25 +135,52 @@ Deno.serve(async (req) => {
               guard_id: shift.guard_id, guard_name: shift.guard_name,
               site_id: shift.site_id, shift_id: shift.id, status: 'active'
             });
-            // NATIVE PUSH — shared platform service: a missed clock-in needs
-            // dispatcher attention even with the app closed.
-            for (const admin of admins) {
+            // RECIPIENTS: the affected GUARD + tenant-scoped operational
+            // supervisors. Every channel failure-isolated; deterministic
+            // event key 'missed_clockin:<shiftId>' dedupes sweep retries.
+            const guardUser = allUsers.find(u => u.id === shift.guard_id) || null;
+            const targets = [guardUser, ...scopedAdmins(shift)].filter(Boolean);
+            for (const t of targets) {
+              // IN-APP — server-persisted record (feeds the Bell, survives refresh)
+              await base44.asServiceRole.entities.Notification.create({
+                recipient_id: t.id,
+                recipient_name: t.display_name || t.full_name,
+                type: 'system', priority: 'high',
+                title: '⚠️ Missed Clock-In',
+                message: `${shift.guard_name || 'Guard'} missed clock-in at ${shift.site_name}. Scheduled: ${new Date(shift.start_time).toLocaleString('en-ZA')}`,
+                read: false,
+                related_entity: 'shift', related_id: shift.id,
+                action_url: '/Scheduling', sent_via: ['in_app'],
+                customer_id: shift.customer_id || undefined,
+                reseller_id: shift.reseller_id || undefined,
+              }).catch(() => {});
+              // NATIVE PUSH — reaches the recipient with the app closed
               await sendNativePush(base44.asServiceRole, {
-                user_id: admin.id,
+                user_id: t.id,
                 title: '⚠️ Missed Clock-In',
                 body: `${shift.guard_name || 'Guard'} missed clock-in at ${shift.site_name}. Scheduled: ${new Date(shift.start_time).toLocaleString('en-ZA')}`,
                 priority: 'high',
                 action_label: 'Open Scheduling', action_url: '/Scheduling',
                 event_key: 'missed_clockin:' + shift.id,
+                customer_id: shift.customer_id || undefined,
+                reseller_id: shift.reseller_id || undefined,
               }).catch(() => {});
+              // TELEGRAM — verified per-user mapping; same-chat dedupe
+              if (t.telegram_connected && t.telegram_notifications_enabled !== false && t.telegram_chat_id) {
+                await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'missed_clockin:' + shift.id,
+                  t.telegram_chat_id,
+                  `⚠️ Missed Clock-In\n\n${shift.guard_name || 'Guard'} missed clock-in at ${shift.site_name}. Scheduled: ${new Date(shift.start_time).toLocaleString('en-ZA')}`)
+                  .catch(() => {});
+              }
+              // EMAIL
+              if (t.email) {
+                await base44.asServiceRole.integrations.Core.SendEmail({
+                  from_name: 'SecureGuard Alerts', to: t.email,
+                  subject: '🚨 Missed Clock-In Alert',
+                  body: `Guard: ${shift.guard_name || 'Unknown'}\nSite: ${shift.site_name}\nScheduled Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}`
+                }).catch(err => console.error('Email failed:', err.message));
+              }
             }
-            await Promise.all(admins.filter(a => a.email).map(admin =>
-              base44.asServiceRole.integrations.Core.SendEmail({
-                from_name: 'SecureGuard Alerts', to: admin.email,
-                subject: '🚨 Missed Clock-In Alert',
-                body: `Guard: ${shift.guard_name || 'Unknown'}\nSite: ${shift.site_name}\nScheduled Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}`
-              }).catch(err => console.error('Email failed:', err.message))
-            ));
             clockinAlerts++;
           }
           results.missed_clockins = { checked: missedShifts.length, alerts: clockinAlerts };
@@ -216,22 +256,46 @@ Deno.serve(async (req) => {
           let remindersSent = 0;
           for (const shift of upcomingShifts) {
             const guard = guardMap[shift.guard_id];
-            if (!guard?.email) continue;
-            await base44.asServiceRole.integrations.Core.SendEmail({
-              from_name: 'SecureGuard', to: guard.email,
-              subject: `⏰ Shift Reminder — ${shift.site_name}`,
-              body: `Hi ${shift.guard_name || guard.full_name},\n\nYour shift starts in approximately 2 hours.\n\nSite: ${shift.site_name}\nStart: ${new Date(shift.start_time).toLocaleString('en-ZA')}\nEnd: ${new Date(shift.end_time).toLocaleString('en-ZA')}\n\nPlease ensure you arrive on time and clock in via the SecureGuard app.`
-            }).catch(err => console.error(`Reminder failed:`, err.message));
+            if (!guard) continue;
+            const reminderTitle = `⏰ Shift Reminder — ${shift.site_name}`;
+            const reminderBody = `Your shift starts in ~2 hours. Site: ${shift.site_name}. Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}.`;
+            // EMAIL — only when the guard has an address; a missing email no
+            // longer silently cancels the whole reminder (previous defect).
+            if (guard.email) {
+              await base44.asServiceRole.integrations.Core.SendEmail({
+                from_name: 'SecureGuard', to: guard.email,
+                subject: reminderTitle,
+                body: `Hi ${shift.guard_name || guard.full_name},\n\nYour shift starts in approximately 2 hours.\n\nSite: ${shift.site_name}\nStart: ${new Date(shift.start_time).toLocaleString('en-ZA')}\nEnd: ${new Date(shift.end_time).toLocaleString('en-ZA')}\n\nPlease ensure you arrive on time and clock in via the SecureGuard app.`
+              }).catch(err => console.error(`Reminder failed:`, err.message));
+            }
             // NATIVE PUSH — shared platform service: the 2-hour shift reminder
             // reaches the guard with the app closed (NORMAL priority reminder).
             await sendNativePush(base44.asServiceRole, {
               user_id: shift.guard_id,
-              title: `⏰ Shift Reminder — ${shift.site_name}`,
-              body: `Your shift starts in ~2 hours. Site: ${shift.site_name}. Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}.`,
+              title: reminderTitle,
+              body: reminderBody,
               priority: 'normal',
               action_label: 'Open My Shift', action_url: '/GuardShift',
               event_key: 'shift_reminder:' + shift.id,
             }).catch(() => {});
+            // IN-APP — server-persisted record (feeds the Bell, survives refresh)
+            await base44.asServiceRole.entities.Notification.create({
+              recipient_id: shift.guard_id,
+              recipient_name: guard.display_name || guard.full_name || shift.guard_name,
+              type: 'shift_reminder', priority: 'medium',
+              title: reminderTitle, message: reminderBody, read: false,
+              related_entity: 'shift', related_id: shift.id,
+              action_url: '/GuardShift', sent_via: ['in_app'],
+              customer_id: shift.customer_id || undefined,
+              reseller_id: shift.reseller_id || undefined,
+            }).catch(() => {});
+            // TELEGRAM — high-frequency reminder channel (verified per-user
+            // mapping; failure never blocks the reminder bookkeeping)
+            if (guard.telegram_connected && guard.telegram_notifications_enabled !== false && guard.telegram_chat_id) {
+              await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'shift_reminder:' + shift.id,
+                guard.telegram_chat_id, `${reminderTitle}\n\n${reminderBody}`)
+                .catch(() => {});
+            }
             await base44.asServiceRole.entities.Shift.update(shift.id, { reminder_sent: true }).catch(() => {});
             remindersSent++;
           }
@@ -260,6 +324,7 @@ Deno.serve(async (req) => {
           const missedThreshold = 60;
           let markedOverdue = 0;
           let markedMissed = 0;
+          let markedDue = 0;
 
           // TENANT-SCOPED RECIPIENT RESOLUTION (server-side): a patrol's
           // operational recipients are the assigned guard plus SAME-CUSTOMER
@@ -342,6 +407,36 @@ Deno.serve(async (req) => {
               }
             } else if (minsLate >= 0 && patrol.status === 'upcoming') {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'due' });
+              markedDue++;
+              // PATROL DUE NOW — guard notification (in-app + push + Telegram;
+              // no email on high-frequency reminders). Failure-isolated; the
+              // deterministic event key dedupes sweep retries.
+              const { guard: dueGuard } = resolvePatrolRecipients(patrol);
+              const dueTitle = '🛡️ Patrol Due Now';
+              const dueBody = `Patrol #${patrol.patrol_number} at ${patrol.site_name} is due now — ${patrol.checkpoints_total || 0} checkpoints.`;
+              if (dueGuard) {
+                await base44.asServiceRole.entities.Notification.create({
+                  recipient_id: dueGuard.id,
+                  recipient_name: dueGuard.display_name || dueGuard.full_name || patrol.guard_name,
+                  type: 'patrol_due', priority: 'high',
+                  title: dueTitle, message: dueBody, read: false,
+                  related_entity: 'ScheduledPatrol', related_id: patrol.id,
+                  action_url: '/GuardPatrol', sent_via: ['in_app'],
+                  customer_id: patrol.customer_id || undefined,
+                  reseller_id: patrol.reseller_id || undefined,
+                }).catch(() => {});
+                await sendNativePush(base44.asServiceRole, {
+                  user_id: dueGuard.id, title: dueTitle, body: dueBody, priority: 'high',
+                  action_label: 'Start Patrol', action_url: '/GuardPatrol',
+                  event_key: 'patrol_due:' + patrol.id,
+                  customer_id: patrol.customer_id || undefined,
+                  reseller_id: patrol.reseller_id || undefined,
+                }).catch(() => {});
+                if (dueGuard.telegram_connected && dueGuard.telegram_notifications_enabled !== false && dueGuard.telegram_chat_id) {
+                  await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'patrol_due:' + patrol.id,
+                    dueGuard.telegram_chat_id, `${dueTitle}\n\n${dueBody}`).catch(() => {});
+                }
+              }
             }
           }
 
@@ -398,6 +493,7 @@ Deno.serve(async (req) => {
 
           results.scheduled_patrol_monitor = {
             checked: todayPatrols.length,
+            markedDue,
             markedOverdue,
             markedMissed,
             prePatrolAlerts: dueAlerts.length,

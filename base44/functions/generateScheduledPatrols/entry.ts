@@ -27,6 +27,9 @@
  * moved to the shared 2-hourly runAllMonitors tick (same thresholds).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { secrets } from 'base44:runtime';
+import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 const ELIGIBLE_SHIFT_STATUSES = ['scheduled', 'active', 'accepted'];
 
@@ -229,6 +232,16 @@ export default async function(req: Request): Promise<Response> {
       ? await base44.asServiceRole.entities.ScheduledPatrol.list('-scheduled_start', 300)
       : [];
 
+    // Lazily-resolved user map for guard lookup (fetched at most once per run).
+    let userMap = null;
+    const getUser = async (id) => {
+      if (!userMap) {
+        const users = (await base44.asServiceRole.entities.User.list().catch(() => [])) || [];
+        userMap = new Map(users.map(u => [u.id, u]));
+      }
+      return userMap.get(id) || null;
+    };
+
     for (const site of sites) {
       const cfg = site.patrol_config;
 
@@ -319,6 +332,48 @@ export default async function(req: Request): Promise<Response> {
 
               sitePatrols.push(patrol);
               audit.patrolsCreated++;
+
+              // PATROL GENERATED / ASSIGNED — notify the assigned guard
+              // (in-app + push + Telegram + email). Recipients and tenant
+              // scope resolved server-side from the shift/site records; every
+              // channel failure-isolated; the deterministic per-patrol event
+              // key makes generation retries idempotent (a retry that dedupes
+              // the CREATE also skips this block entirely).
+              try {
+                const guard = await getUser(shift.guard_id);
+                if (guard) {
+                  const pTitle = '🛡️ New Patrol Assigned';
+                  const pBody = `Patrol #${patrolNum} at ${site.name} — ${new Date(scheduledStart).toLocaleString('en-ZA')} (${shuffled.length} checkpoints).`;
+                  await base44.asServiceRole.entities.Notification.create({
+                    recipient_id: guard.id,
+                    recipient_name: guard.display_name || guard.full_name || shift.guard_name,
+                    type: 'system', priority: 'normal',
+                    title: pTitle, message: pBody, read: false,
+                    related_entity: 'ScheduledPatrol', related_id: patrol.id,
+                    action_url: '/GuardPatrol', sent_via: ['in_app'],
+                    customer_id: site.customer_id || undefined,
+                    reseller_id: site.reseller_id || undefined,
+                  }).catch(() => {});
+                  await sendNativePush(base44.asServiceRole, {
+                    user_id: guard.id, title: pTitle, body: pBody, priority: 'normal',
+                    action_label: 'Open Patrol', action_url: '/GuardPatrol',
+                    event_key: 'patrol_generated:' + patrol.id,
+                    customer_id: site.customer_id || undefined,
+                    reseller_id: site.reseller_id || undefined,
+                  }).catch(() => {});
+                  if (guard.telegram_connected && guard.telegram_notifications_enabled !== false && guard.telegram_chat_id) {
+                    await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+                      'patrol_generated:' + patrol.id, guard.telegram_chat_id,
+                      `${pTitle}\n\n${pBody}`).catch(() => {});
+                  }
+                  if (guard.email) {
+                    await base44.asServiceRole.integrations.Core.SendEmail({
+                      from_name: 'USS Patrols', to: guard.email,
+                      subject: `${pTitle} — ${site.name}`, body: pBody,
+                    }).catch(() => {});
+                  }
+                }
+              } catch (_) { /* notification failure never blocks generation */ }
             }
 
             patrolNum++;
