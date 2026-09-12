@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -133,6 +135,19 @@ Deno.serve(async (req) => {
         customer_id: user.customer_id || null,
         reseller_id: user.reseller_id || null,
       }).catch(() => {});
+    }
+
+    // TELEGRAM — automatic operational channel on NEW maintenance-request
+    // submission. Recipients are already tenant-scoped above (server-side
+    // resolution); channel failure-isolated; deterministic per-recipient
+    // event key dedupes shared chats and retries.
+    for (const admin of admins) {
+      if (!admin.telegram_connected || admin.telegram_notifications_enabled === false || !admin.telegram_chat_id) continue;
+      await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+        'maintenance_created:' + maintenanceId + ':' + admin.id,
+        admin.telegram_chat_id,
+        `🔧 Maintenance Request — ${maintenanceType}\n\n${guardName} submitted: ${maintenanceType} at ${siteName}. Review required.`)
+        .catch(() => {});
     }
 
     return Response.json({ success: true, notificationsSent: admins.length });

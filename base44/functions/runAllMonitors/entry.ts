@@ -49,12 +49,41 @@ Deno.serve(async (req) => {
           ]);
           // TENANT-SCOPED — legacy PatrolPlan route overdue alerts reach only
           // the patrol's own customer's operational roles (platform oversight
-          // always permitted). When a legacy plan carries no customer scope,
-          // the previous behaviour is preserved (fail-open for legacy data).
+          // always permitted). NEVER FAIL-OPEN: a legacy plan without an
+          // authoritative customer scope has its tenant derived server-side
+          // from the linked Site (then the assigned guard's User record); if
+          // it cannot be safely resolved, ALL external notifications are
+          // skipped and the skip is audit-logged.
           const isPlatformUser = (u) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
-          const scopedSupervisors = (patrol) => allUsers.filter(u =>
+          const resolvePatrolTenant = async (patrol) => {
+            if (patrol.customer_id) {
+              return { customer_id: patrol.customer_id, reseller_id: patrol.reseller_id || null };
+            }
+            // 1) Linked Site is authoritative tenant ownership.
+            if (patrol.site_id) {
+              try {
+                const siteRows = await base44.asServiceRole.entities.Site.filter({ id: String(patrol.site_id) });
+                const site = siteRows?.[0];
+                if (site?.customer_id) return { customer_id: site.customer_id, reseller_id: site.reseller_id || null };
+              } catch (_) {}
+            }
+            // 2) Assigned guard's customer/reseller membership.
+            if (patrol.assigned_to) {
+              try {
+                const gRows = await base44.asServiceRole.entities.User.filter({ id: String(patrol.assigned_to) });
+                const g = gRows?.[0];
+                if (g?.customer_id) return { customer_id: g.customer_id, reseller_id: g.reseller_id || null };
+                if (g?.reseller_id) return { customer_id: null, reseller_id: g.reseller_id };
+              } catch (_) {}
+            }
+            return null;
+          };
+          const scopedSupervisors = (scope) => allUsers.filter(u =>
             ['dispatcher', 'admin', 'supervisor', 'customer_admin'].includes(u.role_type) &&
-            (isPlatformUser(u) || !patrol.customer_id || u.customer_id === patrol.customer_id));
+            (isPlatformUser(u) ||
+              (scope?.customer_id
+                ? u.customer_id === scope.customer_id
+                : (scope?.reseller_id ? u.reseller_id === scope.reseller_id : false))));
           const alertedPatrolIds = new Set(existingOverdueAlerts.map(a => a.metadata?.patrol_id).filter(Boolean));
           const OVERDUE_THRESHOLD_MINUTES = 30;
           let overdueAlerts = 0;
@@ -75,9 +104,25 @@ Deno.serve(async (req) => {
               site_id: patrol.site_id, status: 'active',
               metadata: { patrol_id: patrol.id, checkpoints_completed: completed, total_checkpoints: total }
             });
+            // NEVER FAIL-OPEN — resolve the patrol's authoritative tenant
+            // server-side. Unresolvable scope ⇒ NO external notification and
+            // an audit entry; never all admins / unrelated customers.
+            const scope = await resolvePatrolTenant(patrol);
+            const targets = scope ? scopedSupervisors(scope) : [];
+            if (!scope) {
+              await base44.asServiceRole.entities.PlatformAuditLog.create({
+                event_type: 'patrol.notification.skipped',
+                user_id: 'system',
+                user_name: 'USS Monitor',
+                entity_name: 'PatrolPlan',
+                entity_id: patrol.id,
+                action: 'skipped',
+                notes: 'Overdue patrol notification skipped: tenant scope could not be established from the patrol record, its linked site or its assigned guard.',
+              }).catch(() => {});
+            }
             // NATIVE PUSH — shared platform service. A critical overdue patrol
             // reaches supervisors with the app closed; deterministic event key.
-            for (const sup of scopedSupervisors(patrol)) {
+            for (const sup of targets) {
               await sendNativePush(base44.asServiceRole, {
                 user_id: sup.id,
                 title: '⏰ Overdue Patrol Route',
@@ -87,7 +132,7 @@ Deno.serve(async (req) => {
                 event_key: 'patrolplan_overdue:' + patrol.id,
               }).catch(() => {});
             }
-            await Promise.all(scopedSupervisors(patrol).filter(s => s.email).map(sup =>
+            await Promise.all(targets.filter(s => s.email).map(sup =>
               base44.asServiceRole.integrations.Core.SendEmail({
                 from_name: 'SecureGuard Alerts', to: sup.email,
                 subject: '🚨 Overdue Patrol Alert',

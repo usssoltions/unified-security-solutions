@@ -11,7 +11,9 @@
  * header, logo, location with Google Maps button).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -156,6 +158,19 @@ Deno.serve(async (req) => {
           reseller_id: user.reseller_id || null,
         }).catch(() => {});
       }
+    }
+
+    // TELEGRAM — automatic operational channel on NEW INCIDENT submission.
+    // Recipients are already tenant-scoped above (server-side resolution);
+    // channel failure-isolated from in-app/email/push; deterministic per-
+    // recipient event key dedupes shared chats and retries.
+    for (const admin of recipients) {
+      if (!admin.telegram_connected || admin.telegram_notifications_enabled === false || !admin.telegram_chat_id) continue;
+      await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+        'incident_created:' + incidentId + ':' + admin.id,
+        admin.telegram_chat_id,
+        `${notifTitle}\n\n${notifMsg}`)
+        .catch(() => {});
     }
 
     // Mark incident as notified (service role bypasses RLS)
