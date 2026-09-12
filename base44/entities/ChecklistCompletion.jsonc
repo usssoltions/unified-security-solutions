@@ -2,6 +2,14 @@
   "name": "ChecklistCompletion",
   "type": "object",
   "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ownership inherited from the completing guard's shift/site."
+    },
+    "reseller_id": {
+      "type": "string",
+      "description": "Reseller ownership for reseller-scoped access control."
+    },
     "template_id": {
       "type": "string"
     },
@@ -115,7 +123,33 @@
         }
       ]
     },
-    "read": null,
+    "read": {
+      "$or": [
+        {
+          "data.guard_id": "{{user.id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
     "update": {
       "$or": [
         {
