@@ -2,10 +2,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
 
-const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
-const BRAND_COLOR = '#C41E3A'; // Red from logo
-const BRAND_SECONDARY = '#1a1a1a'; // Black from logo
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);

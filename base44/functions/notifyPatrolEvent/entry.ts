@@ -14,10 +14,12 @@
  * (customer_id) — never from caller input — so cross-tenant delivery is
  * impossible. The caller must be the patrol's assigned guard (or platform
  * oversight). Every channel is failure-isolated; deterministic event keys
- * dedupe retries.
+ * dedupe retries. Email and Telegram render through the ONE shared
+ * tenant-branded renderer resolved from the patrol's tenant scope.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
+import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
@@ -55,6 +57,33 @@ export default async function(req) {
     const message = summary ||
       `Patrol #${patrol.patrol_number} at ${patrol.site_name} by ${patrol.guard_name || 'the assigned guard'}: ${patrol.checkpoints_completed || 0}/${patrol.checkpoints_total || 0} checkpoints.`;
     const eventKey = (isCompleted ? 'patrol_completed:' : 'patrol_exception:') + patrolId;
+
+    // TENANT BRANDING — resolved from the patrol's own tenant scope
+    // (customer → reseller → USS platform default). Email/Telegram bodies for
+    // the exception path render through the ONE shared branded renderer.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: patrol.customer_id || null, reseller_id: patrol.reseller_id || null });
+    const brandDetails = [
+      { label: 'Site', value: patrol.site_name || 'N/A' },
+      { label: 'Guard', value: patrol.guard_name || 'N/A' },
+      { label: 'Checkpoints', value: `${patrol.checkpoints_completed || 0}/${patrol.checkpoints_total || 0}` },
+    ].filter(Boolean);
+    const brandTpl = buildBrandedEmail({
+      brand,
+      heading: isCompleted ? 'Patrol Completed' : 'Patrol Exception',
+      greeting: 'Hello,',
+      intro: isCompleted
+        ? `Patrol #${patrol.patrol_number || '—'} completed at ${patrol.site_name || 'the site'}.`
+        : `Patrol #${patrol.patrol_number || '—'} reported an exception at ${patrol.site_name || 'the site'} — review required.`,
+      details: brandDetails,
+      closing: message,
+    });
+    const telegramText = buildBrandedTelegram({
+      brand,
+      heading: isCompleted ? 'Patrol Completed' : 'Patrol Exception',
+      details: brandDetails,
+      closing: message,
+    });
 
     // TENANT-SCOPED monitoring recipients (platform oversight always
     // permitted). The reporting guard is excluded — they already know.
@@ -94,11 +123,12 @@ export default async function(req) {
       }).catch(() => {});
       if (r.telegram_connected && r.telegram_notifications_enabled !== false && r.telegram_chat_id) {
         await sendTaskTelegramDeduped(base44.asServiceRole, secrets, eventKey,
-          r.telegram_chat_id, `${title}\n\n${message}`).catch(() => {});
+          r.telegram_chat_id, telegramText).catch(() => {});
       }
       if (r.email) {
         await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: 'USS Patrol Alerts', to: r.email, subject: title, body: message,
+          from_name: brand.brand_name + ' — Patrol Alerts', to: r.email,
+          subject: title, body: brandTpl.html,
         }).catch(() => {});
       }
     }

@@ -5,16 +5,12 @@
  * critical-priority incidents that haven't been notified yet, and respects the
  * global "Incident Alerts" report toggle.
  *
- * The email is now fully branded to match the Start of Shift report layout
- * (red→black gradient header, logo, incident details, live location with a
- * Google Maps button) instead of the old plain-text body.
+ * The email renders through the ONE shared tenant-branded renderer, resolved
+ * from the incident's own tenant scope (customer → reseller → USS platform).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
-
-const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
-const BRAND_COLOR = '#C41E3A';
-const BRAND_SECONDARY = '#1a1a1a';
 
 Deno.serve(async (req) => {
   try {
@@ -61,56 +57,31 @@ Deno.serve(async (req) => {
       ? `https://www.google.com/maps?q=${incident.location.lat},${incident.location.lng}`
       : null;
 
+    // TENANT BRANDING — resolved from the incident's own tenant scope
+    // (customer → reseller → USS platform default).
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: incident.customer_id || null, reseller_id: incident.reseller_id || null });
+    const brandDetails = [
+      { label: 'Category', value: (incident.category || 'N/A').toUpperCase() },
+      { label: 'Priority', value: (incident.priority || 'critical').toUpperCase() },
+      { label: 'Site', value: incident.site_name || 'N/A' },
+      { label: 'Guard', value: incident.guard_name || 'N/A' },
+      { label: 'Status', value: incident.status || 'N/A' },
+      { label: 'Reported', value: reportedAt },
+      hasLocation ? { label: 'Location', value: googleMapsUrl } : null,
+    ].filter(Boolean);
+    const brandTpl = buildBrandedEmail({
+      brand,
+      heading: '🚨 Critical Incident Alert',
+      greeting: 'Hello,',
+      intro: `${incident.title || 'A critical incident'} — immediate response required.`,
+      details: brandDetails,
+      closing: `Incident details: ${incident.description || 'No description provided.'}`,
+      ctaUrl: googleMapsUrl || undefined,
+      ctaLabel: googleMapsUrl ? 'View on Google Maps' : undefined,
+    });
+
     const subject = `🚨 CRITICAL INCIDENT — ${(incident.category || '').toUpperCase()} at ${incident.site_name || 'site'}`;
-
-    const emailBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f8fafc;">
-<div style="max-width:650px;margin:0 auto;background:white;">
-  <div style="background:linear-gradient(135deg,${BRAND_COLOR} 0%,${BRAND_SECONDARY} 100%);padding:40px 30px;text-align:center;">
-    <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width:200px;height:auto;margin-bottom:20px;border-radius:10px;"/>
-    <h1 style="color:white;margin:0;font-size:28px;font-weight:bold;text-shadow:2px 2px 4px rgba(0,0,0,0.3);">🚨 CRITICAL INCIDENT ALERT</h1>
-    <p style="color:rgba(255,255,255,0.95);margin:10px 0 0 0;font-size:16px;">Immediate Response Required</p>
-  </div>
-
-  <div style="padding:30px;background:#f8f9fa;border-bottom:3px solid ${BRAND_COLOR};">
-    <h2 style="color:#0c4a6e;margin:0 0 12px;font-size:22px;">${incident.title}</h2>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📂 <strong>Category:</strong> ${(incident.category || 'N/A').toUpperCase()}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🔴 <strong>Priority:</strong> ${incident.priority}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📍 <strong>Site:</strong> ${incident.site_name || 'N/A'}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">👤 <strong>Guard:</strong> ${incident.guard_name || 'N/A'}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🚦 <strong>Status:</strong> ${incident.status}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📅 <strong>Reported:</strong> ${reportedAt}</p>
-  </div>
-
-  <div style="padding:30px;">
-    <div style="background:white;border:2px solid #e2e8f0;border-radius:12px;padding:25px;margin-bottom:20px;">
-      <h3 style="color:${BRAND_SECONDARY};margin:0 0 20px;font-size:18px;border-bottom:2px solid ${BRAND_COLOR};padding-bottom:10px;">📋 Incident Details</h3>
-      <p style="color:#1e293b;line-height:1.6;">${incident.description || 'No description provided.'}</p>
-    </div>
-
-    ${hasLocation ? `
-    <div style="background:linear-gradient(135deg,#fff5f5 0%,#ffe0e0 100%);border:2px solid ${BRAND_COLOR};border-radius:12px;padding:25px;margin-bottom:20px;">
-      <h3 style="color:${BRAND_SECONDARY};margin:0 0 15px;font-size:18px;">📍 Live Incident Location</h3>
-      <p style="color:#475569;margin:0 0 15px;">Location where the incident was logged:</p>
-      <p style="margin:5px 0;color:#1e293b;"><strong>Latitude:</strong> ${incident.location.lat}</p>
-      <p style="margin:5px 0 15px;color:#1e293b;"><strong>Longitude:</strong> ${incident.location.lng}</p>
-      <div style="text-align:center;">
-        <a href="${googleMapsUrl}" style="display:inline-block;background:${BRAND_COLOR};color:white;padding:12px 25px;text-decoration:none;border-radius:8px;font-weight:bold;font-size:15px;box-shadow:0 4px 6px rgba(196,30,58,0.3);">📍 View on Google Maps</a>
-      </div>
-    </div>` : ''}
-
-    <div style="background:linear-gradient(135deg,#7f1d1d 0%,#450a0a 100%);padding:20px;border-radius:12px;text-align:center;">
-      <p style="color:white;font-weight:bold;margin:0;font-size:18px;text-transform:uppercase;letter-spacing:1px;">⚠️ Immediate Action Required</p>
-      <p style="color:#fef2f2;margin:10px 0 0;font-size:14px;">Dispatch response • Contact guard • Verify situation</p>
-    </div>
-  </div>
-
-  <div style="background:${BRAND_SECONDARY};padding:25px;text-align:center;">
-    <img src="${COMPANY_LOGO}" alt="Logo" style="max-width:120px;height:auto;margin-bottom:15px;opacity:0.8;"/>
-    <p style="color:#94a3b8;margin:0 0 10px;font-size:13px;">Automated critical incident alert from Unified Security Solutions</p>
-    <p style="color:${BRAND_COLOR};margin:10px 0 0;font-size:11px;font-weight:bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
-  </div>
-</div></body></html>`;
 
     const notifPromises = recipients.map((admin) =>
       base44.asServiceRole.entities.Notification.create({
@@ -124,6 +95,8 @@ Deno.serve(async (req) => {
         related_entity: 'incident',
         related_id: incident.id,
         action_url: googleMapsUrl,
+        customer_id: incident.customer_id || undefined,
+        reseller_id: incident.reseller_id || undefined,
         sent_via: ['in_app', 'email'],
       }).catch(() => {})
     );
@@ -132,10 +105,10 @@ Deno.serve(async (req) => {
       .filter((u) => u.email)
       .map((admin) =>
         base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: 'Unified Security Solutions — Critical Alerts',
+          from_name: brand.brand_name + ' — Critical Alerts',
           to: admin.email,
           subject,
-          body: emailBody,
+          body: brandTpl.html,
         }).catch(() => {})
       );
 
@@ -153,6 +126,8 @@ Deno.serve(async (req) => {
         priority: 'critical',
         action_label: 'Open Incidents', action_url: '/AdminIncidents',
         event_key: 'incident_critical:' + incident.id,
+        customer_id: incident.customer_id || null,
+        reseller_id: incident.reseller_id || null,
       }).catch(() => {});
     }
 

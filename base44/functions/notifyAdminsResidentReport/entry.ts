@@ -1,18 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
-
-const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
-const BRAND_COLOR = '#C41E3A';
-const BRAND_SECONDARY = '#1a1a1a';
-const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /**
  * notifyAdminsResidentReport
  *
- * Sends a branded real-time alert (email + in-app notification) to all
- * admin / estate_manager / dispatcher users whenever a resident submits an
- * incident report OR a maintenance request. This is the single backend
+ * Sends a fully tenant-branded real-time alert (email + in-app notification)
+ * to all admin / estate_manager / dispatcher users whenever a resident submits
+ * an incident report OR a maintenance request. This is the single backend
  * endpoint used by both resident report flows so branding and delivery stay
  * consistent with every other report in the system.
  *
@@ -57,55 +52,36 @@ Deno.serve(async (req) => {
 
     const isMaintenance = reportType === 'maintenance';
     const severity = isMaintenance ? (urgency || 'medium') : (priority || 'medium');
-    const heading = isMaintenance ? '🔧 NEW MAINTENANCE REQUEST' : '🔴 NEW RESIDENT INCIDENT';
+    const when = reportedAt ? new Date(reportedAt).toLocaleString('en-ZA') : new Date().toLocaleString('en-ZA');
     const subject = isMaintenance
       ? `🔧 Maintenance Request — ${residentName} (Unit ${unitNumber || '—'})`
       : `🔴 Resident Incident — ${residentName} (Unit ${unitNumber || '—'})`;
 
-    const when = reportedAt ? new Date(reportedAt).toLocaleString('en-ZA') : new Date().toLocaleString('en-ZA');
-
-    const detailRows = isMaintenance
-      ? `
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏷️ <strong>Category:</strong> ${escapeHtml(category || 'N/A')}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">⚡ <strong>Urgency:</strong> ${escapeHtml(severity)}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🔧 <strong>Issue:</strong> ${escapeHtml(title || 'N/A')}</p>`
-      : `
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏷️ <strong>Category:</strong> ${escapeHtml(category || 'N/A')}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">⚠️ <strong>Priority:</strong> ${escapeHtml(severity)}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📋 <strong>Title:</strong> ${escapeHtml(title || 'N/A')}</p>`;
-
-    const emailBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f8fafc;">
-<div style="max-width:650px;margin:0 auto;background:white;">
-  <div style="background:linear-gradient(135deg,${BRAND_COLOR} 0%,${BRAND_SECONDARY} 100%);padding:40px 30px;text-align:center;">
-    <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width:200px;height:auto;margin-bottom:20px;border-radius:10px;"/>
-    <h1 style="color:white;margin:0;font-size:26px;font-weight:bold;">${heading}</h1>
-    <p style="color:rgba(255,255,255,0.95);margin:10px 0 0;font-size:15px;">Action Required — Submitted by a Resident</p>
-  </div>
-
-  <div style="padding:30px;background:#f8f9fa;border-bottom:3px solid ${BRAND_COLOR};">
-    <h2 style="color:#0c4a6e;margin:0 0 12px;font-size:20px;">${isMaintenance ? 'Maintenance Request Details' : 'Incident Report Details'}</h2>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">👤 <strong>Resident:</strong> ${escapeHtml(residentName || 'N/A')}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🏠 <strong>Unit:</strong> ${escapeHtml(unitNumber || '—')}${estateName ? ` &nbsp;|&nbsp; <strong>Estate:</strong> ${escapeHtml(estateName)}` : ''}</p>
-    ${address ? `<p style="color:#64748b;margin:5px 0;font-size:14px;">📍 <strong>Address:</strong> ${escapeHtml(address)}</p>` : ''}
-    ${contactPhone ? `<p style="color:#64748b;margin:5px 0;font-size:14px;">📞 <strong>Contact:</strong> ${escapeHtml(contactPhone)}</p>` : ''}
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🕐 <strong>Reported:</strong> ${escapeHtml(when)}</p>
-    ${detailRows}
-  </div>
-
-  <div style="padding:30px;">
-    <div style="background:white;border:2px solid #e2e8f0;border-radius:12px;padding:25px;">
-      <h3 style="color:${BRAND_SECONDARY};margin:0 0 12px;font-size:18px;border-bottom:2px solid ${BRAND_COLOR};padding-bottom:10px;">${isMaintenance ? 'Reason / Description' : 'Description'}</h3>
-      <p style="color:#1e293b;line-height:1.6;white-space:pre-wrap;">${escapeHtml((isMaintenance ? (reason || description) : description) || 'None provided.')}</p>
-    </div>
-  </div>
-
-  <div style="background:${BRAND_SECONDARY};padding:25px;text-align:center;">
-    <img src="${COMPANY_LOGO}" alt="Logo" style="max-width:120px;height:auto;margin-bottom:15px;opacity:0.8;"/>
-    <p style="color:#94a3b8;margin:0 0 10px;font-size:13px;">Automated ${isMaintenance ? 'maintenance request' : 'incident'} alert from Unified Security Solutions</p>
-    <p style="color:${BRAND_COLOR};margin:10px 0 0;font-size:11px;font-weight:bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
-  </div>
-</div></body></html>`;
+    // TENANT BRANDING — resolved from the reporting user's authoritative
+    // tenant record (customer → reseller → USS platform default). The ENTIRE
+    // visible email renders through the ONE shared branded renderer.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
+    const brandDetails = [
+      { label: 'Resident', value: residentName || 'N/A' },
+      unitNumber ? { label: 'Unit', value: unitNumber } : null,
+      estateName ? { label: 'Estate', value: estateName } : null,
+      address ? { label: 'Address', value: address } : null,
+      contactPhone ? { label: 'Contact', value: contactPhone } : null,
+      { label: 'Reported', value: when },
+      { label: 'Category', value: category || 'N/A' },
+      isMaintenance ? { label: 'Urgency', value: severity } : { label: 'Priority', value: severity },
+      title ? { label: isMaintenance ? 'Issue' : 'Title', value: title } : null,
+    ].filter(Boolean);
+    const brandTpl = buildBrandedEmail({
+      brand,
+      heading: isMaintenance ? 'New Maintenance Request' : 'New Resident Incident',
+      greeting: 'Hello,',
+      intro: `Action required — a resident submitted a ${isMaintenance ? 'maintenance request' : 'incident report'}.`,
+      details: brandDetails,
+      closing: `${isMaintenance ? 'Reason / Description' : 'Description'}: ${(isMaintenance ? (reason || description) : description) || 'None provided.'}`,
+    });
+    const emailBody = brandTpl.html;
 
     const notifTitle = isMaintenance
       ? `🔧 Maintenance Request — ${residentName} (Unit ${unitNumber || '—'})`
@@ -125,14 +101,12 @@ Deno.serve(async (req) => {
         read: false,
         related_entity: isMaintenance ? 'maintenance' : 'incident',
         related_id: reportId,
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         sent_via: ['in_app', 'email'],
       }).catch(() => {})
     );
 
-    // TENANT BRANDING — resolved from the reporting user's authoritative
-    // tenant record (customer → reseller → USS platform default).
-    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
-      customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
     const emailPromises = recipients
       .filter((a) => a.email)
       .map((admin) =>

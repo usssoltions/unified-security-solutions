@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
-import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -72,6 +72,28 @@ export default async function(req) {
     const title = `⏰ Shift ended — ${guardName} @ ${siteName}`;
     const message = `${guardName}'s shift at ${siteName} ended at ${endTime.toLocaleString('en-ZA')} (${minsOver} min ago) and has not yet been clocked out.`;
 
+    // Branded email + Telegram bodies (ONE shared renderer, tenant-resolved).
+    const brandDetails = [
+      { label: 'Guard', value: guardName },
+      { label: 'Site', value: siteName },
+      { label: 'Ended', value: endTime.toLocaleString('en-ZA') },
+      { label: 'Outstanding', value: `${minsOver} min without clock-out` },
+    ].filter(Boolean);
+    const brandTpl = buildBrandedEmail({
+      brand,
+      heading: 'Shift Ended Without Clock-Out',
+      greeting: 'Hello,',
+      intro: 'A guard\'s shift has ended but has not yet been clocked out.',
+      details: brandDetails,
+      closing: 'Please review the shift and follow up with the guard.',
+    });
+    const telegramText = buildBrandedTelegram({
+      brand,
+      heading: 'Shift Ended Without Clock-Out',
+      details: brandDetails,
+      closing: 'Please review the shift and follow up with the guard.',
+    });
+
     // TENANT-SCOPED recipients — the shift's OWN customer's operational
     // supervisors (platform oversight always permitted). No cross-tenant
     // shift-end notifications.
@@ -109,7 +131,7 @@ export default async function(req) {
     for (const admin of admins) {
       if (!admin.telegram_connected || admin.telegram_notifications_enabled === false || !admin.telegram_chat_id) continue;
       await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'shift_end:' + shiftId,
-        admin.telegram_chat_id, `${title}\n\n${message}`)
+        admin.telegram_chat_id, telegramText)
         .catch(() => {});
     }
 
@@ -120,7 +142,7 @@ export default async function(req) {
           from_name: brand.brand_name,
           to: emails,
           subject: title,
-          body: message,
+          body: brandTpl.html,
         });
       }
     } catch (_) {}

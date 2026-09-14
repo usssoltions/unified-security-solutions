@@ -1,9 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { jsPDF } from 'npm:jspdf@2.5.2';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
-const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
-const BRAND_COLOR = '#C41E3A';
-const BRAND_SECONDARY = '#1a1a1a';
+// Hex → [r,g,b] for jsPDF fill/text colours from the tenant brand.
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return [196, 30, 58];
+  return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
+}
 
 // Haversine distance in metres between two {lat,lng} points.
 function distanceMetres(a, b) {
@@ -17,13 +21,15 @@ function distanceMetres(a, b) {
   return Math.round(2 * R * Math.asin(Math.sqrt(h)));
 }
 
-async function generateDailyPDF(date, stats, incidents, maintenance) {
+async function generateDailyPDF(date, stats, incidents, maintenance, brand) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = 210;
   const margin = 18;
   const contentW = pageW - margin * 2;
+  const brandName = brand?.brand_name || 'Unified Security Solutions';
+  const brandRgb = hexToRgb(brand?.primary_color);
 
-  doc.setFillColor(196, 30, 58);
+  doc.setFillColor(...brandRgb);
   doc.rect(0, 0, pageW, 45, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22);
@@ -33,7 +39,7 @@ async function generateDailyPDF(date, stats, incidents, maintenance) {
   doc.setFont('helvetica', 'normal');
   doc.text(date, pageW / 2, 32, { align: 'center' });
   doc.setFontSize(10);
-  doc.text('Unified Security Solutions', pageW / 2, 40, { align: 'center' });
+  doc.text(brandName, pageW / 2, 40, { align: 'center' });
 
   let y = 58;
   doc.setTextColor(26, 26, 26);
@@ -43,7 +49,7 @@ async function generateDailyPDF(date, stats, incidents, maintenance) {
   y += 6;
 
   const statBoxes = [
-    { label: 'Incidents', value: stats.incidents, color: [196, 30, 58] },
+    { label: 'Incidents', value: stats.incidents, color: brandRgb },
     { label: 'Maintenance', value: stats.maintenance, color: [14, 165, 233] },
     { label: 'Patrol Stops', value: stats.patrols, color: [16, 185, 129] },
     { label: 'Shifts', value: stats.shifts, color: [245, 158, 11] },
@@ -89,12 +95,12 @@ async function generateDailyPDF(date, stats, incidents, maintenance) {
   doc.text(`Open Incidents: ${stats.openIncidents}`, margin + 4, y + 16);
   doc.text(`Pending Maintenance: ${stats.pendingMaintenance}`, margin + 60, y + 16);
 
-  doc.setFillColor(26, 26, 26);
+  doc.setFillColor(...hexToRgb(brand?.accent_color || '#1a1a1a'));
   doc.rect(0, 285, pageW, 12, 'F');
   doc.setTextColor(148, 163, 184);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('Automated Daily Report — Unified Security Solutions', pageW / 2, 292, { align: 'center' });
+  doc.text(`Automated Daily Report — ${brandName}`, pageW / 2, 292, { align: 'center' });
 
   return doc.output('arraybuffer');
 }
@@ -149,6 +155,18 @@ Deno.serve(async (req) => {
       if (tenantScope.customer_id) return rec.customer_id === tenantScope.customer_id;
       return rec.reseller_id === tenantScope.reseller_id;
     };
+
+    // TENANT BRANDING — resolved from the report's OWN tenant scope
+    // (customer → reseller → USS platform default). PDF and email bodies
+    // below render with this brand; no hard-coded tenant identity.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: tenantScope?.customer_id || null,
+      reseller_id: tenantScope?.reseller_id || null,
+    });
+    const BRAND_COLOR = brand.primary_color;
+    const BRAND_SECONDARY = brand.accent_color;
+    const BRAND_NAME = brand.brand_name;
+    const BRAND_LOGO = brand.logo_url;
 
     // ── Report day: the SOUTH AFRICAN calendar day (Africa/Johannesburg,
     // SAST = UTC+2, no DST) — NOT the server-local day. ────────────────────
@@ -293,7 +311,8 @@ Deno.serve(async (req) => {
             summary: aiSummary,
           },
           yesterdayIncidents,
-          yesterdayMaintenance
+          yesterdayMaintenance,
+          brand
         );
         const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
         const pdfFile = new File([blob], `daily_activity_report_${yesterday.toISOString().split('T')[0]}.pdf`, { type: 'application/pdf' });
@@ -361,13 +380,13 @@ Deno.serve(async (req) => {
 
     await Promise.all(recipients.map((recipient) =>
       base44.asServiceRole.integrations.Core.SendEmail({
-        from_name: 'Unified Security Solutions',
+        from_name: BRAND_NAME,
         to: recipient.email,
         subject: `Daily Activity Report — ${yesterday.toLocaleDateString('en-ZA')}`,
         body: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0;">
 <div style="max-width:650px;margin:0 auto;background:white;">
   <div style="background:linear-gradient(135deg,${BRAND_COLOR} 0%,${BRAND_SECONDARY} 100%);padding:40px 30px;text-align:center;">
-    <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width:160px;height:auto;margin-bottom:16px;border-radius:8px;"/>
+    ${BRAND_LOGO ? `<img src="${BRAND_LOGO}" alt="${BRAND_NAME}" style="max-width:160px;height:auto;margin-bottom:16px;border-radius:8px;"/>` : ''}
     <h1 style="color:white;margin:0;font-size:26px;">📊 DAILY ACTIVITY REPORT</h1>
     <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:15px;">${yesterday.toLocaleDateString('en-ZA')}</p>
   </div>
@@ -401,7 +420,7 @@ Deno.serve(async (req) => {
     ${pdfButtonHtml}
   </div>
   <div style="background:${BRAND_SECONDARY};padding:20px;text-align:center;">
-    <p style="color:#94a3b8;margin:0;font-size:12px;">Automated Daily Report — Unified Security Solutions</p>
+   <p style="color:#94a3b8;margin:0;font-size:12px;">Automated Daily Report — ${BRAND_NAME}</p>
   </div>
 </div></body></html>`
       }).catch((err) => console.error(`Email failed to ${recipient.email}:`, err.message))

@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
-import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -138,11 +138,24 @@ Deno.serve(async (req) => {
             const patrolBrand = await resolveCommunicationBrand(base44.asServiceRole, {
               customer_id: (patrol && patrol.customer_id) || (scope && scope.customer_id) || null,
               reseller_id: (patrol && patrol.reseller_id) || (scope && scope.reseller_id) || null });
+            const overdueTpl = buildBrandedEmail({
+              brand: patrolBrand,
+              heading: 'Overdue Patrol Alert',
+              greeting: 'Hello,',
+              intro: 'A patrol route is overdue and requires immediate attention.',
+              details: [
+                { label: 'Patrol', value: patrol.name || patrol.site_name || 'N/A' },
+                { label: 'Guard', value: patrol.assigned_to_name || 'N/A' },
+                { label: 'Site', value: patrol.site_name || 'N/A' },
+                { label: 'Progress', value: `${completed}/${total} checkpoints` },
+              ],
+              closing: 'Please review the patrol status in the app.',
+            });
             await Promise.all(targets.filter(s => s.email).map(sup =>
               base44.asServiceRole.integrations.Core.SendEmail({
                 from_name: patrolBrand.brand_name, to: sup.email,
                 subject: '🚨 Overdue Patrol Alert',
-                body: `Patrol: ${patrol.name}\nGuard: ${patrol.assigned_to_name}\nSite: ${patrol.site_name}\nProgress: ${completed}/${total} checkpoints`
+                body: overdueTpl.html
               }).catch(err => console.error('Email failed:', err.message))
             ));
             overdueAlerts++;

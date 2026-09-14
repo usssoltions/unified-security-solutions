@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 
 /**
  * sendAppointmentReminders — Backend-scheduled appointment reminders.
@@ -88,10 +89,27 @@ export default async function(req: Request): Promise<Response> {
         }
 
         if (patient?.email) {
+          // TENANT BRANDING — resolved from the appointment's customer
+          // (customer → reseller → USS platform default). Body renders through
+          // the ONE shared branded renderer.
+          const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+            customer_id: apt.customer_id || null, reseller_id: apt.reseller_id || null });
+          const brandTpl = buildBrandedEmail({
+            brand,
+            heading: 'Appointment Reminder',
+            greeting: `Dear ${apt.patient_name || 'Patient'},`,
+            intro: 'This is a reminder for your upcoming appointment.',
+            details: [
+              { label: 'Service', value: apt.service_name || 'N/A' },
+              { label: 'Time', value: aptTime.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' }) },
+            ],
+            closing: 'Please arrive 10 minutes early.',
+          });
           await base44.asServiceRole.integrations.Core.SendEmail({
+            from_name: brand.brand_name,
             to: patient.email,
             subject: `Appointment Reminder — ${apt.service_name}`,
-            body: `<p>Dear ${apt.patient_name},</p><p>This is a reminder for your appointment:</p><p><strong>Service:</strong> ${apt.service_name}<br><strong>Time:</strong> ${aptTime.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' })}</p><p>Please arrive 10 minutes early.</p>`
+            body: brandTpl.html
           }).catch((e: any) => console.error('Reminder email failed:', e.message));
         }
 

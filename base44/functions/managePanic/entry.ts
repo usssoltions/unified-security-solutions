@@ -22,6 +22,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
 import { buildPanicEmail, buildPanicEmailAsync, esc } from '../../shared/panicEmailTemplate.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 // Post-module-split responder authority: control_room_operator and
 // customer_admin are the primary operational responders of a modern tenant
@@ -114,6 +115,12 @@ Deno.serve(async (req) => {
     if (!callerCanManagePanic(user, panic)) {
       return Response.json({ error: 'Forbidden — panic is outside your tenant scope' }, { status: 403 });
     }
+
+    // TENANT BRANDING — resolved from the panic's authoritative organisation
+    // scope (customer → reseller → USS platform default). Used for the email
+    // sender name and the lifecycle Telegram footer line.
+    const panicBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: panic.customer_id || null, reseller_id: panic.reseller_id || null });
 
     const isPlatformSender = isPlatformAdminCaller(user);
     // Tenant scope for recipient resolution — notifications only reach
@@ -411,6 +418,7 @@ Deno.serve(async (req) => {
       action === 'acknowledge' ? {
         key: `panic_acknowledged:${panicId}`,
         text: [
+          `🛡️ ${panicBrand.brand_name}`,
           '✓ *PANIC ACKNOWLEDGED*',
           '',
           'Your emergency alert has been acknowledged.',
@@ -423,6 +431,7 @@ Deno.serve(async (req) => {
       action === 'resolve' ? {
         key: `panic_resolved:${panicId}`,
         text: [
+          `🛡️ ${panicBrand.brand_name}`,
           '✅ *PANIC RESOLVED*',
           '',
           `Person: ${panic.user_name}`,
@@ -435,6 +444,7 @@ Deno.serve(async (req) => {
       action === 'cancel' ? {
         key: `panic_cancelled:${panicId}`,
         text: [
+          `🛡️ ${panicBrand.brand_name}`,
           '🚫 *PANIC CANCELLED*',
           '',
           'The emergency alert was cancelled by the originating user.',
@@ -494,7 +504,7 @@ Deno.serve(async (req) => {
             });
             await base44.asServiceRole.integrations.Core.SendEmail({
               to: target.email,
-              from_name: 'USS EMERGENCY',
+              from_name: `${panicBrand.brand_name} — Emergency`,
               subject: notifyTitle,
               body: emailBody
             }).catch(e => console.error(`Panic workflow email failed for ${target.email}:`, e));

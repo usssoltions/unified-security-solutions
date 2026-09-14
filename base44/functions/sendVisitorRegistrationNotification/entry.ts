@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -62,6 +62,24 @@ Deno.serve(async (req) => {
     }
 
     // Email the registered staff (SendEmail only reaches registered app users)
+    // Body renders through the ONE shared branded renderer.
+    const brandTpl = buildBrandedEmail({
+      brand,
+      heading: 'Visitor Pre-Registered',
+      greeting: 'Hello,',
+      intro: `${visitorName || 'A visitor'} has been pre-registered${unitNumber ? ` for Unit ${unitNumber}` : ''}.`,
+      details: [
+        { label: 'Visitor', value: visitorName || 'N/A' },
+        visitorIdNumber ? { label: 'ID / Licence', value: visitorIdNumber } : null,
+        vehicleReg ? { label: 'Vehicle', value: vehicleReg } : null,
+        visitorPhone ? { label: 'Phone', value: visitorPhone } : null,
+        { label: 'Host', value: hostName || 'N/A' },
+        { label: 'Valid', value: dateRange },
+        qrCode ? { label: 'QR pass', value: qrCode } : null,
+        otp ? { label: 'OTP', value: otp } : null,
+      ],
+      closing: 'The visitor will present their QR code at the gate for scanning.',
+    });
     try {
       const emails = recipients.map((u) => u.email).filter(Boolean).join(',');
       if (emails) {
@@ -69,7 +87,7 @@ Deno.serve(async (req) => {
           from_name: brand.brand_name,
           to: emails,
           subject: title,
-          body: message,
+          body: brandTpl.html,
         });
       }
     } catch (_) {}

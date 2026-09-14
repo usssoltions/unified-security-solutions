@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 
 /**
  * sendComprehensiveNotification — Central multi-channel notification engine.
@@ -152,21 +153,26 @@ export default async function(req: Request): Promise<Response> {
     const isPlatformSender =
       caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
 
-    // ---- Reseller white-label branding (email sender + template) ----------
-    let brandName = 'USS';
-    let brandColor = '#10b981';
-    let emailFromName: string | undefined = undefined;
+    // ---- Tenant branding (customer → reseller → USS platform) ------------
+    // Resolved server-side from the caller's authoritative tenant records
+    // through the ONE shared brand resolver — never from request input.
+    let brand: any = null;
     try {
-      if (callerScope.reseller_id) {
-        const resellers = await base44.asServiceRole.entities.Reseller.filter({ id: callerScope.reseller_id }).catch(() => []);
-        const reseller = resellers && resellers[0];
-        if (reseller) {
-          brandName = reseller.app_name || reseller.name || brandName;
-          brandColor = reseller.primary_color || brandColor;
-          emailFromName = reseller.app_name || reseller.name;
-        }
-      }
+      brand = await resolveCommunicationBrand(base44.asServiceRole, {
+        customer_id: callerScope.customer_id || null,
+        reseller_id: callerScope.reseller_id || null,
+      });
     } catch (_) { /* branding never breaks notifications */ }
+    const brandName: string = brand?.brand_name || 'USS';
+
+    // Branded email body — rendered once through the ONE shared renderer.
+    const brandEmail = buildBrandedEmail({
+      brand,
+      heading: title,
+      greeting: 'Hello,',
+      intro: message,
+      details: [{ label: 'Priority', value: String(priority || 'medium').toUpperCase() }],
+    });
 
     // ---- Privacy: module-safe preview text --------------------------------
     // Telegram previews and push lock-screen text must not leak sensitive data.
@@ -232,8 +238,8 @@ export default async function(req: Request): Promise<Response> {
             await base44.asServiceRole.integrations.Core.SendEmail({
               to: r.email,
               subject: `🔔 ${title}`,
-              from_name: emailFromName || undefined,
-              body: buildEmailHtml(title, message, metadata, priority, brandName, brandColor),
+              from_name: brandName,
+              body: brandEmail.html,
             });
             await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'email', idempKey);
             results.push({ recipient: r.id, channel: 'email', status: 'sent' });
@@ -296,7 +302,7 @@ export default async function(req: Request): Promise<Response> {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   chat_id: r.telegramChatId,
-                  text: buildTelegramText(safeTitle, safeMessage, priority),
+                  text: buildTelegramText(brandName, safeTitle, safeMessage, priority),
                   parse_mode: 'HTML',
                   disable_web_page_preview: true,
                 }),
@@ -392,35 +398,11 @@ function buildSafePreview(moduleKey: string, title: string, message: string, met
   return { safeTitle: title, safeMessage: message };
 }
 
-function buildTelegramText(title: string, message: string, priority: string): string {
+function buildTelegramText(brandName: string, title: string, message: string, priority: string): string {
   const prio = priority === 'critical' ? '🔴 CRITICAL' : priority === 'high' ? '🟠 HIGH' : priority === 'medium' ? '🟡 MEDIUM' : '🔵 LOW';
-  return `<b>${escTg(title)}</b>\n\n${escTg(message)}\n\n<i>${prio}</i>`;
+  return `<b>🛡️ ${escTg(brandName)}</b>\n<b>${escTg(title)}</b>\n\n${escTg(message)}\n\n<i>${prio}</i>`;
 }
 
 function escTg(s: string): string {
   return String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] || c));
-}
-
-function esc(s: string): string {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
-}
-
-function buildEmailHtml(title: string, message: string, metadata: any, priority: string, brandName = 'USS', brandColor = '#10b981'): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, ${esc(brandColor)} 0%, #1e293b 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">${esc(brandName)}</h1>
-      </div>
-      <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px;">
-        <div style="background: white; padding: 25px; border-radius: 8px; border-left: 4px solid ${esc(brandColor)};">
-          <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">${esc(title)}</h2>
-          <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 15px 0;">${esc(message)}</p>
-          <p style="color: #64748b; font-size: 14px; margin-top: 20px;">Priority: <span style="color: ${priority === 'critical' ? '#dc2626' : priority === 'high' ? '#ea580c' : priority === 'medium' ? '#ca8a04' : '#0284c7'}; font-weight: bold;">${esc(priority).toUpperCase()}</span></p>
-        </div>
-        <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-          <p style="color: #94a3b8; font-size: 12px; margin: 0;">${esc(brandName)} Management System</p>
-        </div>
-      </div>
-    </div>
-  `;
 }

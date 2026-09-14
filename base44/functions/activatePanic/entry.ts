@@ -303,13 +303,14 @@ Deno.serve(async (req) => {
     });
 
     const telegramText = [
+      `🛡️ ${panicBrand.brand_name}`,
       '🚨 *PANIC ALERT*',
       `Person: ${userName} (${user.role_type || 'user'})`,
       `Organisation: ${contextLine}`,
       `Time: ${sastTime(nowIso)} (SAST)`,
       `Ref: ${panicNumber}`,
       googleMapsUrl ? `Location: ${googleMapsUrl}` : 'Location: not yet available',
-      'Acknowledge in the USS Panic Queue immediately.',
+      `Acknowledge in the ${panicBrand.brand_name} Panic Queue immediately.`,
     ].join('\n');
 
     // 4. Fan out IN-APP + EMAIL + TELEGRAM + NATIVE PUSH per recipient with
@@ -343,7 +344,7 @@ Deno.serve(async (req) => {
       if (recipient.email) {
         await svc.integrations.Core.SendEmail({
           to: recipient.email,
-          from_name: 'USS EMERGENCY',
+          from_name: `${panicBrand.brand_name} — Emergency`,
           subject: `🚨 PANIC ALERT — ${userName} — IMMEDIATE RESPONSE REQUIRED`,
           body: emailBody
         }).catch(e => console.error(`Panic email failed for ${recipient.email}:`, e));

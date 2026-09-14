@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 /**
  * generateDailyAccessReport — Server-side daily access report.
@@ -51,6 +52,12 @@ export default async function(req: Request): Promise<Response> {
         const cid = site.customer_id || customer_id;
         const rid = site.reseller_id;
 
+        // TENANT BRANDING — resolved from the site's customer/reseller scope
+        // (customer → reseller → USS platform default) so the report body and
+        // sender carry the authoritative tenant identity.
+        const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+          customer_id: cid || null, reseller_id: rid || null });
+
         // Idempotency: skip if a daily report for this site+date already exists.
         const existing = await base44.asServiceRole.entities.GeneratedReport.filter({
           report_type: 'daily', site_id: site.id, report_date: reportDate,
@@ -84,9 +91,16 @@ export default async function(req: Request): Promise<Response> {
             <td>${l.status}</td>
           </tr>`).join('');
 
+        const brandRgb = (brand.primary_color || '#C41E3A');
+        const brandAccent = (brand.accent_color || '#1a1a1a');
         const html = `
-          <html><body style="font-family: Arial, sans-serif;">
-          <h2>Daily Access Report — ${site.name}</h2>
+          <html><body style="font-family: Arial, sans-serif;margin:0;padding:0;background:#f5f5f5;">
+          <div style="max-width:700px;margin:0 auto;background:#ffffff;">
+          <div style="background:linear-gradient(135deg,${brandRgb} 0%,${brandAccent} 100%);padding:28px 24px;text-align:center;">
+            ${brand.logo_url ? `<img src="${brand.logo_url}" alt="${brand.brand_name}" style="max-width:170px;height:auto;margin-bottom:12px;border-radius:10px;"/>` : ''}
+            <h2 style="color:#ffffff;margin:0;">Daily Access Report — ${site.name}</h2>
+          </div>
+          <div style="padding:24px;">
           <p>Date: ${reportDate}</p>
           <p>Generated: ${new Date().toISOString()}</p>
           <h3>Summary</h3>
@@ -102,7 +116,12 @@ export default async function(req: Request): Promise<Response> {
             <tr><th>Visitor</th><th>Phone</th><th>Type</th><th>Vehicle</th><th>Destination</th><th>Purpose</th><th>Gate</th><th>Entry</th><th>Exit</th><th>Minutes</th><th>Guard</th><th>Status</th></tr>
             ${rows}
           </table>
-          </body></html>`;
+          </div>
+          <div style="background:${brandAccent};padding:18px;text-align:center;">
+            <p style="color:#ffffff;margin:0;font-size:13px;font-weight:bold;">${brand.brand_name}</p>
+            <p style="color:#64748b;margin:6px 0 0;font-size:11px;">Automated Daily Access Report — please do not reply directly.</p>
+          </div>
+          </div></body></html>`;
 
         const report = await base44.asServiceRole.entities.GeneratedReport.create({
           title: `Daily Access Report — ${site.name} — ${reportDate}`,
@@ -133,6 +152,7 @@ export default async function(req: Request): Promise<Response> {
             for (const er of externalRecipients) {
               if (er.email) {
                 await base44.asServiceRole.integrations.Core.SendEmail({
+                  from_name: brand.brand_name,
                   to: er.email,
                   subject: `Daily Access Report — ${site.name} — ${reportDate}`,
                   body: html
@@ -145,7 +165,7 @@ export default async function(req: Request): Promise<Response> {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       chat_id: er.telegram_chat_id,
-                      text: `<b>Daily Access Report — ${site.name}</b>\nDate: ${reportDate}\nEntries: ${entries.length} | Inside: ${stillInside.length} | Denied: ${denied.length}`,
+                      text: `<b>${brand.brand_name}</b>\n<b>Daily Access Report — ${site.name}</b>\nDate: ${reportDate}\nEntries: ${entries.length} | Inside: ${stillInside.length} | Denied: ${denied.length}`,
                       parse_mode: 'HTML',
                       disable_web_page_preview: true,
                     }),
