@@ -62,7 +62,7 @@ export default function OneSignalSetup() {
                 type: 'push',
                 autoPrompt: true,
                 text: {
-                  actionMessage: 'SecureGuard needs push notifications for real-time alerts.',
+                  actionMessage: 'The app needs push notifications for real-time alerts.',
                   acceptButton: 'Allow',
                   cancelButton: 'Later'
                 },

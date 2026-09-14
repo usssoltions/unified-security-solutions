@@ -50,6 +50,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
 import { buildPanicEmail } from '../../shared/panicEmailTemplate.ts';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
@@ -290,11 +291,15 @@ Deno.serve(async (req) => {
     const contextLine = [resolvedSiteName, customerName]
       .filter(Boolean).join(' — ') || 'Unknown location';
 
+    // TENANT BRANDING — resolved server-side from the activating user's
+    // authoritative tenant (customer → reseller → USS platform default).
+    const panicBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user.customer_id || null, reseller_id: user.reseller_id || null });
     const emailBody = buildPanicEmail({
       userName, userRole: user.role_type, badgeNumber: user.badge_number,
       siteName: resolvedSiteName, panicNumber, activatedAt: nowIso,
       location, gpsAccuracy: gps_accuracy, notes, status: 'ACTIVE',
-      customerName,
+      customerName, brandName: panicBrand.brand_name,
     });
 
     const telegramText = [

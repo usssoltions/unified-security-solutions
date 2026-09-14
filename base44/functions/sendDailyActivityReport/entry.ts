@@ -361,7 +361,7 @@ Deno.serve(async (req) => {
 
     await Promise.all(recipients.map((recipient) =>
       base44.asServiceRole.integrations.Core.SendEmail({
-        from_name: 'SecureGuard System',
+        from_name: 'Unified Security Solutions',
         to: recipient.email,
         subject: `Daily Activity Report — ${yesterday.toLocaleDateString('en-ZA')}`,
         body: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0;">

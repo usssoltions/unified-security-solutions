@@ -100,7 +100,7 @@ export default function IncidentEscalationMonitor({ user }) {
 
 <p style="color: #dc2626; font-weight: bold;">This incident requires immediate attention and may need reassignment.</p>
 
-<p>Log into SecureGuard to review and take action.</p>
+<p>Log into the app to review and take action.</p>
               `
             }).catch(err => console.error(`Email failed for ${supervisor.email}:`, err))
           );

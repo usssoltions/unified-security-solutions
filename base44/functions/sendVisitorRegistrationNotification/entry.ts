@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -16,6 +17,11 @@ Deno.serve(async (req) => {
       hostName, unitNumber, validFrom, validUntil, qrCode, otp,
     } = body;
 
+    // TENANT BRANDING — resolved from the registering user's authoritative
+    // customer/reseller record.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user.customer_id || null, reseller_id: user.reseller_id || null });
+
     const dateRange = validFrom && validUntil
       ? `${new Date(validFrom).toLocaleDateString('en-ZA')} – ${new Date(validUntil).toLocaleDateString('en-ZA')}`
       : 'Open';
@@ -32,10 +38,14 @@ Deno.serve(async (req) => {
     ].filter(Boolean).join(' ');
 
     // Notify all relevant staff: admins, dispatchers, supervisors, management, guards
+    // TENANT-SCOPED recipients — the registering user's OWN customer's staff
+    // (platform oversight always permitted). The previous platform-wide role
+    // filter leaked visitor registrations across tenants.
     const allUsers = await base44.asServiceRole.entities.User.list();
+    const isPlatformUser = (u) => u.role_type === 'platform_admin' || u.admin_level === 'platform';
     const recipients = allUsers.filter((u) =>
-      ['admin', 'dispatcher', 'supervisor', 'management', 'guard'].includes(u.role_type)
-    );
+      ['admin', 'dispatcher', 'supervisor', 'management', 'guard'].includes(u.role_type) &&
+      (isPlatformUser(u) || !user.customer_id || u.customer_id === user.customer_id));
 
     for (const u of recipients) {
       await base44.asServiceRole.entities.Notification.create({
@@ -56,7 +66,7 @@ Deno.serve(async (req) => {
       const emails = recipients.map((u) => u.email).filter(Boolean).join(',');
       if (emails) {
         await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: 'SecureGuard Visitors',
+          from_name: brand.brand_name,
           to: emails,
           subject: title,
           body: message,

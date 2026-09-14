@@ -66,7 +66,7 @@ export default function MobileInstallPrompt() {
             <Smartphone className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1">
-            <h3 className="text-white font-semibold mb-1">Install SecureGuard</h3>
+            <h3 className="text-white font-semibold mb-1">Install the App</h3>
             <p className="text-sm text-slate-300 mb-3">
               {isIOS 
                 ? "Tap the share button and select 'Add to Home Screen' for quick access"

@@ -84,7 +84,7 @@ export default function ResellerBranding({ edit, setEdit, onSave, saving, readOn
                 value={edit.app_name || ""}
                 onChange={(e) => setField("app_name", e.target.value)}
                 disabled={readOnly}
-                placeholder="SecureGuard"
+                placeholder="Your App Name"
                 className="bg-slate-950 border-slate-700 text-white mt-1 disabled:opacity-60"
               />
               <p className="text-slate-500 text-xs mt-1">

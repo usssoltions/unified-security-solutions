@@ -149,11 +149,11 @@ export default function PermissionEnforcement() {
             <div className="px-3 pb-3 space-y-2 text-xs text-slate-300">
               <div>
                 <p className="font-semibold text-amber-400">Battery Optimization:</p>
-                <p>Settings → Apps → SecureGuard → Battery → Unrestricted</p>
+                <p>Settings → Apps → USS Platform → Battery → Unrestricted</p>
               </div>
               <div>
                 <p className="font-semibold text-amber-400">Auto Launch:</p>
-                <p>Settings → Apps → SecureGuard → Enable Auto-start</p>
+                <p>Settings → Apps → USS Platform → Enable Auto-start</p>
               </div>
             </div>
           </details>

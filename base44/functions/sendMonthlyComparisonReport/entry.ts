@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
 
     await Promise.all(recipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
-        from_name: 'SecureGuard Monthly Analytics',
+        from_name: 'Unified Security Solutions',
         to: recipient.email,
         subject: `Monthly Comparison Report — ${currentMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}`,
         body: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:0;">

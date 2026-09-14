@@ -16,7 +16,7 @@ export default function OneSignalTest() {
     playerId: null
   });
   const [testTitle, setTestTitle] = useState("Test Notification");
-  const [testMessage, setTestMessage] = useState("This is a test push notification from SecureGuard");
+  const [testMessage, setTestMessage] = useState("This is a test push notification from USS Platform");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
 

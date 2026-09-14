@@ -15,7 +15,7 @@ import BrandLogo from "@/components/branding/BrandLogo";
  */
 export default function BrandingPreview({ branding }) {
   const brand = resolveBrand(branding);
-  const appName = brand.appName || "SecureGuard";
+  const appName = brand.appName || "USS Platform";
   // Logo background mode for the preview. Editors that don't configure a
   // logo_background (e.g. the reseller editor) keep the legacy white preview
   // container; the customer editor passes auto/white/transparent so the

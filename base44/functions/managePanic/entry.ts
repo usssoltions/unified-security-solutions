@@ -20,7 +20,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
-import { buildPanicEmail, esc } from '../../shared/panicEmailTemplate.ts';
+import { buildPanicEmail, buildPanicEmailAsync, esc } from '../../shared/panicEmailTemplate.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 // Post-module-split responder authority: control_room_operator and
@@ -477,7 +477,11 @@ Deno.serve(async (req) => {
           // lifecycle CLOSURE — never a new emergency activation.
           const sendLifecycleEmail = action === 'resolve' || action === 'cancel';
           if ((sendEmailToUser || sendLifecycleEmail) && target.email) {
-            const emailBody = buildPanicEmail({
+            // TENANT BRANDING — resolved from the panic's authoritative tenant
+            // (customer → reseller → USS platform default) by the shared
+            // branded wrapper; business lifecycle logic is untouched.
+            const emailBody = await buildPanicEmailAsync(base44.asServiceRole, {
+              customer_id: panic.customer_id || null, reseller_id: panic.reseller_id || null,
               userName: panic.user_name, userRole: panic.user_role, badgeNumber: panic.badge_number,
               siteName: panic.site_name, panicNumber: panic.panic_number, activatedAt: panic.activated_at,
               location: panic.location, gpsAccuracy: panic.gps_accuracy,

@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A'; // Red from logo
@@ -16,11 +17,20 @@ Deno.serve(async (req) => {
 
     const { reportData, location, media = [] } = await req.json();
 
-    // Get all admin users
+    // TENANT BRANDING — resolved from the reporting guard's authoritative
+    // customer/reseller record.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user.customer_id || null, reseller_id: user.reseller_id || null });
+
+    // TENANT-SCOPED recipients — the reporting guard's OWN customer's
+    // operational management (platform oversight always permitted). The
+    // previous platform-wide role filter leaked start-of-shift reports
+    // across tenants.
     const allUsers = await base44.asServiceRole.entities.User.list();
-    const adminUsers = allUsers.filter(u => 
-      ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type)
-    );
+    const isPlatformUser = (u) => u.role_type === 'platform_admin' || u.admin_level === 'platform';
+    const adminUsers = allUsers.filter(u =>
+      ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type) &&
+      (isPlatformUser(u) || !user.customer_id || u.customer_id === user.customer_id));
 
     if (adminUsers.length === 0) {
       return Response.json({ 
@@ -77,7 +87,7 @@ Deno.serve(async (req) => {
         // Send comprehensive email
         if (admin.email) {
           await base44.asServiceRole.integrations.Core.SendEmail({
-            from_name: 'Unified Security Solutions',
+            from_name: brand.brand_name,
             to: admin.email,
             subject: `📊 Start of Shift Report - ${user.full_name} @ ${reportData.site_name}`,
             body: `
@@ -91,7 +101,7 @@ Deno.serve(async (req) => {
                 <div style="max-width: 650px; margin: 0 auto; background: white;">
                   <!-- Header with Logo -->
                   <div style="background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_SECONDARY} 100%); padding: 40px 30px; text-align: center;">
-                    <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width: 200px; height: auto; margin-bottom: 20px; border-radius: 10px;" />
+                    <img src="${brand.logo_url}" alt="${escHtml(brand.brand_name)}" style="max-width: 200px; height: auto; margin-bottom: 20px; border-radius: 10px;" />
                     <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">📊 START OF SHIFT REPORT</h1>
                     <p style="color: rgba(255,255,255,0.95); margin: 10px 0 0 0; font-size: 16px;">Professional Security Services</p>
                   </div>
@@ -192,8 +202,8 @@ Deno.serve(async (req) => {
                   <!-- Footer -->
                   <div style="background: ${BRAND_SECONDARY}; padding: 25px; text-align: center;">
                     <img src="${COMPANY_LOGO}" alt="Logo" style="max-width: 120px; height: auto; margin-bottom: 15px; opacity: 0.8;" />
-                    <p style="color: #94a3b8; margin: 0 0 10px 0; font-size: 13px;">This is an automated notification from Unified Security Solutions</p>
-                    <p style="color: #64748b; margin: 0; font-size: 12px;">© ${new Date().getFullYear()} Unified Security Solutions. All rights reserved.</p>
+                    <p style="color: #94a3b8; margin: 0 0 10px 0; font-size: 13px;">This is an automated notification from ${escHtml(brand.brand_name)}</p>
+                    <p style="color: #64748b; margin: 0; font-size: 12px;">© ${new Date().getFullYear()} ${escHtml(brand.brand_name)}. All rights reserved.</p>
                     <p style="color: ${BRAND_COLOR}; margin: 10px 0 0 0; font-size: 11px; font-weight: bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
                   </div>
                 </div>

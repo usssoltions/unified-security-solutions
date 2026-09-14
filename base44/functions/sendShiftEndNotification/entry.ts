@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -62,6 +63,9 @@ export default async function(req) {
 
     const guardName = shift.guard_name || 'Assigned guard';
     const siteName = shift.site_name || 'their site';
+    // TENANT BRANDING — resolved from the shift's authoritative customer.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: shift.customer_id || null, reseller_id: shift.reseller_id || null });
     const minsOver = Math.max(0, Math.round((Date.now() - endTime.getTime()) / 60000));
     const priority = minsOver > 15 ? 'high' : 'medium';
 
@@ -113,7 +117,7 @@ export default async function(req) {
       const emails = admins.map(a => a.email).filter(Boolean).join(',');
       if (emails) {
         await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: 'SecureGuard Shifts',
+          from_name: brand.brand_name,
           to: emails,
           subject: title,
           body: message,

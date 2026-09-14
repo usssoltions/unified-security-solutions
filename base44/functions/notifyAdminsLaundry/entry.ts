@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 const COMPANY_LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
 const BRAND_COLOR = '#C41E3A';
@@ -90,11 +91,15 @@ Deno.serve(async (req) => {
       }).catch(() => {})
     );
 
+    // TENANT BRANDING — resolved from the requesting user's authoritative
+    // tenant record (customer → reseller → USS platform default).
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
     const emailPromises = recipients
       .filter((a) => a.email)
       .map((admin) =>
         base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: 'Unified Security Solutions — Laundry',
+          from_name: brand.brand_name + ' — Laundry',
           to: admin.email,
           subject,
           body: emailBody,

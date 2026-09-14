@@ -144,7 +144,7 @@ Site: ${siteName || "Unknown"}
 Time: ${new Date().toLocaleString("en-ZA")}${mapsLink}
 ${notes ? `\nNotes: ${notes}` : ""}
 
-⚡ Open SecureGuard App: ${appDeepLink("ControlRoom")}
+⚡ Open the App: ${appDeepLink("ControlRoom")}
 
 Please respond IMMEDIATELY.`;
 }
@@ -198,7 +198,7 @@ Date: ${new Date(startTime).toLocaleDateString("en-ZA")}
 Time: ${new Date(startTime).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })} – ${new Date(endTime).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}
 ${notes ? `Notes: ${notes}` : ""}
 
-✅ *Please review, sign & confirm your shift in the SecureGuard app:*
+✅ *Please review, sign & confirm your shift in the app:*
 ${appDeepLink("GuardShift")}
 
 Tap the "Respond" button next to your upcoming shift to Accept, Decline, or request a Revision.`;

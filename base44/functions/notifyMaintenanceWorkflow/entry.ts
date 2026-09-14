@@ -11,6 +11,7 @@
  * (accept / decline / complete). Uses asServiceRole throughout.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
@@ -151,11 +152,15 @@ Deno.serve(async (req) => {
       }).catch(() => {})
     );
 
+    // TENANT BRANDING — resolved from the acting user's authoritative
+    // tenant record (customer → reseller → USS platform default).
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
     const emailPromises = recipients
       .filter((r) => r.email)
       .map((r) =>
         base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: 'Unified Security Solutions — Maintenance Workflow',
+          from_name: brand.brand_name + ' — Maintenance Workflow',
           to: r.email,
           subject: emailSubject,
           body: emailBody,

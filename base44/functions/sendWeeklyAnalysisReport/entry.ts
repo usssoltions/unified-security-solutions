@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
 
     await Promise.all(recipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
-        from_name: 'SecureGuard Analytics',
+        from_name: 'Unified Security Solutions',
         to: recipient.email,
         subject: `Weekly Security Analysis — ${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}`,
         body: `<h2>Weekly Security Analysis Report</h2>
@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
 </table>
 <h3>Weekly Analysis</h3>
 <pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;white-space:pre-wrap;">${analysis}</pre>
-<p><em>Automated weekly report from SecureGuard</em></p>`
+<p><em>Automated weekly report from Unified Security Solutions</em></p>`
       }).catch(err => console.error(`Email failed to ${recipient.email}:`, err.message))
     ));
 

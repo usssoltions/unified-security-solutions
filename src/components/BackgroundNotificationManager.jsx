@@ -124,7 +124,7 @@ export default function BackgroundNotificationManager({ user }) {
 
         if (document.hidden && Notification.permission === 'granted' && !event.data?.read) {
           try {
-            new Notification(event.data?.title || 'SecureGuard', {
+            new Notification(event.data?.title || 'USS Platform', {
               body: event.data?.message || '',
               icon: '/icon-192.png',
               tag: `notif-${event.data?.id}`,

@@ -11,6 +11,7 @@
  * header, logo, location with Google Maps button).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
@@ -129,11 +130,15 @@ Deno.serve(async (req) => {
       }).catch(() => {})
     );
 
+    // TENANT BRANDING — resolved from the reporting user's authoritative
+    // tenant record (customer → reseller → USS platform default).
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
     const emailPromises = recipients
       .filter((u) => u.email)
       .map((admin) =>
         base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: 'Unified Security Solutions — Incident Alerts',
+          from_name: brand.brand_name + ' — Incident Alerts',
           to: admin.email,
           subject,
           body: emailBody,

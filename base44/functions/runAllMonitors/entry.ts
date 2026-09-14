@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -132,9 +133,14 @@ Deno.serve(async (req) => {
                 event_key: 'patrolplan_overdue:' + patrol.id,
               }).catch(() => {});
             }
+            // TENANT BRANDING — resolved from the patrol's authoritative
+            // customer (unresolved scope falls back to the platform brand).
+            const patrolBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+              customer_id: (patrol && patrol.customer_id) || (scope && scope.customer_id) || null,
+              reseller_id: (patrol && patrol.reseller_id) || (scope && scope.reseller_id) || null });
             await Promise.all(targets.filter(s => s.email).map(sup =>
               base44.asServiceRole.integrations.Core.SendEmail({
-                from_name: 'SecureGuard Alerts', to: sup.email,
+                from_name: patrolBrand.brand_name, to: sup.email,
                 subject: '🚨 Overdue Patrol Alert',
                 body: `Patrol: ${patrol.name}\nGuard: ${patrol.assigned_to_name}\nSite: ${patrol.site_name}\nProgress: ${completed}/${total} checkpoints`
               }).catch(err => console.error('Email failed:', err.message))
@@ -217,10 +223,12 @@ Deno.serve(async (req) => {
                   `⚠️ Missed Clock-In\n\n${shift.guard_name || 'Guard'} missed clock-in at ${shift.site_name}. Scheduled: ${new Date(shift.start_time).toLocaleString('en-ZA')}`)
                   .catch(() => {});
               }
-              // EMAIL
+              // EMAIL — tenant-branded from the shift's authoritative customer.
               if (t.email) {
+                const clockinBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+                  customer_id: shift.customer_id || null, reseller_id: shift.reseller_id || null });
                 await base44.asServiceRole.integrations.Core.SendEmail({
-                  from_name: 'SecureGuard Alerts', to: t.email,
+                  from_name: clockinBrand.brand_name, to: t.email,
                   subject: '🚨 Missed Clock-In Alert',
                   body: `Guard: ${shift.guard_name || 'Unknown'}\nSite: ${shift.site_name}\nScheduled Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}`
                 }).catch(err => console.error('Email failed:', err.message));
@@ -307,10 +315,13 @@ Deno.serve(async (req) => {
             // EMAIL — only when the guard has an address; a missing email no
             // longer silently cancels the whole reminder (previous defect).
             if (guard.email) {
+              // TENANT BRANDING — resolved from the shift's authoritative customer.
+              const reminderBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+                customer_id: shift.customer_id || null, reseller_id: shift.reseller_id || null });
               await base44.asServiceRole.integrations.Core.SendEmail({
-                from_name: 'SecureGuard', to: guard.email,
+                from_name: reminderBrand.brand_name, to: guard.email,
                 subject: reminderTitle,
-                body: `Hi ${shift.guard_name || guard.full_name},\n\nYour shift starts in approximately 2 hours.\n\nSite: ${shift.site_name}\nStart: ${new Date(shift.start_time).toLocaleString('en-ZA')}\nEnd: ${new Date(shift.end_time).toLocaleString('en-ZA')}\n\nPlease ensure you arrive on time and clock in via the SecureGuard app.`
+                body: `Hi ${shift.guard_name || guard.full_name},\n\nYour shift starts in approximately 2 hours.\n\nSite: ${shift.site_name}\nStart: ${new Date(shift.start_time).toLocaleString('en-ZA')}\nEnd: ${new Date(shift.end_time).toLocaleString('en-ZA')}\n\nPlease ensure you arrive on time and clock in via the app.`
               }).catch(err => console.error(`Reminder failed:`, err.message));
             }
             // NATIVE PUSH — shared platform service: the 2-hour shift reminder

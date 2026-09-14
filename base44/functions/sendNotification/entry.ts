@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -48,6 +49,10 @@ Deno.serve(async (req) => {
 
     // Get recipient details
     const recipient = await base44.asServiceRole.entities.User.get(recipient_id);
+    // TENANT BRANDING — resolved from the RECIPIENT's authoritative tenant
+    // record, never from client-supplied values.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: recipient.customer_id || null, reseller_id: recipient.reseller_id || null });
     const sent_via = ['in_app'];
 
     // Create in-app notification
@@ -91,9 +96,10 @@ Deno.serve(async (req) => {
     if (userPref?.[type]?.email) {
       try {
         await base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: brand.brand_name,
           to: recipient.email,
           subject: title,
-          body: `${message}\n\n---\nThis is an automated notification from SecureGuard.`
+          body: `${message}\n\n---\nThis is an automated notification from ${brand.brand_name}.`
         });
         notification.sent_via.push('email');
       } catch (error) {

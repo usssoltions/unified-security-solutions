@@ -4,6 +4,8 @@
  * Matches the red/black USS branding used by Incident and Maintenance emails.
  */
 
+import { resolveCommunicationBrand } from './brandedCommunication.ts';
+
 export function esc(s: string): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -19,6 +21,9 @@ interface PanicEmailParams {
   badgeNumber?: string;
   siteName?: string;
   customerName?: string;
+  /** Resolved tenant brand name for the footer (customer → reseller → USS
+   * platform). Absent/empty falls back to the USS platform identity. */
+  brandName?: string;
   panicNumber: string;
   activatedAt: string;
   location?: { lat: number; lng: number } | null;
@@ -35,7 +40,7 @@ interface PanicEmailParams {
 
 export function buildPanicEmail(params: PanicEmailParams): string {
   const {
-    userName, userRole, badgeNumber, siteName, customerName, panicNumber,
+    userName, userRole, badgeNumber, siteName, customerName, brandName, panicNumber,
     activatedAt, location, gpsAccuracy, notes, status, isEscalation,
     lifecycleAction, responderName, lifecycleAt
   } = params;
@@ -172,11 +177,26 @@ export function buildPanicEmail(params: PanicEmailParams): string {
         </div>
 
         <div style="background-color: #1a1a1a; padding: 20px; text-align: center;">
-          <p style="color: white; margin: 0; font-size: 14px; font-weight: bold;">Unified Security Solutions</p>
+          <p style="color: white; margin: 0; font-size: 14px; font-weight: bold;">${esc(brandName || 'Unified Security Solutions')}</p>
           <p style="color: #C41E3A; margin: 5px 0; font-size: 12px;">Professional Security Management • 24/7 Emergency Response</p>
         </div>
       </div>
     </body>
     </html>
   `;
+}
+
+/** Branded wrapper for callers with tenant ids: resolves the effective brand
+ * (customer → reseller → USS platform) from params.customer_id /
+ * params.reseller_id and delegates to buildPanicEmail. The tenant fields are
+ * consumed here and never render in the email. */
+export async function buildPanicEmailAsync(svc: any, params: any): Promise<string> {
+  const { customer_id, reseller_id, ...rest } = params || {};
+  let brandName: string | undefined;
+  try {
+    const brand = await resolveCommunicationBrand(svc, {
+      customer_id: customer_id || null, reseller_id: reseller_id || null });
+    brandName = (brand && brand.brand_name) || undefined;
+  } catch (_) { brandName = undefined; }
+  return buildPanicEmail({ ...rest, brandName });
 }
