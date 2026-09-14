@@ -63,6 +63,17 @@ export async function updateSite(siteId, changes) {
   return invokeSiteAccess({ action: "update", id: siteId, changes });
 }
 
+// Authoritative customer options for the Site form — scoped SERVER-SIDE by
+// the siteAccess gateway (platform: all customers; reseller admin: own
+// reseller's customers; tenant manage roles: own customer, locked).
+export async function listCustomersForSites() {
+  const d = await invokeSiteAccess({ action: "listCustomers" });
+  if (!d || !Array.isArray(d.customers)) {
+    throw new Error("Customer options response was malformed.");
+  }
+  return d;
+}
+
 export async function deleteSite(siteId) {
   return invokeSiteAccess({ action: "delete", id: siteId });
 }

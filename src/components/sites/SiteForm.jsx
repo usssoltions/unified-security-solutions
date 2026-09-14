@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { createSite, updateSite } from "@/lib/siteApi";
+import { createSite, updateSite, listCustomersForSites } from "@/lib/siteApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Plus, Trash2, MapPin, QrCode, Loader2, Sparkles, AlertCircle, Save } from "lucide-react";
+import { X, Plus, Trash2, MapPin, QrCode, Loader2, Sparkles, AlertCircle, Save, Lock } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -21,6 +21,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     name: site?.name || "",
     address: site?.address || "",
     client_name: site?.client_name || "",
+    customer_id: site?.customer_id || "",
     location: site?.location || { lat: 0, lng: 0 },
     geofence_radius: site?.geofence_radius || 100,
     status: site?.status || "active",
@@ -32,6 +33,30 @@ export default function SiteForm({ site, onClose, onSuccess }) {
   const [error, setError] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState("");
+  // AUTHORITATIVE CUSTOMER LINKING — options come live from the server-side
+  // scoped list (platform: all; reseller admin: own reseller's customers;
+  // tenant manage roles: own customer, locked). Never a hardcoded list.
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [customerLocked, setCustomerLocked] = useState(false);
+  const [customersLoading, setCustomersLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const d = await listCustomersForSites();
+        if (!active) return;
+        setCustomerOptions(d.customers || []);
+        setCustomerLocked(!!d.locked);
+        setFormData(prev => prev.customer_id ? prev : { ...prev, customer_id: site?.customer_id || d.locked_customer_id || "" });
+      } catch (e) {
+        if (active) setError(e?.message || "Could not load customers");
+      } finally {
+        if (active) setCustomersLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [site]);
 
   // Auto-save draft to localStorage
   useEffect(() => {
@@ -183,8 +208,8 @@ export default function SiteForm({ site, onClose, onSuccess }) {
       setError("Address is required");
       return false;
     }
-    if (!formData.client_name.trim()) {
-      setError("Client name is required");
+    if (!formData.customer_id) {
+      setError("Please select the customer this site belongs to");
       return false;
     }
     if (formData.location.lat === 0 && formData.location.lng === 0) {
@@ -247,6 +272,10 @@ export default function SiteForm({ site, onClose, onSuccess }) {
       }
     }
   };
+
+  const selectedCustomerName = customerOptions.find(c => c.id === formData.customer_id)?.name
+    || site?.client_name
+    || "";
 
   const handleClose = () => {
     if (hasUnsavedChanges) {
@@ -335,14 +364,37 @@ export default function SiteForm({ site, onClose, onSuccess }) {
               </div>
 
               <div>
-                <label className="text-sm text-slate-400 mb-2 block">Client Name *</label>
-                <Input
-                  value={formData.client_name}
-                  onChange={(e) => updateFormData({ client_name: e.target.value })}
-                  className="bg-slate-900/50 border-slate-700 text-white"
-                  required
-                  placeholder="e.g., ABC Corporation"
-                />
+                <label className="text-sm text-slate-400 mb-2 block">Customer *</label>
+                {customersLoading ? (
+                  <div className="h-10 flex items-center gap-2 text-sm text-slate-400 bg-slate-900/50 border border-slate-700 rounded-lg px-3">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading customers...
+                  </div>
+                ) : customerLocked ? (
+                  <div className="h-10 flex items-center gap-2 text-sm text-slate-300 bg-slate-900/50 border border-slate-700 rounded-lg px-3">
+                    <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span className="truncate">{selectedCustomerName || "Your customer"}</span>
+                  </div>
+                ) : (
+                  <Select
+                    value={formData.customer_id || ""}
+                    onValueChange={(value) => {
+                      const c = customerOptions.find(x => x.id === value);
+                      updateFormData({ customer_id: value, client_name: c?.name || "" });
+                    }}
+                  >
+                    <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customerOptions.map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <p className="text-xs text-slate-500 mt-1">
+                  Sites are linked to the authoritative customer record — this cannot be typed manually.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

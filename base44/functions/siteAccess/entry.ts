@@ -154,6 +154,27 @@ export default async function(req) {
       return Response.json({ sites: sites || [], can_manage: canManage });
     }
 
+    /* Authoritative customer options for the Site form — always resolved
+       server-side so the dropdown can never contain another tenant's
+       customers (frontend filtering alone is never trusted). */
+    if (action === 'listCustomers') {
+      if (!canManage) return Response.json({ error: 'Your role cannot access customer options', code: 'forbidden_action' }, { status: 403 });
+      let customers = [];
+      let locked = false;
+      let locked_customer_id = null;
+      if (platformAdmin) {
+        customers = await svc.entities.Customer.list('-created_date', 500).catch(() => []);
+      } else if (resellerAdmin) {
+        customers = await svc.entities.Customer.filter({ reseller_id: caller.reseller_id }, '-created_date', 500).catch(() => []);
+      } else {
+        // Tenant manage role — own customer only, auto-locked.
+        locked = true;
+        locked_customer_id = caller.customer_id;
+        customers = await svc.entities.Customer.filter({ id: caller.customer_id }).catch(() => []);
+      }
+      return Response.json({ customers: customers || [], locked: locked, locked_customer_id: locked_customer_id });
+    }
+
     if (action === 'get') {
       const site = await findSite(body.id);
       if (!site) return Response.json({ error: 'Site not found', code: 'not_found' }, { status: 404 });
@@ -165,33 +186,39 @@ export default async function(req) {
       if (!canManage) return Response.json({ error: 'Your role cannot create sites', code: 'forbidden_action' }, { status: 403 });
       const name = String(body.name || '').trim();
       const address = String(body.address || '').trim();
-      const client_name = String(body.client_name || '').trim();
-      if (!name || !address || !client_name) {
-        return Response.json({ error: 'Site name, address and client name are required' }, { status: 400 });
-      }
       let customerId = null;
       let resellerId = null;
+      let cust = null;
       if (tenantManager) {
         // Tenant scope is ALWAYS the caller's own customer — never client input.
         customerId = caller.customer_id;
-        resellerId = caller.reseller_id || null;
+        const custs = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);
+        cust = (custs && custs[0]) ? custs[0] : null;
+        resellerId = (cust && cust.reseller_id) || caller.reseller_id || null;
       } else if (resellerAdmin) {
         customerId = String(body.customer_id || '');
         const custs = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);
-        const cust = (custs && custs[0]) ? custs[0] : null;
+        cust = (custs && custs[0]) ? custs[0] : null;
         if (!cust || cust.reseller_id !== caller.reseller_id) {
           return Response.json({ error: 'That customer does not belong to your reseller', code: 'forbidden_customer' }, { status: 403 });
         }
         resellerId = caller.reseller_id;
       } else if (body.customer_id) {
-        // Platform admin — optional explicit customer scope (tenant setup).
+        // Platform admin — explicit customer scope (tenant setup).
         customerId = String(body.customer_id);
         const custs = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);
-        const cust = (custs && custs[0]) ? custs[0] : null;
+        cust = (custs && custs[0]) ? custs[0] : null;
         resellerId = (cust && cust.reseller_id) || null;
       }
       if (!platformAdmin && !customerId) {
         return Response.json({ error: 'Your account is not assigned to a customer', code: 'no_scope' }, { status: 403 });
+      }
+      // AUTHORITATIVE CLIENT NAME — always the linked Customer record's own
+      // name; manually typed text is never trusted (the legacy unscoped
+      // platform-created path is the only remaining free-text fallback).
+      const client_name = cust ? cust.name : (platformAdmin ? String(body.client_name || '').trim() : '');
+      if (!name || !address || !client_name) {
+        return Response.json({ error: 'Site name, address and customer are required' }, { status: 400 });
       }
       const created = await svc.entities.Site.create({
         name: name,
@@ -218,13 +245,38 @@ export default async function(req) {
       const changes = (body.changes && typeof body.changes === 'object') ? body.changes : {};
       if (!Object.keys(changes).length) return Response.json({ success: true, site: site, unchanged: true });
 
-      // Ownership scope is ONLY changeable by a platform admin (tenant migration).
+      // Ownership scope: platform admins may re-scope (tenant migration);
+      // reseller admins may set the customer within their OWN reseller only
+      // (validated server-side); tenant callers can never change ownership.
+      // reseller_id and the displayed client_name are ALWAYS derived from the
+      // authoritative Customer record — never from client input.
       if (platformAdmin) {
-        if (changes.customer_id !== undefined) changes.customer_id = changes.customer_id || null;
-        if (changes.reseller_id !== undefined) changes.reseller_id = changes.reseller_id || null;
+        if (changes.customer_id !== undefined) {
+          changes.customer_id = changes.customer_id || null;
+          if (changes.customer_id) {
+            const custs = await svc.entities.Customer.filter({ id: String(changes.customer_id) }).catch(() => []);
+            const cust = (custs && custs[0]) ? custs[0] : null;
+            if (cust) {
+              changes.reseller_id = cust.reseller_id || null;
+              changes.client_name = cust.name;
+            }
+          }
+        }
+      } else if (resellerAdmin && changes.customer_id !== undefined && changes.customer_id) {
+        const custs = await svc.entities.Customer.filter({ id: String(changes.customer_id) }).catch(() => []);
+        const cust = (custs && custs[0]) ? custs[0] : null;
+        if (!cust || cust.reseller_id !== caller.reseller_id) {
+          return Response.json({ error: 'That customer does not belong to your reseller', code: 'forbidden_customer' }, { status: 403 });
+        }
+        changes.reseller_id = caller.reseller_id;
+        changes.client_name = cust.name;
       } else {
         delete changes.customer_id;
         delete changes.reseller_id;
+      }
+      if (!platformAdmin && !resellerAdmin && changes.client_name !== undefined && site.customer_id) {
+        // Tenant callers: the display name is derived from the linked customer.
+        delete changes.client_name;
       }
       const checkpointChanged = changes.checkpoints !== undefined;
       const updated = await svc.entities.Site.update(site.id, changes);
