@@ -7,9 +7,26 @@
 
 import { base44 } from "@/api/base44Client";
 import { fetchTenantUsers } from "@/lib/tenantLookups";
+import { PLATFORM_APP_NAME } from "@/lib/branding";
 
 const STORAGE_KEY = "wa_admin_contacts";
 const APP_URL = window.location.origin;
+
+// ─── Tenant-branded manual WhatsApp composition ─────────────────────────────
+// The effective white-label app name (customer → reseller → USS platform
+// default) is primed once by the app Layout via primeWhatsAppBrand(). Every
+// composer below then automatically leads with the tenant's brand line, so a
+// manually-sent WhatsApp message is branded for the tenant it belongs to.
+
+let primedBrandName = null;
+
+export function primeWhatsAppBrand(appName) {
+  primedBrandName = appName ? String(appName).trim() : null;
+}
+
+function brandLine() {
+  return `🛡️ ${primedBrandName || PLATFORM_APP_NAME}`;
+}
 
 // ─── Contact management ────────────────────────────────────────────────────────
 
@@ -137,7 +154,8 @@ export async function notifyAdmins({ type, title, message, relatedEntity, relate
 
 export function panicMessage({ guardName, siteName, lat, lng, notes }) {
   const mapsLink = lat && lng ? `\n📍 Navigate: https://maps.google.com/?q=${lat},${lng}` : "";
-  return `🚨 *PANIC ALERT — IMMEDIATE RESPONSE REQUIRED*
+  return `${brandLine()}
+🚨 *PANIC ALERT — IMMEDIATE RESPONSE REQUIRED*
 
 Guard: ${guardName}
 Site: ${siteName || "Unknown"}
@@ -151,7 +169,8 @@ Please respond IMMEDIATELY.`;
 
 export function incidentMessage({ guardName, siteName, incidentType, summary, reportNumber, lat, lng }) {
   const mapsLink = lat && lng ? `\n📍 Location: https://maps.google.com/?q=${lat},${lng}` : "";
-  return `🔴 *INCIDENT REPORT — ${(incidentType || "").toUpperCase()}*
+  return `${brandLine()}
+🔴 *INCIDENT REPORT — ${(incidentType || "").toUpperCase()}*
 
 Report #: ${reportNumber}
 Guard: ${guardName}
@@ -164,7 +183,8 @@ Summary: ${(summary || "No summary provided.").substring(0, 300)}
 }
 
 export function maintenanceMessage({ guardName, siteName, maintenanceType, details }) {
-  return `🔧 *MAINTENANCE REQUEST*
+  return `${brandLine()}
+🔧 *MAINTENANCE REQUEST*
 
 Type: ${maintenanceType}
 Guard: ${guardName}
@@ -178,7 +198,8 @@ Details: ${(details || "").substring(0, 250)}
 
 export function dispatchMessage({ alarmType, address, guardName, clientName, lat, lng }) {
   const mapsLink = lat && lng ? `\n📍 Navigate: https://maps.google.com/?q=${lat},${lng}` : "";
-  return `🚨 *ALARM DISPATCH — ${(alarmType || "").replace(/_/g, " ").toUpperCase()}*
+  return `${brandLine()}
+🚨 *ALARM DISPATCH — ${(alarmType || "").replace(/_/g, " ").toUpperCase()}*
 
 Responder: ${guardName}
 Address: ${address}${clientName ? `\nClient: ${clientName}` : ""}
@@ -191,7 +212,8 @@ Please acknowledge and proceed to location IMMEDIATELY.`;
 
 /** Sent to the GUARD when a shift is assigned */
 export function guardShiftAssignedMessage({ guardName, siteName, startTime, endTime, notes }) {
-  return `📅 *SHIFT ASSIGNED — ${guardName}*
+  return `${brandLine()}
+📅 *SHIFT ASSIGNED — ${guardName}*
 
 Site: ${siteName}
 Date: ${new Date(startTime).toLocaleDateString("en-ZA")}
@@ -206,7 +228,8 @@ Tap the "Respond" button next to your upcoming shift to Accept, Decline, or requ
 
 /** Sent to admins when a new shift is created (schedule overview) */
 export function shiftScheduleMessage({ guardName, siteName, startTime, endTime, notes }) {
-  return `📅 *SHIFT SCHEDULED*
+  return `${brandLine()}
+📅 *SHIFT SCHEDULED*
 
 Guard: ${guardName}
 Site: ${siteName}
@@ -219,7 +242,8 @@ Guard will receive a WhatsApp to confirm. View schedule: ${appDeepLink("Scheduli
 
 /** Sent to guard 24h before shift */
 export function shiftReminderMessage({ guardName, siteName, startTime }) {
-  return `⏰ *SHIFT REMINDER — 24 HOURS*
+  return `${brandLine()}
+⏰ *SHIFT REMINDER — 24 HOURS*
 
 Guard: ${guardName}
 Site: ${siteName}
@@ -234,7 +258,8 @@ Make sure you are rested, in uniform, and ready on time.
 export function shiftAckMessage({ guardName, siteName, startTime, status, notes }) {
   const emoji = status === "accepted" ? "✅" : status === "declined" ? "❌" : "🔄";
   const statusLabel = status === "revision_requested" ? "Revision Requested" : status.charAt(0).toUpperCase() + status.slice(1);
-  return `${emoji} *SHIFT ${statusLabel.toUpperCase()} — ${guardName}*
+  return `${brandLine()}
+${emoji} *SHIFT ${statusLabel.toUpperCase()} — ${guardName}*
 
 Site: ${siteName}
 Date: ${new Date(startTime).toLocaleDateString("en-ZA")}
@@ -248,7 +273,8 @@ Acknowledged: ${new Date().toLocaleString("en-ZA")}
 
 /** Resident-submitted incident report — sent to admins/management */
 export function residentIncidentMessage({ residentName, unitNumber, estateName, category, priority, title, description, contactPhone }) {
-  return `🔴 *RESIDENT INCIDENT REPORT*
+  return `${brandLine()}
+🔴 *RESIDENT INCIDENT REPORT*
 
 Resident: ${residentName}
 Unit: ${unitNumber || "—"}${estateName ? `\nEstate: ${estateName}` : ""}${contactPhone ? `\nContact: ${contactPhone}` : ""}
@@ -266,7 +292,8 @@ ${description || "None provided."}
 
 /** Resident-submitted maintenance request — sent to admins/management */
 export function residentMaintenanceMessage({ residentName, unitNumber, estateName, address, category, urgency, title, description, contactPhone }) {
-  return `🔧 *RESIDENT MAINTENANCE REQUEST*
+  return `${brandLine()}
+🔧 *RESIDENT MAINTENANCE REQUEST*
 
 Resident: ${residentName}
 Unit: ${unitNumber || "—"}${estateName ? `\nEstate: ${estateName}` : ""}${address ? `\nAddress: ${address}` : ""}${contactPhone ? `\nContact: ${contactPhone}` : ""}
@@ -284,7 +311,8 @@ ${description || "None provided."}
 
 /** Sent to admins on start-of-shift report */
 export function startOfShiftMessage({ guardName, siteName, shiftPost }) {
-  return `🛡️ *START OF SHIFT REPORT*
+  return `${brandLine()}
+🛡️ *START OF SHIFT REPORT*
 
 Guard: ${guardName}
 Site: ${siteName || "Unknown"}
@@ -299,7 +327,8 @@ Guard has clocked in and submitted start-of-shift report.
 /** Sent directly to guard when an alarm response is assigned */
 export function guardAlarmDispatchMessage({ alarmType, address, clientName, lat, lng }) {
   const mapsLink = lat && lng ? `\n📍 Navigate to scene: https://maps.google.com/?q=${lat},${lng}` : "";
-  return `🚨 *ALARM RESPONSE ASSIGNED TO YOU*
+  return `${brandLine()}
+🚨 *ALARM RESPONSE ASSIGNED TO YOU*
 
 Type: ${(alarmType || "").replace(/_/g, " ").toUpperCase()}
 Address: ${address}${clientName ? `\nClient: ${clientName}` : ""}
@@ -313,7 +342,8 @@ Respond IMMEDIATELY.`;
 
 /** Sent to guard when an incident is assigned to them */
 export function guardIncidentAssignedMessage({ guardName, incidentTitle, siteName, priority }) {
-  return `🔴 *INCIDENT ASSIGNED — ${(priority || "").toUpperCase()} PRIORITY*
+  return `${brandLine()}
+🔴 *INCIDENT ASSIGNED — ${(priority || "").toUpperCase()} PRIORITY*
 
 Guard: ${guardName}
 Incident: ${incidentTitle}
@@ -326,7 +356,8 @@ ${appDeepLink("GuardShift")}`;
 
 /** Alert for real-time system alert (missed check-in, geofence, etc.) */
 export function systemAlertMessage({ alertType, guardName, siteName, details }) {
-  return `⚠️ *SYSTEM ALERT — ${(alertType || "").replace(/_/g, " ").toUpperCase()}*
+  return `${brandLine()}
+⚠️ *SYSTEM ALERT — ${(alertType || "").replace(/_/g, " ").toUpperCase()}*
 
 Guard: ${guardName || "Unknown"}
 Site: ${siteName || "Unknown"}
@@ -349,7 +380,8 @@ export function visitorPassMessage({ visitorName, hostName, unitNumber, validFro
   const dateRange = validFrom && validUntil
     ? `${new Date(validFrom).toLocaleDateString("en-ZA")} – ${new Date(validUntil).toLocaleDateString("en-ZA")}`
     : "Open";
-  return `🎫 *VISITOR PASS — ${visitorName || "Visitor"}*
+  return `${brandLine()}
+🎫 *VISITOR PASS — ${visitorName || "Visitor"}*
 
 Host: ${hostName || "—"}${unitNumber ? ` (Unit ${unitNumber})` : ""}
 Valid: ${dateRange}

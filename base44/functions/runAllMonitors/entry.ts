@@ -204,6 +204,29 @@ Deno.serve(async (req) => {
             // event key 'missed_clockin:<shiftId>' dedupes sweep retries.
             const guardUser = allUsers.find(u => u.id === shift.guard_id) || null;
             const targets = [guardUser, ...scopedAdmins(shift)].filter(Boolean);
+            // TENANT BRANDING — resolved once per shift (customer → reseller →
+            // USS platform default) for the email and Telegram bodies.
+            const clockinBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+              customer_id: shift.customer_id || null, reseller_id: shift.reseller_id || null });
+            const clockinTelegram = [
+              `🛡️ ${clockinBrand.brand_name}`,
+              '⚠️ Missed Clock-In',
+              `Guard: ${shift.guard_name || 'Guard'}`,
+              `Site: ${shift.site_name || 'N/A'}`,
+              `Scheduled: ${new Date(shift.start_time).toLocaleString('en-ZA')}`,
+            ].join('\n');
+            const clockinTpl = buildBrandedEmail({
+              brand: clockinBrand,
+              heading: 'Missed Clock-In Alert',
+              greeting: 'Hello,',
+              intro: 'A guard missed their scheduled clock-in.',
+              details: [
+                { label: 'Guard', value: shift.guard_name || 'Unknown' },
+                { label: 'Site', value: shift.site_name || 'N/A' },
+                { label: 'Scheduled Start', value: new Date(shift.start_time).toLocaleString('en-ZA') },
+              ],
+              closing: 'Please follow up with the guard.',
+            });
             for (const t of targets) {
               // IN-APP — server-persisted record (feeds the Bell, survives refresh)
               await base44.asServiceRole.entities.Notification.create({
@@ -232,18 +255,15 @@ Deno.serve(async (req) => {
               // TELEGRAM — verified per-user mapping; same-chat dedupe
               if (t.telegram_connected && t.telegram_notifications_enabled !== false && t.telegram_chat_id) {
                 await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'missed_clockin:' + shift.id,
-                  t.telegram_chat_id,
-                  `⚠️ Missed Clock-In\n\n${shift.guard_name || 'Guard'} missed clock-in at ${shift.site_name}. Scheduled: ${new Date(shift.start_time).toLocaleString('en-ZA')}`)
+                  t.telegram_chat_id, clockinTelegram)
                   .catch(() => {});
               }
               // EMAIL — tenant-branded from the shift's authoritative customer.
               if (t.email) {
-                const clockinBrand = await resolveCommunicationBrand(base44.asServiceRole, {
-                  customer_id: shift.customer_id || null, reseller_id: shift.reseller_id || null });
                 await base44.asServiceRole.integrations.Core.SendEmail({
                   from_name: clockinBrand.brand_name, to: t.email,
                   subject: '🚨 Missed Clock-In Alert',
-                  body: `Guard: ${shift.guard_name || 'Unknown'}\nSite: ${shift.site_name}\nScheduled Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}`
+                  body: clockinTpl.html
                 }).catch(err => console.error('Email failed:', err.message));
               }
             }
@@ -325,16 +345,34 @@ Deno.serve(async (req) => {
             if (!guard) continue;
             const reminderTitle = `⏰ Shift Reminder — ${shift.site_name}`;
             const reminderBody = `Your shift starts in ~2 hours. Site: ${shift.site_name}. Start: ${new Date(shift.start_time).toLocaleString('en-ZA')}.`;
+            // TENANT BRANDING — resolved once per shift for email + Telegram.
+            const reminderBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+              customer_id: shift.customer_id || null, reseller_id: shift.reseller_id || null });
+            const reminderTelegram = [
+              `🛡️ ${reminderBrand.brand_name}`,
+              reminderTitle,
+              '',
+              reminderBody,
+            ].join('\n');
+            const reminderTpl = buildBrandedEmail({
+              brand: reminderBrand,
+              heading: 'Shift Reminder',
+              greeting: `Hi ${shift.guard_name || guard.full_name || 'there'},`,
+              intro: 'Your shift starts in approximately 2 hours.',
+              details: [
+                { label: 'Site', value: shift.site_name || 'N/A' },
+                { label: 'Start', value: new Date(shift.start_time).toLocaleString('en-ZA') },
+                { label: 'End', value: new Date(shift.end_time).toLocaleString('en-ZA') },
+              ],
+              closing: 'Please ensure you arrive on time and clock in via the app.',
+            });
             // EMAIL — only when the guard has an address; a missing email no
             // longer silently cancels the whole reminder (previous defect).
             if (guard.email) {
-              // TENANT BRANDING — resolved from the shift's authoritative customer.
-              const reminderBrand = await resolveCommunicationBrand(base44.asServiceRole, {
-                customer_id: shift.customer_id || null, reseller_id: shift.reseller_id || null });
               await base44.asServiceRole.integrations.Core.SendEmail({
                 from_name: reminderBrand.brand_name, to: guard.email,
                 subject: reminderTitle,
-                body: `Hi ${shift.guard_name || guard.full_name},\n\nYour shift starts in approximately 2 hours.\n\nSite: ${shift.site_name}\nStart: ${new Date(shift.start_time).toLocaleString('en-ZA')}\nEnd: ${new Date(shift.end_time).toLocaleString('en-ZA')}\n\nPlease ensure you arrive on time and clock in via the app.`
+                body: reminderTpl.html
               }).catch(err => console.error(`Reminder failed:`, err.message));
             }
             // NATIVE PUSH — shared platform service: the 2-hour shift reminder
@@ -362,7 +400,7 @@ Deno.serve(async (req) => {
             // mapping; failure never blocks the reminder bookkeeping)
             if (guard.telegram_connected && guard.telegram_notifications_enabled !== false && guard.telegram_chat_id) {
               await sendTaskTelegramDeduped(base44.asServiceRole, secrets, 'shift_reminder:' + shift.id,
-                guard.telegram_chat_id, `${reminderTitle}\n\n${reminderBody}`)
+                guard.telegram_chat_id, reminderTelegram)
                 .catch(() => {});
             }
             await base44.asServiceRole.entities.Shift.update(shift.id, { reminder_sent: true }).catch(() => {});
@@ -414,6 +452,28 @@ Deno.serve(async (req) => {
           // key (patrol_missed/patrol_overdue:<id>) makes each channel
           // idempotent per patrol + recipient across sweep retries.
           const dispatchPatrolException = async (patrol, targets, kind, title, body) => {
+            // TENANT BRANDING — resolved once per exception (customer →
+            // reseller → USS platform default) for email + Telegram.
+            const exBrand = await resolveCommunicationBrand(base44.asServiceRole, {
+              customer_id: patrol.customer_id || null, reseller_id: patrol.reseller_id || null });
+            const exTpl = buildBrandedEmail({
+              brand: exBrand,
+              heading: title,
+              greeting: 'Hello,',
+              intro: body,
+              details: [
+                { label: 'Patrol', value: `#${patrol.patrol_number}` },
+                { label: 'Site', value: patrol.site_name || 'N/A' },
+              ],
+              closing: 'Please review the patrol status in the app.',
+            });
+            const exTelegram = [
+              `🛡️ ${exBrand.brand_name}`,
+              title,
+              '',
+              body,
+              `Patrol #${patrol.patrol_number} — ${patrol.site_name}`,
+            ].join('\n');
             for (const t of targets.filter(Boolean)) {
               // IN-APP — tenant-owned record
               await base44.asServiceRole.entities.Notification.create({
@@ -439,14 +499,14 @@ Deno.serve(async (req) => {
               // event_key + chat; each separate user keeps their own event.
               if (t.telegram_connected && t.telegram_notifications_enabled !== false && t.telegram_chat_id) {
                 await sendTaskTelegramDeduped(base44.asServiceRole, secrets, kind + ':' + patrol.id,
-                  t.telegram_chat_id,
-                  `${title}\n\n${body}\nPatrol #${patrol.patrol_number} — ${patrol.site_name}`)
+                  t.telegram_chat_id, exTelegram)
                   .catch(() => {});
               }
               // EMAIL — important operational exceptions only (missed/overdue)
               if (t.email) {
                 await base44.asServiceRole.integrations.Core.SendEmail({
-                  from_name: 'USS Patrol Alerts', to: t.email, subject: title, body,
+                  from_name: `${exBrand.brand_name} — Patrol Alerts`, to: t.email, subject: title,
+                  body: exTpl.html,
                 }).catch(() => {});
               }
             }

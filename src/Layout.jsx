@@ -29,6 +29,7 @@ import { useBranding } from "@/hooks/useBranding";
 import { isPageModuleEnabled } from "@/lib/moduleMapping";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
 import { resolveBrand, hexToRgba, darkenHex, lightenHex, PLATFORM_APP_NAME } from "@/lib/branding";
+import { primeWhatsAppBrand } from "@/lib/whatsapp";
 import BrandLogo from "@/components/branding/BrandLogo";
 import PreLoginBrandShell from "@/components/branding/PreLoginBrandShell";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
@@ -87,6 +88,9 @@ export default function Layout({ children, currentPageName }) {
     root.style.setProperty("--brand-primary-hover", darkenHex(primary, 0.12));
     root.style.setProperty("--brand-link", lightenHex(primary, 0.45));
     root.style.setProperty("--brand-focus", lightenHex(primary, 0.45));
+    // Prime the tenant brand for manually-composed WhatsApp messages
+    // (lib/whatsapp.js composers lead with this brand line).
+    try { primeWhatsAppBrand(resolveBrand(branding).appName || PLATFORM_APP_NAME); } catch (_) {}
   }, [branding]);
 
   useEffect(() => {
