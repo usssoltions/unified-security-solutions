@@ -97,7 +97,13 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
               <p className="text-slate-500 text-xs">No schedules yet. Add one above.</p>
             )}
             {cfg.schedules.map((s, i) => {
-              const isCustomFrequency = s.frequency_custom || s.frequency_minutes === 0;
+              // CUSTOM IS SELF-CONTAINED — never dependent on a transient
+              // marker: ANY frequency that isn't a known preset (incl. 0 =
+              // not yet entered) is Custom. A saved 15-minute schedule still
+              // displays as "Custom" with 15 after save/reload — changing
+              // times or settings can never clear it.
+              const isCustomFrequency = s.frequency_custom || s.frequency_minutes === 0 ||
+                !FREQUENCY_OPTIONS.some(o => o.value === s.frequency_minutes);
               const customDraft = customDrafts[i] ?? (isCustomFrequency && s.frequency_minutes > 0 ? String(s.frequency_minutes) : "");
               const customValid = /^\d+$/.test(customDraft.trim()) && parseInt(customDraft) > 0;
               return (
@@ -143,7 +149,7 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
                             // schedule commits ONLY a valid positive integer.
                             setCustomDrafts(d => ({ ...d, [i]: v }));
                             if (/^\d+$/.test(v.trim()) && parseInt(v) > 0) {
-                              updateSchedule(i, { frequency_minutes: parseInt(v) });
+                              updateSchedule(i, { frequency_minutes: parseInt(v), frequency_custom: true });
                             }
                           }}
                           className={`mt-1 bg-slate-800 border-slate-600 text-white h-8 text-sm ${customDraft !== "" && !customValid ? "border-rose-500" : ""}`} />
