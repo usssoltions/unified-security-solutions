@@ -26,7 +26,7 @@ const formatDateTimeForInput = (isoString) => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-export default function ShiftForm({ shift, guards, sites, preselectedDate, onClose, onSuccess }) {
+export default function ShiftForm({ shift, guards, sites, guardsLoading, guardsError, onRetryGuards, sitesLoading, sitesError, onRetrySites, preselectedDate, onClose, onSuccess }) {
   const [formData, setFormData] = useState(() => {
     if (shift) {
       return {
@@ -126,11 +126,12 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
           const shiftData = {
             guard_id: guardId,
             guard_name: guard ? getUserDisplayName(guard) : null,
-            // AUTHORITATIVE TENANT OWNERSHIP — resolved from the selected
-            // guard's server-scoped User record (getTenantUsers), never from
-            // client-supplied values. Included only when present.
-            ...(guard?.customer_id ? { customer_id: guard.customer_id } : {}),
-            ...(guard?.reseller_id ? { reseller_id: guard.reseller_id } : {}),
+            // AUTHORITATIVE TENANT OWNERSHIP — derived from the selected
+            // guard's server-scoped User record, falling back to the
+            // tenant-scoped Site record (both arrive from server gateways,
+            // never from arbitrary client input). Included only when present.
+            ...((guard?.customer_id || site?.customer_id) ? { customer_id: guard?.customer_id || site.customer_id } : {}),
+            ...((guard?.reseller_id || site?.reseller_id) ? { reseller_id: guard?.reseller_id || site.reseller_id } : {}),
             site_id: shiftsData.site_id,
             site_name: site?.name || "",
             start_time: shiftsData.start_time,
@@ -188,9 +189,9 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
         ...formData,
         guard_name: guard ? getUserDisplayName(guard) : null,
         // Authoritative tenant follows the selected guard's server-scoped
-        // User record on reassignment too.
-        ...(guard?.customer_id ? { customer_id: guard.customer_id } : {}),
-        ...(guard?.reseller_id ? { reseller_id: guard.reseller_id } : {}),
+        // User record (site record fallback) on reassignment too.
+        ...((guard?.customer_id || site?.customer_id) ? { customer_id: guard?.customer_id || site.customer_id } : {}),
+        ...((guard?.reseller_id || site?.reseller_id) ? { reseller_id: guard?.reseller_id || site.reseller_id } : {}),
         site_name: site?.name || ""
       };
       createShiftMutation.mutate(dataToSend);
@@ -280,18 +281,29 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
               <label className="text-sm text-slate-300 font-medium block mb-2">
                 Site <span className="text-rose-400">*</span>
               </label>
-              <Select value={formData.site_id} onValueChange={(value) => setFormData({ ...formData, site_id: value })}>
-                <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
-                  <SelectValue placeholder="Select site..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {sites.map((site) => (
-                    <SelectItem key={site.id} value={site.id}>
-                      {site.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {sitesError ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-3">
+                  <span className="text-sm text-rose-300">Unable to load sites.</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => onRetrySites && onRetrySites()}>Retry</Button>
+                </div>
+              ) : sitesLoading ? (
+                <div className="flex items-center gap-2 px-1 py-3 text-sm text-slate-400">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading sites…
+                </div>
+              ) : (
+                <Select value={formData.site_id} onValueChange={(value) => setFormData({ ...formData, site_id: value })}>
+                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white">
+                    <SelectValue placeholder={sites.length === 0 ? "No active sites available" : "Select site..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sites.map((site) => (
+                      <SelectItem key={site.id} value={site.id}>
+                        {site.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {shift ? (
@@ -307,7 +319,7 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
                     <SelectItem value={null}>Open Shift</SelectItem>
                     {guards.map((guard) => (
                       <SelectItem key={guard.id} value={guard.id}>
-                        {guard.full_name} ({guard.badge_number})
+                        {getUserDisplayName(guard)}{guard.badge_number ? ` (${guard.badge_number})` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -322,24 +334,39 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
                     {selectedGuards.length} selected
                   </span>
                 </label>
-                <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
-                  {guards.map((guard) => (
-                    <div 
-                      key={guard.id}
-                      className="flex items-center gap-3 p-2 rounded hover:bg-slate-800 cursor-pointer"
-                      onClick={() => toggleGuard(guard.id)}
-                    >
-                      <Checkbox 
-                        checked={selectedGuards.includes(guard.id)}
-                        onCheckedChange={() => toggleGuard(guard.id)}
-                      />
-                      <div className="flex-1">
-                        <p className="text-white text-sm font-medium">{guard.full_name}</p>
-                        <p className="text-slate-400 text-xs">{guard.badge_number}</p>
+                {guardsError ? (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-3">
+                    <span className="text-sm text-rose-300">Unable to load guards.</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => onRetryGuards && onRetryGuards()}>Retry</Button>
+                  </div>
+                ) : guardsLoading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-4 text-sm text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading guards…
+                  </div>
+                ) : guards.length === 0 ? (
+                  <div className="rounded-lg border border-slate-700 px-3 py-4 text-sm text-slate-400">
+                    No active guards available for your organisation.
+                  </div>
+                ) : (
+                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
+                    {guards.map((guard) => (
+                      <div
+                        key={guard.id}
+                        className="flex items-center gap-3 p-2 rounded hover:bg-slate-800 cursor-pointer"
+                        onClick={() => toggleGuard(guard.id)}
+                      >
+                        <Checkbox
+                          checked={selectedGuards.includes(guard.id)}
+                          onCheckedChange={() => toggleGuard(guard.id)}
+                        />
+                        <div className="flex-1">
+                          <p className="text-white text-sm font-medium">{getUserDisplayName(guard)}</p>
+                          <p className="text-slate-400 text-xs">{guard.badge_number || guard.phone || ""}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

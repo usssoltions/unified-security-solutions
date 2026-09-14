@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 
 /**
  * getTenantUsers — tenant-scoped user AND pending-invitation listing for the
@@ -22,17 +23,25 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
-    const caller = await base44.auth.me();
+    // AUTHORITATIVE CALLER RESOLUTION — the caller's User record (re-read
+    // server-side via the shared resolver) wins over possibly-stale session
+    // claims for tenant-scope fields. A claim-only resolution made customer
+    // administrators with incomplete tokens resolve as "no tenant" and fall
+    // into the self-only branch, returning no tenant guards at all.
+    const caller = await resolveTenantCaller(base44);
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const { reseller_id, customer_id } = body || {};
 
-    const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin';
+    const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
     const isResellerAdmin = caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller';
+    // 'customer_admin' is the modern Customer Administrator role_type — it
+    // was MISSING from this list, so a customer_admin whose record/claims
+    // lacked admin_level resolved as a plain user (self-only, no guards).
     const isCustomerAdmin =
       caller.admin_level === 'customer' ||
-      ['admin', 'practice_admin', 'estate_manager'].includes(caller.role_type);
+      ['admin', 'customer_admin', 'practice_admin', 'estate_manager'].includes(caller.role_type);
 
     let query;
     let pendingQuery;

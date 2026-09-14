@@ -32,10 +32,16 @@ function isResellerAdmin(u) {
   return !!u && !isPlatformAdmin(u) && (u.role_type === 'reseller_admin' || u.admin_level === 'reseller');
 }
 
+import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const caller = await base44.auth.me();
+    // AUTHORITATIVE CALLER RESOLUTION — the caller's User record (re-read
+    // server-side via the shared resolver) wins over possibly-stale session
+    // claims for customer_id/reseller_id, so an incomplete token can never
+    // turn a tenant reader into a silent 403/empty site list.
+    const caller = await resolveTenantCaller(base44);
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json().catch(() => ({})) || {};
     const action = String(body.action || 'list');

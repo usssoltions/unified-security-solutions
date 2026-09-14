@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { listSites } from "@/lib/siteApi";
+import { fetchTenantGuards } from "@/lib/tenantLookups";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,35 +74,33 @@ export default function Scheduling() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: guards = [] } = useQuery({
+  // SHARED AUTHORITATIVE PATTERN — tenant-scoped active Security Guards via
+  // the getTenantUsers gateway (a direct client User entity read only works
+  // for platform admins). fetchTenantGuards THROWS on failure so this query
+  // reaches a visible error state instead of a silent empty list.
+  // initialData is intentionally omitted: a real isLoading state lets the
+  // Shift Form show "Loading guards…" rather than a fake empty list.
+  const guardsQuery = useQuery({
     queryKey: ['guards'],
-    queryFn: async () => {
-      // AUTHORITATIVE SERVER-SIDE TENANT SCOPING — the built-in User entity only
-      // lets platform admins list users, so a Customer Administrator reading it
-      // directly received an empty list (the "0 selected" / no-options defect).
-      // getTenantUsers resolves the caller's tenant server-side (customer
-      // admin: own customer only; reseller admin: own reseller; platform
-      // admin: all) — frontend filtering alone is never trusted.
-      const res = await base44.functions.invoke("getTenantUsers", {});
-      const d = res?.data !== undefined ? res.data : res;
-      const users = d?.users || [];
-      return users.filter(u => u.role_type === 'guard' && (!u.status || u.status === 'active'));
-    },
-    initialData: [],
+    queryFn: fetchTenantGuards,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: true,
   });
+  const guards = guardsQuery.data || [];
 
-  const { data: sites = [] } = useQuery({
+  // Sites via the siteAccess gateway (server-side tenant scoping). The
+  // loading/error states are surfaced in the Shift Form — never a silent
+  // empty dropdown.
+  const sitesQuery = useQuery({
     queryKey: ['sites'],
     queryFn: async () => {
       const data = await listSites();
       return Array.isArray(data) ? data : [];
     },
-    initialData: [],
     staleTime: 60 * 1000,
     refetchOnWindowFocus: true,
   });
+  const sites = sitesQuery.data || [];
 
   // Realtime — invalidates cache on entity events (replaces 10s/30s polling)
   useEffect(() => {
@@ -296,6 +295,12 @@ export default function Scheduling() {
           <ShiftForm
             guards={guards}
             sites={sites}
+            guardsLoading={guardsQuery.isLoading}
+            guardsError={guardsQuery.isError}
+            onRetryGuards={() => guardsQuery.refetch()}
+            sitesLoading={sitesQuery.isLoading}
+            sitesError={sitesQuery.isError}
+            onRetrySites={() => sitesQuery.refetch()}
             preselectedDate={selectedDate}
             onClose={() => {
               setShowShiftForm(false);
