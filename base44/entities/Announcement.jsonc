@@ -1,7 +1,16 @@
 {
   "name": "Announcement",
   "type": "object",
+  "description": "ESTATE MANAGEMENT module \u2014 a published community announcement/notice. TENANT SCOPE: customer_id/reseller_id are authoritative ownership; RLS restricts every operation to the owning customer (platform admins retain oversight). Legacy records created before tenant scoping (no customer_id) remain visible to platform admins only \u2014 they are not exposed to any tenant.",
   "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ownership \u2014 resolved from the publishing manager's authoritative tenant (withTenant); a resident of Estate A can never read Estate B's announcements."
+    },
+    "reseller_id": {
+      "type": "string",
+      "description": "Reseller ownership for reseller-scoped access."
+    },
     "title": {
       "type": "string"
     },
@@ -57,17 +66,15 @@
       },
       "default": []
     },
-    "send_whatsapp": {
-      "type": "boolean",
-      "default": false
-    },
     "send_email": {
       "type": "boolean",
-      "default": false
+      "default": false,
+      "description": "Publish-time delivery control honored SERVER-SIDE by the estateNotify gateway (email + telegram channels for non-critical announcements; urgent/security/emergency announcements always use every channel)."
     },
     "send_push": {
       "type": "boolean",
-      "default": true
+      "default": true,
+      "description": "Publish-time delivery control honored SERVER-SIDE by the estateNotify gateway native push channel."
     },
     "published": {
       "type": "boolean",
@@ -101,20 +108,100 @@
   ],
   "rls": {
     "create": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
     },
-    "read": null,
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "data.reseller_id": "{{user.data.reseller_id}}"
+            },
+            {
+              "data.reseller_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
+    },
     "update": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
+        }
+      ]
     }
   }
 }
