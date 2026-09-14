@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Plus, Trash2, MapPin, QrCode, Loader2, Sparkles, AlertCircle, Save, Lock } from "lucide-react";
+import { X, Plus, Trash2, MapPin, QrCode, Loader2, Sparkles, AlertCircle, Save, Lock, Crosshair } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -39,6 +39,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
   const [customerOptions, setCustomerOptions] = useState([]);
   const [customerLocked, setCustomerLocked] = useState(false);
   const [customersLoading, setCustomersLoading] = useState(true);
+  const [capturingIndex, setCapturingIndex] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -165,10 +166,11 @@ export default function SiteForm({ site, onClose, onSuccess }) {
       id: `cp${Date.now()}`,
       name: "",
       qr_code: "",
-      location: { 
-        lat: formData.location.lat || 0, 
-        lng: formData.location.lng || 0 
-      }
+      // CHECKPOINT GPS is its OWN physical position — NEVER inherited from
+      // the Site GPS. Empty = not captured yet; the admin captures the real
+      // device position at the checkpoint or enters manual coordinates.
+      location: { lat: "", lng: "" },
+      location_source: null
     };
     
     updateFormData({
@@ -179,7 +181,10 @@ export default function SiteForm({ site, onClose, onSuccess }) {
   const handleUpdateCheckpoint = (index, field, value) => {
     const updated = [...formData.checkpoints];
     if (field === "lat" || field === "lng") {
-      updated[index].location[field] = parseFloat(value) || 0;
+      // MANUAL coordinate entry — kept distinct from device capture; raw
+      // text is stored while typing and parsed on save (0/0 never persists).
+      updated[index].location[field] = value;
+      updated[index].location_source = "manual";
     } else if (field === "name") {
       updated[index][field] = value;
       if (value && !updated[index].qr_code) {
@@ -189,6 +194,52 @@ export default function SiteForm({ site, onClose, onSuccess }) {
       updated[index][field] = value;
     }
     updateFormData({ checkpoints: updated });
+  };
+
+  // DEVICE LOCATION CAPTURE — the authoritative way to record a checkpoint's
+  // physical position: real high-accuracy device GPS while standing at the
+  // checkpoint. Never substitutes the Site coordinates, never writes 0/0.
+  const captureCheckpointLocation = (index) => {
+    if (!navigator.geolocation) {
+      setError("This device/browser does not support location capture. Enter manual coordinates instead.");
+      return;
+    }
+    setCapturingIndex(index);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const updated = [...formData.checkpoints];
+        updated[index] = {
+          ...updated[index],
+          location: {
+            lat: Number(pos.coords.latitude.toFixed(7)),
+            lng: Number(pos.coords.longitude.toFixed(7)),
+          },
+          location_source: "device",
+          location_accuracy_m: pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : null,
+        };
+        updateFormData({ checkpoints: updated });
+        setCapturingIndex(null);
+        setError(null);
+      },
+      (err) => {
+        setCapturingIndex(null);
+        if (err && err.code === 1) {
+          setError("Location permission denied — allow location access for this app, then press Capture Current Location again. Site coordinates are never used as a substitute.");
+        } else {
+          setError("Could not obtain a GPS fix at this checkpoint. Check that location services are on, then retry. Site coordinates are never used as a substitute.");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  };
+
+  // A checkpoint location is only "captured" when a real non-0/0 position exists.
+  const checkpointLocationCaptured = (cp) => {
+    const lat = parseFloat(cp.location?.lat);
+    const lng = parseFloat(cp.location?.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
+      ? { lat, lng }
+      : null;
   };
 
   const handleRemoveCheckpoint = (index) => {
@@ -240,7 +291,18 @@ export default function SiteForm({ site, onClose, onSuccess }) {
             lat: parseFloat(formData.location.lat),
             lng: parseFloat(formData.location.lng)
           },
-          geofence_radius: parseInt(formData.geofence_radius)
+          geofence_radius: parseInt(formData.geofence_radius),
+          checkpoints: formData.checkpoints.map(cp => {
+            // Persist ONLY a genuinely captured/entered position — form-only
+            // metadata (capture source/accuracy) is stripped, and a checkpoint
+            // with no location is saved WITHOUT GPS: never 0/0, never the
+            // Site's coordinates.
+            const { location_source, location_accuracy_m, location, ...checkpointData } = cp;
+            const captured = checkpointLocationCaptured(cp);
+            return captured
+              ? { ...checkpointData, location: { lat: captured.lat, lng: captured.lng } }
+              : { ...checkpointData };
+          })
         };
 
         if (site) {
@@ -527,7 +589,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                         <Input
                           type="number"
                           step="any"
-                          placeholder="Latitude"
+                          placeholder="Latitude (manual)"
                           value={checkpoint.location.lat}
                           onChange={(e) => handleUpdateCheckpoint(index, "lat", e.target.value)}
                           className="bg-slate-800 border-slate-700 text-white text-sm"
@@ -535,11 +597,53 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                         <Input
                           type="number"
                           step="any"
-                          placeholder="Longitude"
+                          placeholder="Longitude (manual)"
                           value={checkpoint.location.lng}
                           onChange={(e) => handleUpdateCheckpoint(index, "lng", e.target.value)}
                           className="bg-slate-800 border-slate-700 text-white text-sm"
                         />
+                      </div>
+
+                      {/* Checkpoint GPS — the checkpoint's OWN physical position.
+                          Device capture is the authoritative path; manual entry
+                          is explicitly labelled. Site coordinates are NEVER
+                          copied here. */}
+                      <div className="space-y-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => captureCheckpointLocation(index)}
+                          disabled={capturingIndex === index}
+                          className="w-full border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                        >
+                          {capturingIndex === index ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Capturing device location...
+                            </>
+                          ) : (
+                            <>
+                              <Crosshair className="w-4 h-4 mr-2" />
+                              Capture Current Location
+                            </>
+                          )}
+                        </Button>
+                        {checkpointLocationCaptured(checkpoint) ? (
+                          <p className="text-xs text-emerald-400 flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">
+                              Checkpoint GPS: {checkpointLocationCaptured(checkpoint).lat}, {checkpointLocationCaptured(checkpoint).lng}
+                              {checkpoint.location_source === "device" ? " (device capture)" : " (manual entry)"}
+                              {checkpoint.location_accuracy_m ? ` (±${checkpoint.location_accuracy_m}m)` : ""}
+                            </span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            Checkpoint location not captured — stand at the checkpoint and press "Capture Current Location".
+                          </p>
+                        )}
                       </div>
                     </div>
 
