@@ -31,6 +31,11 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
 
   const update = (patch) => onChange({ ...cfg, ...patch });
 
+  // CUSTOM MINUTES DRAFT STATE — kept LOCAL while typing so the input never
+  // remounts or loses focus on a keystroke. The schedule value commits ONLY
+  // when the draft is a valid positive integer.
+  const [customDrafts, setCustomDrafts] = useState({});
+
   const addSchedule = () => {
     update({
       schedules: [...cfg.schedules, { start_time: "06:00", end_time: "18:00", frequency_minutes: 60 }],
@@ -44,6 +49,16 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
 
   const removeSchedule = (i) => {
     update({ schedules: cfg.schedules.filter((_, idx) => idx !== i) });
+    // Keep drafts aligned with the shifted schedule indexes.
+    setCustomDrafts(prev => {
+      const next = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const n = Number(k);
+        if (n < i) next[k] = v;
+        else if (n > i) next[String(n - 1)] = v;
+      });
+      return next;
+    });
   };
 
   // Calculate patrols per day for a schedule
@@ -81,7 +96,11 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
             {cfg.schedules.length === 0 && (
               <p className="text-slate-500 text-xs">No schedules yet. Add one above.</p>
             )}
-            {cfg.schedules.map((s, i) => (
+            {cfg.schedules.map((s, i) => {
+              const isCustomFrequency = s.frequency_custom || s.frequency_minutes === 0;
+              const customDraft = customDrafts[i] ?? (isCustomFrequency && s.frequency_minutes > 0 ? String(s.frequency_minutes) : "");
+              const customValid = /^\d+$/.test(customDraft.trim()) && parseInt(customDraft) > 0;
+              return (
               <div key={i} className="bg-slate-900/60 rounded-lg p-3 mb-2 border border-slate-700">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
                   <div>
@@ -98,7 +117,13 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
                   </div>
                   <div>
                     <p className="text-slate-400 text-xs mb-1">Frequency</p>
-                    <Select value={String(s.frequency_minutes)} onValueChange={v => updateSchedule(i, { frequency_minutes: parseInt(v) })}>
+                    <Select value={isCustomFrequency ? "0" : String(s.frequency_minutes)}
+                      onValueChange={v => {
+                        const n = parseInt(v);
+                        setCustomDrafts(d => ({ ...d, [i]: "" }));
+                        if (n === 0) updateSchedule(i, { frequency_minutes: 0, frequency_custom: true });
+                        else updateSchedule(i, { frequency_minutes: n, frequency_custom: false });
+                      }}>
                       <SelectTrigger className="bg-slate-800 border-slate-600 text-white h-8 text-sm">
                         <SelectValue />
                       </SelectTrigger>
@@ -108,9 +133,24 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
                         ))}
                       </SelectContent>
                     </Select>
-                    {s.frequency_minutes === 0 && (
-                      <Input type="number" placeholder="Minutes" className="mt-1 bg-slate-800 border-slate-600 text-white h-8 text-sm"
-                        onChange={e => updateSchedule(i, { frequency_minutes: parseInt(e.target.value) || 60 })} />
+                    {isCustomFrequency && (
+                      <div className="mt-1">
+                        <Input type="number" inputMode="numeric" min="1" placeholder="Minutes (e.g. 15)"
+                          value={customDraft}
+                          onChange={e => {
+                            const v = e.target.value;
+                            // Draft only — no parent remount on keystrokes. The
+                            // schedule commits ONLY a valid positive integer.
+                            setCustomDrafts(d => ({ ...d, [i]: v }));
+                            if (/^\d+$/.test(v.trim()) && parseInt(v) > 0) {
+                              updateSchedule(i, { frequency_minutes: parseInt(v) });
+                            }
+                          }}
+                          className={`mt-1 bg-slate-800 border-slate-600 text-white h-8 text-sm ${customDraft !== "" && !customValid ? "border-rose-500" : ""}`} />
+                        {customDraft !== "" && !customValid && (
+                          <p className="text-rose-400 text-xs mt-1">Enter a positive whole number of minutes (e.g. 15).</p>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center justify-between">
@@ -151,7 +191,8 @@ export default function PatrolSiteConfig({ patrolConfig = {}, onChange }) {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Settings */}
