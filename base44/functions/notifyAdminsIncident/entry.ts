@@ -5,22 +5,15 @@
  * Uses asServiceRole to bypass User RLS (a guard's User.list() only returns
  * themselves — the previous inline approach silently sent zero notifications).
  *
- * Creates branded in-app Notification records AND branded HTML emails for all
- * admin / dispatcher / supervisor / management users.  The email layout matches
- * the Start-of-Shift and Critical-Incident report branding (red→black gradient
- * header, logo, location with Google Maps button).
+ * Creates in-app Notification records AND fully tenant-branded emails for all
+ * admin / dispatcher / supervisor / management users, rendered through the ONE
+ * shared branded email renderer (customer → reseller → USS platform).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
-
-const COMPANY_LOGO = 'https://qtrypzzcjebvfcihihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/e4c38b0ba_ubsnew.png';
-const BRAND_COLOR = '#C41E3A';
-const BRAND_SECONDARY = '#1a1a1a';
-
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 Deno.serve(async (req) => {
   try {
@@ -61,57 +54,34 @@ Deno.serve(async (req) => {
       ? `https://www.google.com/maps?q=${location.lat},${location.lng}`
       : null;
 
+    // TENANT BRANDING — resolved from the reporting user's authoritative
+    // tenant record (customer → reseller → USS platform default). The ENTIRE
+    // visible email renders through the ONE shared branded renderer.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
+    const brandDetails = [
+      { label: 'Reference', value: incidentNumber || 'N/A' },
+      { label: 'Category', value: (category || 'N/A').toUpperCase() },
+      { label: 'Priority', value: (priority || 'medium').toUpperCase() },
+      { label: 'Site', value: siteName || 'N/A' },
+      { label: 'Guard', value: `${guardName || 'N/A'}${badgeNumber ? ` (Badge: ${badgeNumber})` : ''}` },
+      { label: 'Reported', value: reportedAt },
+      hasLocation ? { label: 'Location', value: googleMapsUrl } : null,
+      mediaCount ? { label: 'Attachments', value: `${mediaCount} media attachment(s)` } : null,
+    ].filter(Boolean);
+    const brandTpl = buildBrandedEmail({
+      brand,
+      heading: `New Incident — ${(incidentType || category || 'Incident').toUpperCase()}`,
+      greeting: 'Hello,',
+      intro: 'A new incident has been reported and requires review. Immediate attention is required.',
+      details: brandDetails,
+      closing: `Description: ${description || 'No description provided.'}`,
+      ctaUrl: googleMapsUrl || undefined,
+      ctaLabel: googleMapsUrl ? 'View on Google Maps' : undefined,
+    });
+
     const subject = `🚨 New Incident — ${(incidentType || category || 'N/A').toUpperCase()} at ${siteName || 'site'}`;
-    const emailBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f8fafc;">
-<div style="max-width:650px;margin:0 auto;background:white;">
-  <div style="background:linear-gradient(135deg,${BRAND_COLOR} 0%,${BRAND_SECONDARY} 100%);padding:40px 30px;text-align:center;">
-    <img src="${COMPANY_LOGO}" alt="Unified Security Solutions" style="max-width:200px;height:auto;margin-bottom:20px;border-radius:10px;"/>
-    <h1 style="color:white;margin:0;font-size:28px;font-weight:bold;text-shadow:2px 2px 4px rgba(0,0,0,0.3);">🚨 NEW INCIDENT REPORT</h1>
-    <p style="color:rgba(255,255,255,0.95);margin:10px 0 0;font-size:16px;">Immediate Attention Required</p>
-  </div>
-
-  <div style="padding:30px;background:#f8f9fa;border-bottom:3px solid ${BRAND_COLOR};">
-    <h2 style="color:#0c4a6e;margin:0 0 12px;font-size:22px;">${esc(incidentType || 'Incident')}</h2>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📋 <strong>Ref:</strong> ${esc(incidentNumber || 'N/A')}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📂 <strong>Category:</strong> ${esc((category || 'N/A').toUpperCase())}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">🔴 <strong>Priority:</strong> ${esc((priority || 'medium').toUpperCase())}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📍 <strong>Site:</strong> ${esc(siteName || 'N/A')}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">👤 <strong>Guard:</strong> ${esc(guardName || 'N/A')}${badgeNumber ? ` (Badge: ${esc(badgeNumber)})` : ''}</p>
-    <p style="color:#64748b;margin:5px 0;font-size:14px;">📅 <strong>Reported:</strong> ${esc(reportedAt)}</p>
-  </div>
-
-  <div style="padding:30px;">
-    <div style="background:white;border:2px solid #e2e8f0;border-radius:12px;padding:25px;margin-bottom:20px;">
-      <h3 style="color:${BRAND_SECONDARY};margin:0 0 20px;font-size:18px;border-bottom:2px solid ${BRAND_COLOR};padding-bottom:10px;">📋 Incident Details</h3>
-      <p style="color:#1e293b;line-height:1.6;">${esc(description || 'No description provided.')}</p>
-      ${mediaCount ? `<p style="color:#64748b;font-size:14px;margin-top:15px;">📎 ${esc(mediaCount)} media attachment(s)</p>` : ''}
-    </div>
-
-    ${hasLocation ? `
-    <div style="background:linear-gradient(135deg,#fff5f5 0%,#ffe0e0 100%);border:2px solid ${BRAND_COLOR};border-radius:12px;padding:25px;margin-bottom:20px;">
-      <h3 style="color:${BRAND_SECONDARY};margin:0 0 15px;font-size:18px;">📍 Incident Location</h3>
-      <p style="margin:5px 0;color:#1e293b;"><strong>Latitude:</strong> ${location.lat}</p>
-      <p style="margin:5px 0 15px;color:#1e293b;"><strong>Longitude:</strong> ${location.lng}</p>
-      <div style="text-align:center;">
-        <a href="${googleMapsUrl}" style="display:inline-block;background:${BRAND_COLOR};color:white;padding:12px 25px;text-decoration:none;border-radius:8px;font-weight:bold;font-size:15px;box-shadow:0 4px 6px rgba(196,30,58,0.3);">📍 View on Google Maps</a>
-      </div>
-    </div>` : ''}
-
-    <div style="background:linear-gradient(135deg,#7f1d1d 0%,#450a0a 100%);padding:20px;border-radius:12px;text-align:center;">
-      <p style="color:white;font-weight:bold;margin:0;font-size:18px;text-transform:uppercase;letter-spacing:1px;">⚠️ Immediate Action Required</p>
-      <p style="color:#fef2f2;margin:10px 0 0;font-size:14px;">Review & assign response • Verify situation</p>
-    </div>
-  </div>
-
-  <div style="background:${BRAND_SECONDARY};padding:25px;text-align:center;">
-    <img src="${COMPANY_LOGO}" alt="Logo" style="max-width:120px;height:auto;margin-bottom:15px;opacity:0.8;"/>
-    <p style="color:#94a3b8;margin:0 0 10px;font-size:13px;">Automated incident alert from Unified Security Solutions</p>
-    <p style="color:${BRAND_COLOR};margin:10px 0 0;font-size:11px;font-weight:bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
-  </div>
-</div></body></html>`;
-
-    const notifTitle = `🚨 New Incident — ${incidentType || category || 'N/A'} at ${siteName || 'site'}`;
+    const notifTitle = subject;
     const notifMsg = `${guardName || 'Guard'} reported: ${incidentType || category || 'incident'} at ${siteName || 'site'}. Priority: ${priority || 'medium'}.${description ? ` ${description.substring(0, 120)}` : ''}`;
 
     const notifPromises = recipients.map((admin) =>
@@ -126,14 +96,12 @@ Deno.serve(async (req) => {
         related_entity: 'incident',
         related_id: incidentId,
         action_url: '/AdminIncidents',
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         sent_via: ['in_app', 'email'],
       }).catch(() => {})
     );
 
-    // TENANT BRANDING — resolved from the reporting user's authoritative
-    // tenant record (customer → reseller → USS platform default).
-    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
-      customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
     const emailPromises = recipients
       .filter((u) => u.email)
       .map((admin) =>
@@ -141,7 +109,7 @@ Deno.serve(async (req) => {
           from_name: brand.brand_name + ' — Incident Alerts',
           to: admin.email,
           subject,
-          body: emailBody,
+          body: brandTpl.html,
         }).catch(() => {})
       );
 
@@ -168,13 +136,19 @@ Deno.serve(async (req) => {
     // TELEGRAM — automatic operational channel on NEW INCIDENT submission.
     // Recipients are already tenant-scoped above (server-side resolution);
     // channel failure-isolated from in-app/email/push; deterministic per-
-    // recipient event key dedupes shared chats and retries.
+    // recipient event key dedupes shared chats and retries. Content renders
+    // through the ONE shared branded Telegram renderer.
     for (const admin of recipients) {
       if (!admin.telegram_connected || admin.telegram_notifications_enabled === false || !admin.telegram_chat_id) continue;
       await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
         'incident_created:' + incidentId + ':' + admin.id,
         admin.telegram_chat_id,
-        `${notifTitle}\n\n${notifMsg}`)
+        buildBrandedTelegram({
+          brand,
+          heading: `New Incident — ${(incidentType || category || 'Incident').toUpperCase()}`,
+          details: brandDetails,
+          closing: 'Immediate attention required — review & assign response.',
+        }))
         .catch(() => {});
     }
 
