@@ -100,14 +100,14 @@ Deno.serve(async (req) => {
               <body style="margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #f8fafc;">
                 <div style="max-width: 650px; margin: 0 auto; background: white;">
                   <!-- Header with Logo -->
-                  <div style="background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_SECONDARY} 100%); padding: 40px 30px; text-align: center;">
+                  <div style="background: linear-gradient(135deg, ${escHtml(brand.primary_color)} 0%, ${escHtml(brand.accent_color)} 100%); padding: 40px 30px; text-align: center;">
                     <img src="${brand.logo_url}" alt="${escHtml(brand.brand_name)}" style="max-width: 200px; height: auto; margin-bottom: 20px; border-radius: 10px;" />
                     <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">📊 START OF SHIFT REPORT</h1>
                     <p style="color: rgba(255,255,255,0.95); margin: 10px 0 0 0; font-size: 16px;">Professional Security Services</p>
                   </div>
 
                   <!-- Guard Info Section -->
-                  <div style="padding: 30px; background: #f8f9fa; border-bottom: 3px solid ${BRAND_COLOR};">
+                  <div style="padding: 30px; background: #f8f9fa; border-bottom: 3px solid ${escHtml(brand.primary_color)};">
                     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
                       <div>
                         <h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: ${user.full_name}</h2>
@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
                   <!-- Report Details -->
                   <div style="padding: 30px;">
                     <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-                      <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid ${BRAND_COLOR}; padding-bottom: 10px;">📋 Shift Information</h3>
+                      <h3 style="color: ${escHtml(brand.accent_color)}; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid ${escHtml(brand.primary_color)}; padding-bottom: 10px;">📋 Shift Information</h3>
                       
                       <div style="margin-bottom: 15px;">
                         <p style="color: #64748b; margin: 0 0 5px 0; font-size: 13px; font-weight: bold;">SHIFT/POST:</p>
@@ -169,13 +169,13 @@ Deno.serve(async (req) => {
                     ` : ''}
 
                     ${location ? `
-                    <div style="background: linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%); border: 2px solid ${BRAND_COLOR}; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-                      <h3 style="color: ${BRAND_SECONDARY}; margin: 0 0 15px 0; font-size: 18px;">📍 Live Location</h3>
+                    <div style="background: linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%); border: 2px solid ${escHtml(brand.primary_color)}; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
+                      <h3 style="color: ${escHtml(brand.accent_color)}; margin: 0 0 15px 0; font-size: 18px;">📍 Live Location</h3>
                       <p style="color: #475569; margin: 0 0 15px 0;">Guard location at time of submission:</p>
                       <p style="margin: 5px 0; color: #1e293b;"><strong>Latitude:</strong> ${location.lat}</p>
                       <p style="margin: 5px 0 15px 0; color: #1e293b;"><strong>Longitude:</strong> ${location.lng}</p>
                       <div style="text-align: center;">
-                        <a href="${googleMapsUrl}" style="display: inline-block; background: ${BRAND_COLOR}; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 6px rgba(196, 30, 58, 0.3);">📍 View on Google Maps</a>
+                        <a href="${googleMapsUrl}" style="display: inline-block; background: ${escHtml(brand.primary_color)}; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 6px rgba(196, 30, 58, 0.3);">📍 View on Google Maps</a>
                       </div>
                     </div>
                     ` : ''}
@@ -200,11 +200,11 @@ Deno.serve(async (req) => {
                   </div>
 
                   <!-- Footer -->
-                  <div style="background: ${BRAND_SECONDARY}; padding: 25px; text-align: center;">
-                    <img src="${COMPANY_LOGO}" alt="Logo" style="max-width: 120px; height: auto; margin-bottom: 15px; opacity: 0.8;" />
+                  <div style="background: ${escHtml(brand.accent_color)}; padding: 25px; text-align: center;">
+                    <img src="${brand.logo_url}" alt="${escHtml(brand.brand_name)}" style="max-width: 120px; height: auto; margin-bottom: 15px; opacity: 0.8;" />
                     <p style="color: #94a3b8; margin: 0 0 10px 0; font-size: 13px;">This is an automated notification from ${escHtml(brand.brand_name)}</p>
                     <p style="color: #64748b; margin: 0; font-size: 12px;">© ${new Date().getFullYear()} ${escHtml(brand.brand_name)}. All rights reserved.</p>
-                    <p style="color: ${BRAND_COLOR}; margin: 10px 0 0 0; font-size: 11px; font-weight: bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
+                    <p style="color: ${escHtml(brand.primary_color)}; margin: 10px 0 0 0; font-size: 11px; font-weight: bold;">PROFESSIONAL • RELIABLE • TRUSTED</p>
                   </div>
                 </div>
               </body>
