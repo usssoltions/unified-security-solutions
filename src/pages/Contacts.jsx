@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantUsers } from "@/lib/tenantLookups";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,10 +74,10 @@ export default function Contacts() {
   const { data: allUsers = [], isLoading, error, refetch } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
-      // Try direct entity access first (works for admins and dispatchers)
+      // Authoritative tenant-scoped user list (server-side resolution) —
+      // works for every role, including customer/reseller administrators.
       try {
-        const users = await base44.entities.User.list();
-        return users;
+        return await fetchTenantUsers();
       } catch (entityError) {
         // Fallback to backend function (works for guards)
         try {

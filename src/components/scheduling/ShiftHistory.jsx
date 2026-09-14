@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantGuards } from "@/lib/tenantLookups";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,8 +37,8 @@ export default function ShiftHistory({ shifts: shiftsProp, onShiftClick }) {
   const { data: guards } = useQuery({
     queryKey: ["guards"],
     queryFn: async () => {
-      const users = await base44.entities.User.list();
-      return users.filter(u => u.role_type === "guard");
+      // Tenant-scoped via the getTenantUsers gateway (server-side resolution).
+      return fetchTenantGuards();
     },
     initialData: []
   });

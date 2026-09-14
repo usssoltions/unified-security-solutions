@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantGuards } from "@/lib/tenantLookups";
 import { listSites } from "@/lib/siteApi";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,8 +66,8 @@ export default function PatrolDashboard() {
   const { data: guards = [] } = useQuery({
     queryKey: ["guards"],
     queryFn: async () => {
-      const u = await base44.entities.User.list();
-      return u.filter(x => x.role_type === "guard");
+      // Tenant-scoped via the getTenantUsers gateway (server-side resolution).
+      return fetchTenantGuards();
     },
   });
 

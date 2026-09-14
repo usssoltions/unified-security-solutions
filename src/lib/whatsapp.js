@@ -6,6 +6,7 @@
  */
 
 import { base44 } from "@/api/base44Client";
+import { fetchTenantUsers } from "@/lib/tenantLookups";
 
 const STORAGE_KEY = "wa_admin_contacts";
 const APP_URL = window.location.origin;
@@ -95,7 +96,8 @@ export function appDeepLink(path) {
  */
 export async function emailAdmins({ subject, body }) {
   try {
-    const allUsers = await base44.entities.User.list();
+    // Tenant-scoped user list via the getTenantUsers gateway.
+    const allUsers = await fetchTenantUsers();
     const admins = allUsers.filter(u =>
       ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type) && u.email
     );
@@ -110,7 +112,8 @@ export async function emailAdmins({ subject, body }) {
  */
 export async function notifyAdmins({ type, title, message, relatedEntity, relatedId }) {
   try {
-    const allUsers = await base44.entities.User.list();
+    // Tenant-scoped user list via the getTenantUsers gateway.
+    const allUsers = await fetchTenantUsers();
     const admins = allUsers.filter(u =>
       ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
     );

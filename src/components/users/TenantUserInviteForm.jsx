@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { listSites } from "@/lib/siteApi";
+import { listCustomersForSites, listSites } from "@/lib/siteApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,11 +88,15 @@ export default function TenantUserInviteForm({
     if (!open || customerLocked) return;
     if ((customers || []).length > 0) return;
     let alive = true;
-    const load = resellerId
-      ? base44.entities.Customer.filter({ reseller_id: resellerId })
-      : base44.entities.Customer.list();
-    load
-      .then((list) => { if (alive) setCustomerList(list || []); })
+    // Authoritative customer options via the siteAccess gateway — scoped
+    // server-side (reseller admin: own reseller; platform admin: all). The
+    // optional resellerId narrowing happens within the authorised set only.
+    listCustomersForSites()
+      .then((d) => {
+        if (!alive) return;
+        const customers = (d && d.customers) || [];
+        setCustomerList(resellerId ? customers.filter(c => c.reseller_id === resellerId) : customers);
+      })
       .catch(() => {});
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

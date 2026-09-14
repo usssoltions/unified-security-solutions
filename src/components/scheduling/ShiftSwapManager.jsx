@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantGuards, fetchTenantUsersInRoles } from "@/lib/tenantLookups";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,8 +38,9 @@ export default function ShiftSwapManager({ user }) {
   const { data: guards = [] } = useQuery({
     queryKey: ['guards'],
     queryFn: async () => {
-      const users = await base44.entities.User.list();
-      return users.filter(u => u.role_type === "guard" && u.id !== user?.id);
+      // Tenant-scoped via the getTenantUsers gateway (server-side resolution).
+      const guards = await fetchTenantGuards();
+      return guards.filter(g => g.id !== user?.id);
     }
   });
 
@@ -128,7 +130,8 @@ export default function ShiftSwapManager({ user }) {
 
       if (approved) {
         // Notify admins
-        const admins = await base44.entities.User.filter({ role_type: "admin" });
+        // Tenant-scoped admin recipients (server-side resolution).
+        const admins = await fetchTenantUsersInRoles(["admin"]);
         await Promise.all(admins.map(admin =>
           base44.entities.Notification.create({
             recipient_id: admin.id,

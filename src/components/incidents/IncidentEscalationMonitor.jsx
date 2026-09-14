@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantUsers, fetchTenantUsersInRoles } from "@/lib/tenantLookups";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function IncidentEscalationMonitor({ user }) {
@@ -64,9 +65,10 @@ export default function IncidentEscalationMonitor({ user }) {
           escalated_at: new Date().toISOString()
         });
 
-        const supervisors = await base44.entities.User.filter({
-          role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
-        });
+        // Tenant-scoped recipients via the getTenantUsers gateway — the
+        // server resolves the caller's organisation; never a platform-wide
+        // client-side User read.
+        const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor']);
 
         const emailPromises = (Array.isArray(supervisors) ? supervisors : [])
           .filter(sup => sup.email && sup.id !== incident.guard_id)
@@ -140,7 +142,8 @@ export default function IncidentEscalationMonitor({ user }) {
 
         // Fetch all guards in one batch instead of one-by-one
         const guardIds = [...new Set(sameSiteShifts.map(s => s.guard_id))];
-        const allUsers = await base44.entities.User.list();
+        // Tenant-scoped user list via the getTenantUsers gateway.
+        const allUsers = await fetchTenantUsers();
         const guardsMap = Object.fromEntries(
           (Array.isArray(allUsers) ? allUsers : []).map(u => [u.id, u])
         );
@@ -181,9 +184,10 @@ export default function IncidentEscalationMonitor({ user }) {
             metadata: { incident_id: incident.id, escalated: true }
           });
 
-          const supervisors = await base44.entities.User.filter({
-            role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
-          });
+          // Tenant-scoped recipients via the getTenantUsers gateway — the
+          // server resolves the caller's organisation; never a platform-wide
+          // client-side User read.
+          const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor']);
 
           const reassignmentEmails = (Array.isArray(supervisors) ? supervisors : [])
             .filter(sup => sup.email)

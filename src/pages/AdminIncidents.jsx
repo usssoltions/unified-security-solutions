@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantUsers } from "@/lib/tenantLookups";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +35,8 @@ export default function AdminIncidents() {
   const { data: assignees = [] } = useQuery({
     queryKey: ["assignableUsers"],
     queryFn: async () => {
-      const users = await base44.entities.User.list();
+      // Tenant-scoped user list via the getTenantUsers gateway.
+      const users = await fetchTenantUsers();
       const shifts = await base44.entities.Shift.filter({ status: "active" });
       const onDutyMap = {};
       shifts.forEach(s => { if (s.guard_id) onDutyMap[s.guard_id] = s.site_name || "On duty"; });

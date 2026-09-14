@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantUsersInRoles } from "@/lib/tenantLookups";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, Zap, Volume2 } from "lucide-react";
@@ -114,9 +115,8 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
       status: "active"
     });
 
-    const admins = await base44.entities.User.filter({
-      role_type: { $in: ['admin', 'dispatcher', 'supervisor'] }
-    });
+    // Tenant-scoped admin recipients via the getTenantUsers gateway.
+    const admins = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor']);
 
     for (const admin of admins) {
       await base44.functions.invoke('sendNotification', {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { listSites } from "@/lib/siteApi";
+import { listCustomersForSites, listSites } from "@/lib/siteApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +59,9 @@ export default function ResellerConsole({ resellerId, viewer, viewAs }) {
       const r = await base44.entities.Reseller.get(resellerId).catch(() => null);
 
       const [c, s, ents, logs, uRes] = await Promise.all([
-        base44.entities.Customer.filter({ reseller_id: resellerId }).catch(() => []),
+        // Authoritative customer list via the siteAccess gateway (the direct
+        // client Customer read relied on unreliable token claims).
+        listCustomersForSites().then((d) => (d && d.customers) || []).catch(() => []),
         listSites().catch(() => []),
         base44.entities.ResellerEntitlement.filter({ reseller_id: resellerId }).catch(() => []),
         base44.entities.PlatformAuditLog.filter({ reseller_id: resellerId }).catch(() => []),

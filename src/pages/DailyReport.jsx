@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantUsers } from "@/lib/tenantLookups";
 import { getSite } from "@/lib/siteApi";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { useQuery } from "@tanstack/react-query";
@@ -170,7 +171,8 @@ PHOTOS: ${report.photos.length} photo(s) attached
 
       // Send comprehensive notifications to all admins with ACTUAL report details
       try {
-        const allUsers = await base44.entities.User.list();
+        // Tenant-scoped user list via the getTenantUsers gateway.
+        const allUsers = await fetchTenantUsers();
         const admins = allUsers
           .filter(u => ['admin', 'dispatcher', 'supervisor', 'management'].includes(u.role_type));
 

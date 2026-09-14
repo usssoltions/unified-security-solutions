@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { fetchTenantUsers } from "@/lib/tenantLookups";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -332,7 +333,11 @@ export default function PanicManagement() {
   const { data: assignees = [] } = useQuery({
     queryKey: ["panicAssignees"],
     queryFn: async () => {
-      const users = await base44.entities.User.list();
+      // SHARED SELECTOR DATA-SOURCE CORRECTION ONLY — tenant-scoped user
+      // list via the getTenantUsers gateway (the role filter below is
+      // unchanged). A direct client User.list() only works for platform
+      // admins; for customer admins it silently returned no assignees.
+      const users = await fetchTenantUsers();
       // Post-split responder catalog: customer_admin / control_room_operator
       // are assignable responders of a modern tenant (legacy roles remain).
       return users.filter(u =>
