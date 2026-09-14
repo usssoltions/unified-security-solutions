@@ -76,8 +76,16 @@ export default function Scheduling() {
   const { data: guards = [] } = useQuery({
     queryKey: ['guards'],
     queryFn: async () => {
-      const users = await base44.entities.User.filter({ role_type: 'guard' });
-      return Array.isArray(users) ? users : [];
+      // AUTHORITATIVE SERVER-SIDE TENANT SCOPING — the built-in User entity only
+      // lets platform admins list users, so a Customer Administrator reading it
+      // directly received an empty list (the "0 selected" / no-options defect).
+      // getTenantUsers resolves the caller's tenant server-side (customer
+      // admin: own customer only; reseller admin: own reseller; platform
+      // admin: all) — frontend filtering alone is never trusted.
+      const res = await base44.functions.invoke("getTenantUsers", {});
+      const d = res?.data !== undefined ? res.data : res;
+      const users = d?.users || [];
+      return users.filter(u => u.role_type === 'guard' && (!u.status || u.status === 'active'));
     },
     initialData: [],
     staleTime: 60 * 1000,

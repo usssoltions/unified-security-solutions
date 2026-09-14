@@ -126,6 +126,11 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
           const shiftData = {
             guard_id: guardId,
             guard_name: guard ? getUserDisplayName(guard) : null,
+            // AUTHORITATIVE TENANT OWNERSHIP — resolved from the selected
+            // guard's server-scoped User record (getTenantUsers), never from
+            // client-supplied values. Included only when present.
+            ...(guard?.customer_id ? { customer_id: guard.customer_id } : {}),
+            ...(guard?.reseller_id ? { reseller_id: guard.reseller_id } : {}),
             site_id: shiftsData.site_id,
             site_name: site?.name || "",
             start_time: shiftsData.start_time,
@@ -182,6 +187,10 @@ export default function ShiftForm({ shift, guards, sites, preselectedDate, onClo
       const dataToSend = {
         ...formData,
         guard_name: guard ? getUserDisplayName(guard) : null,
+        // Authoritative tenant follows the selected guard's server-scoped
+        // User record on reassignment too.
+        ...(guard?.customer_id ? { customer_id: guard.customer_id } : {}),
+        ...(guard?.reseller_id ? { reseller_id: guard.reseller_id } : {}),
         site_name: site?.name || ""
       };
       createShiftMutation.mutate(dataToSend);
