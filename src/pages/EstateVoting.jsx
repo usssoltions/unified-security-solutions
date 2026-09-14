@@ -52,7 +52,7 @@ export default function EstateVoting() {
     if (!formData.title || !hasTenant) return;
     setSaving(true);
     try {
-      await base44.entities.VotingQuestion.create({
+      const created = await base44.entities.VotingQuestion.create({
         ...formData,
         customer_id: user.customer_id,
         reseller_id: user.reseller_id,
@@ -63,6 +63,11 @@ export default function EstateVoting() {
         open_date: new Date().toISOString(),
         created_by_name: getUserDisplayName(user),
       });
+      if (created?.id) {
+        // Notify residents through the estate communication gateway
+        // (manager-only, enforced server-side; branded channels).
+        base44.functions.invoke("estateNotify", { action: "vote_opened", question_id: created.id }).catch(() => {});
+      }
       setShowForm(false);
       setFormData({ title: "", description: "", question_type: "yes_no", options: [{ text: "Yes" }, { text: "No" }] });
       await loadData();

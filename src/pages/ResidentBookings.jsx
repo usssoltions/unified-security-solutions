@@ -110,6 +110,8 @@ export default function ResidentBookings() {
       const payload = cart.map((c) => ({
         venue_id: c.venue.id,
         venue_name: c.venue.name,
+        customer_id: user.customer_id,
+        reseller_id: user.reseller_id,
         resident_id: user.id,
         resident_name: user.display_name || user.full_name,
         unit_number: user.unit_number,
@@ -127,19 +129,32 @@ export default function ResidentBookings() {
       }));
       return await base44.entities.VenueBooking.bulkCreate(payload);
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       qc.invalidateQueries(["my_bookings_list"]);
       qc.invalidateQueries(["all_venue_bookings"]);
       setCart([]);
       setDate("");
+      const createdBookings = Array.isArray(created) ? created : [created];
+      const bookingIds = createdBookings.map((b) => b?.id).filter(Boolean);
+      if (bookingIds.length) {
+        // Notify the estate managers server-side (tenant audience resolution).
+        base44.functions.invoke("estateNotify", { action: "booking_request", booking_ids: bookingIds }).catch(() => {});
+      }
       alert("Booking request(s) submitted! Awaiting approval.");
     },
     onError: (e) => alert(e.message || "Booking failed."),
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id) => base44.entities.VenueBooking.update(id, { status: "cancelled" }),
-    onSuccess: () => { qc.invalidateQueries(["my_bookings_list"]); qc.invalidateQueries(["all_venue_bookings"]); },
+    mutationFn: (b) => base44.entities.VenueBooking.update(b.id, { status: "cancelled" }),
+    onSuccess: (_data, b) => {
+      qc.invalidateQueries(["my_bookings_list"]);
+      qc.invalidateQueries(["all_venue_bookings"]);
+      if (b?.id) {
+        // Informational in-app notice to the estate managers (no spam channels).
+        base44.functions.invoke("estateNotify", { action: "booking_decision", booking_id: b.id, decision: "cancelled" }).catch(() => {});
+      }
+    },
   });
 
   const statusColors = { pending: "bg-amber-600", approved: "bg-emerald-600", rejected: "bg-rose-600", cancelled: "bg-slate-600", completed: "bg-sky-600" };
@@ -286,7 +301,7 @@ export default function ResidentBookings() {
                     <div className="flex flex-col gap-1 items-end">
                       <Badge className={statusColors[b.status]}>{b.status}</Badge>
                       {b.status === "pending" && (
-                        <Button size="sm" variant="outline" className="border-rose-500 text-rose-400 h-6 text-xs" onClick={() => cancelMutation.mutate(b.id)}>Cancel</Button>
+                        <Button size="sm" variant="outline" className="border-rose-500 text-rose-400 h-6 text-xs"                         onClick={() => cancelMutation.mutate(b)}>Cancel</Button>
                       )}
                     </div>
                   </CardContent>

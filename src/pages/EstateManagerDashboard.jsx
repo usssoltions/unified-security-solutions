@@ -91,17 +91,37 @@ export default function EstateManagerDashboard() {
       created_by: user?.id,
       created_by_name: getUserDisplayName(user),
     })),
-    onSuccess: () => { qc.invalidateQueries(["estate_announcements"]); setShowAnnouncement(false); setAnnouncementForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all" }); }
+    onSuccess: (created) => {
+      qc.invalidateQueries(["estate_announcements"]);
+      setShowAnnouncement(false);
+      setAnnouncementForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all" });
+      // Communication event — server-side audience resolution + branded channels.
+      if (created?.id) {
+        base44.functions.invoke("estateNotify", { action: "publish_announcement", announcement_id: created.id }).catch(() => {});
+      }
+    }
   });
 
   const updateBookingMutation = useMutation({
     mutationFn: ({ id, status, reason }) => base44.entities.VenueBooking.update(id, { status, rejection_reason: reason, approved_by: getUserDisplayName(user) }),
-    onSuccess: () => qc.invalidateQueries(["estate_bookings"])
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries(["estate_bookings"]);
+      if (["approved", "rejected"].includes(variables?.status) && variables?.id) {
+        // Notify the resident through the estate communication gateway.
+        base44.functions.invoke("estateNotify", { action: "booking_decision", booking_id: variables.id, decision: variables.status }).catch(() => {});
+      }
+    }
   });
 
   const updateTicketMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.ServiceTicket.update(id, data),
-    onSuccess: () => qc.invalidateQueries(["estate_tickets"])
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries(["estate_tickets"]);
+      if (variables?.id && variables?.data?.status) {
+        // Inform the resident of assignment/resolution through the gateway.
+        base44.functions.invoke("estateNotify", { action: "ticket_status", ticket_id: variables.id, status: variables.data.status }).catch(() => {});
+      }
+    }
   });
 
   const stats = [

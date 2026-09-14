@@ -30,13 +30,18 @@ export default function ResidentTickets() {
       resident_id: user.id,
       resident_name: user.full_name,
       unit_number: user.unit_number,
+      customer_id: user.customer_id,
+      reseller_id: user.reseller_id,
       ticket_number: `TKT-${Date.now().toString().slice(-6)}`,
       status: "open"
     }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       qc.invalidateQueries(["my_tickets"]);
       setShowForm(false);
       setForm({ title: "", category: "", priority: "medium", description: "" });
+      if (created?.id) {
+        base44.functions.invoke("estateNotify", { action: "ticket_created", ticket_id: created.id }).catch(() => {});
+      }
     }
   });
 

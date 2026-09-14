@@ -98,7 +98,14 @@ export default function EstateVenues() {
       approved_by_name: getUserDisplayName(user),
       approved_at: status === "approved" ? new Date().toISOString() : undefined,
     }),
-    onSuccess: () => qc.invalidateQueries(["venue_bookings_mgmt"])
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries(["venue_bookings_mgmt"]);
+      if (["approved", "rejected"].includes(variables?.status) && variables?.id) {
+        // Notify the resident through the estate communication gateway
+        // (server-side re-validation, tenant branding, all channels).
+        base44.functions.invoke("estateNotify", { action: "booking_decision", booking_id: variables.id, decision: variables.status }).catch(() => {});
+      }
+    }
   });
 
   const statusColors = { active: "bg-emerald-600", inactive: "bg-slate-600", maintenance: "bg-amber-600" };

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Megaphone, Plus, X, Send, Eye, Trash2, Globe, Users } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function AnnouncementManagement() {
   const [user, setUser] = useState(null);
@@ -16,9 +17,10 @@ export default function AnnouncementManagement() {
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({
     title: "", body: "", category: "news", priority: "normal",
-    target_audience: "all", send_whatsapp: false, send_email: true, send_push: true
+    target_audience: "all", send_email: true, send_push: true
   });
   const qc = useQueryClient();
+  const { withTenant } = useTenantContext();
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
@@ -30,18 +32,24 @@ export default function AnnouncementManagement() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      return await base44.entities.Announcement.create({
+      return await base44.entities.Announcement.create(withTenant({
         ...data,
         created_by: user.id,
         created_by_name: getUserDisplayName(user),
         published: true,
         published_at: new Date().toISOString()
-      });
+      }));
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       qc.invalidateQueries(["all_announcements"]);
       setShowForm(false);
-      setForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all", send_whatsapp: false, send_email: true, send_push: true });
+      setForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all", send_email: true, send_push: true });
+      // Communication event — the gateway re-reads the record, resolves the
+      // tenant audience server-side and delivers branded email/telegram/push/in-app.
+      if (created?.id) {
+        base44.functions.invoke("estateNotify", { action: "publish_announcement", announcement_id: created.id })
+          .catch(() => {});
+      }
     }
   });
 
@@ -116,16 +124,8 @@ export default function AnnouncementManagement() {
                   <input type="checkbox" checked={form.send_email} onChange={e => setForm({ ...form, send_email: e.target.checked })} className="w-4 h-4" />
                   Email
                 </label>
-                <label className="flex items-center gap-2 text-slate-300 text-sm cursor-pointer">
-                  <input type="checkbox" checked={form.send_whatsapp} onChange={e => setForm({ ...form, send_whatsapp: e.target.checked })} className="w-4 h-4" />
-                  WhatsApp
-                </label>
               </div>
-              {(form.send_whatsapp || form.send_email) && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300">
-                  ⚠️ WhatsApp & Email notifications require the Builder+ plan with backend functions enabled.
-                </div>
-              )}
+              <p className="text-xs text-slate-400/80">On publish, residents receive an in-app notification plus the channels you select. Urgent, security and emergency announcements always go out on every available channel.</p>
               <Button className="w-full bg-sky-500 hover:bg-sky-600" onClick={() => createMutation.mutate(form)} disabled={!form.title || !form.body || createMutation.isPending}>
                 <Send className="w-4 h-4 mr-2" /> {createMutation.isPending ? "Publishing..." : "Publish Announcement"}
               </Button>
