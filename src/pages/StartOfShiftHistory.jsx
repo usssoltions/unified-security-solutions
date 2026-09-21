@@ -7,6 +7,8 @@
  */
 import React, { useState, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useBranding } from "@/hooks/useBranding";
+import { resolveBrand } from "@/lib/branding";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +25,10 @@ export default function StartOfShiftHistory() {
   const [user, setUser] = useState(null);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
+  // Printed/PDF reports resolve the tenant brand (Customer → Reseller →
+  // platform fallback) — never a hard-coded organisation name.
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const brandName = resolveBrand(branding).appName || "USS Platform";
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -93,7 +99,7 @@ export default function StartOfShiftHistory() {
       ${photos.length ? `<h2>Photos</h2>${photos.map((m) => `<img src="${esc(m.url)}"/>`).join("")}` : ""}
       ${videos.length ? `<h2>Videos</h2>${videos.map((m) => `<p><a href="${esc(m.url)}">${esc(m.url)}</a></p>`).join("")}` : ""}
       ${r.outgoing_guard_signature ? `<h2>Signature</h2><img class="sig" src="${esc(r.outgoing_guard_signature)}"/>` : ""}
-      <div class="foot">Unified Security Solutions — Start of Shift Report</div>
+      <div class="foot">${esc(brandName)} — Start of Shift Report</div>
       </body></html>`;
     const w = window.open("", "_blank");
     if (!w) {

@@ -39,6 +39,8 @@ export default function ResidentPayments() {
 
     // Create a pending payment record first
     const payment = await base44.entities.Payment.create({
+      customer_id: user.customer_id || undefined,
+      reseller_id: user.reseller_id || undefined,
       resident_id: user.id,
       resident_name: user.full_name,
       unit_number: user.unit_number,

@@ -1,7 +1,7 @@
 {
   "name": "VehicleLicenceDisc",
   "type": "object",
-  "description": "South African vehicle licence disc scanned via the document scanner. TENANT SCOPE: customer_id/reseller_id are stamped at creation from the scanning user's authoritative tenant; discs (which carry owner/vehicle PII) are readable by the scanner, their tenant and platform/reseller oversight only \u2014 never cross-tenant.",
+  "description": "South African vehicle licence disc scanned via the document scanner. TENANT SCOPE: customer_id/reseller_id stamped from the scanning user's authoritative tenant; discs (which carry owner/vehicle PII) are readable by the scanner, their tenant and oversight only \u2014 never cross-customer. The reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller').",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -136,6 +136,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

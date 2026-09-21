@@ -42,6 +42,10 @@ export default function ResidentVisitors() {
       const qrCode = "VST" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
       return await base44.entities.Visitor.create({
         ...data,
+        // Tenant ownership from the inviting resident's authenticated scope —
+        // without it the gate's customer-scoped QR lookup cannot match the pass.
+        customer_id: user.customer_id || undefined,
+        reseller_id: user.reseller_id || undefined,
         resident_id: user.id,
         resident_name: user.full_name,
         unit_number: user.unit_number,

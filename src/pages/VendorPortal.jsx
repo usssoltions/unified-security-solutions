@@ -48,6 +48,8 @@ export default function VendorPortal() {
 
   const addItemMutation = useMutation({
     mutationFn: (data) => base44.entities.MenuItem.create({
+      customer_id: vendor?.customer_id || undefined,
+      reseller_id: vendor?.reseller_id || undefined,
       ...data,
       price: Number(data.price),
       preparation_time_minutes: Number(data.preparation_time_minutes) || null,

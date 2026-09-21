@@ -122,7 +122,7 @@ export default function ControlRoomManager({ open, onClose, data, act }) {
             <div className="space-y-1.5">
               <Label className="text-slate-300">Name *</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. Dogs and All Control Room 1"
+                placeholder="e.g. Main Campus Control Room 1"
                 className="bg-slate-800 border-slate-700 text-white h-11" />
             </div>
             <div className="space-y-1.5">

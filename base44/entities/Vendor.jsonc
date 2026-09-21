@@ -1,10 +1,11 @@
 {
   "name": "Vendor",
   "type": "object",
+  "description": "Estate vendor/service provider. TENANT ISOLATION: customer_id ownership stamped at creation; reads customer-scoped, reseller_id branch RESELLER-ADMIN-only (admin_level 'reseller').",
   "properties": {
     "customer_id": {
       "type": "string",
-      "description": "Tenant/customer ownership for multi-tenant isolation. Stamped at creation from the creating user's authoritative tenant; vendors are estate-local and never visible cross-tenant."
+      "description": "Tenant/customer ownership for multi-tenant isolation."
     },
     "reseller_id": {
       "type": "string",
@@ -142,6 +143,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

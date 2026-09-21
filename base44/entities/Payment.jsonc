@@ -1,10 +1,11 @@
 {
   "name": "Payment",
   "type": "object",
+  "description": "Estate resident payment. TENANT ISOLATION: customer_id ownership stamped at creation; reads customer-scoped, reseller_id branch RESELLER-ADMIN-only (admin_level 'reseller').",
   "properties": {
     "customer_id": {
       "type": "string",
-      "description": "Tenant/customer ownership for multi-tenant isolation. Stamped at creation from the paying resident's authoritative tenant."
+      "description": "Tenant/customer ownership for multi-tenant isolation."
     },
     "reseller_id": {
       "type": "string",
@@ -137,6 +138,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

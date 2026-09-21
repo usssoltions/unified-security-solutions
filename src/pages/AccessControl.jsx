@@ -209,6 +209,8 @@ export default function AccessControl() {
         if (disc.registration_number) {
           try {
             await base44.entities.VehicleLicenceDisc.create({
+              customer_id: user?.customer_id || undefined,
+              reseller_id: user?.reseller_id || undefined,
               registration_number: disc.registration_number,
               vin: disc.vin || "", engine_number: disc.engine_number || "",
               licence_number: disc.licence_number || "", make: disc.make || "",
@@ -328,31 +330,30 @@ export default function AccessControl() {
     setBusy(true);
     try {
       const gps = await getGPS();
-      const now = new Date().toISOString();
-      const entryTime = activeLog.entry_time || activeLog.timestamp;
-      const mins = Math.max(0, Math.round((Date.now() - new Date(entryTime).getTime()) / 60000));
       const sm = manual ? "manual"
         : scan?.resolvedProfileId === "qr" ? "qr_code"
         : scan?.resolvedProfileId === "sa_id" ? "sa_id"
         : scan?.resolvedProfileId === "vehicle_disc" ? "vehicle_disc"
         : "drivers_licence";
-      const update = {
-        status: "exited",
-        event_type: "exit",
-        exit_time: now,
-        exit_gate: gate,
-        exit_guard_id: user?.id,
-        exit_guard_name: getUserDisplayName(user),
-        exit_scan_method: sm,
-        exit_location: gps,
-        exit_notes: manual ? "Manually exited from live log" : "",
-        time_on_site_minutes: mins,
-      };
-      await base44.entities.AccessLog.update(activeLog.id, update);
-      if (activeLog.visitor_id) {
-        try { await base44.entities.Visitor.update(activeLog.visitor_id, { status: "exited", exited_at: now }); } catch (_) {}
+      // EXIT — central server-side gateway: the caller's customer/site scope is
+      // verified SERVER-SIDE before the record is mutated, so a user can never
+      // exit another customer's active entry (a direct API bypass included).
+      const res = await base44.functions.invoke("finalizeAccessEntry", {
+        action: "exit",
+        access_data: {
+          access_log_id: activeLog.id,
+          gate_name: gate,
+          scan_method: sm,
+          exit_notes: manual ? "Manually exited from live log" : "",
+          location: gps,
+        },
+      });
+      const d = res?.data !== undefined ? res.data : res;
+      if (d?.error) {
+        toast({ title: "Exit failed", description: d.error, variant: "destructive" });
+        return;
       }
-      setResult({ ...activeLog, ...update, person_name: activeLog.person_name });
+      setResult({ ...activeLog, ...(d.access_log || {}), person_name: activeLog.person_name });
       resetWorkflow();
       qc.invalidateQueries(["access_logs_recent"]);
       setTimeout(() => setResult(null), 8000);

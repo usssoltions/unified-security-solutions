@@ -32,6 +32,8 @@ export async function recordScanAudit({
 }) {
   try {
     return await base44.entities.DocumentScan.create({
+      customer_id: user?.customer_id || undefined,
+      reseller_id: user?.reseller_id || undefined,
       user_id: user?.id || "",
       user_name: user?.full_name || "",
       guard_id: user?.badge_number || "",

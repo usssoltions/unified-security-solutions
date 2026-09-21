@@ -1,7 +1,7 @@
 {
   "name": "WorkType",
   "type": "object",
-  "description": "Administrator-configurable category of work a contractor performs.",
+  "description": "Administrator-configurable category of work a contractor performs. TENANT ISOLATION: work types are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's work types to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -56,6 +56,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -88,6 +93,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
@@ -122,6 +132,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -154,6 +169,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

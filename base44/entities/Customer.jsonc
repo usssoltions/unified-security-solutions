@@ -1,7 +1,7 @@
 {
   "name": "Customer",
   "type": "object",
-  "description": "A customer/tenant organization. Can be a security company, estate, medical practice, factory, business park, or corporate client. May belong to a reseller or be directly managed by the platform (reseller_id = null).",
+  "description": "A customer/tenant organization (security company, estate, medical practice, factory, business park, corporate). May belong to a reseller or be directly platform-managed. TENANT ISOLATION: customer admins read their OWN organisation via the id == user.data.customer_id branch; the reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller') \u2014 previously every user under a reseller matched it and could read/update every sibling customer's organisation record (confirmed cross-customer defect 2026-09-21). Platform admins retain full access via the built-in admin role.",
   "properties": {
     "name": {
       "type": "string"
@@ -47,7 +47,7 @@
         "white",
         "transparent"
       ],
-      "description": "Controls the CONTAINER behind the uploaded logo only \u2014 the logo image itself is never modified (no recolour/tint/filter/invert). 'white' renders the logo inside a clean white container with internal padding; 'transparent' applies no forced background colour; 'auto' or blank keeps the surface's existing default treatment and inherits the reseller value when supported (customer \u2192 reseller \u2192 platform default). Stored as a customer OVERRIDE only \u2014 inherited values are never copied into the customer record."
+      "description": "Container treatment behind the uploaded logo only \u2014 the logo image itself is never modified. Stored as a customer OVERRIDE only \u2014 inherited values are never copied into the customer record."
     },
     "primary_color": {
       "type": "string",
@@ -59,23 +59,23 @@
     },
     "pwa_slug": {
       "type": "string",
-      "description": "PUBLIC, unique, immutable-once-assigned install slug for this customer's PWA (lowercase letters, numbers, hyphens; never derived from the customer name or id). Baked into installed PWAs via the manifest id/start_url (/?brand=<slug>) and used by the public getPwaManifest function. COSMETIC ONLY \u2014 the slug never grants tenant access or exposes the internal customer id. Uniqueness and immutability are enforced server-side by manageCustomerBranding."
+      "description": "PUBLIC, unique, immutable-once-assigned install slug for this customer's PWA. COSMETIC ONLY \u2014 the slug never grants tenant access. Uniqueness and immutability are enforced server-side by manageCustomerBranding."
     },
     "pwa_app_name": {
       "type": "string",
-      "description": "Installed PWA app name override (launcher label). Distinct from the in-app business name (app_name). Blank falls back to the customer's effective app/business name \u2192 reseller \u2192 platform default."
+      "description": "Installed PWA app name override (launcher label). Blank falls back to the effective app/business name \u2192 reseller \u2192 platform default."
     },
     "pwa_short_name": {
       "type": "string",
-      "description": "Installed PWA short name (limited-space launcher label, practical limit ~12 characters). Blank is derived from the PWA app name."
+      "description": "Installed PWA short name (limited-space launcher label, ~12 characters). Blank is derived from the PWA app name."
     },
     "pwa_icon_192_url": {
       "type": "string",
-      "description": "Dedicated square 192x192 PWA launcher icon URL. Blank falls back to pwa_icon_512_url, then the customer logo (never distorted), then the reseller/platform icon."
+      "description": "Dedicated square 192x192 PWA launcher icon URL. Blank falls back to pwa_icon_512_url, then the customer logo, then the reseller/platform icon."
     },
     "pwa_icon_512_url": {
       "type": "string",
-      "description": "Dedicated square 512x512 PWA launcher icon URL (PNG, maskable-compatible recommended). Blank falls back to the customer logo, then the reseller/platform icon."
+      "description": "Dedicated square 512x512 PWA launcher icon URL (PNG, maskable-compatible recommended)."
     },
     "pwa_background_color": {
       "type": "string",
@@ -128,6 +128,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -143,10 +148,10 @@
         {
           "$and": [
             {
-              "data.reseller_id": "{{user.data.reseller_id}}"
+              "id": "{{user.data.customer_id}}"
             },
             {
-              "data.reseller_id": {
+              "id": {
                 "$ne": null
               }
             }
@@ -155,11 +160,16 @@
         {
           "$and": [
             {
-              "id": "{{user.data.customer_id}}"
+              "data.reseller_id": "{{user.data.reseller_id}}"
             },
             {
-              "id": {
+              "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
@@ -181,6 +191,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

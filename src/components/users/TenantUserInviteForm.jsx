@@ -227,7 +227,7 @@ export default function TenantUserInviteForm({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose?.(); } }}>
-      <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-lg">
+      <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-lg max-h-[90dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-sky-400" />
@@ -238,7 +238,7 @@ export default function TenantUserInviteForm({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2 overflow-y-auto overscroll-contain flex-1 min-h-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <div><Label className="text-slate-300 text-xs">First Name *</Label>
             <Input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} className="bg-slate-950 border-slate-700 mt-1" />
           </div>
@@ -285,7 +285,7 @@ export default function TenantUserInviteForm({
               >
                 <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">All customer sites (no fixed site)</SelectItem>
+                  <SelectItem value="none">All sites for this customer (no fixed site)</SelectItem>
                   {(sites || []).map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}

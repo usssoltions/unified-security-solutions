@@ -1,7 +1,7 @@
 {
   "name": "Destination",
   "type": "object",
-  "description": "A place a visitor/contractor can be heading to inside the estate.",
+  "description": "A place a visitor/contractor can be heading to inside the estate. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 every user under a reseller-managed customer carries the reseller id, so an ungated reseller branch would expose all customers of that reseller to each other (confirmed live cross-customer defect 2026-09-21). Platform admins retain full oversight.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -77,6 +77,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -110,6 +115,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -142,6 +152,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

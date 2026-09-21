@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Plus, X, Search, Phone, Home, Car } from "lucide-react";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function ResidentManagement() {
+  const { withTenant } = useTenantContext();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [selectedResident, setSelectedResident] = useState(null);
@@ -18,7 +20,7 @@ export default function ResidentManagement() {
   const { data: residents = [] } = useQuery({ queryKey: ["residents_mgmt"], queryFn: () => base44.entities.Resident.list("-created_date", 200), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Resident.create({ ...data, status: "active" }),
+    mutationFn: (data) => base44.entities.Resident.create(withTenant({ ...data, status: "active" })),
     onSuccess: () => { qc.invalidateQueries(["residents_mgmt"]); setShowForm(false); setForm({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", move_in_date: "", emergency_contact_name: "", emergency_contact_phone: "" }); }
   });
 

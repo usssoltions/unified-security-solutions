@@ -28,6 +28,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
@@ -367,10 +368,18 @@ export default async function(req: Request): Promise<Response> {
                       `${pTitle}\n\n${pBody}`).catch(() => {});
                   }
                   if (guard.email) {
-                    await base44.asServiceRole.integrations.Core.SendEmail({
-                      from_name: 'USS Patrols', to: guard.email,
-                      subject: `${pTitle} — ${site.name}`, body: pBody,
-                    }).catch(() => {});
+                    // Tenant-resolved brand (Customer → Reseller → USS) — never
+                    // a hard-coded sender identity. Failure-isolated.
+                    try {
+                      const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+                        customer_id: site.customer_id || null,
+                        reseller_id: site.reseller_id || null,
+                      });
+                      await base44.asServiceRole.integrations.Core.SendEmail({
+                        from_name: brand.brand_name, to: guard.email,
+                        subject: `${pTitle} — ${site.name}`, body: pBody,
+                      }).catch(() => {});
+                    } catch (_) { /* email failure never blocks generation */ }
                   }
                 }
               } catch (_) { /* notification failure never blocks generation */ }

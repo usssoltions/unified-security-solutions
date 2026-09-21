@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Search, Plus, X, Phone, Home, Car } from "lucide-react";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function EstateResidents() {
+  const { withTenant } = useTenantContext();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", status: "active" });
@@ -18,7 +20,7 @@ export default function EstateResidents() {
   const { data: levyAccounts = [] } = useQuery({ queryKey: ["all_levy"], queryFn: () => base44.entities.LevyAccount.list(), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Resident.create({ ...data, move_in_date: new Date().toISOString().split("T")[0] }),
+    mutationFn: (data) => base44.entities.Resident.create(withTenant({ ...data, move_in_date: new Date().toISOString().split("T")[0] })),
     onSuccess: () => { qc.invalidateQueries(["all_residents"]); setShowForm(false); setForm({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", status: "active" }); }
   });
 

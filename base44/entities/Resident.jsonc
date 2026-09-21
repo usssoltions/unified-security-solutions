@@ -1,10 +1,11 @@
 {
   "name": "Resident",
   "type": "object",
+  "description": "Estate resident record. TENANT ISOLATION: customer_id/reseller_id ownership; reads are customer-scoped (own records, own tenant), the reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller') so customers under one reseller never see each other's residents.",
   "properties": {
     "customer_id": {
       "type": "string",
-      "description": "Tenant/customer ownership for multi-tenant isolation. Stamped at creation from the creating user's authoritative tenant; tenant users read residents of their own customer only."
+      "description": "Tenant/customer ownership for multi-tenant isolation."
     },
     "reseller_id": {
       "type": "string",
@@ -142,6 +143,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

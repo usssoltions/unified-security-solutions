@@ -1,7 +1,7 @@
 {
   "name": "BlacklistEntry",
   "type": "object",
-  "description": "A person or vehicle barred from entering. Matched against scans at the gate; a match blocks entry unless a supervisor overrides it.",
+  "description": "A person or vehicle barred from entering. Matched against scans at the gate; a match blocks entry unless a supervisor overrides it. TENANT ISOLATION: matching and management are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's blacklist to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21). Customer A must never see or match Customer B's bans.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -126,6 +126,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -159,6 +164,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -191,6 +201,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

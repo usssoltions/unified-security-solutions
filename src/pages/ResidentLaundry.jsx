@@ -51,6 +51,8 @@ export default function ResidentLaundry() {
       const vendor = vendors.find((v) => v.id === data.vendor_id);
       const created = await base44.entities.LaundryRequest.create({
         ...data,
+        customer_id: user.customer_id || undefined,
+        reseller_id: user.reseller_id || undefined,
         vendor_name: vendor?.business_name || "",
         resident_id: user.id,
         resident_name: user.display_name || user.full_name,

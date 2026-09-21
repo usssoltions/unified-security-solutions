@@ -8,10 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShoppingBag, Plus, X, Phone, Star, Store } from "lucide-react";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 const EMPTY_FORM = { business_name: "", contact_name: "", email: "", phone: "", category: "restaurant", description: "", delivery_available: false, delivery_fee: "", minimum_order: "", operating_hours: "", status: "active" };
 
 export default function EstateVendors() {
+  const { withTenant } = useTenantContext();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const qc = useQueryClient();
@@ -19,7 +21,7 @@ export default function EstateVendors() {
   const { data: vendors = [] } = useQuery({ queryKey: ["all_vendors"], queryFn: () => base44.entities.Vendor.list(), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Vendor.create({ ...data, delivery_fee: Number(data.delivery_fee) || 0, minimum_order: Number(data.minimum_order) || 0 }),
+    mutationFn: (data) => base44.entities.Vendor.create(withTenant({ ...data, delivery_fee: Number(data.delivery_fee) || 0, minimum_order: Number(data.minimum_order) || 0 })),
     onSuccess: () => { qc.invalidateQueries(["all_vendors"]); setShowForm(false); setForm(EMPTY_FORM); }
   });
 

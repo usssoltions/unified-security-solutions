@@ -5,6 +5,13 @@
  * driver's licence number; if none exists, creates one populated from the
  * barKoder mapped fields + photograph + scan metadata. A successful scan with
  * identifying information must NEVER produce an "Unknown" visitor.
+ *
+ * TENANT ISOLATION: visitor matching and creation happen SERVER-SIDE through
+ * the finalizeAccessEntry gateway (action resolve_visitor), which resolves
+ * the caller's customer scope from the authoritative User record and scopes
+ * the lookup to their own customer — a visitor profile of another customer is
+ * never matched, and the created record is stamped with the caller's tenant
+ * server-side (never trusted from the client).
  */
 import { base44 } from "@/api/base44Client";
 
@@ -30,71 +37,40 @@ export function getGPS() {
   });
 }
 
+const unwrap = (res) => (res?.data !== undefined ? res.data : res);
+
 /**
- * @param {object} args { mapped, photoUrl, scan }
+ * @param {object} args { mapped, photoUrl, scan, createIfMissing }
  * @returns {Promise<{visitor, created, error?}>}
  */
 export async function resolveOrCreateVisitor({ mapped, photoUrl, scan, createIfMissing = true }) {
-  const idNum = mapped?.visitor_id_number || "";
-  const licNum = mapped?.driver_licence_number || "";
-
-  let visitor = null;
-  if (idNum) {
-    try { const m = await base44.entities.Visitor.filter({ visitor_id_number: idNum }); if (m.length) visitor = m[0]; } catch (_) {}
-  }
-  if (!visitor && licNum) {
-    try { const m = await base44.entities.Visitor.filter({ driver_licence_number: licNum }); if (m.length) visitor = m[0]; } catch (_) {}
-  }
-
-  const scanMeta = {
-    scan_document_type: scan?.resolvedProfileId || "",
-    scan_barcode_type: scan?.result?.barcodeType || "",
-    scan_sdk_version: scan?.sdkVersion || "",
-    scan_parser_used: scan?.parserUsed || "",
-    scan_timestamp: new Date().toISOString(),
-    scan_raw_json: scan?.result?.formattedJSONRaw || scan?.result?.textualData || "",
-  };
-  if (photoUrl) { scanMeta.id_scan_url = photoUrl; scanMeta.scan_thumbnail_url = photoUrl; }
-
-  if (visitor) {
-    const updates = { ...scanMeta };
-    // The scanned document is the source of truth for identity fields. Always
-    // overwrite the stored name + OCR fields with the freshly scanned data so
-    // that a previously mis-named visitor record (e.g. a QR pass created with
-    // the wrong name, like "Tania Oelofse") is corrected on the next scan
-    // instead of perpetuating the wrong name on every subsequent entry.
-    for (const k of VISITOR_FIELDS) {
-      if (mapped?.[k]) updates[k] = mapped[k];
-    }
-    const scanName = mapped?.visitor_name
-      || [mapped?.first_names, mapped?.surname].filter(Boolean).join(" ").trim();
-    if (scanName) updates.visitor_name = scanName;
-    try { await base44.entities.Visitor.update(visitor.id, updates); } catch (_) {}
-    // Return the merged object so callers (VisitorCard, AccessLog) immediately
-    // reflect the corrected scanned name, not the stale stored one.
-    return { visitor: { ...visitor, ...updates }, created: false };
-  }
-
-  if (!createIfMissing) return { visitor: null, created: false };
-
-  const name = mapped?.visitor_name
-    || [mapped?.first_names, mapped?.surname].filter(Boolean).join(" ").trim()
-    || "Unknown";
-  const payload = {
-    visitor_name: name,
-    resident_id: "",
-    visit_type: "unexpected",
-    status: "pending",
-    visitor_id_number: idNum,
-    ...Object.fromEntries(VISITOR_FIELDS.map((k) => [k, mapped?.[k] || ""])),
-    ...scanMeta,
-  };
+  const scanName = mapped?.visitor_name
+    || [mapped?.first_names, mapped?.surname].filter(Boolean).join(" ").trim();
   try {
-    const created = await base44.entities.Visitor.create(payload);
-    return { visitor: created, created: true };
+    const res = await base44.functions.invoke("finalizeAccessEntry", {
+      action: "resolve_visitor",
+      access_data: {
+        mapped: mapped || {},
+        photo_url: photoUrl || "",
+        scan: scan || null,
+        create_if_missing: createIfMissing,
+      },
+    });
+    const d = unwrap(res);
+    if (d?.error) {
+      console.warn("[access] visitor resolve failed:", d.error);
+      return { visitor: null, created: false, error: d.error };
+    }
+    return { visitor: d?.visitor || null, created: !!d?.created };
   } catch (e) {
-    console.warn("[access] visitor create failed", e?.message || e);
-    return { visitor: { id: null, ...payload }, created: false, error: e };
+    console.warn("[access] visitor resolve failed", e?.message || e);
+    // Never fabricate a usable visitor client-side — the caller surfaces a
+    // retryable error instead of persisting an unsccoped record.
+    return {
+      visitor: null,
+      created: false,
+      error: e?.response?.data?.error || e?.message || "Visitor resolution failed",
+    };
   }
 }
 
@@ -110,7 +86,8 @@ export async function countPreviousVisits(visitorId) {
  * Returns all AccessLog records for a visitor that are still 'inside' (active
  * entries awaiting exit), newest first. Used by the exit flow to UPDATE the
  * correct record instead of creating a duplicate (Phase B). Multiple results
- * trigger the ambiguous-match picker.
+ * trigger the ambiguous-match picker. Reads are tenant-scoped by the
+ * AccessLog RLS (own customer / own records only).
  */
 export async function findActiveInsideRecords(visitorId) {
   if (!visitorId) return [];
@@ -124,6 +101,8 @@ export async function findActiveInsideRecords(visitorId) {
  * Checks scanned identifiers against active BlacklistEntry records.
  * Returns the first active entry whose identifier_value matches any of the
  * supplied SA ID / driver's licence / vehicle registration (Phase D).
+ * Reads are tenant-scoped by the BlacklistEntry RLS (own customer only) —
+ * another customer's bans never match here.
  */
 export async function checkBlacklist({ saId, driverLicence, vehicleReg }) {
   const norm = (v) => (v || "").toString().toUpperCase().replace(/\s+/g, "");

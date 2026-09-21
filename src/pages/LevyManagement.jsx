@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditCard, Plus, Search, AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function LevyManagement() {
   const [user, setUser] = useState(null);
@@ -22,12 +23,13 @@ export default function LevyManagement() {
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  const { withTenant } = useTenantContext();
   const { data: accounts = [] } = useQuery({ queryKey: ["all_levy_mgmt"], queryFn: () => base44.entities.LevyAccount.list(), initialData: [] });
   const { data: residents = [] } = useQuery({ queryKey: ["residents_list"], queryFn: () => base44.entities.Resident.list(), initialData: [] });
   const { data: payments = [] } = useQuery({ queryKey: ["all_payments_mgmt"], queryFn: () => base44.entities.Payment.list("-created_date", 100), initialData: [] });
 
   const createAccountMutation = useMutation({
-    mutationFn: (data) => base44.entities.LevyAccount.create({ ...data, monthly_levy: parseFloat(data.monthly_levy), balance_due: parseFloat(data.monthly_levy) }),
+    mutationFn: (data) => base44.entities.LevyAccount.create(withTenant({ ...data, monthly_levy: parseFloat(data.monthly_levy), balance_due: parseFloat(data.monthly_levy) })),
     onSuccess: () => { qc.invalidateQueries(["all_levy_mgmt"]); setShowForm(false); }
   });
 

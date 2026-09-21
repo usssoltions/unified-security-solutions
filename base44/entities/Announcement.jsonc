@@ -1,7 +1,7 @@
 {
   "name": "Announcement",
   "type": "object",
-  "description": "ESTATE MANAGEMENT module \u2014 a published community announcement/notice. TENANT SCOPE: customer_id/reseller_id are authoritative ownership; RLS restricts every operation to the owning customer (platform admins retain oversight). Legacy records created before tenant scoping (no customer_id) remain visible to platform admins only \u2014 they are not exposed to any tenant.",
+  "description": "ESTATE MANAGEMENT module \u2014 a published community announcement/notice. TENANT SCOPE: customer_id/reseller_id are authoritative ownership; RLS restricts every operation to the owning customer (platform admins retain oversight; the reseller_id branch is RESELLER-ADMIN-only, admin_level 'reseller' \u2014 customers under one reseller never see each other's announcements). Legacy records created before tenant scoping (no customer_id) remain visible to platform admins only \u2014 they are not exposed to any tenant.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -155,6 +155,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

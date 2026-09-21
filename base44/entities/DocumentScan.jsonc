@@ -1,7 +1,7 @@
 {
   "name": "DocumentScan",
   "type": "object",
-  "description": "Central audit trail + scan history for every document scan across USS Guard. One record per accepted/failed scan. TENANT SCOPE: customer_id/reseller_id are stamped at creation from the scanning user's authoritative tenant; scans (which carry personal document data) are readable by the scanner, their tenant and platform/reseller oversight only \u2014 never cross-tenant. Legacy unscoped records remain readable only by their scanner and platform admins.",
+  "description": "Central audit trail + scan history for every document scan across USS Guard. One record per accepted/failed scan. TENANT ISOLATION: customer_id/reseller_id stamped from the scanning user's authoritative tenant; scans (which carry personal document data) are readable by the scanner, their tenant and oversight \u2014 never cross-customer. The reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller'). Legacy unscoped records remain readable by their scanner and platform admins only.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -166,6 +166,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

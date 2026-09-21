@@ -1,7 +1,7 @@
 {
   "name": "AccessLog",
   "type": "object",
-  "description": "Permanent audit record of every access entry, exit and denial. A single record represents the full entry\u2192exit lifecycle.",
+  "description": "Permanent audit record of every access entry, exit and denial. A single record represents the full entry\u2192exit lifecycle. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's access log to every other customer under the same reseller, including the active/on-site Live Access Log and the Exit action (confirmed live cross-customer defect 2026-09-21). Cross-tenant EXIT is additionally enforced server-side by the finalizeAccessEntry gateway before any mutation.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -271,6 +271,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         },
@@ -309,6 +314,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
@@ -351,6 +361,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]

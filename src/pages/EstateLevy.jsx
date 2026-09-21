@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CreditCard, Plus, X, TrendingDown, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export default function EstateLevy() {
+  const { withTenant } = useTenantContext();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ resident_id: "", resident_name: "", unit_number: "", monthly_levy: "", balance_due: "" });
   const [recordPayment, setRecordPayment] = useState(null);
@@ -19,7 +21,7 @@ export default function EstateLevy() {
   const { data: residents = [] } = useQuery({ queryKey: ["all_residents"], queryFn: () => base44.entities.Resident.list(), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.LevyAccount.create({ ...data, monthly_levy: Number(data.monthly_levy), balance_due: Number(data.balance_due) || Number(data.monthly_levy), status: "current" }),
+    mutationFn: (data) => base44.entities.LevyAccount.create(withTenant({ ...data, monthly_levy: Number(data.monthly_levy), balance_due: Number(data.balance_due) || Number(data.monthly_levy), status: "current" })),
     onSuccess: () => { qc.invalidateQueries(["all_levy"]); setShowForm(false); setForm({ resident_id: "", resident_name: "", unit_number: "", monthly_levy: "", balance_due: "" }); }
   });
 
@@ -40,7 +42,7 @@ export default function EstateLevy() {
           balance: newBalance
         }]
       });
-      await base44.entities.Payment.create({
+      await base44.entities.Payment.create(withTenant({
         resident_id: account.resident_id,
         resident_name: account.resident_name,
         unit_number: account.unit_number,
@@ -49,7 +51,7 @@ export default function EstateLevy() {
         status: "completed",
         paid_at: new Date().toISOString(),
         description: `Levy payment - Unit ${account.unit_number}`
-      });
+      }));
     },
     onSuccess: () => { qc.invalidateQueries(["all_levy"]); setRecordPayment(null); setPaymentAmount(""); }
   });

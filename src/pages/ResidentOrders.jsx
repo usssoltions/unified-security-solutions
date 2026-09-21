@@ -44,6 +44,8 @@ export default function ResidentOrders() {
       const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
       const deliveryFee = vendor?.delivery_fee || 0;
       return await base44.entities.Order.create({
+        customer_id: user.customer_id || undefined,
+        reseller_id: user.reseller_id || undefined,
         resident_id: user.id,
         resident_name: user.full_name,
         unit_number: user.unit_number,

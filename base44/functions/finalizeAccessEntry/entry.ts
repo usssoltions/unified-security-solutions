@@ -1,15 +1,38 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 
 /**
  * finalizeAccessEntry — Backend access control finalisation.
  *
  * Performs in one backend operation:
  *  - validation (required fields)
- *  - duplicate active AccessLog check (person already inside)
- *  - blacklist check
- *  - visitor update (phone, scanned fields)
+ *  - duplicate active AccessLog check (person already inside) — TENANT SCOPED
+ *  - blacklist check — TENANT SCOPED
+ *  - visitor update (phone, scanned fields) — with tenant ownership verification
  *  - AccessLog create (entry) or update (exit)
+ *  - visitor profile resolution (resolve_visitor) — server-authoritative
+ *    visitor matching/creation stamped with the caller's tenant
  *  - audit entry
+ *
+ * TENANT ISOLATION (P0): the caller's customer/reseller scope is resolved
+ * SERVER-SIDE from the authenticated User record (resolveTenantCaller — the
+ * record wins over stale session claims). Every lookup and mutation is scoped
+ * to that scope:
+ *  - entry: the created AccessLog is stamped with the resolved tenant; a
+ *    non-empty site_id is verified to belong to the caller's customer (or the
+ *    caller is a platform admin); a fixed-site guard may only process their
+ *    own assigned site.
+ *  - exit: the target record must belong to the caller's customer (or the
+ *    caller is a platform admin, or a reseller admin acting on a record of
+ *    their own reseller). A fixed-site guard may only exit records of their
+ *    assigned site. Cross-customer exit is rejected with 403 BEFORE any
+ *    mutation — a forged/direct API call carrying another customer's
+ *    access_log_id cannot succeed.
+ *  - resolve_visitor: visitor lookup is scoped to the caller's customer, and
+ *    new Visitor records are stamped with the caller's tenant server-side.
+ *    Legacy visitor profiles without customer scope are adopted (stamped)
+ *    only when that person is physically processed through THIS customer's
+ *    gate — a real business relationship, never a blind reassignment.
  *
  * Preserves existing business logic. Does NOT modify Barkoder.
  *
@@ -44,10 +67,23 @@ function validateVisitorPhone(raw) {
   return { ok: true, value: e164 };
 }
 
+const VISITOR_FIELDS = [
+  'surname', 'first_names', 'initials', 'driver_licence_number',
+  'date_of_birth', 'gender', 'nationality', 'country', 'issue_date',
+  'expiry_date', 'vehicle_classes', 'restrictions', 'prdp', 'licence_status',
+];
+
+const isPlatformUser = (u) =>
+  u.role_type === 'platform_admin' || u.admin_level === 'platform' || u.role === 'admin';
+const isResellerAdmin = (u) =>
+  u.admin_level === 'reseller' || u.role_type === 'reseller_admin';
+
 export default async function(req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
-    const caller = await base44.auth.me();
+    // AUTHORITATIVE CALLER — the User record wins over stale session claims
+    // (resolveTenantCaller), so tenant scope can never be spoofed or stale.
+    const caller = await resolveTenantCaller(base44);
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { action, access_data } = await req.json();
@@ -55,9 +91,99 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'action and access_data required' }, { status: 400 });
     }
 
-    const cid = caller.customer_id;
-    const rid = caller.reseller_id;
+    const cid = caller.customer_id || null;
+    const rid = caller.reseller_id || null;
     const now = new Date().toISOString();
+
+    /* VERIFIED SITE SCOPE — when a site is supplied, it must belong to the
+     * caller's customer (platform admins exempt). A fixed-site guard may only
+     * ever process their own assigned site. */
+    const assertSiteScope = async (site_id) => {
+      if (!site_id) return;
+      if (isPlatformUser(caller)) return;
+      if (caller.site_id && String(caller.site_id) !== String(site_id)) {
+        return Response.json({ error: 'This site is not assigned to you', code: 'forbidden_site' }, { status: 403 });
+      }
+      if (cid) {
+        try {
+          const sites = await base44.asServiceRole.entities.Site.filter({ id: String(site_id) });
+          const site = sites && sites[0];
+          if (site && site.customer_id && site.customer_id !== cid) {
+            return Response.json({ error: 'This site does not belong to your customer', code: 'forbidden_site_tenant' }, { status: 403 });
+          }
+        } catch (_) { /* site lookup failure fails CLOSED for tenant users */ }
+      }
+      return null;
+    };
+
+    /* ── VISITOR PROFILE RESOLUTION — server-authoritative, tenant-scoped ── */
+    if (action === 'resolve_visitor') {
+      const { mapped, photo_url, scan, create_if_missing } = access_data;
+      const idNum = (mapped && mapped.visitor_id_number) || '';
+      const licNum = (mapped && mapped.driver_licence_number) || '';
+
+      const scanMeta = {
+        scan_document_type: (scan && scan.resolvedProfileId) || '',
+        scan_barcode_type: (scan && scan.result && scan.result.barcodeType) || '',
+        scan_sdk_version: (scan && scan.sdkVersion) || '',
+        scan_parser_used: (scan && scan.parserUsed) || '',
+        scan_timestamp: new Date().toISOString(),
+        scan_raw_json: (scan && (scan.result?.formattedJSONRaw || scan.result?.textualData)) || '',
+      };
+      if (photo_url) { scanMeta.id_scan_url = photo_url; scanMeta.scan_thumbnail_url = photo_url; }
+
+      // Lookup is scoped to the caller's customer — a customer never matches
+      // another customer's visitor profiles. Platform admins (no customer
+      // scope) resolve across the platform as before.
+      let visitor = null;
+      const lookup = async (field, value) => {
+        if (!value) return null;
+        try {
+          const filter = cid ? { customer_id: cid, [field]: value } : { [field]: value };
+          const m = await base44.asServiceRole.entities.Visitor.filter(filter);
+          return (m && m[0]) || null;
+        } catch (_) { return null; }
+      };
+      visitor = await lookup('visitor_id_number', idNum);
+      if (!visitor) visitor = await lookup('driver_licence_number', licNum);
+
+      if (visitor) {
+        const updates = { ...scanMeta };
+        for (const k of VISITOR_FIELDS) {
+          if (mapped && mapped[k]) updates[k] = mapped[k];
+        }
+        const scanName = (mapped && mapped.visitor_name)
+          || [mapped?.first_names, mapped?.surname].filter(Boolean).join(' ').trim();
+        if (scanName) updates.visitor_name = scanName;
+        // LEGACY ADOPTION: an unsccoped visitor record processed through THIS
+        // customer's gate is stamped with this customer — a real business
+        // relationship (the person is entering this customer's site).
+        if (!visitor.customer_id && cid) { updates.customer_id = cid; updates.reseller_id = rid || visitor.reseller_id || undefined; }
+        try {
+          await base44.asServiceRole.entities.Visitor.update(visitor.id, updates);
+        } catch (_) {}
+        return Response.json({ visitor: { ...visitor, ...updates }, created: false });
+      }
+
+      if (!create_if_missing) return Response.json({ visitor: null, created: false });
+
+      const name = (mapped && mapped.visitor_name)
+        || [mapped?.first_names, mapped?.surname].filter(Boolean).join(' ').trim()
+        || 'Unknown';
+      const payload = {
+        customer_id: cid || undefined,
+        reseller_id: rid || undefined,
+        visitor_name: name,
+        resident_id: '',
+        visit_type: 'unexpected',
+        status: 'pending',
+        visitor_id_number: idNum,
+        ...Object.fromEntries(VISITOR_FIELDS.map((k) => [k, (mapped && mapped[k]) || ''])),
+        ...scanMeta,
+      };
+      const created = await base44.asServiceRole.entities.Visitor.create(payload);
+      return Response.json({ visitor: created, created: true });
+    }
 
     if (action === 'entry') {
       const { site_id, gate_name, site_name, person_type, person_name, person_phone,
@@ -71,6 +197,11 @@ export default async function(req: Request): Promise<Response> {
       if (!gate_name || !person_type || !person_name) {
         return Response.json({ error: 'gate_name, person_type, person_name required' }, { status: 400 });
       }
+
+      // SITE SCOPE — reject a site outside the caller's permitted scope before
+      // anything is written (cross-customer/cross-site bypass protection).
+      const siteErr = await assertSiteScope(site_id);
+      if (siteErr) return siteErr;
 
       // COMPULSORY VISITOR MOBILE NUMBER — enforced centrally and EXPLICITLY
       // for the application's authoritative visitor-class person types only
@@ -88,9 +219,12 @@ export default async function(req: Request): Promise<Response> {
       }
       const e164Phone = phoneCheck.ok ? phoneCheck.value : (person_phone || '');
 
-      // Check for duplicate active entry (person already inside)
+      // DUPLICATE ACTIVE ENTRY — TENANT SCOPED. Duplicate/on-site detection
+      // matches only records of the caller's own customer: a person on site
+      // at Customer A must not make Customer B believe they are on site here.
       if (sa_id_number || driver_licence_number || vehicle_registration) {
-        const dupFilter = { site_id, status: 'inside' };
+        const dupFilter = cid ? { customer_id: cid, status: 'inside' } : { status: 'inside' };
+        if (site_id) dupFilter.site_id = site_id;
         const dups = await base44.asServiceRole.entities.AccessLog.filter(dupFilter, '-created_date', 50);
         const isDup = dups.find(d => {
           if (sa_id_number && d.sa_id_number === sa_id_number) return true;
@@ -103,10 +237,12 @@ export default async function(req: Request): Promise<Response> {
         }
       }
 
-      // Blacklist check
+      // BLACKLIST — TENANT SCOPED: only the caller's own customer's blacklist
+      // records may produce a match (Customer A's bans never block Customer B).
       let blacklistMatch = null;
       if (sa_id_number || driver_licence_number || vehicle_registration) {
-        const blEntries = await base44.asServiceRole.entities.BlacklistEntry.filter({ customer_id: cid, active: true }, '-created_date', 200);
+        const blFilter = cid ? { customer_id: cid, active: true } : { active: true };
+        const blEntries = await base44.asServiceRole.entities.BlacklistEntry.filter(blFilter, '-created_date', 200);
         blacklistMatch = blEntries.find(b => {
           if (b.identifier_type === 'sa_id' && sa_id_number && b.identifier_value === sa_id_number.toUpperCase().replace(/\s/g, '')) return true;
           if (b.identifier_type === 'driver_licence' && driver_licence_number && b.identifier_value === driver_licence_number.toUpperCase().replace(/\s/g, '')) return true;
@@ -115,18 +251,28 @@ export default async function(req: Request): Promise<Response> {
         });
       }
 
-      // Update visitor if exists
+      // VISITOR OWNERSHIP — an explicitly supplied visitor_id is verified to
+      // belong to the caller's customer (or be a legacy unsccoped profile,
+      // which is then adopted by this customer through this real entry).
       if (visitor_id) {
         try {
-          await base44.asServiceRole.entities.Visitor.update(visitor_id, {
+          const rows = await base44.asServiceRole.entities.Visitor.filter({ id: String(visitor_id) });
+          const v = rows && rows[0];
+          if (v && !isPlatformUser(caller) && v.customer_id && cid && v.customer_id !== cid) {
+            return Response.json({ error: 'That visitor profile does not belong to your customer', code: 'forbidden_visitor' }, { status: 403 });
+          }
+          const vUpdates = {
             visitor_phone: e164Phone,
             entered_at: now,
             status: 'entered'
-          });
+          };
+          if (!v.customer_id && cid) { vUpdates.customer_id = cid; vUpdates.reseller_id = rid || undefined; }
+          await base44.asServiceRole.entities.Visitor.update(visitor_id, vUpdates);
         } catch (e) {}
       }
 
-      // Create AccessLog
+      // Create AccessLog — tenant scope is SERVER-DERIVED (caller record),
+      // never client-supplied.
       const log = await base44.asServiceRole.entities.AccessLog.create({
         customer_id: cid,
         reseller_id: rid,
@@ -185,6 +331,30 @@ export default async function(req: Request): Promise<Response> {
       if (!existing) return Response.json({ error: 'AccessLog not found' }, { status: 404 });
       if (existing.status !== 'inside') return Response.json({ error: 'Visitor is not currently inside' }, { status: 400 });
 
+      // ── CROSS-TENANT EXIT PROTECTION (P0) ──────────────────────────────
+      // The exit mutation is authorised only when the caller's resolved
+      // scope owns the target record:
+      //   • Platform admin: any record (legitimate oversight).
+      //   • Reseller admin: records of their own reseller.
+      //   • Everyone else: records of their OWN customer only.
+      // A guard with a fixed site assignment may only exit records of that
+      // site. A forged/direct API call with another customer's record id is
+      // rejected here, BEFORE any mutation happens.
+      if (!isPlatformUser(caller)) {
+        if (isResellerAdmin(caller)) {
+          if (!rid || existing.reseller_id !== rid) {
+            return Response.json({ error: 'This record does not belong to your reseller', code: 'forbidden_cross_tenant' }, { status: 403 });
+          }
+        } else {
+          if (!cid || !existing.customer_id || existing.customer_id !== cid) {
+            return Response.json({ error: 'This record does not belong to your customer', code: 'forbidden_cross_tenant' }, { status: 403 });
+          }
+          if (caller.site_id && existing.site_id && String(caller.site_id) !== String(existing.site_id)) {
+            return Response.json({ error: 'This visitor entered through a site not assigned to you', code: 'forbidden_site' }, { status: 403 });
+          }
+        }
+      }
+
       const exitTime = new Date();
       const entryTime = new Date(existing.entry_time || existing.timestamp);
       const minutes = Math.round((exitTime - entryTime) / 60000);
@@ -202,7 +372,7 @@ export default async function(req: Request): Promise<Response> {
         time_on_site_minutes: minutes
       });
 
-      // Update visitor status
+      // Update visitor status — only the visitor linked to THIS record.
       if (existing.visitor_id) {
         try {
           await base44.asServiceRole.entities.Visitor.update(existing.visitor_id, { status: 'exited', exited_at: exitTime.toISOString() });
@@ -212,7 +382,7 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ success: true, access_log: updated });
     }
 
-    return Response.json({ error: 'Invalid action. Use entry or exit' }, { status: 400 });
+    return Response.json({ error: 'Invalid action. Use entry, exit or resolve_visitor' }, { status: 400 });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

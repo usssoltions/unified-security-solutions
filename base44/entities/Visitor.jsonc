@@ -1,6 +1,7 @@
 {
   "name": "Visitor",
   "type": "object",
+  "description": "Visitor profile (expected/QR visitors, scanned pedestrians and vehicle drivers). TENANT ISOLATION: visitor profiles are customer-scoped \u2014 a customer never matches another customer's profiles (matching happens server-side via finalizeAccessEntry resolve_visitor). The reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's visitors to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21). Legacy profiles without customer scope remain visible to platform admins only until adopted through a real entry at a customer's gate.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -215,6 +216,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         },
@@ -254,6 +260,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         },
@@ -292,6 +303,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
