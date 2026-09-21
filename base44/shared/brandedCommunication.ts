@@ -127,6 +127,7 @@ export async function resolveCommunicationBrand(
     accent_color: pick(customer?.accent_color, reseller?.accent_color,
       PLATFORM_COMMUNICATION_BRAND.accent_color),
     support_email: pick(customer?.email, reseller?.support_email),
+    support_name: pick(customer?.support_name, reseller?.support_name),
     support_phone: pick(customer?.phone, reseller?.support_phone),
     website: pick(customer?.website, reseller?.website),
     address: pick(customer?.address, reseller?.address),
@@ -137,6 +138,14 @@ export async function resolveCommunicationBrand(
   };
   brandCache.set(cacheKey, brand);
   return brand;
+}
+
+/* ── Hex → [r,g,b] for PDF renderers (jsPDF) from the tenant brand ────── */
+export function hexToRgb(hex?: string | null): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return [196, 30, 58];
+  const int = parseInt(m[1], 16);
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
 }
 
 /* ── ONE shared branded EMAIL renderer ─────────────────────────────────── */

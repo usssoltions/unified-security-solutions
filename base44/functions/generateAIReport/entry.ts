@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -11,6 +13,25 @@ Deno.serve(async (req) => {
     if (user.role_type !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
+
+    // TENANT SCOPE — the report AND its branding belong to the CALLING
+    // admin's organisation. All data below is filtered to records owned by
+    // that tenant and the email identity resolves through the central
+    // resolver from the SAME tenant (Customer → Reseller → platform).
+    const tenantScope = user.customer_id
+      ? { customer_id: user.customer_id }
+      : user.reseller_id
+        ? { reseller_id: user.reseller_id }
+        : null;
+    const matchesScope = (rec) => {
+      if (!tenantScope) return !rec.customer_id && !rec.reseller_id;
+      if (tenantScope.customer_id) return rec.customer_id === tenantScope.customer_id;
+      return rec.reseller_id === tenantScope.reseller_id;
+    };
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: tenantScope?.customer_id || null,
+      reseller_id: tenantScope?.reseller_id || null,
+    });
 
     const { reportType, frequency, sites, emailRecipients } = await req.json();
 
@@ -37,7 +58,7 @@ Deno.serve(async (req) => {
         const d = new Date(item[dateField] || item.created_date);
         const dateMatch = d >= startDate && d <= now;
         const siteMatch = !sites || sites.length === 0 || sites.includes(item.site_id);
-        return dateMatch && siteMatch;
+        return dateMatch && siteMatch && matchesScope(item);
       });
 
     const filteredIncidents = filterByDateAndSites(incidents, 'reported_at');
@@ -82,7 +103,7 @@ Deno.serve(async (req) => {
 
     } else if (reportType === 'monthly_performance' || reportType === 'guard_performance') {
       reportTitle = reportType === 'monthly_performance' ? 'Monthly Guard Performance Review' : 'Guard Performance Metrics Report';
-      const guardsList = guards.filter(g => g.role_type === 'guard');
+      const guardsList = guards.filter(g => g.role_type === 'guard' && matchesScope(g));
       const lines = [`${reportTitle}`, `Period: ${periodLabel}`, ``];
 
       guardsList.forEach(g => {
@@ -167,6 +188,8 @@ Deno.serve(async (req) => {
 
     // Store report
     const reportRecord = await base44.asServiceRole.entities.GeneratedReport.create({
+      customer_id: user.customer_id || null,
+      reseller_id: user.reseller_id || null,
       title: reportTitle,
       report_type: reportType,
       content: reportContent,
@@ -191,18 +214,19 @@ Deno.serve(async (req) => {
     if (safeRecipients.length > 0) {
       await Promise.all(safeRecipients.map(email =>
         base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: brand.brand_name,
           to: email,
           subject: `${reportTitle} — ${now.toLocaleDateString()}`,
           body: `
 <html>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f8fafc;">
   <div style="max-width: 700px; margin: 0 auto;">
-    <div style="background: linear-gradient(135deg, #C41E3A 0%, #1a1a1a 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+    <div style="background: linear-gradient(135deg, ${escHtml(brand.primary_color)} 0%, ${escHtml(brand.accent_color)} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
       <h1 style="color: white; margin: 0; font-size: 22px;">${reportTitle}</h1>
       <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">${periodLabel}</p>
     </div>
     <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e2e8f0;">
-      <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #C41E3A;">
+      <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid ${escHtml(brand.primary_color)};">
         <h2 style="color: #1a1a1a; margin: 0 0 8px; font-size: 16px;">Summary Statistics</h2>
         <ul style="list-style: none; padding: 0; margin: 0; color: #475569; font-size: 14px;">
           <li style="padding: 4px 0;">Total Incidents: <strong>${filteredIncidents.length}</strong></li>
@@ -216,7 +240,7 @@ Deno.serve(async (req) => {
         <pre style="white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 13px; color: #334155; line-height: 1.7; margin: 0;">${reportContent}</pre>
       </div>
       <p style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-        Automated report — Unified Security Solutions
+        Automated report — ${escHtml(brand.brand_name)}
       </p>
     </div>
   </div>

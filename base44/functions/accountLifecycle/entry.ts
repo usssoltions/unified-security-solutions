@@ -6,6 +6,7 @@ import {
   performAccountRemoval, applySuspension, applyDeactivation, applyReactivation,
   resolveApprovers, resolveOrganisationName, auditAccountEvent, notifyUsers,
 } from '../../shared/accountLifecycle.ts';
+import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
 
 /**
  * accountLifecycle — THE ONE account lifecycle gateway.
@@ -132,11 +133,18 @@ export default async function(req: Request): Promise<Response> {
             user_agent: (req.headers.get('user-agent') || '').slice(0, 250) || null,
           });
           const verifyUrl = `${PUBLIC_APP_URL}/account-removal?token=${token}`;
+          // Brand the verification email from the TARGET ACCOUNT'S own tenant
+          // (Customer → Reseller → platform). The security wording and the
+          // anti-enumeration behaviour are unchanged.
+          const brand = await resolveCommunicationBrand(svc, {
+            customer_id: target.customer_id || null,
+            reseller_id: target.reseller_id || null,
+          });
           await svc.integrations.Core.SendEmail({
             to: email,
-            subject: 'Verify your account removal request — Unified Security Solutions',
+            subject: `Verify your account removal request — ${brand.brand_name}`,
             html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
-              <h2 style="color:#0f172a;margin:0 0 16px">Unified Security Solutions</h2>
+              <h2 style="color:#0f172a;margin:0 0 16px">${escHtml(brand.brand_name)}</h2>
               <p style="color:#334155">A request to remove your USS user account and personal information was initiated from our public account-removal page.</p>
               <p style="color:#334155"><b>This link is single-use and expires in 30 minutes.</b> If you did not request this, you can safely ignore this email — no request is created until you open the link and confirm.</p>
               <p style="margin:32px 0">
@@ -145,7 +153,7 @@ export default async function(req: Request): Promise<Response> {
               <p style="color:#64748b;font-size:12px">If the button does not work, copy this link into your browser:<br>${verifyUrl}</p>
               <p style="color:#64748b;font-size:12px">Account removal is never instant: your organisation's authorised administrator reviews every request. Security and audit records may be retained where required by law.</p>
             </div>`,
-            text: `Unified Security Solutions — verify your account removal request. Open this single-use link within 30 minutes: ${verifyUrl}. If you did not request this, ignore this email.`,
+            text: `${brand.brand_name} — verify your account removal request. Open this single-use link within 30 minutes: ${verifyUrl}. If you did not request this, ignore this email.`,
           }).catch(() => {});
         }
       }

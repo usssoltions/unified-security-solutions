@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -35,54 +36,14 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.Site.filter({}),
     ]);
 
-    const weekIncidents = incidents.filter(i => new Date(i.reported_at || i.created_date) >= weekAgo);
-    const weekMaintenance = maintenance.filter(m => new Date(m.reported_at || m.created_date) >= weekAgo);
-    const weekPatrols = patrols.filter(p => new Date(p.timestamp || p.created_date) >= weekAgo);
-    const weekShifts = shifts.filter(s => new Date(s.start_time) >= weekAgo);
-    const weekAlerts = alerts.filter(a => new Date(a.created_date) >= weekAgo);
+    const inWeek = (rec, field) => new Date(rec[field] || rec.created_date) >= weekAgo;
 
-    // Skip sending if there was absolutely no activity this week
-    if (weekShifts.length === 0 && weekIncidents.length === 0) {
-      return Response.json({ success: true, reportsSent: 0, reason: 'No activity this week' });
-    }
-
-    const siteAnalysis = sites.map(site => ({
-      name: site.name,
-      incidents: weekIncidents.filter(i => i.site_id === site.id).length,
-      criticalIncidents: weekIncidents.filter(i => i.site_id === site.id && i.priority === 'critical').length,
-      maintenance: weekMaintenance.filter(m => m.site_id === site.id).length,
-      patrols: weekPatrols.filter(p => p.site_id === site.id).length,
-    })).sort((a, b) => b.incidents - a.incidents);
-
-    const criticalCount = weekIncidents.filter(i => i.priority === 'critical').length;
-    const openIncidents = weekIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length;
-    const pendingMaintenance = weekMaintenance.filter(m => m.status !== 'completed').length;
-    const categoryBreakdown = Object.entries(
-      weekIncidents.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {})
-    ).map(([cat, count]) => `${cat}: ${count}`).join(', ');
-    const topSite = siteAnalysis[0];
-
-    const analysis = [
-      `Weekly Security Analysis: ${weekAgo.toLocaleDateString('en-ZA')} – ${today.toLocaleDateString('en-ZA')}`,
-      ``,
-      `OVERVIEW`,
-      `• ${weekIncidents.length} incident(s) — ${criticalCount} critical, ${openIncidents} still open.`,
-      `• ${weekMaintenance.length} maintenance request(s) — ${pendingMaintenance} pending.`,
-      `• ${weekPatrols.length} patrol stop(s) completed.`,
-      `• ${weekShifts.length} shift(s) worked, ${weekAlerts.length} alert(s) triggered.`,
-      ``,
-      `INCIDENT CATEGORIES`,
-      categoryBreakdown || 'No incidents this week.',
-      ``,
-      `SITE ACTIVITY (Top 5)`,
-      ...siteAnalysis.slice(0, 5).map(s => `• ${s.name}: ${s.incidents} incidents (${s.criticalIncidents} critical), ${s.maintenance} maintenance, ${s.patrols} patrols`),
-      ``,
-      topSite && topSite.incidents > 0 ? `⚠️ Highest activity site: ${topSite.name} — review security posture.` : `✅ No single site showing elevated activity.`,
-      openIncidents > 0 ? `⚠️ ${openIncidents} unresolved incident(s) require follow-up.` : `✅ All incidents resolved.`,
-    ].join('\n');
-
-    // Email only — no WhatsApp integration calls
-    const allUsers = await base44.asServiceRole.entities.User.list();
+    // TENANT GROUPING — this scheduled job runs with NO customer
+    // administrator logged in, so each recipient receives ONLY their OWN
+    // tenant's analysis, branded with their OWN tenant's effective brand
+    // (Customer → Reseller → platform), resolved from the tenant that OWNS
+    // the data. No session state, no cross-tenant data, no foreign branding.
+    const allUsers = await base44.asServiceRole.entities.User.filter({});
     const recipients = allUsers.filter(u =>
       (u.role_type === 'admin' || u.role_type === 'management' || u.role_type === 'supervisor') && u.email
     );
@@ -91,12 +52,78 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, reportsSent: 0, reason: 'No recipients' });
     }
 
-    await Promise.all(recipients.map(recipient =>
-      base44.asServiceRole.integrations.Core.SendEmail({
-        from_name: 'Unified Security Solutions',
-        to: recipient.email,
-        subject: `Weekly Security Analysis — ${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}`,
-        body: `<h2>Weekly Security Analysis Report</h2>
+    // Group recipients per owning customer; staff without a customer scope
+    // form one legacy-scope group that sees only unscoped (legacy) records.
+    const groups = new Map();
+    for (const u of recipients) {
+      const key = u.customer_id || '_platform';
+      if (!groups.has(key)) groups.set(key, { customer_id: u.customer_id || null, users: [] });
+      groups.get(key).users.push(u);
+    }
+
+    let reportsSent = 0;
+
+    for (const group of groups.values()) {
+      const scopeMatch = (rec) =>
+        group.customer_id
+          ? rec.customer_id === group.customer_id
+          : (!rec.customer_id && !rec.reseller_id);
+
+      const weekIncidents = incidents.filter(i => scopeMatch(i) && inWeek(i, 'reported_at'));
+      const weekMaintenance = maintenance.filter(m => scopeMatch(m) && inWeek(m, 'reported_at'));
+      const weekPatrols = patrols.filter(p => scopeMatch(p) && inWeek(p, 'timestamp'));
+      const weekShifts = shifts.filter(s => scopeMatch(s) && inWeek(s, 'start_time'));
+      const weekAlerts = alerts.filter(a => scopeMatch(a) && inWeek(a, 'created_date'));
+
+      // Skip tenants with absolutely no activity this week (per tenant).
+      if (weekShifts.length === 0 && weekIncidents.length === 0) continue;
+
+      const siteAnalysis = sites.filter(scopeMatch).map(site => ({
+        name: site.name,
+        incidents: weekIncidents.filter(i => i.site_id === site.id).length,
+        criticalIncidents: weekIncidents.filter(i => i.site_id === site.id && i.priority === 'critical').length,
+        maintenance: weekMaintenance.filter(m => m.site_id === site.id).length,
+        patrols: weekPatrols.filter(p => p.site_id === site.id).length,
+      })).sort((a, b) => b.incidents - a.incidents);
+
+      const criticalCount = weekIncidents.filter(i => i.priority === 'critical').length;
+      const openIncidents = weekIncidents.filter(i => i.status !== 'resolved' && i.status !== 'closed').length;
+      const pendingMaintenance = weekMaintenance.filter(m => m.status !== 'completed').length;
+      const categoryBreakdown = Object.entries(
+        weekIncidents.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {})
+      ).map(([cat, count]) => `${cat}: ${count}`).join(', ');
+      const topSite = siteAnalysis[0];
+
+      const analysis = [
+        `Weekly Security Analysis: ${weekAgo.toLocaleDateString('en-ZA')} – ${today.toLocaleDateString('en-ZA')}`,
+        ``,
+        `OVERVIEW`,
+        `• ${weekIncidents.length} incident(s) — ${criticalCount} critical, ${openIncidents} still open.`,
+        `• ${weekMaintenance.length} maintenance request(s) — ${pendingMaintenance} pending.`,
+        `• ${weekPatrols.length} patrol stop(s) completed.`,
+        `• ${weekShifts.length} shift(s) worked, ${weekAlerts.length} alert(s) triggered.`,
+        ``,
+        `INCIDENT CATEGORIES`,
+        categoryBreakdown || 'No incidents this week.',
+        ``,
+        `SITE ACTIVITY (Top 5)`,
+        ...siteAnalysis.slice(0, 5).map(s => `• ${s.name}: ${s.incidents} incidents (${s.criticalIncidents} critical), ${s.maintenance} maintenance, ${s.patrols} patrols`),
+        ``,
+        topSite && topSite.incidents > 0 ? `⚠️ Highest activity site: ${topSite.name} — review security posture.` : `✅ No single site showing elevated activity.`,
+        openIncidents > 0 ? `⚠️ ${openIncidents} unresolved incident(s) require follow-up.` : `✅ All incidents resolved.`,
+      ].join('\n');
+
+      // Effective brand for THIS tenant (Customer → Reseller → platform).
+      const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+        customer_id: group.customer_id,
+      });
+
+      await Promise.all(group.users.map(recipient =>
+        base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: brand.brand_name,
+          to: recipient.email,
+          subject: `Weekly Security Analysis — ${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}`,
+          body: `<h2>Weekly Security Analysis Report</h2>
 <h3>${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}</h3>
 <table border="1" cellpadding="10" style="border-collapse:collapse;">
   <tr><td><strong>Total Incidents</strong></td><td>${weekIncidents.length}</td></tr>
@@ -108,15 +135,17 @@ Deno.serve(async (req) => {
 <h3>Site Performance (Top 5)</h3>
 <table border="1" cellpadding="10" style="border-collapse:collapse;">
   <tr><th>Site</th><th>Incidents</th><th>Critical</th><th>Maintenance</th><th>Patrols</th></tr>
-  ${siteAnalysis.slice(0, 5).map(s => `<tr><td>${s.name}</td><td>${s.incidents}</td><td>${s.criticalIncidents}</td><td>${s.maintenance}</td><td>${s.patrols}</td></tr>`).join('')}
+  ${siteAnalysis.slice(0, 5).map(s => `<tr><td>${escHtml(s.name)}</td><td>${s.incidents}</td><td>${s.criticalIncidents}</td><td>${s.maintenance}</td><td>${s.patrols}</td></tr>`).join('')}
 </table>
 <h3>Weekly Analysis</h3>
-<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;white-space:pre-wrap;">${analysis}</pre>
-<p><em>Automated weekly report from Unified Security Solutions</em></p>`
-      }).catch(err => console.error(`Email failed to ${recipient.email}:`, err.message))
-    ));
+<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;white-space:pre-wrap;">${escHtml(analysis)}</pre>
+<p><em>Automated weekly report from ${escHtml(brand.brand_name)}</em></p>`
+        }).catch(err => console.error(`Email failed to ${recipient.email}:`, err.message))
+      ));
+      reportsSent += group.users.length;
+    }
 
-    return Response.json({ success: true, reportsSent: recipients.length, period: `${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}` });
+    return Response.json({ success: true, reportsSent, period: `${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}` });
   } catch (error) {
     console.error('Error generating weekly analysis report:', error);
     return Response.json({ success: false, error: error.message }, { status: 500 });

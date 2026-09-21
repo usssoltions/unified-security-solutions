@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { jsPDF } from 'npm:jspdf@2.5.2';
+import { resolveCommunicationBrand, hexToRgb, escHtml } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -14,6 +15,27 @@ Deno.serve(async (req) => {
     if (user.role_type !== 'admin') {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    // TENANT SCOPE — the report AND its branding belong to the CALLING admin's
+    // organisation. Every record below is filtered to records owned by that
+    // tenant, and every branded surface (PDF, email) resolves through the
+    // central resolver from the SAME tenant (Customer → Reseller → platform).
+    // A caller without a customer scope (platform admin) sees only legacy
+    // unscoped records — consistent with platform-admin visibility rules.
+    const tenantScope = user.customer_id
+      ? { customer_id: user.customer_id }
+      : user.reseller_id
+        ? { reseller_id: user.reseller_id }
+        : null;
+    const matchesScope = (rec) => {
+      if (!tenantScope) return !rec.customer_id && !rec.reseller_id;
+      if (tenantScope.customer_id) return rec.customer_id === tenantScope.customer_id;
+      return rec.reseller_id === tenantScope.reseller_id;
+    };
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: tenantScope?.customer_id || null,
+      reseller_id: tenantScope?.reseller_id || null,
+    });
 
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -33,23 +55,23 @@ Deno.serve(async (req) => {
     const currentIncidents = incidents.filter(i => {
       const date = new Date(i.reported_at || i.created_date);
       const isValidCategory = validIncidentCategories.includes(i.category);
-      return date >= currentMonthStart && date <= currentMonthEnd && isValidCategory;
+      return date >= currentMonthStart && date <= currentMonthEnd && isValidCategory && matchesScope(i);
     });
     
     const currentMaintenance = maintenance.filter(m => {
       const date = new Date(m.reported_at || m.created_date);
-      return date >= currentMonthStart && date <= currentMonthEnd;
+      return date >= currentMonthStart && date <= currentMonthEnd && matchesScope(m);
     });
 
     const prevIncidents = incidents.filter(i => {
       const date = new Date(i.reported_at || i.created_date);
       const isValidCategory = validIncidentCategories.includes(i.category);
-      return date >= prevMonthStart && date <= prevMonthEnd && isValidCategory;
+      return date >= prevMonthStart && date <= prevMonthEnd && isValidCategory && matchesScope(i);
     });
     
     const prevMaintenance = maintenance.filter(m => {
       const date = new Date(m.reported_at || m.created_date);
-      return date >= prevMonthStart && date <= prevMonthEnd;
+      return date >= prevMonthStart && date <= prevMonthEnd && matchesScope(m);
     });
 
     const calculateChange = (current, previous) => {
@@ -72,13 +94,13 @@ Deno.serve(async (req) => {
     }, {});
 
     const allUsers = await base44.asServiceRole.entities.User.filter({});
-    const recipients = allUsers.filter(u => 
-      u.role_type === 'admin' || 
+    // Recipients are scoped to the caller's OWN tenant — Customer A's board
+    // report is never emailed to Customer B's administrators.
+    const recipients = allUsers.filter(u =>
+      u.role_type === 'admin' ||
       u.role_type === 'management' ||
       u.role_type === 'supervisor'
-    );
-
-    const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/45d7f532d_ubsnew.png';
+    ).filter(u => u.email && matchesScope(u));
 
     // Generate PDF Report with enhanced visuals
     const doc = new jsPDF();
@@ -86,22 +108,23 @@ Deno.serve(async (req) => {
     const pageHeight = doc.internal.pageSize.height;
     let yPos = 20;
 
-    // BRANDED HEADER - Dark blue with red accent
-    doc.setFillColor(30, 41, 59); // Dark navy
+    // BRANDED HEADER — identity and accent colour come from the effective
+    // tenant brand resolved above (Customer → Reseller → platform).
+    const brandPrimary = hexToRgb(brand.primary_color);
+    doc.setFillColor(30, 41, 59); // neutral dark header surface
     doc.rect(0, 0, pageWidth, 40, 'F');
     
-    // Red accent bar
-    doc.setFillColor(220, 38, 38); // Red
+    doc.setFillColor(...brandPrimary);
     doc.rect(0, 40, pageWidth, 6, 'F');
     
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(26);
     doc.setFont('helvetica', 'bold');
-    doc.text('UNIFIED SECURITY SOLUTIONS', pageWidth / 2, 15, { align: 'center' });
+    doc.text(String(brand.brand_name).toUpperCase(), pageWidth / 2, 15, { align: 'center' });
     
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text('Professional Security Management & Advisory', pageWidth / 2, 23, { align: 'center' });
+    doc.text(brand.website || '', pageWidth / 2, 23, { align: 'center' });
     
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -456,7 +479,7 @@ Deno.serve(async (req) => {
     doc.rect(0, yPos, pageWidth, 20, 'F');
     doc.setTextColor(148, 163, 184);
     doc.setFontSize(8);
-    doc.text('UNIFIED SECURITY SOLUTIONS', pageWidth / 2, yPos + 8, { align: 'center' });
+    doc.text(String(brand.brand_name).toUpperCase(), pageWidth / 2, yPos + 8, { align: 'center' });
     doc.text(`Report Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPos + 14, { align: 'center' });
 
     const pdfBytes = doc.output('arraybuffer');
@@ -469,7 +492,7 @@ Deno.serve(async (req) => {
 
     const emailPromises = recipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
-        from_name: 'Unified Security Solutions',
+        from_name: brand.brand_name,
         to: recipient.email,
         subject: `Board Report: Incident & Maintenance Summary - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
         body: `
@@ -490,8 +513,8 @@ Deno.serve(async (req) => {
 <p><strong>Download Report:</strong> <a href="${pdfUrl}">Click here to download PDF</a></p>
 
 <p>Best regards,<br>
-<strong>Unified Security Solutions</strong><br>
-Professional Security Management</p>
+<strong>${escHtml(brand.brand_name)}</strong><br>
+${escHtml(brand.support_email || brand.website || '')}</p>
         `
       })
     );

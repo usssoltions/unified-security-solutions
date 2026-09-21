@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 /**
  * telegramWebhook — Receives Telegram Bot API updates via webhook.
@@ -142,7 +143,13 @@ export default async function(req: Request): Promise<Response> {
       const sharedNote = sharedWithOthers > 0
         ? '\n\nℹ️ Note: this Telegram account is also connected to another app user in the same organisation. Each user receives only their own notifications here.'
         : '';
-      await replyTelegram(botToken, chatId, '✅ Telegram notifications have been successfully connected to Unified Security Solutions. You will now receive automatic USS notifications here.' + sharedNote);
+      // Brand the confirmation from the ENROLLING user's own tenant (Customer →
+      // Reseller → platform) — never a hard-coded organisation name.
+      const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+        customer_id: enrollment.customer_id || null,
+        reseller_id: enrollment.reseller_id || null,
+      });
+      await replyTelegram(botToken, chatId, `✅ Telegram notifications have been successfully connected to ${brand.brand_name}. You will now receive automatic notifications here.` + sharedNote);
       return Response.json({ ok: true, processed: true, result: 'connected' });
     }
 
@@ -152,10 +159,13 @@ export default async function(req: Request): Promise<Response> {
       const users = await base44.asServiceRole.entities.User.filter({ telegram_chat_id: chatId }).catch(() => []);
       const exts = await base44.asServiceRole.entities.ExternalRecipient.filter({ telegram_chat_id: chatId }).catch(() => []);
 
+      // No tenant context is known for an unconnected chat — the platform brand
+      // is the only correct identity here (fail-closed: never a random tenant's).
+      const brand = await resolveCommunicationBrand(base44.asServiceRole, {});
       if (users.length || exts.length) {
-        await replyTelegram(botToken, chatId, 'ℹ️ This Telegram account is already connected. Manage notification settings in the USS app.');
+        await replyTelegram(botToken, chatId, 'ℹ️ This Telegram account is already connected. Manage notification settings in the app.');
       } else {
-        await replyTelegram(botToken, chatId, '👋 Welcome to Unified Security Solutions. Please connect Telegram from your USS application to receive notifications.');
+        await replyTelegram(botToken, chatId, `👋 Welcome to ${brand.brand_name}. Please connect Telegram from your application to receive notifications.`);
       }
       return Response.json({ ok: true, processed: true, result: 'no_token' });
     }

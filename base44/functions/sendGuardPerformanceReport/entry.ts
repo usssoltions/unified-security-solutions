@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { jsPDF } from 'npm:jspdf@2.5.2';
+import { resolveCommunicationBrand, hexToRgb, escHtml } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -13,6 +14,25 @@ Deno.serve(async (req) => {
     if (user.role_type !== 'admin') {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    // TENANT SCOPE — the report AND its branding belong to the CALLING
+    // admin's organisation (Customer → Reseller → platform). Data and
+    // recipients are filtered to that tenant; a caller without a customer
+    // scope (platform admin) sees only legacy unscoped records.
+    const tenantScope = user.customer_id
+      ? { customer_id: user.customer_id }
+      : user.reseller_id
+        ? { reseller_id: user.reseller_id }
+        : null;
+    const matchesScope = (rec) => {
+      if (!tenantScope) return !rec.customer_id && !rec.reseller_id;
+      if (tenantScope.customer_id) return rec.customer_id === tenantScope.customer_id;
+      return rec.reseller_id === tenantScope.reseller_id;
+    };
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: tenantScope?.customer_id || null,
+      reseller_id: tenantScope?.reseller_id || null,
+    });
 
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -29,21 +49,21 @@ Deno.serve(async (req) => {
 
     const currentShifts = shifts.filter(s => {
       const date = new Date(s.start_time);
-      return date >= currentMonthStart && date <= currentMonthEnd;
+      return date >= currentMonthStart && date <= currentMonthEnd && matchesScope(s);
     });
 
     const currentStayAwake = stayAwakeLogs.filter(s => {
       const date = new Date(s.alert_time);
-      return date >= currentMonthStart && date <= currentMonthEnd;
+      return date >= currentMonthStart && date <= currentMonthEnd && matchesScope(s);
     });
 
     const currentPatrols = patrolLogs.filter(p => {
       const date = new Date(p.timestamp);
-      return date >= currentMonthStart && date <= currentMonthEnd;
+      return date >= currentMonthStart && date <= currentMonthEnd && matchesScope(p);
     });
 
     // Calculate guard performance
-    const guardPerformance = guards.map(guard => {
+    const guardPerformance = guards.filter(matchesScope).map(guard => {
       const guardShifts = currentShifts.filter(s => s.guard_id === guard.id);
       const completedShifts = guardShifts.filter(s => s.status === 'completed');
       const clockedInShifts = guardShifts.filter(s => s.clock_in?.timestamp);
@@ -88,7 +108,7 @@ Deno.serve(async (req) => {
     }).filter(g => g.total_shifts > 0);
 
     // Calculate site activity
-    const siteActivity = sites.map(site => {
+    const siteActivity = sites.filter(matchesScope).map(site => {
       const siteShifts = currentShifts.filter(s => s.site_id === site.id);
       const sitePatrols = currentPatrols.filter(p => p.site_id === site.id);
       const uniqueGuards = [...new Set(siteShifts.map(s => s.guard_id))].length;
@@ -105,13 +125,13 @@ Deno.serve(async (req) => {
     }).filter(s => s.total_shifts > 0);
 
     const allUsers = await base44.asServiceRole.entities.User.filter({});
-    const recipients = allUsers.filter(u => 
-      u.role_type === 'admin' || 
+    // Recipients are scoped to the caller's OWN tenant — Customer A's board
+    // report is never emailed to Customer B's administrators.
+    const recipients = allUsers.filter(u =>
+      u.role_type === 'admin' ||
       u.role_type === 'management' ||
       u.role_type === 'supervisor'
-    );
-
-    const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/690fd37d10984f1f26cedab8/45d7f532d_ubsnew.png';
+    ).filter(u => u.email && matchesScope(u));
 
     // Generate Enhanced PDF Report
     const doc = new jsPDF();
@@ -123,17 +143,17 @@ Deno.serve(async (req) => {
     doc.setFillColor(30, 41, 59);
     doc.rect(0, 0, pageWidth, 40, 'F');
     
-    doc.setFillColor(220, 38, 38);
+    doc.setFillColor(...hexToRgb(brand.primary_color));
     doc.rect(0, 40, pageWidth, 6, 'F');
     
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(26);
     doc.setFont('helvetica', 'bold');
-    doc.text('UNIFIED SECURITY SOLUTIONS', pageWidth / 2, 15, { align: 'center' });
+    doc.text(String(brand.brand_name).toUpperCase(), pageWidth / 2, 15, { align: 'center' });
     
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text('Professional Security Management & Advisory', pageWidth / 2, 23, { align: 'center' });
+    doc.text(brand.website || '', pageWidth / 2, 23, { align: 'center' });
     
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -175,7 +195,7 @@ Deno.serve(async (req) => {
     doc.text('Overall', 170, yPos);
     yPos += 5;
 
-    doc.setDrawColor(220, 38, 38);
+    doc.setDrawColor(...hexToRgb(brand.primary_color));
     doc.line(15, yPos, pageWidth - 15, yPos);
     yPos += 5;
 
@@ -249,7 +269,7 @@ Deno.serve(async (req) => {
     doc.text('Guards', 180, yPos);
     yPos += 5;
 
-    doc.setDrawColor(220, 38, 38);
+    doc.setDrawColor(...hexToRgb(brand.primary_color));
     doc.line(15, yPos, pageWidth - 15, yPos);
     yPos += 5;
 
@@ -308,7 +328,7 @@ Deno.serve(async (req) => {
 
     const emailPromises = recipients.map(recipient =>
       base44.asServiceRole.integrations.Core.SendEmail({
-        from_name: 'Unified Security Solutions',
+        from_name: brand.brand_name,
         to: recipient.email,
         subject: `Board Report: Guard Performance & Site Activity - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
         body: `
@@ -330,8 +350,8 @@ Deno.serve(async (req) => {
 <p><strong>Download Report:</strong> <a href="${pdfUrl}">Click here to download PDF</a></p>
 
 <p>Best regards,<br>
-<strong>Unified Security Solutions</strong><br>
-Professional Security Management</p>
+<strong>${escHtml(brand.brand_name)}</strong><br>
+${escHtml(brand.support_email || brand.website || '')}</p>
 <!DOCTYPE html>
 <html>
 <head>
@@ -369,7 +389,7 @@ Professional Security Management</p>
 <body>
   <div class="container">
     <div class="header">
-      <img src="${logoUrl}" alt="Unified Security Solutions" class="logo">
+      <img src="${escHtml(brand.logo_url || '')}" alt="${escHtml(brand.brand_name)}" class="logo">
       <h1>Guard Performance & Site Activity</h1>
       <p>${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
     </div>
@@ -523,7 +543,7 @@ Professional Security Management</p>
     </div>
 
     <div class="footer">
-      <p><strong>Unified Security Solutions</strong> - Excellence in Security Performance</p>
+      <p><strong>${escHtml(brand.brand_name)}</strong></p>
       <p>Generated: ${new Date().toLocaleString()}</p>
     </div>
   </div>
