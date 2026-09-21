@@ -61,7 +61,8 @@ import {
   sendTaskTelegramDeduped, resolveTaskBrandContext,
 } from '../../shared/taskNotifications.ts';
 import { completionNotification, deadlineReport, assignmentNotification, buildAssignmentEmailHtml,
-  buildReopenedEmailHtml, newTaskListNotification, fmtSast, MY_TASKS_LINK } from '../../shared/taskReportContent.ts';
+  buildReopenedEmailHtml, newTaskListNotification, awaitingVerificationNotification,
+  fmtSast, MY_TASKS_LINK } from '../../shared/taskReportContent.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import {
   runTaskSweep, addDaysYmd, occurrenceDates, buildOccurrence,
@@ -915,6 +916,14 @@ export default async function(req) {
           const recipients = await resolveTaskRecipients(svc, task.customer_id, ((cr && cr.operator_user_ids) || []));
           if (recipients.length) {
             const brandCtx = await resolveTaskBrandContext(svc, task.customer_id);
+            const batch = await findBatch(task.task_batch_id);
+            // BRANDED EMAIL — the SAME effective tenant branding infrastructure
+            // as the working New Task List email: the ONE shared branded HTML
+            // template (customer → reseller → platform), with the plain-text
+            // body riding along as the alternative. Nothing Dogs-and-All
+            // specific is ever hardcoded — every customer resolves its own.
+            const content = awaitingVerificationNotification(updated, batch || {}, callerName,
+              brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
             const short = '"' + task.title + '" — ' + callerName + ' completed Sign-off 1. Verify in Task Queue → Awaiting Verification.';
             const eventKey = 'awaiting_verification:' + task.id + ':' + updated.completed_at;
             for (const r of recipients) {
@@ -929,11 +938,11 @@ export default async function(req) {
               }).catch(() => {});
             }
             await notifyTaskRecipients(svc, secrets, recipients, {
-              subject: 'TASK AWAITING VERIFICATION — ' + task.title,
-              emailBody: short + '\n\nOpen Task Queue → Awaiting Verification to perform Sign-off 2.',
-              telegramText: '⏳ TASK AWAITING VERIFICATION\n' + short,
-              from_name: brandCtx.brandName,
+              ...content, from_name: brandCtx.brandName,
               eventKey, actionUrl: '/ScheduledTasks',
+              // DIRECT ACTION — inline Telegram URL button so the operator
+              // can open the verification queue straight from the chat.
+              telegramButton: { text: 'REVIEW & VERIFY TASK', url: MY_TASKS_LINK },
               pushTitle: 'TASK AWAITING VERIFICATION',
               pushBody: short,
               priority: 'high',

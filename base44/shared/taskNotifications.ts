@@ -58,19 +58,38 @@ export async function sendTaskEmail(svc, { to, subject, body, html, from_name })
   }
 }
 
-export async function sendTaskTelegram(secrets, chatId, text) {
+export async function sendTaskTelegram(secrets, chatId, text, button) {
   if (!chatId) return false;
   const token = secrets.get('TELEGRAM_BOT_TOKEN');
   if (!token) return false;
+  const t0 = Date.now();
   try {
+    const payload = { chat_id: chatId, text: text.slice(0, 4000), disable_web_page_preview: true };
+    // Optional INLINE URL ACTION button (e.g. REVIEW & VERIFY TASK). Plain
+    // sendMessage with reply_markup only — no media, no parse-mode change,
+    // so delivery reliability is exactly the same as the working text path.
+    if (button && button.text && button.url) {
+      payload.reply_markup = { inline_keyboard: [[{ text: String(button.text).slice(0, 64), url: button.url }]] };
+    }
     const res = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4000), disable_web_page_preview: true }),
+      body: JSON.stringify(payload),
     });
+    // DELIVERY LOGGING — send-request timing, HTTP status, Telegram message
+    // id and any API error, so delivery delay/failure is diagnosable from
+    // the function logs. Never affects the boolean result.
+    let body = null;
+    try { body = await res.json(); } catch (_) { /* non-JSON response */ }
+    console.log('[telegram] send', JSON.stringify({
+      chat_id: chatId, request_ms: Date.now() - t0, http_status: res.status,
+      telegram_ok: !!(body && body.ok),
+      message_id: (body && body.result && body.result.message_id) || null,
+      error: (body && body.description) || null,
+    }));
     return res.ok;
   } catch (e) {
-    console.error('task telegram failed:', e?.message || e);
+    console.error('[telegram] send failed', JSON.stringify({ chat_id: chatId, request_ms: Date.now() - t0, error: e?.message || e }));
     return false;
   }
 }
@@ -81,7 +100,7 @@ export async function sendTaskTelegram(secrets, chatId, text) {
  * exactly once — per-user in-app records, per-user email and per-user audit
  * recipient records stay separate. Every attempt is logged to
  * NotificationDelivery (channel 'telegram'). */
-export async function sendTaskTelegramDeduped(svc, secrets, eventKey, chatId, text) {
+export async function sendTaskTelegramDeduped(svc, secrets, eventKey, chatId, text, button) {
   if (!chatId) return false;
   const idempKey = String(eventKey || ('tg_' + Date.now())) + ':tg:' + chatId;
   try {
@@ -89,7 +108,13 @@ export async function sendTaskTelegramDeduped(svc, secrets, eventKey, chatId, te
       { idempotency_key: idempKey }, '-created_date', 1).catch(() => []);
     if (existing && existing.length && existing[0].status === 'sent') return true;
   } catch (_) { /* idempotency check failure never blocks delivery */ }
-  const ok = await sendTaskTelegram(secrets, chatId, text);
+  // CONSERVATIVE RETRY — one immediate re-attempt on failure. A message
+  // Telegram has already CONFIRMED is never re-sent (idempotency above); a
+  // still-failing send is recorded 'failed' and the next sweep run
+  // re-attempts it (idempotency only skips status 'sent').
+  let ok = await sendTaskTelegram(secrets, chatId, text, button);
+  let retries = 0;
+  if (!ok) { retries = 1; ok = await sendTaskTelegram(secrets, chatId, text, button); }
   try {
     await svc.entities.NotificationDelivery.create({
       event_key: eventKey || ('telegram_' + Date.now()),
@@ -98,7 +123,8 @@ export async function sendTaskTelegramDeduped(svc, secrets, eventKey, chatId, te
       recipient_id: chatId,
       send_time: new Date().toISOString(),
       idempotency_key: idempKey,
-      retries: 0,
+      retries,
+      provider_response: ok ? 'accepted' : 'failed after 1 immediate retry',
     });
   } catch (_) { /* delivery logging must never break the notification */ }
   return ok;
@@ -112,7 +138,7 @@ export async function sendTaskTelegramDeduped(svc, secrets, eventKey, chatId, te
  * eventKey makes every channel idempotent per recipient (refresh/API/sweep
  * retries can never double-send). */
 export async function notifyTaskRecipients(svc, secrets, recipients, { subject, emailBody, emailHtml, telegramText, from_name,
-    eventKey, actionUrl, pushTitle, pushBody, push = true, priority = 'normal', customerId, resellerId }) {
+    eventKey, actionUrl, pushTitle, pushBody, telegramButton, push = true, priority = 'normal', customerId, resellerId }) {
   const out = { email: 0, telegram: 0, push: 0 };
   for (const r of recipients) {
     if (r.email && await sendTaskEmail(svc, { to: r.email, subject, body: emailBody, html: emailHtml, from_name })) out.email++;
@@ -121,9 +147,10 @@ export async function notifyTaskRecipients(svc, secrets, recipients, { subject, 
       // physical Telegram chat, the same logical event (event_key) reaches
       // that chat exactly once — per-user in-app/email/audit records stay
       // separate. Callers without an event key send per recipient as before.
+      // telegramButton (optional) adds the DIRECT inline URL action.
       const tgOk = eventKey
-        ? await sendTaskTelegramDeduped(svc, secrets, eventKey, r.telegram_chat_id, telegramText)
-        : await sendTaskTelegram(secrets, r.telegram_chat_id, telegramText);
+        ? await sendTaskTelegramDeduped(svc, secrets, eventKey, r.telegram_chat_id, telegramText, telegramButton)
+        : await sendTaskTelegram(secrets, r.telegram_chat_id, telegramText, telegramButton);
       if (tgOk) out.telegram++;
     }
     if (push && r.id && pushTitle && pushBody) {
@@ -137,6 +164,39 @@ export async function notifyTaskRecipients(svc, secrets, recipients, { subject, 
     }
   }
   return out;
+}
+
+/** ONE-SHOT multi-channel task event: the WHOLE event (email + Telegram +
+ * push; per-recipient in-app records are created by the caller) is
+ * dispatched at most ONCE per event key. A NotificationDelivery marker
+ * (channel 'task_event', idempotency 'task_event:<eventKey>') makes later
+ * sweep runs skip it entirely — an immediate deadline-threshold alert can
+ * never be re-sent as a duplicate, even though the sweep re-evaluates the
+ * same batch every 30 minutes. Used ONLY for deadline-crossing events
+ * (guard task overdue, verification overdue) — the 2-hour reminder cadence
+ * keeps its own per-cycle event keys. */
+export async function notifyTaskRecipientsOnce(svc, secrets, recipients, opts) {
+  const eventKey = String((opts && opts.eventKey) || ('task_event_' + Date.now()));
+  const markerKey = 'task_event:' + eventKey;
+  try {
+    const seen = await svc.entities.NotificationDelivery.filter(
+      { idempotency_key: markerKey }, '-created_date', 1).catch(() => []);
+    if (seen && seen.length) return { email: 0, telegram: 0, push: 0, skipped: true };
+  } catch (_) { /* idempotency check failure never blocks a first delivery */ }
+  const sent = await notifyTaskRecipients(svc, secrets, recipients, opts);
+  try {
+    await svc.entities.NotificationDelivery.create({
+      event_key: eventKey,
+      channel: 'task_event',
+      status: 'sent',
+      recipient_id: 'event',
+      send_time: new Date().toISOString(),
+      idempotency_key: markerKey,
+      retries: 0,
+      provider_response: 'email:' + sent.email + ' telegram:' + sent.telegram + ' push:' + sent.push,
+    });
+  } catch (_) { /* marker logging must never break the notification */ }
+  return sent;
 }
 
 /**

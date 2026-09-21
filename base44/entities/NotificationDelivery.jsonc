@@ -1,7 +1,7 @@
 {
   "name": "NotificationDelivery",
   "type": "object",
-  "description": "Delivery audit record for every notification sent through any channel. Tracks success/failure, retries, and provider response. Idempotency key prevents duplicate deliveries for the same event+recipient+channel.",
+  "description": "Delivery audit record for every notification sent through any channel. Tracks success/failure, retries, and provider response. Idempotency key prevents duplicate deliveries for the same event+recipient+channel. The 'task_event' channel marks a Task Scheduling event (e.g. a deadline-threshold overdue alert) as dispatched ONCE across all its channels \u2014 the idempotency key 'task_event:<eventKey>' makes later sweep runs skip the whole event so immediate alerts are never duplicated.",
   "properties": {
     "event_key": {
       "type": "string"
@@ -33,7 +33,8 @@
         "email",
         "in_app",
         "push",
-        "telegram"
+        "telegram",
+        "task_event"
       ]
     },
     "status": {

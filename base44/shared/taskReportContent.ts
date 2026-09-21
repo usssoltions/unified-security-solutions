@@ -519,3 +519,167 @@ export function buildReopenedEmailHtml(task, brand, brandName, assigneeName, reo
     ctaLabel: 'Open My Tasks', ctaUrl: MY_TASKS_LINK,
   });
 }
+
+/* ── Task Awaiting Verification (Sign-off 1 done → Sign-off 2 required) ──── */
+
+export function awaitingVerificationNotification(task, batch, signedOffByName, customerName, brand, brandName) {
+  const cr = task.control_room_name || (batch && batch.control_room_name) || '—';
+  const deadline = assignmentDeadlineStr(task, batch);
+  const guard = task.assigned_to_name || task.completed_by_name || '—';
+  const subject = 'TASK AWAITING VERIFICATION — ' + task.title;
+  const emailHtml = renderTaskEmail({
+    brand, brandName,
+    heading: 'Task Awaiting Verification',
+    badgeHtml: statusBadge('AWAITING VERIFICATION', 'info'),
+    introHtml: '<p style="color:#334155;font-size:14px;margin:0 0 16px"><b>' + escHtml(task.title) +
+      '</b> — ' + escHtml(signedOffByName || task.completed_by_name || 'The assigned user') +
+      ' completed Sign-off 1. Control Room verification (Sign-off 2) is now required.</p>',
+    bodyHtml: infoTable([
+      ['Customer', customerName],
+      ['Control Room', cr],
+      ['Site / service area', task.site_name || '—'],
+      ['Task List', task.task_batch_title || (batch && batch.title) || '—'],
+      ['Guard / User', guard],
+      ['Sign-off 1 Completed', fmtSast(task.completed_at)],
+      ['Deadline', deadline],
+      ['Current Status', 'Awaiting Verification'],
+      ['Primary Supervisor', (batch && batch.primary_supervisor_name) || '—'],
+    ]),
+    ctaLabel: 'REVIEW & VERIFY TASK', ctaUrl: MY_TASKS_LINK,
+  });
+  const emailBody = [
+    'TASK AWAITING VERIFICATION',
+    '',
+    'Customer: ' + customerName,
+    'Control Room: ' + cr,
+    'Site / service area: ' + (task.site_name || '—'),
+    'Task List: ' + (task.task_batch_title || (batch && batch.title) || '—'),
+    'Task: ' + task.title,
+    'Guard / user: ' + guard,
+    'Sign-off 1 completed: ' + fmtSast(task.completed_at) + ' by ' + (signedOffByName || task.completed_by_name || '—'),
+    'Deadline: ' + deadline,
+    'Current status: Awaiting Verification',
+    'Primary supervisor: ' + ((batch && batch.primary_supervisor_name) || '—'),
+    '',
+    'Open Task Queue → Awaiting Verification to perform Sign-off 2: ' + MY_TASKS_LINK,
+  ].join('\n');
+  const telegramText = '⏳ *TASK AWAITING VERIFICATION* — ' + customerName +
+    '\n' + task.title +
+    '\nGuard: ' + guard +
+    '\nControl Room: ' + cr +
+    (task.site_name ? '\nSite: ' + task.site_name : '') +
+    '\nStatus: Awaiting Verification' +
+    '\nDeadline: ' + deadline +
+    '\nReview & verify: ' + MY_TASKS_LINK;
+  return { subject, emailBody, emailHtml, telegramText };
+}
+
+/* ── VERIFICATION OVERDUE (State B — Sign-off 1 done, deadline passed,
+      Sign-off 2 outstanding — distinct from a plain overdue task) ───────── */
+
+export function verificationOverdueNotification(task, batch, customerName, brand, brandName) {
+  const cr = task.control_room_name || (batch && batch.control_room_name) || '—';
+  const deadline = assignmentDeadlineStr(task, batch);
+  const guard = task.assigned_to_name || task.completed_by_name || '—';
+  const signoff1 = (task.completed_by_name || 'The assigned user') + ' — ' + fmtSast(task.completed_at);
+  const subject = 'VERIFICATION OVERDUE — ' + task.title;
+  const emailHtml = renderTaskEmail({
+    brand, brandName,
+    heading: 'Verification Overdue',
+    badgeHtml: statusBadge('VERIFICATION OVERDUE', 'danger'),
+    introHtml: '<p style="color:#334155;font-size:14px;margin:0 0 16px"><b>' + escHtml(task.title) + '</b> — ' +
+      escHtml(task.completed_by_name || 'The assigned user') +
+      ' completed Sign-off 1, but Control Room verification has not been completed by the deadline.</p>',
+    bodyHtml:
+      sectionCard(
+        cardLabel('Verification Outstanding', '#ef4444') +
+        '<p style="margin:0;font-size:14px;color:#991b1b">Sign-off 1 was completed, but Sign-off 2 (Control Room verification) is still outstanding past the deadline. The task remains verifiable — perform Sign-off 2 now and capture the late reason.</p>',
+        '#ef4444') +
+      infoTable([
+        ['Customer', customerName],
+        ['Control Room', cr],
+        ['Site / service area', task.site_name || '—'],
+        ['Task List', task.task_batch_title || (batch && batch.title) || '—'],
+        ['Guard / User', guard],
+        ['Sign-off 1 Completed', signoff1],
+        ['Deadline', deadline],
+        ['Current Status', 'Awaiting Verification'],
+        ['Primary Supervisor', (batch && batch.primary_supervisor_name) || '—'],
+      ]),
+    ctaLabel: 'REVIEW & VERIFY TASK', ctaUrl: MY_TASKS_LINK,
+  });
+  const emailBody = [
+    'VERIFICATION OVERDUE',
+    '',
+    'Customer: ' + customerName,
+    'Control Room: ' + cr,
+    'Site / service area: ' + (task.site_name || '—'),
+    'Task List: ' + (task.task_batch_title || (batch && batch.title) || '—'),
+    'Task: ' + task.title,
+    (task.completed_by_name || 'The assigned user') + ' completed Sign-off 1, but Control Room verification has not been completed by the deadline.',
+    'Sign-off 1 completed: ' + signoff1,
+    'Deadline: ' + deadline,
+    'Current status: Awaiting Verification',
+    'Primary supervisor: ' + ((batch && batch.primary_supervisor_name) || '—'),
+    '',
+    'Review & verify now: ' + MY_TASKS_LINK,
+  ].join('\n');
+  const telegramText = '⚠️ *VERIFICATION OVERDUE* — ' + customerName +
+    '\n' + task.title +
+    '\n' + (task.completed_by_name || 'The assigned user') + ' completed Sign-off 1, but Control Room verification has not been completed by the deadline.' +
+    '\nControl Room: ' + cr +
+    '\nDeadline: ' + deadline +
+    '\nStatus: Awaiting Verification' +
+    '\nReview & verify: ' + MY_TASKS_LINK;
+  return { subject, emailBody, emailHtml, telegramText };
+}
+
+/* ── GUARD TASK OVERDUE (State A — deadline passed, Sign-off 1 NOT done) ── */
+
+export function guardOverdueNotification(task, batch, customerName, brand, brandName) {
+  const cr = task.control_room_name || (batch && batch.control_room_name) || '—';
+  const deadline = assignmentDeadlineStr(task, batch);
+  const subject = 'TASK OVERDUE — ' + task.title;
+  const emailHtml = renderTaskEmail({
+    brand, brandName,
+    heading: 'Task Overdue',
+    badgeHtml: statusBadge('TASK OVERDUE', 'danger'),
+    introHtml: '<p style="color:#334155;font-size:14px;margin:0 0 16px"><b>' + escHtml(task.title) +
+      '</b> — the deadline has passed without the assigned sign-off (Sign-off 1).</p>',
+    bodyHtml: infoTable([
+      ['Customer', customerName],
+      ['Control Room', cr],
+      ['Site / service area', task.site_name || '—'],
+      ['Task List', task.task_batch_title || (batch && batch.title) || '—'],
+      ['Assigned To', task.assigned_to_name || 'Unassigned'],
+      ['Deadline', deadline],
+      ['Current Status', 'Overdue — Sign-off 1 outstanding'],
+      ['Primary Supervisor', (batch && batch.primary_supervisor_name) || '—'],
+    ]),
+    ctaLabel: 'Open Task Scheduling', ctaUrl: MY_TASKS_LINK,
+  });
+  const emailBody = [
+    'TASK OVERDUE',
+    '',
+    'Customer: ' + customerName,
+    'Control Room: ' + cr,
+    'Site / service area: ' + (task.site_name || '—'),
+    'Task List: ' + (task.task_batch_title || (batch && batch.title) || '—'),
+    'Task: ' + task.title,
+    'Assigned to: ' + (task.assigned_to_name || 'Unassigned'),
+    'Deadline: ' + deadline,
+    'Current status: Overdue — Sign-off 1 has not been completed.',
+    'Primary supervisor: ' + ((batch && batch.primary_supervisor_name) || '—'),
+    '',
+    'Open Task Scheduling: ' + MY_TASKS_LINK,
+  ].join('\n');
+  const telegramText = '🔴 *TASK OVERDUE* — ' + customerName +
+    '\n' + task.title +
+    '\nAssigned to: ' + (task.assigned_to_name || 'Unassigned') +
+    '\nControl Room: ' + cr +
+    (task.site_name ? '\nSite: ' + task.site_name : '') +
+    '\nDeadline: ' + deadline +
+    '\nSign-off 1 has not been completed.' +
+    '\nOpen Task Scheduling: ' + MY_TASKS_LINK;
+  return { subject, emailBody, emailHtml, telegramText };
+}

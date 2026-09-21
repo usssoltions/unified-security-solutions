@@ -14,10 +14,11 @@
  * module's ONE shared tenant-branded email template.
  */
 import {
-  sastTodayYmd, sastInstantYmd, resolveTaskRecipients, notifyTaskRecipients,
+  sastTodayYmd, sastInstantYmd, resolveTaskRecipients, notifyTaskRecipients, notifyTaskRecipientsOnce,
   logTaskAudit, resolveTaskBrandContext,
 } from './taskNotifications.ts';
-import { reminderNotification, deadlineReport, reasonRequiredNotification } from './taskReportContent.ts';
+import { reminderNotification, deadlineReport, reasonRequiredNotification,
+  verificationOverdueNotification, guardOverdueNotification, fmtSast, MY_TASKS_LINK } from './taskReportContent.ts';
 
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const PRIORITIES = ['low', 'medium', 'high', 'critical'];
@@ -174,7 +175,7 @@ export function buildOccurrenceBatch(series, ymd, seriesId) {
 export async function runTaskSweep(svc, secrets) {
   const today = sastTodayYmd();
   const cutoff = addDaysYmd(today, -SWEEP_CATCHUP_DAYS);
-  const results = { occurrences_generated: 0, reminders_sent: 0, reports_generated: 0, tasks_marked_overdue: 0, reasons_required: 0 };
+  const results = { occurrences_generated: 0, reminders_sent: 0, reports_generated: 0, tasks_marked_overdue: 0, reasons_required: 0, overdue_alerts_sent: 0 };
 
   // 1. Early-exit check FIRST: any recent unreported occurrence batches?
   //    (Series parents are excluded — occurrences drive the workflow.)
@@ -278,6 +279,77 @@ export async function runTaskSweep(svc, secrets) {
     } else if (!batch.report_generated_at) {
       // ── Deadline reached: overdue marking + REASON-GATED report ──
       if (outstanding.length) {
+        // ── IMMEDIATE OVERDUE ALERTS (one-shot, deadline-threshold) ──
+        // TWO DISTINCT overdue states, evaluated BEFORE the status flatten:
+        //   STATE A — GUARD TASK OVERDUE: deadline passed, Sign-off 1 NOT
+        //             completed (the assigned task itself is overdue).
+        //   STATE B — VERIFICATION OVERDUE: Sign-off 1 completed but Sign-off
+        //             2 (Control Room verification) outstanding past the
+        //             deadline — clearly identified as VERIFICATION OVERDUE,
+        //             never reported as a plain overdue task.
+        // Each alert is delivered AT MOST ONCE per task+threshold (event
+        // marker via notifyTaskRecipientsOnce) — later 30-minute sweep runs
+        // can never duplicate the immediate alert. The 2-hour reminder
+        // cadence (active window only) and the reason gate below continue
+        // unchanged; no second reminder engine exists here.
+        const crRows = await svc.entities.ControlRoom.filter({ id: batch.control_room_id }).catch(() => []);
+        const cr = (crRows && crRows[0]) || null;
+        const operatorIds = (cr && cr.operator_user_ids) || [];
+        const brandCtx = await getBrandCtx(batch.customer_id);
+        const deadlineInstant = batch.scheduled_date + 'T' + (batch.deadline_time || '00:00') + ':00+02:00';
+        for (const t of outstanding) {
+          const verificationOverdue = !!(t.completed_at && !t.verified);
+          // Stable event key per task + threshold: the Sign-off 1 timestamp
+          // for State B (a rejected/reworked sign-off earns a fresh alert),
+          // the deadline instant for State A.
+          const eventKey = verificationOverdue
+            ? 'task_verification_overdue:' + t.id + ':' + t.completed_at
+            : 'task_guard_overdue:' + t.id + ':' + (t.due_date || deadlineInstant);
+          const deadlineStr = fmtSast(t.due_date || deadlineInstant);
+          // Recipients — resolved SERVER-SIDE, strictly this batch's tenant:
+          // the room's ACTIVE operators + the primary supervisor (escalation)
+          // + the batch's configured additional recipients; State A also
+          // includes the assigned guard (their task is overdue). Operators of
+          // OTHER rooms and OTHER customers can never resolve here.
+          const recipientIds = [batch.primary_supervisor_id].concat(operatorIds,
+            batch.additional_notification_user_ids || [], verificationOverdue ? [] : [t.assigned_to]);
+          const recipients = await resolveTaskRecipients(svc, batch.customer_id, recipientIds);
+          if (!recipients.length) continue;
+          const active = recipients.filter((r) => r.status !== 'suspended' && r.status !== 'inactive');
+          const content = verificationOverdue
+            ? verificationOverdueNotification(t, batch, brandCtx.customerName, brandCtx.brand, brandCtx.brandName)
+            : guardOverdueNotification(t, batch, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
+          const alertTitle = (verificationOverdue ? 'VERIFICATION OVERDUE — ' : 'TASK OVERDUE — ') + t.title;
+          const alertMsg = verificationOverdue
+            ? (t.completed_by_name || 'The assigned user') + ' completed Sign-off 1, but Control Room verification has not been completed by the deadline (' + deadlineStr + ').'
+            : 'Deadline ' + deadlineStr + ' passed without Sign-off 1' + (t.assigned_to_name ? ' from ' + t.assigned_to_name : '') + '.';
+          // In-app bell record for every ACTIVE recipient — drives the shared
+          // ForegroundAlertBanner (visual alert + chime) while the app is open.
+          for (const r of active) {
+            await svc.entities.Notification.create({
+              customer_id: batch.customer_id, reseller_id: batch.reseller_id || null,
+              recipient_id: r.id, recipient_name: r.name,
+              type: 'status_change', priority: 'high',
+              title: alertTitle, message: alertMsg,
+              related_entity: 'OperationalTask', related_id: t.id,
+              action_url: '/ScheduledTasks', sent_via: ['in_app'],
+            }).catch(() => {});
+          }
+          // Branded email + Telegram (inline REVIEW & VERIFY TASK action on
+          // State B) + native push — ONE-SHOT per task+threshold.
+          const sent = await notifyTaskRecipientsOnce(svc, secrets, active, {
+            ...content, from_name: brandCtx.brandName,
+            eventKey, actionUrl: '/ScheduledTasks',
+            telegramButton: { text: verificationOverdue ? 'REVIEW & VERIFY TASK' : 'OPEN TASK SCHEDULING', url: MY_TASKS_LINK },
+            pushTitle: alertTitle,
+            pushBody: alertMsg,
+            priority: 'high',
+            customerId: batch.customer_id, resellerId: batch.reseller_id || null });
+          await logTaskAudit(svc, { event_type: verificationOverdue ? 'task.verification_overdue_alert' : 'task.guard_overdue_alert', actor: null, task: t,
+            from_status: t.status, to_status: 'overdue',
+            notes: alertTitle + ' (immediate overdue alert) — email:' + sent.email + ' telegram:' + sent.telegram + ' push:' + sent.push });
+          results.overdue_alerts_sent++;
+        }
         await svc.entities.OperationalTask.updateMany(
           { task_batch_id: batch.id, status: { $in: ALL_OPEN_STATUSES } },
           { $set: { status: 'overdue' } }).catch(() => {});
