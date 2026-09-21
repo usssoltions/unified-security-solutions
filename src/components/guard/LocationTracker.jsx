@@ -76,6 +76,8 @@ export default function LocationTracker({ user, shift, enabled, emergency = fals
       };
 
       const record = {
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         guard_id: user.id,
         guard_name: getUserDisplayName(user),
         badge_number: user.badge_number,

@@ -70,6 +70,15 @@ export default async function(req: Request): Promise<Response> {
       }
       query = { customer_id: caller.customer_id };
       pendingQuery = { customer_id: caller.customer_id, status: 'pending' };
+    } else if (body.colleagues && caller.customer_id) {
+      // CHAT / operational contact discovery: a non-admin tenant user may
+      // list users of their OWN customer only (never reseller-wide, never
+      // platform-wide, never invitations). Previously the chat UI called
+      // User.list() directly, which the platform only permits to platform
+      // admins — guards got an empty selector and admins got cross-tenant
+      // user discovery.
+      query = { customer_id: caller.customer_id };
+      pendingQuery = null;
     } else {
       query = { id: caller.id };
       pendingQuery = null; // non-admins manage no invitations

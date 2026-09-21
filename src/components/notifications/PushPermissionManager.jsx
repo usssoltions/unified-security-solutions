@@ -64,12 +64,17 @@ export default function PushPermissionManager({ user, variant = "card" }) {
 
   const registered = regs.length > 0;
   const permission = osPermission();
+  // State reporting distinguishes: device registration, OS permission, the
+  // user's own push preference, and delivery-channel uncertainty (test push).
+  // "enabled" is NEVER shown from a preference alone — it requires a
+  // registered device AND granted OS permission AND the preference on.
   const status = useMemo(() => {
     if (!registered) return "device_not_registered";
-    if (permission === "granted") return "enabled";
     if (permission === "denied") return "disabled";
-    return "permission_required";
-  }, [registered, permission]);
+    if (permission === "default") return "permission_required";
+    const anyDelivering = regs.some(r => r.status === "active" && r.push_enabled !== false);
+    return anyDelivering ? "enabled" : "paused";
+  }, [registered, permission, regs]);
 
   const register = async () => {
     setBusy(true); setError(null); setTestResult(null);
@@ -148,6 +153,7 @@ export default function PushPermissionManager({ user, variant = "card" }) {
     disabled: { label: "Notifications Disabled", tone: "text-rose-400", Icon: BellOff, desc: "Notifications are blocked for this app in your device settings." },
     permission_required: { label: "Permission Required", tone: "text-amber-400", Icon: BellRing, desc: "This device is registered — allow notifications when prompted." },
     device_not_registered: { label: "Device Not Registered", tone: "text-slate-400", Icon: Smartphone, desc: "Register this device to receive operational push notifications." },
+    paused: { label: "Notifications Paused", tone: "text-amber-400", Icon: BellOff, desc: "Push is switched off in your preferences for this device. Turn it back on to receive operational notifications." },
   }[status];
 
   return (

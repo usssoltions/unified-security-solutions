@@ -1,7 +1,7 @@
 {
   "name": "PendingTenantScope",
   "type": "object",
-  "description": "Holds tenant scoping (reseller_id / customer_id / site_id / role_type / admin_level) for an invited user whose User record does not exist yet (the invitee has not accepted the invitation). A User-create automation (applyPendingTenantScope) consumes these records when the invitee accepts and the User record is created, applying the scoping server-side. One record per email (upsert by email). This is NOT a separate invitation system \u2014 the invitation itself is sent via base44.users.inviteUser; this entity only queues the tenant scoping to apply on acceptance. NULLABLE FIELDS: inviteTenantUser legitimately writes explicit nulls (admin_level null for operational roles, site_id/reseller_id/customer_id/name/phone null when unset) \u2014 the platform's field validation rejects nulls on plain string fields, so these fields MUST declare type [\"string\", \"null\"] (live regression 2026-09-07: every Security Guard invitation failed at the scope-create stage).",
+  "description": "Holds tenant scoping (reseller_id / customer_id / site_id / role_type / admin_level) for an invited user whose User record does not exist yet (the invitee has not accepted the invitation). A User-create automation (applyPendingTenantScope) consumes these records when the invitee accepts and the User record is created, applying the scoping server-side. One record per email (upsert by email). This is NOT a separate invitation system \u2014 the invitation itself is sent via base44.users.inviteUser; this entity only queues the tenant scoping to apply on acceptance. NULLABLE FIELDS: inviteTenantUser legitimately writes explicit nulls (admin_level null for operational roles, site_id/reseller_id/customer_id/name/phone null when unset) \u2014 the platform's field validation rejects nulls on plain string fields, so these fields MUST declare type [\"string\", \"null\"] (live regression 2026-09-07: every Security Guard invitation failed at the scope-create stage). TENANT ISOLATION: the reseller_id branches are reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every sibling customer's pending invitations (names, emails, phones) to every user under the same reseller (confirmed cross-customer defect class 2026-09-21). Customer admins reach their invitations through the getTenantUsers gateway (server-side scoping).",
   "properties": {
     "email": {
       "type": "string",
@@ -153,6 +153,11 @@
           }
         },
         {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
           "$and": [
             {
               "data.reseller_id": "{{user.data.reseller_id}}"
@@ -160,6 +165,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
@@ -174,6 +184,11 @@
           }
         },
         {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
           "$and": [
             {
               "data.reseller_id": "{{user.data.reseller_id}}"
@@ -181,6 +196,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
@@ -195,6 +215,11 @@
           }
         },
         {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
           "$and": [
             {
               "data.reseller_id": "{{user.data.reseller_id}}"
@@ -203,15 +228,29 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
       ]
     },
     "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "PlatformAuditLog",
   "type": "object",
-  "description": "Platform-level audit trail for security-sensitive operations: user profile changes, permission changes, module entitlement changes, support access, configuration changes, and medical record access where required. Sensitive clinical values are NOT copied into audit logs.",
+  "description": "Platform-level audit trail for security-sensitive operations: user profile changes, permission changes, module entitlement changes, support access, configuration changes, and medical record access where required. Sensitive clinical values are NOT copied into audit logs. TENANT ISOLATION: the reseller_id read branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every sibling customer's audit history (user names, IP addresses, entity references) to every user under the same reseller (confirmed cross-customer defect class 2026-09-21). Users see their own audit entries; customer branches remain customer-scoped; platform admins retain oversight.",
   "properties": {
     "event_type": {
       "type": "string",
@@ -68,6 +68,11 @@
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -76,6 +81,11 @@
         {
           "user_condition": {
             "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
           }
         },
         {
@@ -99,6 +109,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         },
@@ -108,14 +123,32 @@
       ]
     },
     "update": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     },
     "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

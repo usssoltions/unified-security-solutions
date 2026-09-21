@@ -1,6 +1,7 @@
 {
   "name": "WhatsAppContact",
   "type": "object",
+  "description": "PLATFORM-SHARED WhatsApp contact directory (role-tagged operational contacts used by dispatchers/supervisors to compose wa.me notification links). VERIFIED 2026-09-21: contains NO customer, site or tenant-owned data \u2014 it is the platform's own contact directory, consumed via src/lib/whatsapp.js by tenant operational users, so read is deliberately OPEN (this app requires login app-wide, so open = authenticated users only, never anonymous). All WRITE operations are platform-admin-only. If this directory ever becomes tenant-specific, add customer_id/reseller_id and apply the standard tenant read pattern.",
   "properties": {
     "name": {
       "type": "string",
@@ -31,20 +32,70 @@
   ],
   "rls": {
     "create": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     },
-    "read": null,
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "reseller"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "user"
+          }
+        }
+      ]
+    },
     "update": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

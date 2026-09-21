@@ -107,6 +107,8 @@ Provide a detailed analysis including:
 
       // Create assignment
       await base44.entities.Assignment.create({
+        customer_id: incident?.customer_id || undefined,
+        reseller_id: incident?.reseller_id || undefined,
         type: "incident",
         title: incident.title,
         description: incident.description,
@@ -122,6 +124,8 @@ Provide a detailed analysis including:
 
       // Create alert for guard
       await base44.entities.Alert.create({
+        customer_id: incident?.customer_id || undefined,
+        reseller_id: incident?.reseller_id || undefined,
         type: "assignment",
         priority: analysis.recommended_priority,
         title: "New Incident Assignment",

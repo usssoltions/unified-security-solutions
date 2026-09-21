@@ -48,3 +48,20 @@ export async function fetchTenantUsersInRoles(roles = []) {
   const users = await fetchTenantUsers();
   return users.filter(u => roles.includes(u.role_type));
 }
+
+/**
+ * Colleagues of the CALLER for chat / operational contact discovery —
+ * server-scoped by the getTenantUsers gateway. Admin roles receive their
+ * authorised scope; a NON-ADMIN tenant user receives users of their OWN
+ * customer only (never reseller-wide, never platform-wide); a user with no
+ * tenant scope receives only themselves. Replaces the previous direct
+ * User.list(), which the platform permits only to platform admins.
+ */
+export async function fetchTenantColleagues() {
+  const res = await base44.functions.invoke("getTenantUsers", { colleagues: true });
+  const d = unwrapFunctionPayload(res);
+  if (!d || !Array.isArray(d.users)) {
+    throw new Error("User list response was malformed — no users array returned.");
+  }
+  return d.users;
+}

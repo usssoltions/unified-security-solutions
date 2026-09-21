@@ -108,6 +108,8 @@ export default function IncidentEscalationMonitor({ user }) {
         await Promise.allSettled(emailPromises);
 
         await base44.entities.Alert.create({
+          customer_id: incident?.customer_id || undefined,
+          reseller_id: incident?.reseller_id || undefined,
           type: 'system',
           priority: 'critical',
           title: 'Incident Escalated',
@@ -174,6 +176,8 @@ export default function IncidentEscalationMonitor({ user }) {
           });
 
           await base44.entities.Alert.create({
+            customer_id: incident?.customer_id || undefined,
+            reseller_id: incident?.reseller_id || undefined,
             type: 'assignment',
             priority: 'high',
             title: 'Escalated Incident Assigned',

@@ -264,6 +264,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
 
       const alarm = await base44.entities.AlarmResponse.create({
         ...alarmPayload,
+        customer_id: currentUser?.customer_id || undefined,
+        reseller_id: currentUser?.reseller_id || undefined,
         dispatched_by: currentUser.id,
         dispatched_by_name: getUserDisplayName(currentUser),
         dispatched_at: new Date().toISOString(),
@@ -279,6 +281,8 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
           message: `You have been dispatched to respond to ${alarmPayload.alarm_type.replace(/_/g, ' ')} at ${alarmPayload.address}. ${alarmPayload.client_name ? `Client: ${alarmPayload.client_name}` : ''}`,
           guard_id: alarmPayload.assigned_to,
           guard_name: alarmPayload.assigned_to_name,
+          customer_id: currentUser?.customer_id || undefined,
+          reseller_id: currentUser?.reseller_id || undefined,
           status: "active",
           metadata: { alarm_id: alarm.id, address: alarmPayload.address }
         }).catch(() => {});

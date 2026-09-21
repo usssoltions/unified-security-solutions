@@ -119,6 +119,8 @@ Provide detailed, actionable insights that can help prevent future incidents.`;
         const riskSummary = `AI Risk Analysis: ${response.overall_risk_assessment}`;
         
         await base44.entities.Alert.create({
+          customer_id: user?.customer_id || undefined,
+          reseller_id: user?.reseller_id || undefined,
           type: "system",
           priority: "high",
           title: "🤖 AI Risk Prediction Available",

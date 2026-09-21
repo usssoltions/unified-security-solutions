@@ -1,7 +1,7 @@
 {
   "name": "VotingQuestion",
   "type": "object",
-  "description": "Estate module: Voting question/poll for resident engagement. Residents vote on estate matters. Votes are cast atomically via the `castVote` backend function to guarantee ballot integrity (dedup, open/closed enforcement). Tracks votes per option.",
+  "description": "Estate module: Voting question/poll for resident engagement. Residents vote on estate matters. Votes are cast atomically via the `castVote` backend function to guarantee ballot integrity (dedup, open/closed enforcement). Tracks votes per option. TENANT ISOLATION: reads are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's polls (incl. voted_user_ids) to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -85,6 +85,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -104,6 +109,11 @@
     },
     "read": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -130,6 +140,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
@@ -137,6 +152,11 @@
     },
     "update": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -157,9 +177,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

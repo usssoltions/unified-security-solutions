@@ -80,6 +80,8 @@ export default function AlarmNotification({ user }) {
               });
 
               await base44.entities.Alert.create({
+                customer_id: user?.customer_id || undefined,
+                reseller_id: user?.reseller_id || undefined,
                 type: "assignment",
                 priority: "high",
                 title: "Guard Arrived On Scene",

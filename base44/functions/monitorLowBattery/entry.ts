@@ -66,6 +66,9 @@ Deno.serve(async (req) => {
         message: `${location.guard_name || 'Guard'} device battery at ${location.battery_level}%. Immediate charging required.`,
         guard_id: guardId,
         guard_name: location.guard_name,
+        // Tenant stamp — so RLS-scoped tenant users can read the alert.
+        customer_id: location.customer_id || undefined,
+        reseller_id: location.reseller_id || undefined,
         status: 'active',
         metadata: { battery_level: location.battery_level, location: location.location }
       });

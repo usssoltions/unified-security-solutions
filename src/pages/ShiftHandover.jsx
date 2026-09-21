@@ -103,6 +103,8 @@ export default function ShiftHandover() {
   const createHandoverMutation = useMutation({
     mutationFn: async (data) => {
       const handover = await base44.entities.ShiftHandover.create({
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         shift_id: activeShift.id,
         site_id: activeShift.site_id,
         site_name: activeShift.site_name,

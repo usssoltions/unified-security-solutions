@@ -9,6 +9,7 @@ import { MessageCircle, Send, Mic, StopCircle, Play, X, AlertCircle, Volume2, Ph
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { getTenantContextFromUser } from "@/hooks/useTenantContext";
+import { fetchTenantColleagues } from "@/lib/tenantLookups";
 
 export default function GuardChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -31,13 +32,17 @@ export default function GuardChat({ user, onClose }) {
     }
   });
 
+  // Tenant-scoped contact discovery — the getTenantUsers gateway resolves
+  // the caller's organisation server-side (own customer only for guards).
+  // The previous direct User.list() is platform-admin-only and returned an
+  // empty supervisor selector for guards.
   const { data: supervisors = [] } = useQuery({
-    queryKey: ["supervisors"],
+    queryKey: ["supervisors", user.id],
     queryFn: async () => {
-      const users = await base44.entities.User.list();
-      return users.filter(u => 
-        u.role_type === "admin" || 
-        u.role_type === "dispatcher" || 
+      const users = await fetchTenantColleagues();
+      return users.filter(u =>
+        u.role_type === "admin" ||
+        u.role_type === "dispatcher" ||
         u.role_type === "supervisor"
       );
     }

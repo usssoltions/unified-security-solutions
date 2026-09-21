@@ -100,6 +100,8 @@ export default function AIPatrolGuidance({ user, shift, location }) {
       });
 
       await base44.entities.PatrolLog.create({
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         guard_id: user.id,
         guard_name: getUserDisplayName(user),
         shift_id: shift.id,

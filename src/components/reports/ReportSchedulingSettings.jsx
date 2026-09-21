@@ -74,18 +74,13 @@ export default function ReportSchedulingSettings() {
     queryFn: async () => await base44.auth.me(),
   });
 
+  // Own preferences come straight from the authenticated user record — the
+  // previous direct User.filter({id}) is platform-admin-only and silently
+  // failed for tenant users (and was a direct User-entity query from UI).
   useEffect(() => {
-    const loadPreferences = async () => {
-      try {
-        const prefs = await base44.entities.User.filter({ id: user?.id });
-        if (prefs[0]?.report_email_preferences) {
-          setCustomEmails(prefs[0].report_email_preferences.custom_emails || []);
-        }
-      } catch (error) {
-        console.error("Failed to load preferences:", error);
-      }
-    };
-    if (user) loadPreferences();
+    if (user?.report_email_preferences) {
+      setCustomEmails(user.report_email_preferences.custom_emails || []);
+    }
   }, [user]);
 
   const toggleMutation = useMutation({

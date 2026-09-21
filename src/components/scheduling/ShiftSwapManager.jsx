@@ -70,6 +70,8 @@ export default function ShiftSwapManager({ user }) {
       const targetGuard = guards.find(g => g.id === data.target_guard_id);
 
       const swapRequest = await base44.entities.ShiftSwapRequest.create({
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         requesting_guard_id: user.id,
         requesting_guard_name: user.full_name,
         target_guard_id: data.target_guard_id,

@@ -184,6 +184,8 @@ ${aiReport.ai_insights}
 
         // Save generated report
         const report = await base44.entities.GeneratedReport.create({
+          customer_id: user?.customer_id || undefined,
+          reseller_id: user?.reseller_id || undefined,
           title: `Shift Report - ${shift.site_name} - ${new Date().toLocaleDateString()}`,
           report_type: "shift_end",
           template_id: template.id,

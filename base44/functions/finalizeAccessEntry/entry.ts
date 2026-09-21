@@ -185,6 +185,64 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ visitor: created, created: true });
     }
 
+    /* ── MANUAL QR-DENY — audit-only denied record. Tenant ownership is
+     * derived SERVER-SIDE from the authenticated caller (never from the
+     * client payload), and a supplied site must pass the same scope
+     * assertion as a real entry. Previously the client wrote this record
+     * directly with a client-supplied customer_id. */
+    if (action === 'deny') {
+      const d = access_data || {};
+      if (!d.gate_name) return Response.json({ error: 'gate_name required' }, { status: 400 });
+      const siteErr = await assertSiteScope(d.site_id || caller.site_id || undefined);
+      if (siteErr) return siteErr;
+      const log = await base44.asServiceRole.entities.AccessLog.create({
+        customer_id: cid || undefined,
+        reseller_id: rid || undefined,
+        site_id: d.site_id || caller.site_id || undefined,
+        site_name: d.site_name || caller.site_name || '',
+        event_type: 'denied',
+        status: 'denied',
+        person_type: d.person_type || 'unknown',
+        person_id: d.person_id || '',
+        person_name: d.person_name || 'Unknown',
+        person_phone: d.person_phone || '',
+        visitor_id: d.visitor_id || '',
+        unit_number: d.unit_number || '',
+        gate_name: d.gate_name,
+        scan_method: d.scan_method || 'qr_code',
+        scanned_data: d.scanned_data || '',
+        qr_code: d.qr_code || '',
+        driver_licence_number: d.driver_licence_number || '',
+        sa_id_number: d.sa_id_number || '',
+        vehicle_registration: d.vehicle_registration || '',
+        vehicle_licence_disc_number: d.vehicle_licence_disc_number || '',
+        vehicle_vin: d.vehicle_vin || '',
+        vehicle_make: d.vehicle_make || '',
+        vehicle_model: d.vehicle_model || '',
+        vehicle_colour: d.vehicle_colour || '',
+        vehicle_licence_number: d.vehicle_licence_number || '',
+        destination: d.destination || '',
+        visitor_type: d.visitor_type || '',
+        visit_or_work: d.visit_or_work || 'none',
+        work_type: d.work_type || '',
+        parsed_json: d.parsed_json || '',
+        confidence: d.confidence ?? null,
+        device: d.device || '',
+        photo_url: d.photo_url || '',
+        location: d.location || null,
+        entry_time: now,
+        exit_time: null,
+        time_on_site_minutes: null,
+        timestamp: now,
+        guard_id: caller.id,
+        guard_name: caller.full_name || caller.email || '',
+        flagged: true,
+        flag_reason: d.flag_reason || 'Manually denied at the gate',
+        notes: d.notes || '',
+      });
+      return Response.json({ log });
+    }
+
     if (action === 'entry') {
       const { site_id, gate_name, site_name, person_type, person_name, person_phone,
               person_id, scan_method, visitor_id, destination, visit_or_work, work_type,

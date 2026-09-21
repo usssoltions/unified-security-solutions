@@ -35,6 +35,8 @@ export default function ReportTemplateManager({ user, onClose }) {
   const createTemplateMutation = useMutation({
     mutationFn: (data) => base44.entities.ReportTemplate.create({
       ...data,
+      customer_id: user?.customer_id || undefined,
+      reseller_id: user?.reseller_id || undefined,
       created_by: user.id
     }),
     onSuccess: () => {

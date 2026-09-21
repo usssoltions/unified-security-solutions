@@ -195,7 +195,7 @@ export default function GuardPatrol() {
 
     // Save patrol log — queue offline if no connection
     if (isOnline()) {
-      await base44.entities.PatrolLog.create(patrolLogData).catch(() =>
+      await base44.entities.PatrolLog.create({ ...patrolLogData, customer_id: user?.customer_id || undefined, reseller_id: user?.reseller_id || undefined }).catch(() =>
         saveOffline("pending_patrol", patrolLogData)
       );
     } else {
@@ -285,6 +285,8 @@ export default function GuardPatrol() {
       message: `${user?.full_name} triggered emergency during patrol at ${activePatrol?.site_name || "site"}.`,
       guard_id: user?.id,
       guard_name: user?.full_name,
+      customer_id: user?.customer_id || undefined,
+      reseller_id: user?.reseller_id || undefined,
       site_id: activePatrol?.site_id,
       location: gps,
       status: "active",

@@ -1,6 +1,7 @@
 {
   "name": "LocationTracking",
   "type": "object",
+  "description": "Live guard GPS tracking point. TENANT ISOLATION: reads are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's live guard locations to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21). Guards see their own tracking; platform admins retain oversight.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -74,6 +75,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -101,6 +107,11 @@
       "$or": [
         {
           "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
             "admin_level": "platform"
           }
         },
@@ -125,6 +136,11 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         },
@@ -138,6 +154,11 @@
     },
     "update": {
       "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
         {
           "user_condition": {
             "admin_level": "platform"
@@ -164,9 +185,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

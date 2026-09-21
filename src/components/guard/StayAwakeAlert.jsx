@@ -16,6 +16,8 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
     
     if (!alertSent) {
       base44.entities.StayAwakeLog.create({
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         guard_id: shift.guard_id,
         guard_name: shift.guard_name,
         shift_id: shift.id,
@@ -136,6 +138,8 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
     const alertTime = new Date(Date.now() - (60 - timeRemaining) * 1000).toISOString();
 
     await base44.entities.StayAwakeLog.create({
+      customer_id: user?.customer_id || undefined,
+      reseller_id: user?.reseller_id || undefined,
       guard_id: shift.guard_id,
       guard_name: shift.guard_name,
       shift_id: shift.id,

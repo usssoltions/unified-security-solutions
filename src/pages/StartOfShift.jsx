@@ -166,6 +166,8 @@ export default function StartOfShift() {
 
       // Create shift handover record with full report details
       const handoverData = {
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         shift_id: shift.id,
         site_id: shift.site_id,
         site_name: site?.name,

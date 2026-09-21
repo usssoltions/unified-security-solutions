@@ -1,7 +1,7 @@
 {
   "name": "ResellerEntitlement",
   "type": "object",
-  "description": "Records which commercial USS modules a reseller is authorised to offer/provision to its customers. Platform Admin grants these; a reseller can never enable a module USS has not authorised here. Customer module allocation is limited to the modules enabled on the reseller's ResellerEntitlement records. module_key is a free string (no enum) so future modules are supported without schema changes.",
+  "description": "Records which commercial USS modules a reseller is authorised to offer/provision to its customers. Platform Admin grants these; a reseller can never enable a module USS has not authorised here. Customer module allocation is limited to the modules enabled on the reseller's ResellerEntitlement records. module_key is a free string (no enum) so future modules are supported without schema changes. TENANT ISOLATION: the reseller_id read branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes the reseller's commercial licence terms to every customer user under that reseller (confirmed cross-customer defect class 2026-09-21). Granting (create/update/delete) remains platform-only; customers resolve entitlements through server-side gateways.",
   "properties": {
     "reseller_id": {
       "type": "string",
@@ -63,15 +63,29 @@
   ],
   "rls": {
     "create": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     },
     "read": {
       "$or": [
         {
           "user_condition": {
             "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
           }
         },
         {
@@ -83,20 +97,43 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
       ]
     },
     "update": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     },
     "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

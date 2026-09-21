@@ -81,6 +81,8 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
 
       // Notify control room
       await base44.entities.Alert.create({
+        customer_id: alarm?.customer_id || undefined,
+        reseller_id: alarm?.reseller_id || undefined,
         type: "system",
         priority: "medium",
         title: "Alarm Response Completed",
@@ -91,6 +93,8 @@ export default function CompleteAlarmResponse({ alarm, onClose, onSuccess }) {
       // Create incident report if not false alarm
       if (alarm.alarm_type !== "false_alarm") {
         await base44.entities.Incident.create({
+          customer_id: alarm?.customer_id || undefined,
+          reseller_id: alarm?.reseller_id || undefined,
           title: `Alarm Response: ${alarm.alarm_type}`,
           description: formData.summary,
           category: alarm.alarm_type.includes("burglary") ? "theft" : "other",

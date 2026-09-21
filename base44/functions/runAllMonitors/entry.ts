@@ -97,18 +97,21 @@ Deno.serve(async (req) => {
             const completed = patrol.route_checkpoints?.filter(cp => cp.completed).length || 0;
             if (completed >= total) continue;
             if (alertedPatrolIds.has(patrol.id)) continue;
+            // NEVER FAIL-OPEN — resolve the patrol's authoritative tenant
+            // server-side. Unresolvable scope ⇒ NO external notification and
+            // an audit entry; never all admins / unrelated customers.
+            const scope = await resolvePatrolTenant(patrol);
+            // Tenant-stamped alert so RLS-scoped tenant users can read it.
             await base44.asServiceRole.entities.Alert.create({
               type: 'patrol_overdue', priority: 'critical',
               title: '⏰ Overdue Patrol Route',
               message: `${patrol.assigned_to_name} patrol at ${patrol.site_name} is overdue. ${completed}/${total} checkpoints completed.`,
               guard_id: patrol.assigned_to, guard_name: patrol.assigned_to_name,
               site_id: patrol.site_id, status: 'active',
+              customer_id: scope?.customer_id || undefined,
+              reseller_id: scope?.reseller_id || undefined,
               metadata: { patrol_id: patrol.id, checkpoints_completed: completed, total_checkpoints: total }
             });
-            // NEVER FAIL-OPEN — resolve the patrol's authoritative tenant
-            // server-side. Unresolvable scope ⇒ NO external notification and
-            // an audit entry; never all admins / unrelated customers.
-            const scope = await resolvePatrolTenant(patrol);
             const targets = scope ? scopedSupervisors(scope) : [];
             if (!scope) {
               await base44.asServiceRole.entities.PlatformAuditLog.create({
@@ -197,7 +200,9 @@ Deno.serve(async (req) => {
               title: '⚠️ Missed Clock-In',
               message: `${shift.guard_name || 'Guard'} missed clock-in at ${shift.site_name}.`,
               guard_id: shift.guard_id, guard_name: shift.guard_name,
-              site_id: shift.site_id, shift_id: shift.id, status: 'active'
+              site_id: shift.site_id, shift_id: shift.id, status: 'active',
+              customer_id: shift.customer_id || undefined,
+              reseller_id: shift.reseller_id || undefined
             });
             // RECIPIENTS: the affected GUARD + tenant-scoped operational
             // supervisors. Every channel failure-isolated; deterministic
@@ -303,6 +308,8 @@ Deno.serve(async (req) => {
               title: '🔋 Low Battery Alert',
               message: `${location.guard_name || 'Guard'} device battery at ${location.battery_level}%.`,
               guard_id: guardId, guard_name: location.guard_name, status: 'active',
+              customer_id: location.customer_id || undefined,
+              reseller_id: location.reseller_id || undefined,
               metadata: { battery_level: location.battery_level }
             });
             await base44.asServiceRole.entities.Notification.create({

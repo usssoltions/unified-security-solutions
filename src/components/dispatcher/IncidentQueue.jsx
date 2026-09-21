@@ -33,6 +33,8 @@ export default function IncidentQueue({ incidents, guards }) {
       const guardsArray = Array.isArray(guards) ? guards : [];
       const guard = guardsArray.find(g => g.guard_id === assignToGuard);
       await base44.entities.Assignment.create({
+        customer_id: selectedIncident?.customer_id || undefined,
+        reseller_id: selectedIncident?.reseller_id || undefined,
         type: "incident",
         title: `Respond to ${selectedIncident.category} incident`,
         description: selectedIncident.description,
@@ -49,6 +51,8 @@ export default function IncidentQueue({ incidents, guards }) {
 
       // Create alert for guard
       await base44.entities.Alert.create({
+        customer_id: selectedIncident?.customer_id || undefined,
+        reseller_id: selectedIncident?.reseller_id || undefined,
         type: "assignment",
         priority: selectedIncident.priority,
         title: "New Assignment",

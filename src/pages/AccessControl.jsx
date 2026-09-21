@@ -400,58 +400,50 @@ export default function AccessControl() {
         }
       }
 
-      // Manual QR deny — audit record only, entry NOT completed.
+      // Manual QR deny — audit record only, entry NOT completed. Routed
+      // through the central gateway: tenant ownership (customer/reseller) is
+      // derived SERVER-SIDE from the authenticated caller and the site
+      // scope is asserted — never a client-supplied customer_id.
       if (denied) {
         const gps = await getGPS();
-        const now = new Date().toISOString();
-        const log = {
-          customer_id: user?.customer_id || "",
-          reseller_id: user?.reseller_id || "",
-          site_id: user?.site_id || "",
-          site_name: user?.site_name || "",
-          event_type: "denied",
-          status: "denied",
-          person_type: personType,
-          person_id: v?.id || "",
-          person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
-          person_phone: v?.visitor_phone || "",
-          visitor_id: v?.id || "",
-          unit_number: v?.unit_number || "",
-          gate_name: gate,
-          scan_method: "qr_code",
-          scanned_data: qrPayload || scan?.result?.textualData || "",
-          qr_code: qrPayload || "",
-          driver_licence_number: mapped.driver_licence_number || "",
-          sa_id_number: v?.visitor_id_number || mapped.visitor_id_number || "",
-          vehicle_registration: disc.registration_number || v?.vehicle_registration || "",
-          vehicle_licence_disc_number: disc.licence_number || "",
-          vehicle_vin: disc.vin || "",
-          vehicle_make: disc.make || "",
-          vehicle_model: disc.model || "",
-          vehicle_colour: disc.colour || "",
-          vehicle_licence_number: disc.licence_number || "",
-          destination: destination || v?.destination || "",
-          visitor_type: v?.visitor_entry_type || "",
-          visit_or_work: purpose || "none",
-          work_type: workType || "",
-          parsed_json: scan?.result?.formattedJSONRaw || licenceScan?.result?.formattedJSONRaw || "",
-          confidence: (scan?.result?.parsed || licenceScan?.result?.parsed) ? 100 : 40,
-          device: getDeviceDescriptor(),
-          photo_url: scan?.photoUrl || licenceScan?.photoUrl || "",
-          location: gps,
-          entry_time: now,
-          exit_time: null,
-          time_on_site_minutes: null,
-          timestamp: now,
-          guard_id: user?.id,
-          guard_name: getUserDisplayName(user),
-          flagged: true,
-          flag_reason: "QR not recognised",
-          blacklist_match_id: "",
-          notes: "",
-        };
-        const created = await base44.entities.AccessLog.create(log);
-        setResult({ ...log, id: created?.id });
+        const denyRes = await base44.functions.invoke("finalizeAccessEntry", {
+          action: "deny",
+          access_data: {
+            site_id: user?.site_id || undefined,
+            site_name: user?.site_name || "",
+            gate_name: gate,
+            person_type: personType,
+            person_id: v?.id || "",
+            person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
+            person_phone: v?.visitor_phone || "",
+            visitor_id: v?.id || "",
+            unit_number: v?.unit_number || "",
+            scan_method: "qr_code",
+            scanned_data: qrPayload || scan?.result?.textualData || "",
+            qr_code: qrPayload || "",
+            driver_licence_number: mapped.driver_licence_number || "",
+            sa_id_number: v?.visitor_id_number || mapped.visitor_id_number || "",
+            vehicle_registration: disc.registration_number || v?.vehicle_registration || "",
+            vehicle_licence_disc_number: disc.licence_number || "",
+            vehicle_vin: disc.vin || "",
+            vehicle_make: disc.make || "",
+            vehicle_model: disc.model || "",
+            vehicle_colour: disc.colour || "",
+            vehicle_licence_number: disc.licence_number || "",
+            destination: destination || v?.destination || "",
+            visitor_type: v?.visitor_entry_type || "",
+            visit_or_work: purpose || "none",
+            work_type: workType || "",
+            parsed_json: scan?.result?.formattedJSONRaw || licenceScan?.result?.formattedJSONRaw || "",
+            confidence: (scan?.result?.parsed || licenceScan?.result?.parsed) ? 100 : 40,
+            device: getDeviceDescriptor(),
+            photo_url: scan?.photoUrl || licenceScan?.photoUrl || "",
+            location: gps,
+            flag_reason: "QR not recognised",
+          },
+        });
+        const created = denyRes?.data?.log || denyRes?.log;
+        setResult(created ? { ...created, event_type: "denied", status: "denied", gate_name: gate } : null);
         resetWorkflow();
         qc.invalidateQueries(["access_logs_recent"]);
         setTimeout(() => setResult(null), 8000);

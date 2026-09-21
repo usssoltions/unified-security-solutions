@@ -55,6 +55,8 @@ export default function SupervisorTrainingManager({ user, onClose }) {
   const createModuleMutation = useMutation({
     mutationFn: (data) => base44.entities.TrainingModule.create({
       ...data,
+      customer_id: user?.customer_id || undefined,
+      reseller_id: user?.reseller_id || undefined,
       created_by: user.id,
       created_by_name: user.full_name
     }),
@@ -70,6 +72,8 @@ export default function SupervisorTrainingManager({ user, onClose }) {
       for (const guardId of data.guards) {
         const guard = guards.find(g => g.id === guardId);
         await base44.entities.TrainingAssignment.create({
+          customer_id: user?.customer_id || undefined,
+          reseller_id: user?.reseller_id || undefined,
           training_module_id: selectedModule.id,
           training_title: selectedModule.title,
           assigned_to: guardId,
@@ -83,6 +87,8 @@ export default function SupervisorTrainingManager({ user, onClose }) {
         });
 
         await base44.entities.Alert.create({
+          customer_id: user?.customer_id || undefined,
+          reseller_id: user?.reseller_id || undefined,
           type: "assignment",
           priority: data.priority,
           title: "📚 Training Assignment",

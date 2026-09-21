@@ -55,6 +55,8 @@ export default function SupervisorPatrolPlanner({ user, onClose }) {
       
       const plan = await base44.entities.PatrolPlan.create({
         ...planData,
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         site_name: selectedSite?.name,
         assigned_to_name: assignedGuard?.guard_name,
         shift_id: assignedGuard?.id,
@@ -64,6 +66,8 @@ export default function SupervisorPatrolPlanner({ user, onClose }) {
       });
 
       await base44.entities.Alert.create({
+        customer_id: user?.customer_id || undefined,
+        reseller_id: user?.reseller_id || undefined,
         type: "assignment",
         priority: planData.priority,
         title: "📍 New Patrol Plan Assigned",

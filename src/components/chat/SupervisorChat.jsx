@@ -11,6 +11,7 @@ import { MessageCircle, Send, Mic, StopCircle, X, Users, Radio, Volume2, Phone }
 import RealtimeVoiceCall from "@/components/voice/RealtimeVoiceCall";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { getTenantContextFromUser } from "@/hooks/useTenantContext";
+import { fetchTenantGuards } from "@/lib/tenantLookups";
 
 export default function SupervisorChat({ user, onClose }) {
   const [message, setMessage] = useState("");
@@ -30,12 +31,11 @@ export default function SupervisorChat({ user, onClose }) {
     queryFn: async () => base44.entities.ChatMessage.list("-created_date", 200)
   });
 
+  // Tenant-scoped guard discovery via the getTenantUsers gateway — never a
+  // platform-wide User.list().
   const { data: guards = [] } = useQuery({
-    queryKey: ["guards"],
-    queryFn: async () => {
-      const users = await base44.entities.User.list();
-      return users.filter(u => u.role_type === "guard");
-    }
+    queryKey: ["guards", user.id],
+    queryFn: async () => fetchTenantGuards()
   });
 
   const { data: sites = [] } = useQuery({
@@ -103,8 +103,11 @@ export default function SupervisorChat({ user, onClose }) {
     try {
       const file = new File([recordedAudio.blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { reseller_id, customer_id } = getTenantContextFromUser(user);
 
       sendMessageMutation.mutate({
+        customer_id,
+        reseller_id,
         sender_id: user.id,
         sender_name: getUserDisplayName(user),
         sender_role: user.role_type,

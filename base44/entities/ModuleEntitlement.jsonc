@@ -1,7 +1,7 @@
 {
   "name": "ModuleEntitlement",
   "type": "object",
-  "description": "Records which commercial modules are licensed for a customer or site. Navigation and backend access are gated by these entitlements \u2014 never rely on UI hiding alone. A customer's module allocation must be a subset of the modules licensed to the reseller (ResellerEntitlement); this is enforced server-side by the manageCustomerEntitlement backend function.",
+  "description": "Records which commercial modules are licensed for a customer or site. Navigation and backend access are gated by these entitlements \u2014 never rely on UI hiding alone. A customer's module allocation must be a subset of the modules licensed to the reseller (ResellerEntitlement); this is enforced server-side by the manageCustomerEntitlement backend function. TENANT ISOLATION: customers read their OWN entitlements only; the reseller_id branches are reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch lets any user under a reseller read, create or modify every sibling customer's entitlements (confirmed cross-customer defect class 2026-09-21).",
   "properties": {
     "reseller_id": {
       "type": "string"
@@ -62,6 +62,11 @@
           }
         },
         {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
           "$and": [
             {
               "data.reseller_id": "{{user.data.reseller_id}}"
@@ -69,6 +74,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
@@ -83,6 +93,11 @@
           }
         },
         {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
           "$and": [
             {
               "data.reseller_id": "{{user.data.reseller_id}}"
@@ -90,6 +105,11 @@
             {
               "data.reseller_id": {
                 "$ne": null
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
               }
             }
           ]
@@ -116,6 +136,11 @@
           }
         },
         {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        },
+        {
           "$and": [
             {
               "data.reseller_id": "{{user.data.reseller_id}}"
@@ -124,15 +149,29 @@
               "data.reseller_id": {
                 "$ne": null
               }
+            },
+            {
+              "user_condition": {
+                "admin_level": "reseller"
+              }
             }
           ]
         }
       ]
     },
     "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

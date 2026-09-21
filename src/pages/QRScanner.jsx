@@ -360,7 +360,7 @@ export default function QRScanner() {
         return;
       }
 
-      await base44.entities.PatrolLog.create(patrolRecord);
+      await base44.entities.PatrolLog.create({ ...patrolRecord, customer_id: user?.customer_id || undefined, reseller_id: user?.reseller_id || undefined });
 
       if (checklistItems.length > 0) {
         await base44.entities.ChecklistCompletion.create({
