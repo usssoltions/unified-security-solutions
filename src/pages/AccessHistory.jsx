@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, Search, ArrowUpDown, Shield, User } from "lucide-react";
+import { dedupePersonName } from "@/lib/personName";
 
 const COLUMNS = [
   { key: "timestamp", label: "Date/Time" },
@@ -89,7 +90,7 @@ export default function AccessHistory() {
     const header = COLUMNS.map((c) => c.label).join(",");
     const rows = filtered.map((l) =>
       COLUMNS.map((c) => {
-        const val = fmt(l[c.key]);
+        const val = c.key === "person_name" ? dedupePersonName(l.person_name) : fmt(l[c.key]);
         return `"${(val || "").replace(/"/g, '""')}"`;
       }).join(",")
     );
@@ -223,7 +224,7 @@ export default function AccessHistory() {
                     <td key={c.key} className="px-3 py-2 text-slate-200 whitespace-nowrap">
                       {c.key === "event_type"
                         ? <Badge className={l.event_type === "entry" ? "bg-emerald-600" : l.event_type === "exit" ? "bg-amber-600" : "bg-rose-600"}>{l.event_type}</Badge>
-                        : fmt(l[c.key])}
+                        : c.key === "person_name" ? dedupePersonName(l.person_name) : fmt(l[c.key])}
                     </td>
                   ))}
                 </tr>
@@ -242,7 +243,7 @@ export default function AccessHistory() {
                     ? <img src={l.photo_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
                     : <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-slate-300" /></div>}
                   <div className="min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{l.person_name || "Unknown"}</p>
+                    <p className="text-white text-sm font-medium truncate">{dedupePersonName(l.person_name)}</p>
                     <p className="text-slate-400 text-xs">{fmt(l.timestamp)}</p>
                   </div>
                 </div>

@@ -22,6 +22,7 @@ import ExitConfirmModal from "@/components/access/ExitConfirmModal";
 import OverrideModal from "@/components/access/OverrideModal";
 import MobileStep from "@/components/access/MobileStep";
 import { can, PERMISSIONS } from "@/lib/permissions";
+import { formatVisitorName, dedupePersonName } from "@/lib/personName";
 import { useToast } from "@/components/ui/use-toast";
 
 const MODES = [
@@ -160,7 +161,7 @@ export default function AccessControl() {
     if (!candidates.length) {
       setResult({
         flagged: true, flag_reason: "No active entry found for this visitor",
-        person_name: visitor?.visitor_name || "Unknown", person_type: "visitor",
+        person_name: formatVisitorName(visitor), person_type: "visitor",
         event_type: "exit", status: "denied", gate_name: gate, timestamp: new Date().toISOString(),
       });
       resetWorkflow();
@@ -292,7 +293,7 @@ export default function AccessControl() {
       setQrVisitor(visitor);
       setQrStatus({
         label: "ACCESS DENIED — BLACKLISTED",
-        message: `${visitor.visitor_name}${visitor.surname ? " " + visitor.surname : ""} is on the blacklist (${(blMatch.reason || "other").replace(/_/g, " ")}). Entry is blocked. A supervisor override is required to proceed.`,
+        message: `${formatVisitorName(visitor)} is on the blacklist (${(blMatch.reason || "other").replace(/_/g, " ")}). Entry is blocked. A supervisor override is required to proceed.`,
       });
       setStep("qr_invalid");
       return;
@@ -386,7 +387,7 @@ export default function AccessControl() {
           setResult({
             flagged: true,
             flag_reason: "Already on site — duplicate entry blocked",
-            person_name: rec.person_name || v?.visitor_name || "Unknown",
+            person_name: rec.person_name ? dedupePersonName(rec.person_name) : formatVisitorName(v),
             person_type: "visitor",
             event_type: "entry",
             status: "denied",
@@ -414,7 +415,7 @@ export default function AccessControl() {
             gate_name: gate,
             person_type: personType,
             person_id: v?.id || "",
-            person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
+            person_name: formatVisitorName(v),
             person_phone: v?.visitor_phone || "",
             visitor_id: v?.id || "",
             unit_number: v?.unit_number || "",
@@ -461,7 +462,7 @@ export default function AccessControl() {
         site_name: user?.site_name || "",
         person_type: personType,
         person_id: v?.id || "",
-        person_name: v?.visitor_name ? (v.surname ? `${v.visitor_name} ${v.surname}` : v.visitor_name) : "Unknown",
+        person_name: formatVisitorName(v),
         person_phone: mobile || v?.visitor_phone || "",
         visitor_id: v?.id || "",
         unit_number: v?.unit_number || "",
@@ -496,7 +497,7 @@ export default function AccessControl() {
           setResult({
             flagged: true,
             flag_reason: "Already on site — duplicate entry blocked",
-            person_name: v?.visitor_name || "Unknown",
+            person_name: formatVisitorName(v),
             person_type: "visitor",
             event_type: "entry",
             status: "denied",
@@ -756,7 +757,7 @@ export default function AccessControl() {
                       ? <img src={licenceScan.photoUrl} alt="visitor" className="w-16 h-20 rounded-lg object-cover border border-slate-600" />
                       : <div className="w-16 h-20 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center"><User className="w-7 h-7 text-slate-500" /></div>}
                     <div className="min-w-0 flex-1">
-                      <p className="text-white font-bold text-lg truncate">{qrVisitor.visitor_name} {qrVisitor.surname ? qrVisitor.surname : ""}</p>
+                      <p className="text-white font-bold text-lg truncate">{formatVisitorName(qrVisitor)}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge className={qrVisitor.visitor_entry_type === "vehicle" ? "bg-sky-600" : "bg-emerald-600"}>
                           {qrVisitor.visitor_entry_type === "vehicle" ? "VEHICLE VISITOR" : "PEDESTRIAN VISITOR"}
@@ -807,7 +808,7 @@ export default function AccessControl() {
                     <button key={rec.id} onClick={() => pickExitRecord(rec)}
                       className="w-full text-left rounded-xl border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 p-3 flex items-center gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-white text-sm font-medium truncate">{rec.person_name || "Unknown"}</p>
+                        <p className="text-white text-sm font-medium truncate">{dedupePersonName(rec.person_name)}</p>
                         <p className="text-slate-400 text-xs truncate">{rec.gate_name} • entered {new Date(rec.entry_time || rec.timestamp).toLocaleTimeString()}</p>
                         {rec.vehicle_registration && <p className="text-slate-500 text-xs">{rec.vehicle_registration}</p>}
                       </div>
@@ -823,7 +824,7 @@ export default function AccessControl() {
                 {pendingVisitor && <VisitorCard visitor={pendingVisitor} meta={pendingMeta} photoUrl={licenceScan?.photoUrl} />}
                 <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 space-y-1">
                   <p className="text-amber-200 text-xs font-semibold uppercase tracking-wide">Active entry to close</p>
-                  <p className="text-white text-sm font-medium">{activeRecord.person_name || "Unknown"}</p>
+                  <p className="text-white text-sm font-medium">{dedupePersonName(activeRecord.person_name)}</p>
                   <p className="text-slate-300 text-xs">{activeRecord.gate_name} • entered {new Date(activeRecord.entry_time || activeRecord.timestamp).toLocaleString()}</p>
                   {activeRecord.vehicle_registration && <p className="text-slate-400 text-xs">Vehicle: {activeRecord.vehicle_registration}</p>}
                   <p className="text-emerald-400 text-sm font-semibold">
@@ -847,7 +848,7 @@ export default function AccessControl() {
                   {result.flagged ? <XCircle className="w-7 h-7 text-rose-400" /> : <CheckCircle2 className="w-7 h-7 text-emerald-400" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-bold truncate">{result.person_name || "Unknown"}</p>
+                  <p className="text-white font-bold truncate">{dedupePersonName(result.person_name)}</p>
                   <p className="text-slate-300 text-sm capitalize">{result.person_type} • {result.event_type} logged</p>
                   {result.destination && <p className="text-slate-400 text-xs">Destination: {result.destination}</p>}
                   {result.work_type && <p className="text-slate-400 text-xs">Work: {result.work_type}</p>}
@@ -890,7 +891,7 @@ export default function AccessControl() {
                       ? <img src={log.photo_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
                       : <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-slate-300" /></div>}
                     <div className="min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{log.person_name || "Unknown"}</p>
+                      <p className="text-white text-sm font-medium truncate">{dedupePersonName(log.person_name)}</p>
                       <p className="text-slate-400 text-xs truncate">
                         {log.gate_name} • {new Date(log.timestamp).toLocaleTimeString()}
                         {log.destination ? ` • → ${log.destination}` : ""}

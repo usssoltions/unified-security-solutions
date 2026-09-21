@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { User, Clock } from "lucide-react";
+import { formatVisitorName } from "@/lib/personName";
 
 export default function VisitorCard({ visitor, meta, photoUrl }) {
   if (!visitor) return null;
@@ -13,7 +14,7 @@ export default function VisitorCard({ visitor, meta, photoUrl }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="text-white font-semibold text-base truncate">{visitor.visitor_name || "Unknown"}</p>
+          <p className="text-white font-semibold text-base truncate">{formatVisitorName(visitor)}</p>
           <Badge className={created ? "bg-sky-600 text-[10px]" : "bg-emerald-600 text-[10px]"}>
             {created ? "NEW PROFILE" : "MATCHED"}
           </Badge>
