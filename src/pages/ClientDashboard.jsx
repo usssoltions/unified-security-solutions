@@ -7,6 +7,9 @@ import { BarChart3, Shield, AlertTriangle, FileText, MapPin, Loader2, TrendingUp
 import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
 import moment from "moment";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { useBranding } from "@/hooks/useBranding";
+import { resolveBrand } from "@/lib/branding";
+import BrandLogo from "@/components/branding/BrandLogo";
 
 export default function ClientDashboard() {
   const [user, setUser] = useState(null);
@@ -16,6 +19,11 @@ export default function ClientDashboard() {
   const [recentAccess, setRecentAccess] = useState([]);
   const [recentReports, setRecentReports] = useState([]);
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
+  // Effective tenant branding — resolved SERVER-SIDE by getWhiteLabelBranding
+  // from the calling user's OWN customer → owning reseller → platform (never
+  // from client-selected state or a previously viewed customer).
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const brand = resolveBrand(branding);
 
   useEffect(() => { loadData(); }, []);
 
@@ -68,12 +76,24 @@ export default function ClientDashboard() {
     <div className="min-h-screen bg-slate-950 p-4 sm:p-6">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 bg-sky-500 rounded-xl flex items-center justify-center">
-            <BarChart3 className="w-6 h-6 text-white" />
-          </div>
-          <div>
+          {brand.logoUrl ? (
+            <BrandLogo
+              logoUrl={brand.logoUrl}
+              logoBackground={brand.logoBackground}
+              alt={brand.appName || "Logo"}
+              containerClassName="h-12 w-auto max-w-[180px] rounded-xl shrink-0"
+              whitePaddingClass="p-1.5"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})` }}>
+              <BarChart3 className="w-6 h-6 text-white" />
+            </div>
+          )}
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-            <p className="text-slate-400 text-sm">{getUserDisplayName(user)}</p>
+            <p className="text-slate-400 text-sm truncate">
+              {brand.appName ? `${brand.appName} • ` : ""}{getUserDisplayName(user)}
+            </p>
           </div>
         </div>
 

@@ -587,6 +587,27 @@ export default function Layout({ children, currentPageName }) {
                   exit={{ x: reduceMotion ? 0 : "-100%" }}
                   transition={{ duration: 0.22, ease: "easeOut" }}
                 >
+                  {/* Effective tenant brand identity — same resolved source and
+                      fallbacks as the header title (customer → reseller →
+                      platform). Platform admins resolve to the platform brand. */}
+                  <div className="px-4 py-3 border-b border-slate-700 flex items-center gap-2.5 min-w-0">
+                    {brand.logoUrl ? (
+                      <BrandLogo
+                        logoUrl={brand.logoUrl}
+                        logoBackground={brand.logoBackground}
+                        alt={brand.appName || "Logo"}
+                        containerClassName="h-8 w-auto max-w-[140px] rounded-lg"
+                        whitePaddingClass="p-1"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})` }}>
+                        <Shield className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                    <p className="text-white font-semibold text-sm truncate">
+                      {brand.appName || (["resident", "estate_manager", "vendor"].includes(user.role_type) ? "EstateHub" : PLATFORM_APP_NAME)}
+                    </p>
+                  </div>
                   <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundImage: `linear-gradient(135deg, ${brand.primary}, ${brand.accent})` }}>
