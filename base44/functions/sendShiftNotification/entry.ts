@@ -38,79 +38,203 @@ Deno.serve(async (req) => {
     // every channel leg runs.
     let guardUser = null;
 
-    // Handle shift acknowledgement notification to admins
-    if (type === "ack") {
-      const statusLabel = (status || "").replace(/_/g, " ");
-      const allUsers = await base44.asServiceRole.entities.User.list();
-      // TENANT-SCOPED recipients — the caller's OWN customer's operational
-      // management (platform oversight always permitted). The previous
-      // platform-wide role filter leaked shift acknowledgements across tenants.
-      const admins = (allUsers || []).filter(u =>
-        MANAGEMENT_ROLES.includes(u.role_type) &&
-        (isPlatformUser(u) || !tenantCustomerId || u.customer_id === tenantCustomerId));
-
+    /* SHARED ACK DISPATCHER — one branded, tenant-scoped notification set
+       (in-app + email + Telegram, plus the existing declined-only push) to
+       the shift's OWN customer's scheduling management. Recipients are
+       resolved SERVER-SIDE; platform oversight always permitted; every other
+       customer, site, control room and user is excluded. */
+    const notifyShiftAckManagement = async ({ heading, summary, detailRows, relatedShiftId, status, eventKey }) => {
+      const linkUrl = 'https://guard-track-pro-26cedab8.base44.app/Scheduling';
       const brand = await resolveCommunicationBrand(base44.asServiceRole, {
         customer_id: tenantCustomerId, reseller_id: tenantResellerId });
-
+      const allUsers = await base44.asServiceRole.entities.User.list();
+      // ACK RECIPIENTS: the shift's own customer's scheduling management.
+      // customer_admin joins the legacy management roles — a customer whose
+      // managers hold customer_admin previously resolved ZERO recipients,
+      // which is why no in-app/email/telegram was ever received.
+      const ACK_ROLES = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin'];
+      const admins = (allUsers || []).filter(u =>
+        ACK_ROLES.includes(u.role_type) &&
+        (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
+        (isPlatformUser(u) || (!!tenantCustomerId && u.customer_id === tenantCustomerId)));
+      let email = 0, telegram = 0;
       for (const admin of admins) {
+        // IN-APP — real per-recipient record, deep-links to Scheduling.
         await base44.asServiceRole.entities.Notification.create({
           recipient_id: admin.id,
           recipient_name: admin.display_name || admin.full_name,
-          type: "shift_reminder",
-          priority: status === "declined" ? "high" : "medium",
-          title: `Shift ${statusLabel} — ${guardName}`,
-          message: `${guardName} has ${statusLabel} their shift at ${siteName}${startTime ? ' on ' + formatSastDate(startTime) : ''}.${notes ? ` Note: ${notes}` : ""}`,
+          type: 'shift_reminder',
+          priority: status === 'accepted' ? 'medium' : 'high',
+          title: heading,
+          message: summary,
           read: false,
-          related_entity: "shift",
-          related_id: shiftId,
+          related_entity: 'shift',
+          related_id: relatedShiftId || null,
+          action_url: '/Scheduling',
           customer_id: tenantCustomerId || undefined,
           reseller_id: tenantResellerId || undefined,
+          sent_via: ['in_app'],
         }).catch(() => {});
+
+        // EMAIL — existing shared branded renderer (Customer → Reseller →
+        // Platform), one per recipient; failure-isolated per recipient.
+        try {
+          if (admin.email) {
+            const firstName = String(admin.display_name || admin.full_name || '').trim().split(/\s+/)[0];
+            const tpl = buildBrandedEmail({
+              brand,
+              greeting: firstName ? `Hello ${firstName},` : 'Hello,',
+              heading,
+              intro: summary,
+              details: detailRows,
+              closing: 'Open Scheduling to review the shift: ' + linkUrl,
+            });
+            await base44.asServiceRole.integrations.Core.SendEmail({
+              from_name: brand.brand_name,
+              to: admin.email,
+              subject: heading,
+              text: tpl.text,
+              html: tpl.html,
+            });
+            email++;
+          }
+        } catch (mailErr) {
+          // Visible failure diagnosis (email still never breaks the ack).
+          console.error('shift ack email failed:', admin.email, mailErr?.message || mailErr);
+        }
+
+        // TELEGRAM — verified per-user mapping, same-chat dedupe (same
+        // deterministic event key per ack), inline OPEN SCHEDULING action;
+        // failure-isolated per recipient.
+        try {
+          if (admin.telegram_connected && admin.telegram_notifications_enabled !== false && admin.telegram_chat_id) {
+            const telegramText = buildBrandedTelegram({
+              brand,
+              greeting: 'Hello,',
+              heading,
+              details: detailRows,
+              closing: 'Open Scheduling: ' + linkUrl,
+            });
+            const ok = await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+              eventKey, admin.telegram_chat_id, telegramText,
+              { text: 'OPEN SCHEDULING', url: linkUrl });
+            if (ok) telegram++;
+          }
+        } catch (_) { /* telegram failure never breaks the ack notification */ }
       }
 
-      // EMAIL — shared branded renderer; failure-isolated from the ack itself.
-      try {
-        const adminEmails = admins.map(a => a.email).filter(Boolean).join(",");
-        if (adminEmails) {
-          const tpl = buildBrandedEmail({
-            brand,
-            heading: `Shift ${statusLabel}`,
-            intro: `${guardName} has ${statusLabel} their shift${siteName ? ' at ' + siteName : ''}${startTime ? ' on ' + formatSastDate(startTime) : ''}.${notes ? ' Note: ' + notes : ''}`,
-            details: [
-              guardName ? { label: 'Guard', value: guardName } : null,
-              siteName ? { label: 'Site', value: siteName } : null,
-              startTime ? { label: 'Scheduled start', value: formatSastDateTime(startTime) } : null,
-            ].filter(Boolean),
-            closing: 'Please open the Scheduling view to review the shift.',
-          });
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            from_name: brand.brand_name,
-            to: adminEmails,
-            subject: `Shift ${statusLabel} — ${guardName}${siteName ? ' @ ' + siteName : ''}`,
-            body: tpl.text,
-            html: tpl.html,
-          });
-        }
-      } catch (_) {}
-
-      // NATIVE PUSH — shared platform service. A DECLINED shift acknowledgement
-      // requires management action even with the app closed. Accepted acks are
-      // informational — deliberately no push.
-      if (status === "declined") {
+      // NATIVE PUSH — unchanged policy: a DECLINED acknowledgement requires
+      // management action even with the app closed; accepted/revision are
+      // informational. Now reaches the correctly-resolved recipients.
+      if (status === 'declined') {
         for (const admin of admins) {
           await sendNativePush(base44.asServiceRole, {
             user_id: admin.id,
-            title: `Shift ${statusLabel} — ${guardName}`,
-            body: `${guardName} has ${statusLabel} their shift at ${siteName}.${notes ? ` Note: ${notes}` : ""}`,
+            title: heading,
+            body: summary,
             priority: 'high',
             action_label: 'Open Scheduling', action_url: '/Scheduling',
-            event_key: 'shift_ack:' + shiftId + ':' + status,
+            event_key: eventKey,
             customer_id: tenantCustomerId || null,
             reseller_id: tenantResellerId || null,
           }).catch(() => {});
         }
       }
-      return Response.json({ success: true });
+      return { recipients: admins.length, email, telegram };
+    };
+
+    // Handle shift acknowledgement notification to management (guard ACCEPT /
+    // DECLINE / REVISION REQUESTED — single shift). The SHIFT record is the
+    // AUTHORITATIVE source for tenant scope, facts and the ack timestamp.
+    if (type === "ack") {
+      let storedShift = null;
+      if (shiftId) {
+        try {
+          const rows = await base44.asServiceRole.entities.Shift.filter({ id: String(shiftId) });
+          storedShift = rows && rows[0];
+        } catch (_) { /* fall back to the caller-supplied facts */ }
+      }
+      if (storedShift) {
+        if (storedShift.customer_id) tenantCustomerId = storedShift.customer_id;
+        if (storedShift.reseller_id) tenantResellerId = storedShift.reseller_id;
+        siteName = siteName || storedShift.site_name;
+        startTime = startTime || storedShift.start_time;
+        endTime = endTime || storedShift.end_time;
+        guardName = guardName || storedShift.guard_name;
+      }
+      const ackAt = (storedShift && storedShift.guard_ack_at) || new Date().toISOString();
+      const ackNote = String(notes || (storedShift && storedShift.guard_ack_note) || '').trim();
+      const STATUS_WORDS = { accepted: 'ACCEPTED', declined: 'DECLINED', revision_requested: 'REVISION REQUESTED' };
+      const statusWord = STATUS_WORDS[status] || String(status || '').toUpperCase();
+      const statusLabel = statusWord.toLowerCase();
+      const shiftDate = startTime ? formatSastDate(startTime) : '';
+      const timeRange = (startTime && endTime) ? `${formatSastTime(startTime)} – ${formatSastTime(endTime)}` : '';
+      const ackTimeStr = formatSastDateTime(ackAt);
+      const noteLabel = status === 'revision_requested' ? 'Revision request' : 'Note';
+      const heading = `SHIFT ${statusWord} — ${guardName || 'Guard'}`;
+      const summary = `${guardName || 'The guard'} has ${statusLabel} their shift at ${siteName || '—'}` +
+        `${shiftDate ? ' on ' + shiftDate : ''}${timeRange ? ' (' + timeRange + ')' : ''}.` +
+        ` Acknowledged ${ackTimeStr}.${ackNote ? ' ' + noteLabel + ': ' + ackNote : ''}`;
+      const detailRows = [
+        { label: 'Guard', value: guardName || '—' },
+        { label: 'Site', value: siteName || '—' },
+        { label: 'Shift date', value: shiftDate || '—' },
+        { label: 'Shift time', value: timeRange || '—' },
+        { label: 'Response', value: statusWord },
+        { label: 'Acknowledged', value: ackTimeStr },
+        ...(ackNote ? [{ label: noteLabel, value: ackNote }] : []),
+      ];
+      const result = await notifyShiftAckManagement({ heading, summary, detailRows,
+        relatedShiftId: shiftId, status, eventKey: 'shift_ack:' + shiftId + ':' + status + ':' + ackAt });
+      return Response.json({ success: true, ...result });
+    }
+
+    // BATCH acknowledgement (guard responds to many shifts at once) — one
+    // consolidated, branded, tenant-scoped notification set per management
+    // recipient. The shifts are resolved SERVER-SIDE from shiftIds; the
+    // previous client-side notification had no recipient and reached nobody.
+    if (type === "ack_batch") {
+      const shiftIds = Array.isArray(body.shiftIds) ? body.shiftIds.map(String) : [];
+      if (!shiftIds.length) return Response.json({ error: 'shiftIds required' }, { status: 400 });
+      const resolvedShifts = [];
+      for (const sid of shiftIds) {
+        try {
+          const rows = await base44.asServiceRole.entities.Shift.filter({ id: sid });
+          if (rows && rows[0]) resolvedShifts.push(rows[0]);
+        } catch (_) { /* skip unresolvable id */ }
+      }
+      if (!resolvedShifts.length) return Response.json({ error: 'No shifts could be resolved' }, { status: 404 });
+      const lead = resolvedShifts[0];
+      if (lead.customer_id) tenantCustomerId = lead.customer_id;
+      if (lead.reseller_id) tenantResellerId = lead.reseller_id;
+      guardName = guardName || lead.guard_name;
+      const ackAt = lead.guard_ack_at || new Date().toISOString();
+      const ackNote = String(notes || '').trim();
+      const STATUS_WORDS = { accepted: 'ACCEPTED', declined: 'DECLINED', revision_requested: 'REVISION REQUESTED' };
+      const statusWord = STATUS_WORDS[status] || String(status || '').toUpperCase();
+      const statusLabel = statusWord.toLowerCase();
+      const ackTimeStr = formatSastDateTime(ackAt);
+      const noteLabel = status === 'revision_requested' ? 'Revision request' : 'Note';
+      const heading = `SHIFTS ${statusWord} (BATCH) — ${guardName || 'Guard'}`;
+      const shiftLines = resolvedShifts.map(s =>
+        `${s.site_name || '—'} — ${formatSastDate(s.start_time)}${s.start_time ? ' ' + formatSastTime(s.start_time) : ''}${s.end_time ? '–' + formatSastTime(s.end_time) : ''}`);
+      const summary = `${guardName || 'The guard'} has ${statusLabel} ${resolvedShifts.length} shift(s). Acknowledged ${ackTimeStr}.` +
+        `${ackNote ? ' ' + noteLabel + ': ' + ackNote : ''}\n${shiftLines.join('\n')}`;
+      const detailRows = [
+        { label: 'Guard', value: guardName || '—' },
+        { label: 'Response', value: statusWord },
+        { label: 'Shifts', value: String(resolvedShifts.length) },
+        { label: 'Acknowledged', value: ackTimeStr },
+        ...(ackNote ? [{ label: noteLabel, value: ackNote }] : []),
+        ...resolvedShifts.map(s => ({
+          label: s.site_name || 'Shift',
+          value: `${formatSastDate(s.start_time)}${s.start_time ? ' ' + formatSastTime(s.start_time) : ''}${s.end_time ? ' – ' + formatSastTime(s.end_time) : ''}`,
+        })),
+      ];
+      const result = await notifyShiftAckManagement({ heading, summary, detailRows,
+        relatedShiftId: lead.id, status,
+        eventKey: 'shift_ack_batch:' + status + ':' + ackAt + ':' + resolvedShifts.length });
+      return Response.json({ success: true, ...result });
     }
 
     /* SERVER-SIDE RECIPIENT RESOLUTION — the browser passes only shift FACTS
@@ -204,7 +328,7 @@ Deno.serve(async (req) => {
           from_name: brand.brand_name,
           to: guardEmail,
           subject: heading,
-          body: tpl.text,
+          text: tpl.text,
           html: tpl.html,
         });
         emailSent = true;

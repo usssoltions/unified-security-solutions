@@ -67,22 +67,20 @@ export default function BatchShiftAcknowledgeModal({ shifts, user, onClose }) {
       }));
       await base44.entities.Shift.bulkUpdate(updates);
 
-      // One consolidated in-app notification to management (avoids spamming N
-      // notifications for a batch while still keeping a permanent audit record).
+      // One consolidated MANAGEMENT notification through the SAME server-side
+      // notification service as the single-shift flow (in-app + branded
+      // email + Telegram, tenant-scoped recipients resolved server-side).
+      // The previous direct client-side create had no recipient_id and never
+      // reached management on any channel.
       try {
-        const lines = selectedShifts
-          .map(s => `• ${s.site_name} — ${fmtDate(s.start_time)} ${fmtTime(s.start_time)}`)
-          .join("\n");
-        await base44.entities.Notification.create({
-          type: "shift_reminder",
-          priority: "high",
-          title: `Shifts ${status.replace("_", " ")} (batch) — ${getUserDisplayName(user)}`,
-          message: `${getUserDisplayName(user)} has ${status.replace("_", " ")} ${selectedShifts.length} shift(s):\n${lines}${notes ? `\n\nNote: ${notes}` : ""}`,
-          read: false,
-          related_entity: "shift",
-          related_id: selectedShifts[0]?.id || null,
+        await base44.functions.invoke("sendShiftNotification", {
+          type: "ack_batch",
+          shiftIds: selectedShifts.map(s => s.id),
+          guardName: getUserDisplayName(user),
+          status,
+          notes,
         });
-      } catch (_) {}
+      } catch (_) { /* notification failure never breaks the acknowledgement */ }
 
       const lines = selectedShifts
         .map(s => `• ${s.site_name} — ${fmtDate(s.start_time)} ${fmtTime(s.start_time)}`)
