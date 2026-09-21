@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import BrandHeader from "@/components/branding/BrandHeader";
 import {
   Home, UserPlus, Calendar, ShoppingBag, ShirtIcon, CreditCard,
   Ticket, AlertTriangle, Wrench, Bell, ChevronRight, Megaphone,
@@ -75,14 +76,13 @@ export default function ResidentDashboard() {
 
         {/* Header */}
         <div className="flex items-center justify-between pt-2">
-          <div>
-            <h1 className="text-2xl font-bold text-white">
-              Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {(user?.display_name || user?.full_name)?.split(" ")[0]}!
-            </h1>
-            <p className="text-slate-400 text-sm flex items-center gap-1 mt-1">
-              <Home className="w-3 h-3" /> Unit {resident?.unit_number || user?.unit_number || "—"}
-            </p>
-          </div>
+          <BrandHeader
+            user={user}
+            title={`Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, ${(user?.display_name || user?.full_name)?.split(" ")[0]}!`}
+            subtitle={`Unit ${resident?.unit_number || user?.unit_number || "—"}`}
+            icon={Home}
+            renderForPlatform
+          />
           <Link to="/ResidentAnnouncements">
             <button className="relative p-2 rounded-xl bg-slate-800 text-slate-300">
               <Bell className="w-5 h-5" />

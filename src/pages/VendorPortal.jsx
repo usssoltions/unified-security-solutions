@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Store, ShoppingBag, Plus, X, CheckCircle2, Clock, Package } from "lucide-react";
+import BrandHeader from "@/components/branding/BrandHeader";
 
 const EMPTY_ITEM = { name: "", description: "", price: "", item_category: "", preparation_time_minutes: "", available: true };
 
@@ -97,8 +98,13 @@ export default function VendorPortal() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
       <div className="max-w-2xl mx-auto space-y-4 pb-24">
         <div className="pt-2">
-          <h1 className="text-2xl font-bold text-white">{vendor.business_name}</h1>
-          <p className="text-slate-400 text-sm capitalize">{vendor.category} · {vendor.status}</p>
+          <BrandHeader
+            user={user}
+            title={vendor.business_name}
+            subtitle={`${vendor.category} · ${vendor.status}`}
+            icon={Store}
+            renderForPlatform
+          />
         </div>
 
         {/* Stats */}

@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Users, Calendar, FileText, Activity, Clock, Plus, Stethoscope } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import moment from "moment";
+import BrandHeader from "@/components/branding/BrandHeader";
 
 export default function MedicalDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
   const [stats, setStats] = useState({ patients: 0, appointmentsToday: 0, pendingSessions: 0, reports: 0 });
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const [recentAppointments, setRecentAppointments] = useState([]);
@@ -21,6 +23,7 @@ export default function MedicalDashboard() {
   const loadData = async () => {
     try {
       const u = await base44.auth.me();
+      setUser(u);
       const cid = u.customer_id;
       const oversight = hasMedicalOversight(u);
       if (!cid && !oversight) { setLoading(false); return; }
@@ -94,15 +97,14 @@ export default function MedicalDashboard() {
     <div className="min-h-screen bg-slate-950 p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center">
-              <Stethoscope className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Medical Dashboard</h1>
-              <p className="text-slate-400 text-sm">Occupational therapy &amp; work-ability practice</p>
-            </div>
-          </div>
+          <BrandHeader
+            user={user}
+            title="Medical Dashboard"
+            subtitle="Occupational therapy &amp; work-ability practice"
+            icon={Stethoscope}
+            iconClassName="bg-emerald-500"
+            renderForPlatform
+          />
           <Link to="/MedicalAppointments">
             <Button className="bg-emerald-500 hover:bg-emerald-600">
               <Plus className="w-4 h-4 mr-2" /> New Appointment

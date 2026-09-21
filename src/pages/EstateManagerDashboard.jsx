@@ -17,6 +17,7 @@ import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
+import BrandHeader from "@/components/branding/BrandHeader";
 
 export default function EstateManagerDashboard() {
   const [user, setUser] = useState(null);
@@ -156,10 +157,13 @@ export default function EstateManagerDashboard() {
 
         {/* Header */}
         <div className="flex items-center justify-between pt-2">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Estate Manager</h1>
-            <p className="text-slate-400 text-sm">{user ? getUserDisplayName(user) : <Loader2 className="w-3 h-3 inline animate-spin" />}</p>
-          </div>
+          <BrandHeader
+            user={user}
+            title="Estate Manager"
+            subtitle={user ? getUserDisplayName(user) : ""}
+            icon={Shield}
+            renderForPlatform
+          />
           <Button onClick={() => setShowAnnouncement(true)} className="bg-sky-500 hover:bg-sky-600">
             <Megaphone className="w-4 h-4 mr-2" /> Announce
           </Button>

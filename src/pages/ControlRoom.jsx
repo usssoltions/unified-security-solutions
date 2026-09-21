@@ -22,6 +22,7 @@ import SupervisorPatrolPlanner from "../components/patrol/SupervisorPatrolPlanne
 import SupervisorTrainingManager from "../components/training/SupervisorTrainingManager";
 import ReportTemplateManager from "../components/reports/ReportTemplateManager";
 import TodayTasksPanel from "../components/tasks/TodayTasksPanel";
+import BrandHeader from "@/components/branding/BrandHeader";
 
 export default function ControlRoom() {
   const [showDispatchAlarm, setShowDispatchAlarm] = useState(false);
@@ -161,6 +162,16 @@ export default function ControlRoom() {
       </div>
 
       <div className="p-4 lg:p-6 max-w-[1800px] mx-auto space-y-4 lg:space-y-6">
+
+        {/* Effective tenant brand strip — shared resolver (logo + business
+            name + operator identity). Renders nothing for platform-level
+            users, so the Platform Administrator home is unchanged. The
+            critical-status header above is untouched. */}
+        <BrandHeader
+          user={user}
+          icon={Radio}
+          subtitle={user ? (user.display_name || user.full_name) : ""}
+        />
 
         {/* Task Scheduling — Today's Tasks panel (renders nothing when the
             module is not enabled or there are no tasks today; the rest of the

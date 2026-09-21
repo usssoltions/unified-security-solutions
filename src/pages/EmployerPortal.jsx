@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Building2, Users, Calendar, FileText, Loader2, Clock, CheckCircle, Phone } from "lucide-react";
 import moment from "moment";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import BrandHeader from "@/components/branding/BrandHeader";
 
 export default function EmployerPortal() {
   const [user, setUser] = useState(null);
@@ -77,15 +78,15 @@ export default function EmployerPortal() {
   return (
     <div className="min-h-screen bg-slate-950 p-4 sm:p-6">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center">
-            <Building2 className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Employer Portal</h1>
-            <p className="text-slate-400 text-sm">{getUserDisplayName(user)}</p>
-          </div>
-        </div>
+        <BrandHeader
+          user={user}
+          title="Employer Portal"
+          subtitle={getUserDisplayName(user)}
+          icon={Building2}
+          iconClassName="bg-emerald-500"
+          className="mb-6"
+          renderForPlatform
+        />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <Card className="bg-slate-900 border-slate-800">

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Navigation, Shield, Clock, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { createPageUrl } from "@/utils";
+import BrandHeader from "@/components/branding/BrandHeader";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useNavigate } from "react-router-dom";
 
 export default function ClockInOut({ user, location }) {
@@ -157,6 +159,8 @@ export default function ClockInOut({ user, location }) {
   if (!assignedShift) {
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
+        <div className="max-w-md w-full">
+          <BrandHeader user={user} title="My Shift" subtitle={getUserDisplayName(user)} icon={Shield} className="mb-5" />
         <Card className="max-w-md w-full bg-slate-800/50 border-slate-700">
           <CardContent className="pt-12 pb-12 text-center">
             <Clock className="w-16 h-16 text-slate-600 mx-auto mb-4" />
@@ -169,12 +173,15 @@ export default function ClockInOut({ user, location }) {
             </p>
           </CardContent>
         </Card>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex items-center justify-center min-h-screen p-4">
+      <div className="max-w-md w-full">
+        <BrandHeader user={user} title="My Shift" subtitle={getUserDisplayName(user)} icon={Shield} className="mb-5" />
       <Card className="max-w-md w-full bg-gradient-to-br from-sky-500/10 to-sky-600/10 border-sky-500/30">
         <CardHeader className="text-center">
           <div className="w-20 h-20 bg-sky-500 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -276,6 +283,7 @@ export default function ClockInOut({ user, location }) {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

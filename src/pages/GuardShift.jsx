@@ -34,6 +34,8 @@ import OfflineSyncManager from "../components/guard/OfflineSyncManager";
 import SystemSetup from "../components/SystemSetup";
 import ShiftAcknowledgeModal from "../components/scheduling/ShiftAcknowledgeModal";
 import BatchShiftAcknowledgeModal from "../components/scheduling/BatchShiftAcknowledgeModal";
+import BrandHeader from "@/components/branding/BrandHeader";
+import { getUserDisplayName } from "@/lib/userDisplayName";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -462,6 +464,11 @@ export default function GuardShift() {
         </div>
 
         <div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
+
+          {/* Page header — effective tenant brand via the existing resolver
+              (customer → reseller → platform). Tenants see their logo +
+              business name; platform-level users render nothing here. */}
+          <BrandHeader user={user} title="My Shift" subtitle={getUserDisplayName(user)} icon={Shield} className="pt-1" />
 
           {/* Alerts & Modals */}
           <AnimatePresence>

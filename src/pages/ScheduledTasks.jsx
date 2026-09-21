@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui/use-toast";
 import MyTasksView from "@/components/tasks/MyTasksView";
 import OperatorQueueView from "@/components/tasks/OperatorQueueView";
 import SupervisorView from "@/components/tasks/SupervisorView";
+import BrandHeader from "@/components/branding/BrandHeader";
 
 /**
  * CONTROL ROOM TASK SCHEDULING — role-aware module shell. All data flows
@@ -56,6 +57,14 @@ export default function ScheduledTasks() {
 
   return (
     <div className="p-4 lg:p-6 max-w-5xl mx-auto w-full">
+      {/* Effective tenant brand header — shared resolver. Renders nothing for
+          platform-level users so their view of this page is unchanged. */}
+      <BrandHeader
+        user={user}
+        title="Scheduled Tasks"
+        subtitle={user ? (user.display_name || user.full_name) : ""}
+        className="mb-4"
+      />
       {data?.is_operator ? (
         <OperatorQueueView data={data} act={act} user={user} />
       ) : user?.role_type === "guard" ? (
