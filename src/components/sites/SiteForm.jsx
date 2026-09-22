@@ -541,7 +541,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                     </div>
 
                     {checkpoint.qr_code && (
-                      <CheckpointQRGenerator checkpoint={checkpoint} siteName={formData.name} />
+                      <CheckpointQRGenerator checkpoint={checkpoint} siteName={formData.name} siteId={formData.id} />
                     )}
                   </div>
                 </div>

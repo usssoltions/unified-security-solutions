@@ -1,10 +1,27 @@
 {
   "name": "NotificationDelivery",
   "type": "object",
-  "description": "Delivery audit record for every notification sent through any channel. Tracks success/failure, retries, and provider response. Idempotency key prevents duplicate deliveries for the same event+recipient+channel. The 'task_event' channel marks a Task Scheduling event (e.g. a deadline-threshold overdue alert) as dispatched ONCE across all its channels \u2014 the idempotency key 'task_event:<eventKey>' makes later sweep runs skip the whole event so immediate alerts are never duplicated.",
+  "description": "Delivery audit record for every notification sent through any channel. Tracks success/failure, retries, and provider response. Idempotency key prevents duplicate deliveries for the same event+recipient+channel. The 'task_event' channel marks a Task Scheduling event (e.g. a deadline-threshold overdue alert) as dispatched ONCE across all its channels \u2014 the idempotency key 'task_event:<eventKey>' makes later sweep runs skip the whole event so immediate alerts are never duplicated. AUDIT STANDARD (2026-09-22): every important application-controlled EMAIL attempt is recorded here via the shared auditedEmail helper with event_type, reference_id and branding_source (customer/reseller/platform). Never logged in these records: authentication tokens, passwords, invitation tokens, full sensitive message bodies or protected media contents.",
   "properties": {
     "event_key": {
       "type": "string"
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Coarse correspondence type for audit querying (e.g. daily_activity_report, alarm_dispatch, checkpoint_qr_share)."
+    },
+    "reference_id": {
+      "type": "string",
+      "description": "ID of the authoritative record/entity the correspondence is about (report id, alarm response id, schedule run identifier)."
+    },
+    "branding_source": {
+      "type": "string",
+      "enum": [
+        "customer",
+        "reseller",
+        "platform"
+      ],
+      "description": "Which level of the branding hierarchy won for this correspondence (Customer override \u2192 Reseller default \u2192 Platform default)."
     },
     "notification_id": {
       "type": "string",
@@ -54,7 +71,8 @@
       "format": "date-time"
     },
     "provider_response": {
-      "type": "string"
+      "type": "string",
+      "description": "SAFE failure reason only \u2014 truncated provider exception message. Never contains tokens, passwords or message bodies."
     },
     "retries": {
       "type": "number",

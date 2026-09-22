@@ -115,25 +115,20 @@ async function resolvePanicRecipients(svc, sender, siteId) {
     // active control room(s), only THOSE rooms' operators/supervisors are
     // alerted (plus the customer administrators). No linkage → all tenant
     // recipients. Either way the result can be empty (no hierarchy fallback).
-    if (siteId && base.length) {
-      const rooms = (await svc.entities.ControlRoom
-        .filter({ customer_id: customerId, status: 'active' }).catch(() => [])) || [];
-      const linkedRooms = rooms.filter((r) => (r.linked_site_ids || []).includes(siteId));
-      if (linkedRooms.length) {
-        const roomUserIds = new Set();
-        for (const room of linkedRooms) {
-          (room.operator_user_ids || []).forEach((id) => roomUserIds.add(id));
-          (room.supervisor_user_ids || []).forEach((id) => roomUserIds.add(id));
-        }
-        const narrowed = base.filter((u) =>
-          roomUserIds.has(u.id) || u.role_type === 'customer_admin' || u.role_type === 'admin');
-        recipients = add(narrowed.length ? narrowed : base);
-      } else {
-        recipients = add(base);
-      }
-    } else {
-      recipients = add(base);
-    }
+    // CONTROL ROOM narrowing — SHARED, FAIL-CLOSED (2026-09-22 security
+    // review): EXPLICIT operator assignment is authoritative. A
+    // control_room_operator receives this panic ONLY when the sender's site
+    // is linked to an ACTIVE room she is explicitly assigned to. Missing or
+    // misconfigured room/linkage/site configuration NEVER broadens operators
+    // to customer-wide notification scope — the previous "no linkage → all
+    // tenant recipients" and "empty narrowing → base" fail-open fallbacks
+    // were the exact Control-Room scoping defect class and are removed.
+    // customer_admin / admin oversight is retained by the helper contract.
+    // The result may legitimately be empty of operators — customer
+    // administrators still receive the panic, and any true zero-recipient
+    // outcome is recorded by the caller's configuration-failure audit.
+    recipients = add(await narrowControlRoomOperators(svc, base, {
+      customer_id: customerId || null, site_id: siteId || null }));
   }
 
   // NO reseller/platform fallback — a zero result is a CRITICAL configuration
@@ -143,6 +138,8 @@ async function resolvePanicRecipients(svc, sender, siteId) {
   // organisational hierarchy.
   return recipients;
 }
+
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 Deno.serve(async (req) => {
   try {

@@ -51,6 +51,18 @@ Deno.serve(async (req) => {
     } catch (e) { diag.failures.push('handover_resolve:' + String(e?.message || e)); }
     if (!handover) return Response.json({ error: 'Handover report not found' }, { status: 404 });
 
+    // CALLER-TENANT VALIDATION — a caller may only dispatch End of Shift
+    // correspondence for a handover belonging to their OWN tenant (platform
+    // admins excepted). Without this, a cross-tenant handover_id would let a
+    // foreign user trigger another tenant's notifications from the service
+    // role.
+    const isPlatformCaller = user.role_type === 'admin' || user.role_type === 'platform_admin'
+      || user.admin_level === 'platform';
+    if (!isPlatformCaller && handover.customer_id && user.customer_id
+        && String(handover.customer_id) !== String(user.customer_id)) {
+      return Response.json({ error: 'Handover report not found' }, { status: 404 });
+    }
+
     const tenantCustomerId = handover.customer_id || user.customer_id || null;
     const tenantResellerId = handover.reseller_id || user.reseller_id || null;
     diag.tenant = { customer_id: tenantCustomerId, reseller_id: tenantResellerId };

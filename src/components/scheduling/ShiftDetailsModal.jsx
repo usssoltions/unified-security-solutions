@@ -121,23 +121,15 @@ export default function ShiftDetailsModal({ shift, onClose }) {
         throw new Error("Guard not found");
       }
 
-      const shiftDetails = `
-🛡️ SHIFT SCHEDULE
-
-Guard: ${shift.guard_name}
-Site: ${shift.site_name}
-Date: ${new Date(shift.start_time).toLocaleDateString()}
-Time: ${new Date(shift.start_time).toLocaleTimeString()} - ${new Date(shift.end_time).toLocaleTimeString()}
-Status: ${shift.status}
-${shift.notes ? `\nNotes: ${shift.notes}` : ''}
-      `.trim();
-
       if (method === 'email' && currentSelectedGuard.email) {
-        await base44.integrations.Core.SendEmail({
-          to: currentSelectedGuard.email,
-          subject: `Shift Schedule - ${new Date(shift.start_time).toLocaleDateString()}`,
-          body: shiftDetails
+        // SERVER-SIDE BRANDED DISPATCH — the client only supplies the shift id;
+        // the guard, site, times, tenant branding and delivery audit are
+        // resolved authoritatively server-side.
+        const res = await base44.functions.invoke('sendShiftScheduleSummary', {
+          shift_ids: [shift.id], mode: 'single',
         });
+        const d = res?.data ?? res;
+        if (!d?.sent) throw new Error(d?.error || 'Failed to send schedule email');
         return 'email';
       } else if (method === 'whatsapp' && currentSelectedGuard.phone_number) {
         const waMsg = shiftScheduleMessage({

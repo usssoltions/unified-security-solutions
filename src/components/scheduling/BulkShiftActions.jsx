@@ -199,42 +199,23 @@ export default function BulkShiftActions({
   };
 
   const handleEmail = async () => {
-    const report = generateShiftReport();
-    const uniqueGuards = [...new Set(selectedShiftData.map(s => s.guard_id).filter(Boolean))];
-    
+    // SERVER-SIDE BRANDED DISPATCH — the client only supplies the selected
+    // shift ids; the guards, sites/times, effective tenant branding and the
+    // delivery audit are resolved authoritatively server-side.
     try {
-      const emailPromises = uniqueGuards.map(async (guardId) => {
-        const guard = guards.find(g => g.id === guardId);
-        if (guard?.email) {
-          const guardShifts = selectedShiftData.filter(s => s.guard_id === guardId);
-          let guardReport = `🛡️ YOUR SHIFT SCHEDULE\n\n`;
-          guardReport += `Hello ${getUserDisplayName(guard)},\n\n`;
-          guardReport += `You have ${guardShifts.length} upcoming shift${guardShifts.length > 1 ? 's' : ''}:\n\n`;
-          
-          guardShifts.forEach((shift, idx) => {
-            guardReport += `${idx + 1}. ${shift.site_name}\n`;
-            guardReport += `   📅 ${new Date(shift.start_time).toLocaleDateString()}\n`;
-            guardReport += `   🕐 ${new Date(shift.start_time).toLocaleTimeString()} - ${new Date(shift.end_time).toLocaleTimeString()}\n`;
-            guardReport += `   📊 Status: ${shift.status}\n`;
-            if (shift.notes) {
-              guardReport += `   📝 ${shift.notes}\n`;
-            }
-            guardReport += '\n';
-          });
-
-          await base44.integrations.Core.SendEmail({
-            to: guard.email,
-            subject: `Your Shift Schedule - ${guardShifts.length} Shifts`,
-            body: guardReport
-          });
-        }
+      const shiftIds = selectedShiftData.map(s => s.id).filter(Boolean);
+      const res = await base44.functions.invoke('sendShiftScheduleSummary', { shift_ids: shiftIds });
+      const d = res?.data ?? res;
+      if (!d || d.sent === undefined) throw new Error(d?.error || 'Failed to send emails');
+      setActionStatus({
+        type: d.sent ? 'success' : 'error',
+        message: d.sent
+          ? `Email sent to ${d.sent} guard(s)`
+          : 'Failed to send emails: ' + (d.error || (d.failures && d.failures[0]) || 'unknown error'),
       });
-
-      await Promise.all(emailPromises);
-      setActionStatus({ type: 'success', message: `Email sent to ${uniqueGuards.length} guard(s)` });
       setShowShareMenu(false);
     } catch (error) {
-      setActionStatus({ type: 'error', message: 'Failed to send emails: ' + error.message });
+      setActionStatus({ type: 'error', message: 'Failed to send emails: ' + (error.message || error) });
     }
   };
 

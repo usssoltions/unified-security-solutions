@@ -330,9 +330,16 @@ export default async function(req: Request): Promise<Response> {
         flag_reason: d.flag_reason || 'Manually denied at the gate',
         notes: d.notes || '',
       });
-      // SECURITY ALERT — in-app + email + Telegram + push to the customer's
-      // own operational recipients (failure-isolated, never blocks the deny).
-      await dispatchAccessAlert(base44, caller, log, 'Access Denied at Gate', 'security');
+      // DENY CLASSIFICATION (2026-09-22 review) — not every manual denial is a
+      // high-severity security event. Only a deny reason indicating a genuine
+      // security concern escalates to the full-channel security alert (in-app
+      // + email + Telegram + push); routine denials (unrecognised QR, no
+      // appointment, ...) stay in-app-only to avoid notification overload.
+      const denyReason = String(log.flag_reason || '');
+      const securityDeny = /blacklist|suspend|suspicious|threat|wanted|fake|forged|security|no id|refused|banned|stolen/i.test(denyReason);
+      await dispatchAccessAlert(base44, caller, log,
+        securityDeny ? 'Access Denied at Gate — Security Concern' : 'Access Denied at Gate',
+        securityDeny ? 'security' : 'info');
       return Response.json({ log });
     }
 

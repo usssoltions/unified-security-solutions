@@ -6,7 +6,7 @@ import { base44 } from "@/api/base44Client";
 
 const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-export default function CheckpointQRGenerator({ checkpoint, siteName }) {
+export default function CheckpointQRGenerator({ checkpoint, siteName, siteId }) {
   const [qrUrl, setQrUrl] = React.useState("");
 
   React.useEffect(() => {
@@ -81,25 +81,28 @@ export default function CheckpointQRGenerator({ checkpoint, siteName }) {
   };
 
   const handleEmail = async () => {
+    if (!siteId) {
+      alert('Save the site first — the QR email is sent from the saved checkpoint record.');
+      return;
+    }
     const email = prompt('Enter email address:');
-    
+
     if (!email) return;
 
     try {
-      await base44.integrations.Core.SendEmail({
-        to: email,
-        subject: `Checkpoint QR Code - ${checkpoint.name}`,
-        body: `
-          <h2>${siteName} - ${checkpoint.name}</h2>
-          <p><strong>QR Code:</strong> ${checkpoint.qr_code}</p>
-          <img src="${qrUrl}" alt="QR Code" style="width: 300px; height: 300px;" />
-          <p>Location: ${checkpoint.location.lat.toFixed(6)}, ${checkpoint.location.lng.toFixed(6)}</p>
-          <p>Print this QR code and place it at the checkpoint location.</p>
-        `
+      // SERVER-SIDE BRANDED DISPATCH — the client only supplies the saved
+      // site/checkpoint ids and the operator-chosen recipient (a manual share
+      // by an authorised administrator, exactly like the WhatsApp link); the
+      // checkpoint data, QR payload, tenant branding and delivery audit are
+      // resolved authoritatively server-side.
+      const res = await base44.functions.invoke('sendCheckpointQrEmail', {
+        site_id: siteId, checkpoint_id: checkpoint.id, to: email,
       });
+      const d = res?.data ?? res;
+      if (!d?.sent) throw new Error(d?.error || 'Failed to send email');
       alert('QR code sent to email!');
     } catch (error) {
-      alert('Failed to send email: ' + error.message);
+      alert('Failed to send email: ' + (error.message || error));
     }
   };
 

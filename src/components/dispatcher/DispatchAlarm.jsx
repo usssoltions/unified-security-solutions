@@ -311,10 +311,11 @@ export default function DispatchAlarm({ onClose, onSuccess }) {
               lat: alarmPayload.location?.lat,
               lng: alarmPayload.location?.lng,
             });
-            await base44.integrations.Core.SendEmail({
-              to: guardUser.email,
-              subject: `🚨 ALARM RESPONSE ASSIGNED — ${alarmPayload.alarm_type.replace(/_/g, ' ').toUpperCase()}`,
-              body: guardMsg,
+            // SERVER-SIDE BRANDED DISPATCH — the client only supplies the
+            // alarm response id; the guard, alarm details, tenant branding and
+            // delivery audit are resolved authoritatively server-side.
+            await base44.functions.invoke('sendAlarmDispatchEmail', {
+              alarm_response_id: alarm.id,
             }).catch(() => {});
 
             // Build guard's personal WA link

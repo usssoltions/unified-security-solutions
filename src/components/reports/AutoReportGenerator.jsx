@@ -208,16 +208,12 @@ ${aiReport.ai_insights}
           generated_at: new Date().toISOString()
         });
 
-        // Send to recipients if configured
-        if (template.recipients && template.recipients.length > 0) {
-          for (const email of template.recipients) {
-            await base44.integrations.Core.SendEmail({
-              to: email,
-              subject: `Shift Report: ${getUserDisplayName(user)} - ${shift.site_name}`,
-              body: reportContent.replace(/\n/g, '<br>').replace(/\*\*/g, '<b>').replace(/\*/g, '</b>')
-            });
-          }
-        }
+        // SERVER-SIDE BRANDED DISPATCH — the client only supplies the saved
+        // report id; the recipients (re-read from the SAVED template), the
+        // saved report content, tenant branding and the delivery audit are
+        // resolved authoritatively server-side.
+        await base44.functions.invoke('sendGeneratedReportEmail', { report_id: report.id })
+          .catch((e) => console.error('Report email dispatch failed:', e?.message || e));
 
         console.log("Auto-report generated:", report.id);
       } catch (error) {
