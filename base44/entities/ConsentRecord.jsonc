@@ -1,7 +1,7 @@
 {
   "name": "ConsentRecord",
   "type": "object",
-  "description": "Medical module: Configurable consent/purpose records for POPIA compliance.",
+  "description": "Medical module: Configurable consent/purpose records for POPIA compliance. The medicalAccess gateway grants practice-staff access (capture + read); employer users have ZERO access. GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. Deletion is not offered through the gateway (compliance preservation).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -77,20 +77,13 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -98,20 +91,13 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -119,27 +105,29 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

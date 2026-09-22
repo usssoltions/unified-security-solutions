@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { medicalApi } from "@/lib/medicalApi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,15 +35,19 @@ export default function MedicalPatientDetail() {
     if (!patientId) { setLoading(false); return; }
     (async () => {
       try {
-        const p = await base44.entities.Patient.get(patientId).catch(() => null);
+        const p = (await medicalApi.getPatient(patientId).catch(() => null))?.patient || null;
         setPatient(p);
         if (!p) { setLoading(false); return; }
-        const [emps, apts, sess, cons] = await Promise.all([
-          p.employer_id ? base44.entities.Employer.get(p.employer_id).catch(() => null) : Promise.resolve(null),
-          base44.entities.Appointment.filter({ patient_id: patientId }).catch(() => []),
-          base44.entities.Session.filter({ patient_id: patientId }).catch(() => []),
-          base44.entities.ConsentRecord.filter({ patient_id: patientId }).catch(() => []),
+        const [empRes, aptRes, sessRes, consRes] = await Promise.all([
+          p.employer_id ? medicalApi.getEmployer(p.employer_id).catch(() => null) : Promise.resolve(null),
+          medicalApi.listAppointments({ patient_id: patientId }).catch(() => ({ appointments: [] })),
+          medicalApi.listSessions({ patient_id: patientId }).catch(() => ({ sessions: [] })),
+          medicalApi.listConsents(patientId).catch(() => ({ consents: [] })),
         ]);
+        const emps = empRes?.employer || null;
+        const apts = aptRes.appointments || [];
+        const sess = sessRes.sessions || [];
+        const cons = consRes.consents || [];
         setEmployer(emps);
         setAppointments(apts.sort((a, b) => new Date(b.start_time) - new Date(a.start_time)));
         setSessions(sess.sort((a, b) =>

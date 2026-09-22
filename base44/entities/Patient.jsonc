@@ -1,7 +1,7 @@
 {
   "name": "Patient",
   "type": "object",
-  "description": "Medical module: Patient record. Identity, employer, contact, referral information. Tenant-isolated by customer_id (practice). Employer portal users see only their own employer's patients. Clinical data is stored in separate ClinicalNote/Assessment entities, not here. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform' may read/create/update across tenants. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user (customer_id null) can never match another tenant's records via a null==null template comparison.",
+  "description": "Medical module: Patient record. Identity, employer, contact, referral information. GATEWAY-ONLY ACCESS: every tenant-level read/write goes through the medicalAccess backend gateway (server-side role authorization: practice_admin / therapist / reception; employer users receive a sanitized projection of their own employees only). Direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. Clinical data is stored in separate ClinicalNote/Assessment entities, not here. Deletion is not offered through the gateway (clinical preservation; deactivate via status).",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -142,18 +142,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -168,30 +156,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.employer_id": "{{user.data.employer_id}}"
-            },
-            {
-              "data.employer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -206,18 +170,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },

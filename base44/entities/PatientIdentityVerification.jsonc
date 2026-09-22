@@ -1,7 +1,7 @@
 {
   "name": "PatientIdentityVerification",
   "type": "object",
-  "description": "Medical module: Identity verification record. Documents the document used, realtime photo, verification result, and verifier. Human-assisted identity verification \u2014 NOT biometric facial recognition. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
+  "description": "Medical module: Identity verification record. Documents the document used, realtime photo, verification result, and verifier. Human-assisted identity verification \u2014 NOT biometric facial recognition. The medicalAccess gateway grants practice-staff access (reception/therapist/practice_admin capture and read; employers have ZERO access) and stamps the verifier identity server-side. GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. Deletion is not offered through the gateway (clinical preservation).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -79,20 +79,13 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -100,20 +93,13 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
@@ -121,27 +107,29 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

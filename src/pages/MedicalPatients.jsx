@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { hasMedicalOversight } from "@/lib/medicalOversight";
+import { medicalApi } from "@/lib/medicalApi";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,15 +39,15 @@ export default function MedicalPatients() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      const oversight = hasMedicalOversight(u);
-      if (!cid && !oversight) { setLoading(false); return; }
-      const scope = oversight ? {} : { customer_id: cid };
 
-      const [pts, emps] = await Promise.all([
-        base44.entities.Patient.filter(scope).catch(() => []),
-        base44.entities.Employer.filter({ ...scope, status: "active" }).catch(() => []),
+      // ALL medical data loads go through the medicalAccess gateway — tenant
+      // scope and role authorization are enforced server-side.
+      const [ptsRes, empsRes] = await Promise.all([
+        medicalApi.listPatients().catch(() => ({ patients: [] })),
+        medicalApi.listEmployers({ status: "active" }).catch(() => ({ employers: [] })),
       ]);
+      const pts = ptsRes.patients || [];
+      const emps = empsRes.employers || [];
       setPatients(pts);
       setEmployers(emps);
     } catch (e) {
@@ -89,13 +89,8 @@ export default function MedicalPatients() {
     };
     setPatients(prev => [optimisticPatient, ...prev]);
     try {
-      await base44.entities.Patient.create({
-        ...formData,
-        customer_id: user.customer_id,
-        employer_name: employer?.company_name || "",
-        identity_verification_status: "pending",
-        status: "active",
-      });
+      // Gateway stamps the practice tenant and employer server-side.
+      await medicalApi.createPatient(formData);
       setShowForm(false);
       setFormData({
         first_names: "", surname: "", sa_id_number: "", mobile: "", email: "",

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { hasMedicalOversight } from "@/lib/medicalOversight";
+import { medicalApi } from "@/lib/medicalApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, FileText, Activity, Clock, Plus, Stethoscope } from "lucide-react";
@@ -24,17 +24,20 @@ export default function MedicalDashboard() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      const oversight = hasMedicalOversight(u);
-      if (!cid && !oversight) { setLoading(false); return; }
-      const scope = oversight ? {} : { customer_id: cid };
 
-      const [patients, appointments, sessions, reports] = await Promise.all([
-        base44.entities.Patient.filter(scope).catch(() => []),
-        base44.entities.Appointment.filter(scope).catch(() => []),
-        base44.entities.Session.filter({ ...scope, status: "in_progress" }).catch(() => []),
-        base44.entities.MedicalReport.filter(scope).catch(() => []),
+      // ALL medical data loads go through the medicalAccess gateway — the
+      // caller's tenant scope, role and ownership rules are enforced
+      // server-side; the client no longer builds its own scope filters.
+      const [patientsRes, appointmentsRes, sessionsRes, reportsRes] = await Promise.all([
+        medicalApi.listPatients().catch(() => ({ patients: [] })),
+        medicalApi.listAppointments().catch(() => ({ appointments: [] })),
+        medicalApi.listSessions({ status: "in_progress" }).catch(() => ({ sessions: [] })),
+        medicalApi.listReports().catch(() => ({ reports: [] })),
       ]);
+      const patients = patientsRes.patients || [];
+      const appointments = appointmentsRes.appointments || [];
+      const sessions = sessionsRes.sessions || [];
+      const reports = reportsRes.reports || [];
 
       const today = moment().format("YYYY-MM-DD");
       const todayApps = appointments.filter(a => a.start_time?.startsWith(today));

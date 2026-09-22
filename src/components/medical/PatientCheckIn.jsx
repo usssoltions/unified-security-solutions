@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { medicalApi } from "@/lib/medicalApi";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -117,24 +118,23 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
         ? JSON.stringify(scanFields).slice(0, 500)
         : null;
 
-      const verification = await base44.entities.PatientIdentityVerification.create({
-        customer_id: user.customer_id,
+      // The gateway validates the patient is in the caller's practice and
+      // stamps the verifier identity server-side. Note: verified_at is set
+      // by the gateway only for verified results.
+      const verificationRes = await medicalApi.createVerification({
         patient_id: appointment.patient_id,
-        patient_name: appointment.patient_name,
         document_type: docType,
         document_photo_url: docPhoto,
         realtime_photo_url: realtimePhoto,
         result,
         failure_reason: result !== "verified" ? reason.trim() : null,
-        verifier_id: user.id,
-        verifier_name: getUserDisplayName(user),
-        verified_at: new Date().toISOString(),
         scan_data: scanSummary,
       });
+      const verification = verificationRes?.record;
 
       // Only advance appointment to "arrived" if verified
       if (result === "verified") {
-        await base44.entities.Appointment.update(appointment.id, {
+        await medicalApi.updateAppointment(appointment.id, {
           status: "arrived",
           arrival_verified: true,
           arrival_time: new Date().toISOString(),

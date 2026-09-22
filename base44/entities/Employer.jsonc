@@ -1,7 +1,7 @@
 {
   "name": "Employer",
   "type": "object",
-  "description": "Medical module: Corporate client / employer that refers employees for occupational therapy, RFA, FCE, and work-ability services. Employer portal users see only their own employer's data. NO BILLING FIELDS \u2014 the application has no payment/billing functionality; billing_email, billing_address, billing_reference_number and po_number were removed. Tenant-isolated by customer_id (practice). Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
+  "description": "Medical module: Corporate client / employer that refers employees for occupational therapy, RFA, FCE, and work-ability services. GATEWAY-ONLY ACCESS: every tenant-level read/write goes through the medicalAccess backend gateway (practice_admin manages; employer users see their OWN employer record only). Direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. NO BILLING FIELDS \u2014 the application has no payment/billing functionality. Tenant-isolated by customer_id (practice).",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -128,18 +128,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -154,21 +142,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "data.id": "{{user.data.employer_id}}"
         }
       ]
     },
@@ -183,18 +156,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },

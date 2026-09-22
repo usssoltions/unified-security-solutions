@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import GoogleCalendarConnect from "@/components/medical/GoogleCalendarConnect";
 // (calendar connect UI rendered below the page header)
-import { hasMedicalOversight } from "@/lib/medicalOversight";
+import { medicalApi } from "@/lib/medicalApi";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +57,7 @@ export default function MedicalAppointments() {
       const u = await base44.auth.me();
       setUser(u);
       const cid = u.customer_id;
-      const oversight = hasMedicalOversight(u);
-      if (!cid && !oversight) { setLoading(false); return; }
-      const scope = oversight ? {} : { customer_id: cid };
+      const oversight = isPlatformAdminUser(u);
 
       // Therapists via getTenantUsers (server-side) — the built-in User entity
       // only allows platform admins to list users, so reception/therapist roles
@@ -67,11 +66,16 @@ export default function MedicalAppointments() {
       const tenantUsersRes = await base44.functions.invoke("getTenantUsers", oversight ? {} : { customer_id: cid }).catch(() => ({}));
       const tenantUsers = tenantUsersRes?.users || [];
 
-      const [apts, pts, svcs] = await Promise.all([
-        base44.entities.Appointment.filter(scope).catch(() => []),
-        base44.entities.Patient.filter({ ...scope, status: "active" }).catch(() => []),
-        base44.entities.MedicalService.filter({ ...scope, active: true }).catch(() => []),
+      // Medical data loads go through the medicalAccess gateway (server-side
+      // tenant scope + role authorization).
+      const [aptsRes, ptsRes, svcsRes] = await Promise.all([
+        medicalApi.listAppointments().catch(() => ({ appointments: [] })),
+        medicalApi.listPatients({ status: "active" }).catch(() => ({ patients: [] })),
+        medicalApi.listServices({ active: true }).catch(() => ({ services: [] })),
       ]);
+      const apts = aptsRes.appointments || [];
+      const pts = ptsRes.patients || [];
+      const svcs = svcsRes.services || [];
       setAppointments(apts.sort((a, b) => new Date(b.start_time) - new Date(a.start_time)));
       setPatients(pts);
       setServices(svcs);
@@ -107,16 +111,12 @@ export default function MedicalAppointments() {
       const duration = formData.duration_minutes || service?.default_duration_minutes || 60;
       const end = moment(start).add(duration, "minutes").toISOString();
 
-      const created = await base44.entities.Appointment.create({
-        customer_id: user.customer_id,
+      // The gateway resolves and stamps patient/employer/service/therapist
+      // identities server-side and validates practice membership.
+      const createdRes = await medicalApi.createAppointment({
         patient_id: formData.patient_id,
-        patient_name: patient ? `${patient.first_names} ${patient.surname}` : "",
-        employer_id: patient?.employer_id || "",
-        employer_name: patient?.employer_name || "",
         service_id: formData.service_id,
-        service_name: service?.name || "",
-        therapist_id: formData.therapist_id || "",
-        therapist_name: therapist?.full_name || "",
+        therapist_id: formData.therapist_id || null,
         start_time: start,
         end_time: end,
         duration_minutes: duration,
@@ -124,6 +124,7 @@ export default function MedicalAppointments() {
         status: "confirmed",
         notes: formData.notes,
       });
+      const created = createdRes?.record;
       // Best-effort Google Calendar sync (non-blocking — never breaks appointment creation).
       if (created?.id) {
         base44.functions.invoke("syncAppointmentToCalendar", { appointment_id: created.id }).catch(() => {});
@@ -175,7 +176,7 @@ export default function MedicalAppointments() {
 
   const updateStatus = async (aptId, newStatus) => {
     try {
-      await base44.entities.Appointment.update(aptId, { status: newStatus });
+      await medicalApi.updateAppointment(aptId, { status: newStatus });
       // Sync cancellation to Google Calendar (best-effort, non-blocking).
       if (newStatus === "cancelled") {
         base44.functions.invoke("syncAppointmentToCalendar", { appointment_id: aptId, action: "delete" }).catch(() => {});

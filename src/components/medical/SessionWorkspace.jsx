@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { medicalApi } from "@/lib/medicalApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,25 +37,28 @@ export default function SessionWorkspace({ session, user, onClose, onCompleted }
     (async () => {
       setLoading(true);
       try {
-        const cid = session.customer_id;
+        // ALL clinical context loads go through the medicalAccess gateway —
+        // role, tenant and therapist-ownership rules are enforced server-side.
         const loads = [];
-        if (session.patient_id) loads.push(base44.entities.Patient.get(session.patient_id).then(setPatient).catch(() => {}));
-        if (session.service_id) loads.push(base44.entities.MedicalService.get(session.service_id).then(setService).catch(() => {}));
-        if (session.employer_id) loads.push(base44.entities.Employer.get(session.employer_id).then(setEmployer).catch(() => {}));
+        if (session.patient_id) loads.push(medicalApi.getPatient(session.patient_id).then((r) => setPatient(r?.patient || null)).catch(() => {}));
+        if (session.service_id) loads.push(medicalApi.getService(session.service_id).then((r) => setService(r?.service || null)).catch(() => {}));
+        if (session.employer_id) loads.push(medicalApi.getEmployer(session.employer_id).then((r) => setEmployer(r?.employer || null)).catch(() => {}));
         await Promise.all(loads);
-        // Service → default assessment template
+        // Service → default assessment template (practice-scoped server-side)
         let tmplId = service?.assessment_template_id || session.assessment_template_id;
-        if (!tmplId && cid) {
-          const tmpls = await base44.entities.AssessmentTemplate.filter({ customer_id: cid, service_id: session.service_id, active: true }).catch(() => []);
+        if (!tmplId && session.service_id) {
+          const tmplRes = await medicalApi.listTemplates({ service_id: session.service_id, active: true }).catch(() => ({ templates: [] }));
+          const tmpls = tmplRes.templates || [];
           if (tmpls.length) tmplId = tmpls[0].id;
           if (tmplId && !cancelled) setTemplate(tmpls[0]);
         }
         if (tmplId && !template) {
-          const t = await base44.entities.AssessmentTemplate.get(tmplId).catch(() => null);
+          const t = (await medicalApi.getTemplate(tmplId).catch(() => null))?.template || null;
           if (t && !cancelled) setTemplate(t);
         }
-        if (session.patient_id && cid) {
-          const prior = await base44.entities.Assessment.filter({ patient_id: session.patient_id }).catch(() => []);
+        if (session.patient_id) {
+          const priorRes = await medicalApi.listAssessments({ patient_id: session.patient_id }).catch(() => ({ assessments: [] }));
+          const prior = priorRes.assessments || [];
           if (!cancelled) setPriorAssessments(prior.sort((a, b) => new Date(b.completed_at || b.created_date) - new Date(a.completed_at || a.created_date)));
         }
         if (!cancelled && session) {
@@ -106,18 +109,14 @@ export default function SessionWorkspace({ session, user, onClose, onCompleted }
       const duration = Math.round((new Date(now) - start) / 60000);
       const responseArr = buildResponsesArray();
 
-      // 1. Save the Assessment (if a template exists)
+      // 1. Save the Assessment (if a template exists) — the gateway stamps
+      // identities server-side and enforces therapist ownership of the session.
       let assessmentId = session.assessment_id;
       if (template && responseArr.length > 0) {
-        const assessment = await base44.entities.Assessment.create({
-          customer_id: session.customer_id,
+        const aRes = await medicalApi.saveAssessment({
           session_id: session.id,
           patient_id: session.patient_id,
-          patient_name: session.patient_name,
-          employer_id: session.employer_id,
-          employer_name: session.employer_name,
           therapist_id: session.therapist_id,
-          therapist_name: session.therapist_name,
           template_id: template.id,
           template_name: template.name,
           template_version: template.version || 1,
@@ -127,42 +126,27 @@ export default function SessionWorkspace({ session, user, onClose, onCompleted }
           findings: form.findings,
           recommendations: form.recommendations,
           completed_at: now,
-          completed_by_id: user.id,
-          completed_by_name: user.full_name || user.display_name,
           status: "completed",
         });
-        assessmentId = assessment.id;
+        assessmentId = aRes?.record?.id;
       }
 
-      // 2. Create the MedicalReport
-      const report = await base44.entities.MedicalReport.create({
-        customer_id: session.customer_id,
+      // 2. Create the MedicalReport (internal clinical draft — release to the
+      // employer is a separate, explicitly audited practice-admin decision)
+      const reportRes = await medicalApi.createReport({
         session_id: session.id,
         assessment_id: assessmentId || undefined,
-        patient_id: session.patient_id,
-        patient_name: session.patient_name,
-        employer_id: session.employer_id,
-        employer_name: session.employer_name,
-        service_id: session.service_id,
-        service_name: session.service_name,
-        therapist_id: session.therapist_id,
-        therapist_name: session.therapist_name,
-        assessment_date: session.actual_start_time,
-        report_type: "internal_clinical",
         findings: form.findings,
         recommendations: form.recommendations,
         work_capacity: form.work_capacity,
         restrictions: form.restrictions,
         return_to_work_recommendations: form.return_to_work_plan,
         follow_up: form.follow_up_notes,
-        status: "draft",
-        generated_at: now,
-        generated_by_id: user.id,
-        generated_by_name: user.full_name || user.display_name,
       });
+      const report = reportRes?.record;
 
-      // 3. Update the Session (link assessment + report, mark completed)
-      await base44.entities.Session.update(session.id, {
+      // 3. Update the Session (link assessment, mark completed)
+      await medicalApi.updateSession(session.id, {
         ...form,
         assessment_id: assessmentId || undefined,
         actual_end_time: now,
@@ -174,13 +158,13 @@ export default function SessionWorkspace({ session, user, onClose, onCompleted }
       });
 
       // 4. Link report back to the assessment
-      if (assessmentId) {
-        await base44.entities.Assessment.update(assessmentId, { report_id: report.id }).catch(() => {});
+      if (assessmentId && report?.id) {
+        await medicalApi.saveAssessment({ id: assessmentId, report_id: report.id }).catch(() => {});
       }
 
       // 5. Advance the appointment
       if (session.appointment_id) {
-        await base44.entities.Appointment.update(session.appointment_id, { status: "session_completed" }).catch(() => {});
+        await medicalApi.updateAppointment(session.appointment_id, { status: "session_completed" }).catch(() => {});
       }
 
       onCompleted?.();

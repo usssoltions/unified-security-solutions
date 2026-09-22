@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { hasMedicalOversight } from "@/lib/medicalOversight";
+import { medicalApi } from "@/lib/medicalApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,14 +40,12 @@ export default function MedicalAssessmentTemplates() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      const oversight = hasMedicalOversight(u);
-      if (!cid && !oversight) { setLoading(false); return; }
-      const scope = oversight ? {} : { customer_id: cid };
-      const [tmpls, svcs] = await Promise.all([
-        base44.entities.AssessmentTemplate.filter(scope).catch(() => []),
-        base44.entities.MedicalService.filter({ ...scope, active: true }).catch(() => []),
+      const [tmplRes, svcRes] = await Promise.all([
+        medicalApi.listTemplates().catch(() => ({ templates: [] })),
+        medicalApi.listServices({ active: true }).catch(() => ({ services: [] })),
       ]);
+      const tmpls = tmplRes.templates || [];
+      const svcs = svcRes.services || [];
       setTemplates(tmpls);
       setServices(svcs);
     } catch (e) {
@@ -114,7 +112,7 @@ export default function MedicalAssessmentTemplates() {
 
   const toggleTemplateActive = async (tmpl) => {
     try {
-      await base44.entities.AssessmentTemplate.update(tmpl.id, { active: !tmpl.active });
+      await medicalApi.updateTemplate(tmpl.id, { active: !tmpl.active });
       setViewingTemplate({ ...tmpl, active: !tmpl.active });
       await loadData();
     } catch (e) {
@@ -127,9 +125,10 @@ export default function MedicalAssessmentTemplates() {
     setSaving(true);
     try {
       const svc = services.find(s => s.id === formData.service_id);
-      await base44.entities.AssessmentTemplate.create({
+      // The gateway stamps the practice tenant and service linkage
+      // server-side.
+      await medicalApi.createTemplate({
         ...formData,
-        customer_id: user.customer_id,
         service_name: svc?.name || "",
         version: 1,
         active: true,

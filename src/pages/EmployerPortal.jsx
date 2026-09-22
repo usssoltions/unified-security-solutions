@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { medicalApi } from "@/lib/medicalApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,16 +26,19 @@ export default function EmployerPortal() {
       const empId = u.employer_id;
       if (!empId) { setLoading(false); return; }
 
-      const [pts, apts, reps] = await Promise.all([
-        base44.entities.Patient.filter({}).catch(() => []),
-        base44.entities.Appointment.filter({}).catch(() => []),
-        base44.entities.MedicalReport.filter({}).catch(() => []),
+      // EMPLOYER ISOLATION IS SERVER-SIDE: the medicalAccess gateway returns
+      // only this employer's own employees (sanitized demographics), their
+      // appointments (notes stripped) and RELEASED reports — never internal
+      // clinical reports or another employer's data. The previous client-side
+      // filter fetched the practice's full dataset into the browser first.
+      const [ptsRes, aptsRes, repsRes] = await Promise.all([
+        medicalApi.listPatients().catch(() => ({ patients: [] })),
+        medicalApi.listAppointments().catch(() => ({ appointments: [] })),
+        medicalApi.listReports().catch(() => ({ reports: [] })),
       ]);
-
-      // Employer isolation: only see own employees' data
-      setPatients(pts.filter(p => p.employer_id === empId));
-      setAppointments(apts.filter(a => a.employer_id === empId));
-      setReports(reps.filter(r => r.employer_id === empId && r.shared_with_employer));
+      setPatients(ptsRes.patients || []);
+      setAppointments(aptsRes.appointments || []);
+      setReports(repsRes.reports || []);
     } catch (e) {
       console.error("EmployerPortal error:", e);
     } finally {

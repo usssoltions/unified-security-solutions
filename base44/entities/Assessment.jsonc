@@ -1,7 +1,7 @@
 {
   "name": "Assessment",
   "type": "object",
-  "description": "Medical module: Completed patient assessment. Stores the template version used so historical results remain interpretable. Clinical \u2014 employer portal users cannot access raw assessment answers. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
+  "description": "Medical module: Completed patient assessment. Stores the template version used so historical results remain interpretable. CLINICAL \u2014 reception and employer portal users have ZERO access; the medicalAccess gateway enforces therapist-ownership (therapists act on their own assessments) with practice-admin oversight. GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. Deletion is not offered through the gateway (clinical preservation).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -122,18 +122,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -148,18 +136,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -174,18 +150,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },

@@ -1,7 +1,7 @@
 {
   "name": "Appointment",
   "type": "object",
-  "description": "Medical module: Patient appointment. Supports calendar views and server-side conflict validation. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
+  "description": "Medical module: Patient appointment. Supports calendar views and server-side conflict validation. GATEWAY-ONLY ACCESS: every tenant-level read/write goes through the medicalAccess backend gateway (practice staff manage; employer users see their own employees' appointments with notes stripped). Direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -152,30 +152,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.employer_id": "{{user.data.employer_id}}"
-            },
-            {
-              "data.employer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -190,30 +166,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.employer_id": "{{user.data.employer_id}}"
-            },
-            {
-              "data.employer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -228,18 +180,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },

@@ -1,7 +1,7 @@
 {
   "name": "AssessmentTemplate",
   "type": "object",
-  "description": "Medical module: Configurable assessment template with sections, questions, question types, scoring, and required fields. Versioned \u2014 historical assessments store the template version used so results remain interpretable after template changes. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
+  "description": "Medical module: Configurable assessment template with sections, questions, question types, scoring, and required fields. Versioned \u2014 historical assessments store the template version used so results remain interpretable after template changes. The medicalAccess gateway grants clinical read access (practice_admin, therapist) and practice-admin management; in-use templates are deactivated, never deleted (versioned history). GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -49,7 +49,6 @@
                   "enum": [
                     "short_text",
                     "long_text",
-                    "number",
                     "yes_no",
                     "single_choice",
                     "multiple_choice",
@@ -136,18 +135,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -162,18 +149,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },
@@ -188,18 +163,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
         }
       ]
     },

@@ -11,9 +11,8 @@ Deno.serve(async (req) => {
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (user.role_type !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // NOTE: the coarse role gate was removed — caller authorization is
+    // enforced below against the schedule's OWN tenant scope (IDOR fix).
 
     const { schedule_id } = await req.json();
 
@@ -44,6 +43,35 @@ Deno.serve(async (req) => {
         scopeRid = creator?.reseller_id || null;
       }
     } catch (_) { /* unresolvable scope fails CLOSED below via scopeMatch */ }
+
+    // ── CALLER AUTHORIZATION (IDOR hardening, server-side) ─────────────────
+    // The schedule_id is client-supplied: a Customer A caller must NEVER be
+    // able to trigger (and thereby receive) Customer B's schedule. Platform
+    // administrators retain explicit oversight; a reseller admin may trigger
+    // only schedules created within their own reseller's customers; a tenant
+    // administrator only schedules created within their own tenant. Everyone
+    // else (guards, dispatchers, residents, ...) is rejected. An unresolvable
+    // creator scope fails CLOSED — nobody but a platform admin passes.
+    const isPlatformAdmin = user.role === 'admin' || user.role_type === 'platform_admin' || user.admin_level === 'platform';
+    if (!isPlatformAdmin) {
+      const callerAdminLevel = user.admin_level || null;
+      const callerIsResellerAdmin = user.role_type === 'reseller_admin' || callerAdminLevel === 'reseller';
+      const callerIsTenantAdmin = !!user.customer_id && (
+        callerAdminLevel === 'customer' ||
+        ['customer_admin', 'practice_admin', 'estate_manager'].includes(user.role_type)
+      );
+      if (callerIsResellerAdmin) {
+        if (!scopeRid || scopeRid !== (user.reseller_id || null)) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      } else if (callerIsTenantAdmin) {
+        if (!scopeCid || scopeCid !== user.customer_id) {
+          return Response.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      } else {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
 
     // TENANT BRANDING — resolved from the report's OWN tenant scope
     // (customer → reseller → USS platform default). No hard-coded identity.

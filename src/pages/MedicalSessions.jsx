@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { hasMedicalOversight } from "@/lib/medicalOversight";
+import { medicalApi } from "@/lib/medicalApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,14 +22,14 @@ export default function MedicalSessions() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      const oversight = hasMedicalOversight(u);
-      if (!cid && !oversight) { setLoading(false); return; }
-      const scope = oversight ? {} : { customer_id: cid };
-      const [sess, apts] = await Promise.all([
-        base44.entities.Session.filter(scope).catch(() => []),
-        base44.entities.Appointment.filter(scope).catch(() => []),
+      // Session visibility is ownership-scoped server-side (therapists see
+      // their own sessions; practice admins see all).
+      const [sessRes, aptsRes] = await Promise.all([
+        medicalApi.listSessions().catch(() => ({ sessions: [] })),
+        medicalApi.listAppointments().catch(() => ({ appointments: [] })),
       ]);
+      const sess = sessRes.sessions || [];
+      const apts = aptsRes.appointments || [];
       setSessions(sess.sort((a, b) =>
         new Date(b.actual_start_time || b.created_date) - new Date(a.actual_start_time || a.created_date)
       ));
@@ -47,22 +47,11 @@ export default function MedicalSessions() {
 
   const startSession = async (apt) => {
     try {
-      const now = new Date().toISOString();
-      const session = await base44.entities.Session.create({
-        customer_id: user.customer_id,
-        appointment_id: apt.id,
-        patient_id: apt.patient_id,
-        patient_name: apt.patient_name,
-        employer_id: apt.employer_id,
-        employer_name: apt.employer_name,
-        service_id: apt.service_id,
-        service_name: apt.service_name,
-        therapist_id: user.id,
-        therapist_name: user.full_name || user.display_name,
-        actual_start_time: now,
-        status: "in_progress",
-      });
-      await base44.entities.Appointment.update(apt.id, { status: "in_session", session_id: session.id });
+      // The gateway derives the patient/service/therapist stamps from the
+      // authoritative appointment record and the caller's identity.
+      const res = await medicalApi.createSession({ appointment_id: apt.id, patient_id: apt.patient_id });
+      const session = res?.record || null;
+      await medicalApi.updateAppointment(apt.id, { status: "in_session", session_id: session?.id });
       await loadData();
     } catch (e) {
       console.error("Failed to start session:", e);

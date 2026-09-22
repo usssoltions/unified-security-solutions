@@ -102,6 +102,7 @@ export default async function main(req: Request): Promise<Response> {
     job_title: pt.job_title || null, occupation: pt.occupation || null,
     employer_id: pt.employer_id || null, employer_name: pt.employer_name || null,
     status: pt.status || 'active',
+    identity_verified: pt.identity_verified === true,
   });
   const sanitizeAppointmentForEmployer = (a) => {
     const out = { ...a };
@@ -513,13 +514,8 @@ export default async function main(req: Request): Promise<Response> {
     if (action === 'save_assessment') {
       if (!isClinical && !isAdmin) return err('Forbidden', 403);
       const d = p.data || {};
-      const patient = await find('Patient', d.patient_id);
-      if (!patient || !inScope(patient)) return err('Patient not found in your practice.', 404);
       const payload = {
-        customer_id: scope.customer_id, reseller_id: patient.reseller_id || await resellerIdOf(),
-        session_id: d.session_id || null, patient_id: patient.id,
-        patient_name: (patient.first_names || '') + ' ' + (patient.surname || ''),
-        employer_id: patient.employer_id || null, employer_name: patient.employer_name || null,
+        session_id: d.session_id || null,
         therapist_id: isTherapist ? caller.id : (d.therapist_id || caller.id),
         template_id: d.template_id || null, template_name: d.template_name || null,
         template_version: d.template_version ?? null,
@@ -530,15 +526,36 @@ export default async function main(req: Request): Promise<Response> {
         completed_at: d.completed_at || null,
         completed_by_id: caller.id, completed_by_name: callerName,
         status: d.status || 'in_progress',
+        report_id: d.report_id || undefined,
       };
       if (d.id) {
         const rec = await find('Assessment', d.id);
         if (!rec || !inScope(rec) || !therapistOwns(rec)) return err('Assessment not found in your scope.', 404);
-        const updated = await svc.entities.Assessment.update(rec.id, payload);
+        // UPDATE: only explicitly-provided fields change — a targeted update
+        // (e.g. linking report_id) never clobbers existing responses.
+        const patient = await find('Patient', d.patient_id || rec.patient_id);
+        if (!patient || !inScope(patient)) return err('Patient not found in your practice.', 404);
+        const changes = {
+          customer_id: rec.customer_id, patient_id: patient.id,
+          patient_name: (patient.first_names || '') + ' ' + (patient.surname || ''),
+          employer_id: patient.employer_id || null, employer_name: patient.employer_name || null,
+        };
+        for (const k of Object.keys(payload)) {
+          if (d[k] !== undefined) changes[k] = payload[k];
+        }
+        const updated = await svc.entities.Assessment.update(rec.id, changes);
         await audit('medical.assessment.updated', 'Assessment', rec.id, 'updated assessment', updated);
         return Response.json({ success: true, record: updated });
       }
-      const created = await svc.entities.Assessment.create(payload);
+      const patient = await find('Patient', d.patient_id);
+      if (!patient || !inScope(patient)) return err('Patient not found in your practice.', 404);
+      const created = await svc.entities.Assessment.create({
+        ...payload,
+        customer_id: scope.customer_id, reseller_id: patient.reseller_id || await resellerIdOf(),
+        patient_id: patient.id,
+        patient_name: (patient.first_names || '') + ' ' + (patient.surname || ''),
+        employer_id: patient.employer_id || null, employer_name: patient.employer_name || null,
+      });
       await audit('medical.assessment.created', 'Assessment', created.id, 'created assessment', created);
       return Response.json({ success: true, record: created });
     }

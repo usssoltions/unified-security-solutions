@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { hasMedicalOversight } from "@/lib/medicalOversight";
+import { medicalApi } from "@/lib/medicalApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,11 +32,8 @@ export default function MedicalServices() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      const oversight = hasMedicalOversight(u);
-      if (!cid && !oversight) { setLoading(false); return; }
-      const scope = oversight ? {} : { customer_id: cid };
-      const svcs = await base44.entities.MedicalService.filter(scope).catch(() => []);
+      const svcsRes = await medicalApi.listServices().catch(() => ({ services: [] }));
+      const svcs = svcsRes.services || [];
       setServices(svcs.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
     } catch (e) {
       console.error("Failed to load services:", e);
@@ -74,12 +71,9 @@ export default function MedicalServices() {
         available_days: ["mon", "tue", "wed", "thu", "fri"],
       };
       if (editingService) {
-        await base44.entities.MedicalService.update(editingService.id, payload);
+        await medicalApi.updateService(editingService.id, payload);
       } else {
-        await base44.entities.MedicalService.create({
-          ...payload,
-          customer_id: user.customer_id,
-        });
+        await medicalApi.createService(payload);
       }
       setShowForm(false);
       setEditingService(null);
@@ -95,7 +89,7 @@ export default function MedicalServices() {
 
   const toggleActive = async (svc) => {
     try {
-      await base44.entities.MedicalService.update(svc.id, { active: !svc.active });
+      await medicalApi.updateService(svc.id, { active: !svc.active });
       await loadData();
     } catch (e) {
       console.error("Failed to toggle service:", e);

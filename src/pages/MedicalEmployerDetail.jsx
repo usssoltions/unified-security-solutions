@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { medicalApi } from "@/lib/medicalApi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,13 +22,15 @@ export default function MedicalEmployerDetail() {
     if (!employerId) { setLoading(false); return; }
     (async () => {
       try {
-        const e = await base44.entities.Employer.get(employerId).catch(() => null);
+        const e = (await medicalApi.getEmployer(employerId).catch(() => null))?.employer || null;
         setEmployer(e);
         if (!e) { setLoading(false); return; }
-        const [pts, apts] = await Promise.all([
-          base44.entities.Patient.filter({ employer_id: employerId }).catch(() => []),
-          base44.entities.Appointment.filter({ employer_id: employerId }).catch(() => []),
+        const [ptsRes, aptsRes] = await Promise.all([
+          medicalApi.listPatients({ employer_id: employerId }).catch(() => ({ patients: [] })),
+          medicalApi.listAppointments({ employer_id: employerId }).catch(() => ({ appointments: [] })),
         ]);
+        const pts = ptsRes.patients || [];
+        const apts = aptsRes.appointments || [];
         setPatients(pts);
         setAppointments(apts.sort((a, b) => new Date(b.start_time) - new Date(a.start_time)));
       } catch (err) {

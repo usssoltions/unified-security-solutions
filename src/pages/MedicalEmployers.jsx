@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { hasMedicalOversight } from "@/lib/medicalOversight";
+import { medicalApi } from "@/lib/medicalApi";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,12 +36,10 @@ export default function MedicalEmployers() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      const oversight = hasMedicalOversight(u);
-      if (!cid && !oversight) { setLoading(false); return; }
-      const scope = oversight ? {} : { customer_id: cid };
-      const emps = await base44.entities.Employer.filter(scope).catch(() => []);
-      setEmployers(emps);
+      // Tenant scope and role authorization are enforced server-side by the
+      // medicalAccess gateway.
+      const empsRes = await medicalApi.listEmployers().catch(() => ({ employers: [] }));
+      setEmployers(empsRes.employers || []);
     } catch (e) {
       console.error("Failed to load employers:", e);
     } finally {
@@ -63,11 +61,8 @@ export default function MedicalEmployers() {
     if (!formData.company_name) return;
     setSaving(true);
     try {
-      await base44.entities.Employer.create({
-        ...formData,
-        customer_id: user.customer_id,
-        status: "active",
-      });
+      // Gateway stamps the practice tenant and status server-side.
+      await medicalApi.createEmployer(formData);
       setShowForm(false);
       setFormData({
         company_name: "", registration_number: "", vat_number: "",
