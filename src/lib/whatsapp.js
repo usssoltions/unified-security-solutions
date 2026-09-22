@@ -108,23 +108,6 @@ export function appDeepLink(path) {
 // ─── Admin notification helpers ────────────────────────────────────────────────
 
 /**
- * Send in-app email to all admin users.
- * Falls back silently if email fails.
- */
-export async function emailAdmins({ subject, body }) {
-  try {
-    // Tenant-scoped user list via the getTenantUsers gateway.
-    const allUsers = await fetchTenantUsers();
-    const admins = allUsers.filter(u =>
-      ["admin", "dispatcher", "supervisor", "management", "customer_admin", "control_room_operator"].includes(u.role_type) && u.email
-    );
-    for (const admin of admins) {
-      await base44.integrations.Core.SendEmail({ to: admin.email, subject, body }).catch(() => {});
-    }
-  } catch (_) {}
-}
-
-/**
  * Create in-app notifications for all admins.
  */
 export async function notifyAdmins({ type, title, message, relatedEntity, relatedId }) {

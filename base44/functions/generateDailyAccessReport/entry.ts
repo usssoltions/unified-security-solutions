@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 /**
  * generateDailyAccessReport — Server-side daily access report.

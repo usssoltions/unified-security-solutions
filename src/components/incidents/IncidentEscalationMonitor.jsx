@@ -1,17 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { fetchTenantUsers, fetchTenantUsersInRoles } from "@/lib/tenantLookups";
+import { fetchTenantUsers } from "@/lib/tenantLookups";
 import { getUserDisplayName } from "@/lib/userDisplayName";
-import { useBranding } from "@/hooks/useBranding";
-import { resolveBrand } from "@/lib/branding";
 
 export default function IncidentEscalationMonitor({ user }) {
   const [lastCheck, setLastCheck] = useState(Date.now());
-  // TENANT BRANDING — effective brand for the escalation emails (server-
-  // resolved white-label branding; platform default as fallback).
-  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
-  const brandNameRef = useRef(null);
-  brandNameRef.current = resolveBrand(branding)?.appName || null;
 
   useEffect(() => {
     if (!user || !['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(user.role_type)) {
@@ -72,50 +65,15 @@ export default function IncidentEscalationMonitor({ user }) {
           escalated_at: new Date().toISOString()
         });
 
-        // Tenant-scoped recipients via the getTenantUsers gateway — the
-        // server resolves the caller's organisation; never a platform-wide
-        // client-side User read.
-        // MODERN recipient resolution — customer_admin / control_room_operator
-        // / management join the legacy roles (post-split defect class).
-        const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator']);
-
-        const emailPromises = (Array.isArray(supervisors) ? supervisors : [])
-          .filter(sup => sup.email && sup.id !== incident.guard_id)
-          .map(supervisor =>
-            base44.integrations.Core.SendEmail({
-              from_name: brandNameRef.current || undefined,
-              to: supervisor.email,
-              subject: `🚨 ESCALATED INCIDENT: ${incident.title}`,
-              body: `
-<h2 style="color: #dc2626;">⚠️ INCIDENT ESCALATION ALERT</h2>
-
-<p><strong>Incident ID:</strong> ${incident.id}</p>
-<p><strong>Title:</strong> ${incident.title}</p>
-<p><strong>Priority:</strong> <span style="color: #dc2626; font-weight: bold;">${incident.priority?.toUpperCase()}</span></p>
-<p><strong>Status:</strong> ${incident.status}</p>
-<p><strong>Site:</strong> ${incident.site_name}</p>
-<p><strong>Assigned Guard:</strong> ${incident.guard_name}</p>
-
-<p><strong>Escalation Reason:</strong> ${
-  reason === 'priority' 
-    ? 'High/Critical Priority Incident' 
-    : 'Incident unresolved for 30+ minutes'
-}</p>
-
-<p><strong>Reported:</strong> ${new Date(incident.reported_at).toLocaleString()}</p>
-<p><strong>Time Elapsed:</strong> ${Math.round((new Date() - new Date(incident.reported_at)) / 60000)} minutes</p>
-
-<h3>Description:</h3>
-<p>${incident.description?.substring(0, 500)}...</p>
-
-<p style="color: #dc2626; font-weight: bold;">This incident requires immediate attention and may need reassignment.</p>
-
-<p>Log into the app to review and take action.</p>
-              `
-            }).catch(err => console.error(`Email failed for ${supervisor.email}:`, err))
-          );
-
-        await Promise.allSettled(emailPromises);
+        // SERVER-AUTHORITATIVE branded dispatch — recipients, tenant scope,
+        // branding and delivery auditing are resolved server-side from the
+        // Incident record (sendIncidentEscalationNotice). No client-composed
+        // email remains on this path.
+        await base44.functions.invoke("sendIncidentEscalationNotice", {
+          kind: "escalation",
+          incident_id: incident.id,
+          reason
+        });
 
         await base44.entities.Alert.create({
           customer_id: incident?.customer_id || undefined,
@@ -198,32 +156,13 @@ export default function IncidentEscalationMonitor({ user }) {
             metadata: { incident_id: incident.id, escalated: true }
           });
 
-          // Tenant-scoped recipients via the getTenantUsers gateway — the
-          // server resolves the caller's organisation; never a platform-wide
-          // client-side User read.
-          // MODERN recipient resolution — customer_admin / control_room_operator
-          // / management join the legacy roles (post-split defect class).
-          const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator']);
-
-          const reassignmentEmails = (Array.isArray(supervisors) ? supervisors : [])
-            .filter(sup => sup.email)
-            .map(supervisor =>
-              base44.integrations.Core.SendEmail({
-                from_name: brandNameRef.current || undefined,
-                to: supervisor.email,
-                subject: `Incident Reassigned: ${incident.title}`,
-                body: `
-<h2>Incident Automatically Reassigned</h2>
-<p><strong>Incident:</strong> ${incident.title}</p>
-<p><strong>Original Guard:</strong> ${incident.guard_name} (Overloaded)</p>
-<p><strong>New Guard:</strong> ${newGuard.guard_name}</p>
-<p><strong>Site:</strong> ${incident.site_name}</p>
-<p>The incident has been reassigned due to workload optimization.</p>
-                `
-              }).catch(err => console.error(`Reassignment email failed:`, err))
-            );
-
-          await Promise.allSettled(reassignmentEmails);
+          // SERVER-AUTHORITATIVE branded dispatch (see escalation path).
+          await base44.functions.invoke("sendIncidentEscalationNotice", {
+            kind: "reassignment",
+            incident_id: incident.id,
+            original_guard_name: incident.guard_name,
+            new_guard_name: newGuard.guard_name
+          });
         }
       } catch (error) {
         console.error('Reassignment failed:', error);
