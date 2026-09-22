@@ -33,8 +33,13 @@ Deno.serve(async (req) => {
           ? { customer_id: user.customer_id }
           : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
     const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
+    // MODERN recipient resolution: management + customer_admin +
+    // control_room_operator (post-split roles) — legacy-only filters
+    // previously resolved ZERO recipients for customers whose managers hold
+    // the modern roles. Suspended/inactive users are excluded.
     const admins = (allUsers || []).filter((u) =>
-      u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor'
+      ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
+      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive'))
     );
 
     if (admins.length === 0) {

@@ -44,7 +44,9 @@ Deno.serve(async (req) => {
           ? { customer_id: user.customer_id }
           : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
     const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
-    const managementRoles = ['admin', 'dispatcher', 'supervisor', 'management'];
+    // MODERN recipient resolution — post-split management roles join the
+    // legacy list (same confirmed defect class as Start of Shift).
+    const managementRoles = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
     const management = (allUsers || []).filter((u) => managementRoles.includes(u.role_type));
 
     const hasLocation = location && location.lat != null && location.lng != null;

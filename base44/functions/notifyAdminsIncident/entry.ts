@@ -40,8 +40,14 @@ Deno.serve(async (req) => {
           ? { customer_id: user.customer_id }
           : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
     const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
+    // MODERN recipient resolution: customer_admin + control_room_operator
+    // join the legacy management roles — a customer whose managers hold the
+    // post-split roles previously resolved ZERO recipients (same confirmed
+    // defect class as the Start of Shift notification). Suspended/inactive
+    // users are excluded.
     const recipients = (allUsers || []).filter((u) =>
-      u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor' || u.role_type === 'management'
+      ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
+      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive'))
     );
 
     if (recipients.length === 0) {
