@@ -7,25 +7,26 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Plus, X, Search, Phone, Home, Car } from "lucide-react";
-import { useTenantContext } from "@/hooks/useTenantContext";
+import { listResidents, createResident, updateResident } from "@/lib/estateApi";
 
 export default function ResidentManagement() {
-  const { withTenant } = useTenantContext();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [selectedResident, setSelectedResident] = useState(null);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", move_in_date: "", emergency_contact_name: "", emergency_contact_phone: "" });
   const qc = useQueryClient();
 
-  const { data: residents = [] } = useQuery({ queryKey: ["residents_mgmt"], queryFn: () => base44.entities.Resident.list("-created_date", 200), initialData: [] });
+  // All resident records flow through the estateAccess gateway — tenant
+  // scope resolved and stamped server-side.
+  const { data: residents = [] } = useQuery({ queryKey: ["residents_mgmt"], queryFn: () => listResidents().then(r => r.residents), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Resident.create(withTenant({ ...data, status: "active" })),
+    mutationFn: (data) => createResident(data),
     onSuccess: () => { qc.invalidateQueries(["residents_mgmt"]); setShowForm(false); setForm({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", move_in_date: "", emergency_contact_name: "", emergency_contact_phone: "" }); }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Resident.update(id, data),
+    mutationFn: ({ id, data }) => updateResident(id, data),
     onSuccess: () => { qc.invalidateQueries(["residents_mgmt"]); setSelectedResident(null); }
   });
 

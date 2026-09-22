@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Shield, Plus, X, AlertTriangle, Phone, Home } from "lucide-react";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { residentIncidentMessage } from "@/lib/whatsapp";
+import { getEstateContext, createResidentReport, listMyReports } from "@/lib/estateApi";
 
 const CATEGORIES = [
   { value: "theft", label: "Theft" },
@@ -34,18 +35,15 @@ export default function ResidentIncidents() {
   const qc = useQueryClient();
 
   useEffect(() => {
-    base44.auth.me().then((u) => {
-      setUser(u);
-      base44.entities.Resident.filter({ user_id: u.id }).then((res) => {
-        if (res.length > 0) setResident(res[0]);
-      });
-    });
+    base44.auth.me().then(setUser).catch(() => {});
+    // Linked profile resolved server-side by the estateAccess gateway.
+    getEstateContext().then(ctx => setResident(ctx?.my_profile || null)).catch(() => {});
   }, []);
 
-  // Incidents reported by this resident are stored with guard_id = resident id.
+  // Incidents reported by this resident (self-scoped server-side).
   const { data: myIncidents = [] } = useQuery({
     queryKey: ["my_incidents", user?.id],
-    queryFn: () => base44.entities.Incident.filter({ guard_id: user?.id }),
+    queryFn: () => listMyReports("incident").then(r => r.reports),
     enabled: !!user, initialData: [],
   });
 
@@ -56,24 +54,15 @@ export default function ResidentIncidents() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      const incident = await base44.entities.Incident.create({
-        title: data.title,
-        description: data.description,
-        category: data.category,
-        priority: data.priority,
-        status: "reported",
-        guard_id: user.id,
-        guard_name: residentName,
-        site_id: "resident",
-        site_name: `Resident — Unit ${unitNumber}`,
-        reported_at: new Date().toISOString(),
-      });
+      // The gateway stamps the resident identity and tenant scope server-side.
+      const res = await createResidentReport("incident", data);
+      const incident = res?.record;
       // Send branded real-time email + in-app notification to all
       // admin / estate_manager / dispatcher users (server-side).
       try {
         await base44.functions.invoke("notifyAdminsResidentReport", {
           reportType: "incident",
-          reportId: incident.id,
+          reportId: incident?.id,
           residentName,
           unitNumber,
           estateName,

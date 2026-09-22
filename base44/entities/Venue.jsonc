@@ -1,7 +1,7 @@
 {
   "name": "Venue",
   "type": "object",
-  "description": "ESTATE module: bookable estate venue. NO BOOKING FEES OR DEPOSITS \u2014 venue booking is a reservation workflow only; the app never collects payment. TENANT ISOLATION: every tenant-facing operation is customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's venues to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
+  "description": "ESTATE module: bookable estate venue. NO BOOKING FEES OR DEPOSITS \u2014 venue booking is a reservation workflow only; the app never collects payment. TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway, which resolves the caller's tenant scope server-side; direct client access is restricted to platform admins by RLS.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -166,35 +166,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.reseller_id": "{{user.data.reseller_id}}"
-            },
-            {
-              "data.reseller_id": {
-                "$ne": null
-              }
-            },
-            {
-              "user_condition": {
-                "admin_level": "reseller"
-              }
-            }
-          ]
         }
       ]
     },
@@ -209,35 +180,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.reseller_id": "{{user.data.reseller_id}}"
-            },
-            {
-              "data.reseller_id": {
-                "$ne": null
-              }
-            },
-            {
-              "user_condition": {
-                "admin_level": "reseller"
-              }
-            }
-          ]
         }
       ]
     },
@@ -252,35 +194,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.reseller_id": "{{user.data.reseller_id}}"
-            },
-            {
-              "data.reseller_id": {
-                "$ne": null
-              }
-            },
-            {
-              "user_condition": {
-                "admin_level": "reseller"
-              }
-            }
-          ]
         }
       ]
     },

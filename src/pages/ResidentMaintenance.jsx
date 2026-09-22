@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Wrench, Plus, X, Home, Phone, MapPin } from "lucide-react";
 import WhatsAppNotifier from "@/components/WhatsAppNotifier";
 import { residentMaintenanceMessage } from "@/lib/whatsapp";
+import { getEstateContext, createResidentReport, listMyReports } from "@/lib/estateApi";
 
 const CATEGORIES = [
   { value: "plumbing", label: "Plumbing" },
@@ -41,23 +42,25 @@ export default function ResidentMaintenance() {
   useEffect(() => {
     base44.auth.me().then((u) => {
       setUser(u);
-      base44.entities.Resident.filter({ user_id: u.id }).then((res) => {
-        if (res.length > 0) {
-          setResident(res[0]);
+      // Linked profile resolved server-side by the estateAccess gateway.
+      getEstateContext().then((ctx) => {
+        const profile = ctx?.my_profile || null;
+        setResident(profile);
+        if (profile) {
           setForm((f) => ({
             ...f,
-            contactPhone: res[0].phone || u.phone_number || u.phone || "",
-            address: [res[0].unit_number && `Unit ${res[0].unit_number}`, res[0].estate_name].filter(Boolean).join(", "),
+            contactPhone: profile.phone || u.phone_number || u.phone || "",
+            address: [profile.unit_number && `Unit ${profile.unit_number}`, profile.estate_name].filter(Boolean).join(", "),
           }));
         }
-      });
+      }).catch(() => {});
     });
   }, []);
 
-  // Maintenance requests reported by this resident (guard_id = resident id).
+  // Maintenance requests reported by this resident (self-scoped server-side).
   const { data: myRequests = [] } = useQuery({
     queryKey: ["my_maintenance", user?.id],
-    queryFn: () => base44.entities.MaintenanceRequest.filter({ guard_id: user?.id }),
+    queryFn: () => listMyReports("maintenance").then(r => r.reports),
     enabled: !!user, initialData: [],
   });
 
@@ -67,24 +70,16 @@ export default function ResidentMaintenance() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      const request = await base44.entities.MaintenanceRequest.create({
-        title: data.title || `${data.category} request`,
-        description: `Reason / Details: ${data.description}\n\nAddress: ${data.address || `Unit ${unitNumber}${estateName ? ', ' + estateName : ''}`}\nContact: ${data.contactPhone || 'N/A'}`,
-        category: data.category,
-        urgency: data.urgency,
-        status: "reported",
-        guard_id: user.id,
-        guard_name: residentName,
-        site_id: "resident",
-        site_name: `Resident — Unit ${unitNumber}`,
-        reported_at: new Date().toISOString(),
-      });
+      // The gateway stamps the resident identity and tenant scope server-side.
+      const composedDescription = `Reason / Details: ${data.description}\n\nAddress: ${data.address || `Unit ${unitNumber}${estateName ? ', ' + estateName : ''}`}\nContact: ${data.contactPhone || 'N/A'}`;
+      const res = await createResidentReport("maintenance", { ...data, description: composedDescription });
+      const request = res?.record;
       // Send branded real-time email + in-app notification to all
       // admin / estate_manager / dispatcher users (server-side).
       try {
         await base44.functions.invoke("notifyAdminsResidentReport", {
           reportType: "maintenance",
-          reportId: request.id,
+          reportId: request?.id,
           residentName,
           unitNumber,
           estateName,

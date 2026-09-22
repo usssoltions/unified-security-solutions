@@ -60,6 +60,10 @@ export const openQuestion = (id) => invoke("open_question", { id });
 export const castVote = (question_id, option_indices) =>
   base44.functions.invoke("castVote", { question_id, option_indices }).then((r) => r.data);
 
+/* ── Resident incident / maintenance reports ───────────────────────────── */
+export const createResidentReport = (report_type, data) => invoke("create_resident_report", { report_type, data });
+export const listMyReports = (report_type) => invoke("list_my_reports", { report_type });
+
 /* ── Service tickets ───────────────────────────────────────────────────── */
 export const listTickets = (filter) => invoke("list_tickets", { filter });
 export const createTicket = (data) => invoke("create_ticket", { data });

@@ -1,7 +1,7 @@
 {
   "name": "MenuItem",
   "type": "object",
-  "description": "Estate vendor menu item. TENANT ISOLATION: customer_id ownership stamped at creation; reads customer-scoped, reseller_id branch RESELLER-ADMIN-only (admin_level 'reseller').",
+  "description": "Estate vendor menu item. TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway (vendor self-service for own vendor's items; managers may manage all); direct client access is restricted to platform admins by RLS.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -73,22 +73,9 @@
     "create": {
       "$or": [
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "data.vendor_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
+          "user_condition": {
+            "role": "admin"
+          }
         },
         {
           "user_condition": {
@@ -101,65 +88,22 @@
       "$or": [
         {
           "user_condition": {
-            "admin_level": "platform"
+            "role": "admin"
           }
         },
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.reseller_id": "{{user.data.reseller_id}}"
-            },
-            {
-              "data.reseller_id": {
-                "$ne": null
-              }
-            },
-            {
-              "user_condition": {
-                "admin_level": "reseller"
-              }
-            }
-          ]
-        },
-        {
-          "data.vendor_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
+          "user_condition": {
+            "admin_level": "platform"
+          }
         }
       ]
     },
     "update": {
       "$or": [
         {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "data.vendor_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
+          "user_condition": {
+            "role": "admin"
+          }
         },
         {
           "user_condition": {
@@ -169,9 +113,18 @@
       ]
     },
     "delete": {
-      "user_condition": {
-        "admin_level": "platform"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
     }
   }
 }

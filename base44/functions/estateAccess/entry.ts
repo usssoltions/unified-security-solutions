@@ -213,6 +213,53 @@ export default async function main(req: Request): Promise<Response> {
       });
     }
 
+    /* ── Resident incident / maintenance reports (shared entities, server-
+       stamped identity — Phase 9: the resident's name, unit, tenant ids and
+       timestamps are populated SERVER-SIDE, never from client input). */
+    if (action === 'create_resident_report') {
+      if (!authorized || !(isResident || isManager)) return err('Forbidden', 403);
+      if (!scope.customer_id) return err('A customer scope is required.', 400);
+      const type = String(p.report_type || '');
+      if (!['incident', 'maintenance'].includes(type)) return err('report_type must be incident or maintenance.');
+      await loadSelf();
+      const d = p.data || {};
+      const reseller_id = await resolveResellerId();
+      const reported_at = new Date().toISOString();
+      const reporterName = selfName();
+      const siteName = `Resident — Unit ${selfUnit() || '—'}`;
+      if (type === 'incident') {
+        if (!d.title || !d.category || !d.description) return err('Title, category and description are required.');
+        const created = await svc.entities.Incident.create({
+          customer_id: scope.customer_id, reseller_id,
+          title: String(d.title).trim(), description: String(d.description),
+          category: d.category, priority: d.priority || 'medium', status: 'reported',
+          guard_id: caller.id, guard_name: reporterName,
+          site_id: 'resident', site_name: siteName, reported_at,
+        });
+        await audit('estate.resident_incident.created', 'Incident', created.id, 'resident incident report', created);
+        return Response.json({ success: true, record: created, report_type: 'incident' });
+      }
+      if (!d.category || !d.description) return err('Category and description are required.');
+      const created = await svc.entities.MaintenanceRequest.create({
+        customer_id: scope.customer_id, reseller_id,
+        title: d.title ? String(d.title).trim() : `${d.category} request`,
+        description: String(d.description), category: d.category,
+        urgency: d.urgency || 'medium', status: 'reported',
+        guard_id: caller.id, guard_name: reporterName,
+        site_id: 'resident', site_name: siteName, reported_at,
+      });
+      await audit('estate.resident_maintenance.created', 'MaintenanceRequest', created.id, 'resident maintenance report', created);
+      return Response.json({ success: true, record: created, report_type: 'maintenance' });
+    }
+    if (action === 'list_my_reports') {
+      if (!authorized || !isResident) return err('Forbidden', 403);
+      const type = String(p.report_type || '');
+      const entityName = type === 'maintenance' ? 'MaintenanceRequest' : 'Incident';
+      await loadSelf();
+      const rows = await svc.entities[entityName].filter({ customer_id: scope.customer_id, guard_id: caller.id }, '-created_date', 200).catch(() => []);
+      return Response.json({ reports: rows || [] });
+    }
+
     /* ── Residents (directory + onboarding/linking) ─────────────────────── */
     if (action === 'list_residents') {
       if (!authorized || !isAdmin) return err('Forbidden', 403);
