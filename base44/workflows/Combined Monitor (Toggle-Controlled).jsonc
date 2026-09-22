@@ -1,23 +1,4 @@
 {
-  "name": "Combined Monitor (Toggle-Controlled)",
-  "description": "Combined monitoring: checks all enabled automation toggles (overdue patrols, missed clock-ins, low battery, scheduled patrol generation, shift reminders) in a single run. Exits immediately if all toggles are disabled.",
-  "trigger": {
-    "condition": null,
-    "config": {
-      "trigger_type": "scheduled",
-      "events": [],
-      "schedule_mode": "interval",
-      "cron_expression": null,
-      "one_time_date": null,
-      "timezone": "UTC",
-      "interval_value": 2,
-      "interval_unit": "hours",
-      "interval_anchor": "2026-07-06T18:50:45.691000",
-      "ends_type": "never",
-      "ends_on_date": null,
-      "ends_after_count": null
-    }
-  },
   "definition": {
     "document": {
       "dsl": "1.0.0",
@@ -37,6 +18,25 @@
         }
       }
     ]
+  },
+  "name": "Combined Monitor (Toggle-Controlled)",
+  "description": "Combined monitoring: checks all enabled automation toggles (overdue patrols, missed clock-ins, low battery, scheduled patrol generation, shift reminders, medical appointment reminders) in a single run every 10 minutes. Exits immediately if all toggles are disabled. The 10-minute cadence replaces the former 2-hour sweep so time-sensitive alerts (patrol due, missed clock-in, shift reminders, appointment reminders) are delivered close to their deadlines; every branch is idempotent (alert-existence gates, reminder_sent/alerts_sent watermarks, deterministic event keys) so the tighter tick never duplicates deliveries.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 10,
+      "interval_unit": "minutes",
+      "interval_anchor": "2026-07-06T18:50:45.691000",
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
   },
   "x-base44-migrated-from-automation": {
     "legacy_payload_function": "runAllMonitors"

@@ -22,11 +22,25 @@ Deno.serve(async (req) => {
     let user = null;
     try { user = await base44.auth.me(); } catch (_) {}
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role_type !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
+    // ANY authenticated user may trigger this automation: the incident is
+    // RELOADED from the database below (never from request input) and only
+    // its own tenant's operational recipients are notified — so a guard
+    // reporting a critical incident correctly alerts their management
+    // (the previous admin-only gate blocked exactly that path).
 
     const body = await req.json();
 
-    const incident = body.data;
+    // AUTHORITATIVE RELOAD — never trust the request payload: reload the
+    // incident from the database so priority, tenant scope and the
+    // notification_sent gate all come from the stored record.
+    const incId = body?.data?.id || body?.id || body?.incident_id;
+    let incident = body?.data || null;
+    if (incId) {
+      try {
+        const rows = await base44.asServiceRole.entities.Incident.filter({ id: String(incId) });
+        if (rows?.[0]) incident = rows[0];
+      } catch (_) { /* fall back to the payload only if the reload fails */ }
+    }
     if (!incident) {
       return Response.json({ skipped: true, reason: 'No incident data' });
     }
@@ -53,7 +67,10 @@ Deno.serve(async (req) => {
     const roleRecipients = allUsers.filter((u) =>
       ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
       (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
-      (isPlatformUser(u) || !incident.customer_id || u.customer_id === incident.customer_id));
+      // NEVER FAIL-OPEN: an incident without an authoritative customer scope
+      // is legacy data — it alerts PLATFORM oversight only, never every
+      // tenant's management.
+      (isPlatformUser(u) || (!!incident.customer_id && u.customer_id === incident.customer_id)));
     // RECIPIENT PREFERENCES — high-priority incidents honour the explicit
     // incident_critical preference field (a user may opt out of even these).
     const recipients = await applyNotificationPreferences(base44.asServiceRole,

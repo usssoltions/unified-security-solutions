@@ -19,7 +19,7 @@ const REASONS = [
   { value: "assault", label: "Assault" },
   { value: "blacklisted_by_client", label: "Blacklisted by client" },
   { value: "suspicious_activity", label: "Suspicious activity" },
-  { value: "non_payment", label: "Non-payment" },
+  
   { value: "other", label: "Other" },
 ];
 const SEVERITY = ["low", "medium", "high", "critical"];

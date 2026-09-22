@@ -66,7 +66,11 @@ export default async function(req: Request): Promise<Response> {
         if (existing && existing.length > 0) { skipped++; continue; }
 
         // Today's access logs for this site.
-        const allLogs = await base44.asServiceRole.entities.AccessLog.filter({ site_id }, '-timestamp', 1000);
+        // SITE FILTER — always the CURRENT loop site (site.id), never the
+        // request-body site_id: in scheduled bulk mode there is no body
+        // site_id, and an undefined filter previously pulled EVERY site's
+        // (every tenant's) logs into each site's report.
+        const allLogs = await base44.asServiceRole.entities.AccessLog.filter({ site_id: site.id }, '-timestamp', 1000);
         const todayLogs = allLogs.filter((l: any) => new Date(l.timestamp) >= todayStart);
 
         const entries = todayLogs.filter((l: any) => l.event_type === 'entry' || (l.event_type === 'exit' && l.status === 'exited'));
@@ -76,20 +80,23 @@ export default async function(req: Request): Promise<Response> {
 
         const reportNumber = `DAR-${reportDate}-${site.id.slice(-6)}`;
 
+        // HTML ESCAPING — every log/brand value is untrusted display data and
+        // is escaped before interpolation into the report HTML.
+        const esc = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         const rows = todayLogs.map((l: any) => `
           <tr>
-            <td>${l.person_name || ''}</td>
-            <td>${l.person_phone || ''}</td>
-            <td>${l.person_type || ''}</td>
-            <td>${l.vehicle_registration || ''}</td>
-            <td>${l.destination || ''}</td>
-            <td>${l.work_type || l.visit_or_work || ''}</td>
-            <td>${l.gate_name || ''}</td>
-            <td>${l.entry_time ? new Date(l.entry_time).toLocaleTimeString('en-ZA') : ''}</td>
-            <td>${l.exit_time ? new Date(l.exit_time).toLocaleTimeString('en-ZA') : ''}</td>
-            <td>${l.time_on_site_minutes || ''}</td>
-            <td>${l.guard_name || ''}</td>
-            <td>${l.status}</td>
+            <td>${esc(l.person_name)}</td>
+            <td>${esc(l.person_phone)}</td>
+            <td>${esc(l.person_type)}</td>
+            <td>${esc(l.vehicle_registration)}</td>
+            <td>${esc(l.destination)}</td>
+            <td>${esc(l.work_type || l.visit_or_work)}</td>
+            <td>${esc(l.gate_name)}</td>
+            <td>${l.entry_time ? esc(new Date(l.entry_time).toLocaleTimeString('en-ZA')) : ''}</td>
+            <td>${l.exit_time ? esc(new Date(l.exit_time).toLocaleTimeString('en-ZA')) : ''}</td>
+            <td>${l.time_on_site_minutes != null ? esc(l.time_on_site_minutes) : ''}</td>
+            <td>${esc(l.guard_name)}</td>
+            <td>${esc(l.status)}</td>
           </tr>`).join('');
 
         const brandRgb = (brand.primary_color || '#C41E3A');
@@ -98,8 +105,8 @@ export default async function(req: Request): Promise<Response> {
           <html><body style="font-family: Arial, sans-serif;margin:0;padding:0;background:#f5f5f5;">
           <div style="max-width:700px;margin:0 auto;background:#ffffff;">
           <div style="background:linear-gradient(135deg,${brandRgb} 0%,${brandAccent} 100%);padding:28px 24px;text-align:center;">
-            ${brand.logo_url ? `<img src="${brand.logo_url}" alt="${brand.brand_name}" style="max-width:170px;height:auto;margin-bottom:12px;border-radius:10px;"/>` : ''}
-            <h2 style="color:#ffffff;margin:0;">Daily Access Report — ${site.name}</h2>
+            ${brand.logo_url ? `<img src="${brand.logo_url}" alt="${esc(brand.brand_name)}" style="max-width:170px;height:auto;margin-bottom:12px;border-radius:10px;"/>` : ''}
+            <h2 style="color:#ffffff;margin:0;">Daily Access Report — ${esc(site.name)}</h2>
           </div>
           <div style="padding:24px;">
           <p>Date: ${reportDate}</p>
@@ -119,7 +126,7 @@ export default async function(req: Request): Promise<Response> {
           </table>
           </div>
           <div style="background:${brandAccent};padding:18px;text-align:center;">
-            <p style="color:#ffffff;margin:0;font-size:13px;font-weight:bold;">${brand.brand_name}</p>
+            <p style="color:#ffffff;margin:0;font-size:13px;font-weight:bold;">${esc(brand.brand_name)}</p>
             <p style="color:#64748b;margin:6px 0 0;font-size:11px;">Automated Daily Access Report — please do not reply directly.</p>
           </div>
           </div></body></html>`;

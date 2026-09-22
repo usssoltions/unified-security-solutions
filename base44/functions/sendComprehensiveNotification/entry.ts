@@ -58,11 +58,23 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ error: 'At least one recipient is required' }, { status: 400 });
     }
 
+    // CANONICAL PRIORITY REGISTRY — the Notification schema accepts only
+    // low/medium/high/critical; legacy 'normal' and any other invalid value
+    // normalize to 'medium' instead of failing the whole dispatch.
+    const prio = ['low', 'medium', 'high', 'critical'].includes(priority) ? priority : 'medium';
+
     const evKey = eventKey || `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // CALLER TENANT — resolved from the authoritative User record server-side.
+    // Browser-supplied customer_id/reseller_id are NEVER trusted: a caller
+    // cannot brand or scope notifications as another tenant. (site_id is not
+    // identity-bearing and stays caller-selectable for display filtering.)
+    const meRows = await base44.asServiceRole.entities.User.filter({ id: String(caller.id) }).catch(() => []);
+    const meRec = meRows?.[0] || null;
     const callerScope = {
-      customer_id: scope.customer_id ?? caller.customer_id,
-      reseller_id: scope.reseller_id ?? caller.reseller_id,
-      site_id: scope.site_id,
+      customer_id: (meRec?.customer_id ?? caller.customer_id) || null,
+      reseller_id: (meRec?.reseller_id ?? caller.reseller_id) || null,
+      site_id: scope.site_id || null,
     };
 
     // ---- Resolve recipients ----------------------------------------------
@@ -171,7 +183,7 @@ export default async function(req: Request): Promise<Response> {
       heading: title,
       greeting: 'Hello,',
       intro: message,
-      details: [{ label: 'Priority', value: String(priority || 'medium').toUpperCase() }],
+      details: [{ label: 'Priority', value: String(prio).toUpperCase() }],
     });
 
     // ---- Privacy: module-safe preview text --------------------------------
@@ -209,16 +221,17 @@ export default async function(req: Request): Promise<Response> {
           if (await alreadyDelivered(base44, idempKey)) {
             results.push({ recipient: r.id, channel: 'in_app', status: 'deduped' });
           } else {
-            if (!notificationId) {
-              const n = await base44.asServiceRole.entities.Notification.create({
-                recipient_id: r.id, recipient_name: r.name,
-                type, priority, title, message, read: false,
-                related_entity: relatedEntity, related_id: relatedId, action_url: actionUrl,
-                sent_via: ['in_app'],
-                customer_id: recipientScope.customer_id, reseller_id: recipientScope.reseller_id,
-              });
-              notificationId = n.id;
-            }
+            // ONE IN-APP NOTIFICATION PER RECIPIENT — the previous shared
+            // notificationId left every recipient after the first with an
+            // external delivery log but NO in-app record.
+            const n = await base44.asServiceRole.entities.Notification.create({
+              recipient_id: r.id, recipient_name: r.name,
+              type, priority: prio, title, message, read: false,
+              related_entity: relatedEntity, related_id: relatedId, action_url: actionUrl,
+              sent_via: ['in_app'],
+              customer_id: recipientScope.customer_id, reseller_id: recipientScope.reseller_id,
+            });
+            notificationId = n.id;
             await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'in_app', idempKey);
             results.push({ recipient: r.id, channel: 'in_app', status: 'sent', notificationId });
           }
@@ -259,7 +272,7 @@ export default async function(req: Request): Promise<Response> {
             user_id: r.id,
             title: safeTitle,
             body: safeMessage,
-            priority,
+            priority: prio,
             action_label: 'Open',
             action_url: actionUrl,
             event_key: evKey,
@@ -302,7 +315,7 @@ export default async function(req: Request): Promise<Response> {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   chat_id: r.telegramChatId,
-                  text: buildTelegramText(brandName, safeTitle, safeMessage, priority),
+                  text: buildTelegramText(brandName, safeTitle, safeMessage, prio),
                   parse_mode: 'HTML',
                   disable_web_page_preview: true,
                 }),

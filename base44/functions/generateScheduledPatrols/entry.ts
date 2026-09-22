@@ -348,7 +348,7 @@ export default async function(req: Request): Promise<Response> {
                   await base44.asServiceRole.entities.Notification.create({
                     recipient_id: guard.id,
                     recipient_name: guard.display_name || guard.full_name || shift.guard_name,
-                    type: 'system', priority: 'normal',
+                    type: 'system', priority: 'medium',
                     title: pTitle, message: pBody, read: false,
                     related_entity: 'ScheduledPatrol', related_id: patrol.id,
                     action_url: '/GuardPatrol', sent_via: ['in_app'],
@@ -356,7 +356,7 @@ export default async function(req: Request): Promise<Response> {
                     reseller_id: site.reseller_id || undefined,
                   }).catch(() => {});
                   await sendNativePush(base44.asServiceRole, {
-                    user_id: guard.id, title: pTitle, body: pBody, priority: 'normal',
+                    user_id: guard.id, title: pTitle, body: pBody, priority: 'medium',
                     action_label: 'Open Patrol', action_url: '/GuardPatrol',
                     event_key: 'patrol_generated:' + patrol.id,
                     customer_id: site.customer_id || undefined,

@@ -33,7 +33,7 @@ export default async function(req: Request): Promise<Response> {
       user_id: targetUserId,
       title: String(body.title || 'USS Test Notification'),
       body: String(body.message || 'This is a diagnostic test push from your USS app. If you can read this with the app closed, native push is working.'),
-      priority: 'normal',
+      priority: 'medium',
       force: true,
       action_label: 'Open App',
       action_url: '/',

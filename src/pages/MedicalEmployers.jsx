@@ -24,7 +24,7 @@ export default function MedicalEmployers() {
   const [formData, setFormData] = useState({
     company_name: "", registration_number: "", vat_number: "",
     industry: "", primary_contact_name: "", primary_contact_email: "",
-    primary_contact_phone: "", billing_email: "", physical_address: "",
+    primary_contact_phone: "", physical_address: "",
     notes: "",
   });
 
@@ -72,7 +72,7 @@ export default function MedicalEmployers() {
       setFormData({
         company_name: "", registration_number: "", vat_number: "",
         industry: "", primary_contact_name: "", primary_contact_email: "",
-        primary_contact_phone: "", billing_email: "", physical_address: "",
+        primary_contact_phone: "", physical_address: "",
         notes: "",
       });
       await loadData();
@@ -239,14 +239,6 @@ export default function MedicalEmployers() {
                 <Input
                   value={formData.primary_contact_email}
                   onChange={(e) => setFormData({ ...formData, primary_contact_email: e.target.value })}
-                  className="bg-slate-800 border-slate-700 text-white mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-slate-300 text-sm">Billing Email</Label>
-                <Input
-                  value={formData.billing_email}
-                  onChange={(e) => setFormData({ ...formData, billing_email: e.target.value })}
                   className="bg-slate-800 border-slate-700 text-white mt-1"
                 />
               </div>

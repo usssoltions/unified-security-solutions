@@ -103,20 +103,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send to WhatsApp recipients
-    if (schedule.whatsapp_recipients && schedule.whatsapp_recipients.length > 0) {
-      for (const contact of schedule.whatsapp_recipients) {
-        try {
-          const cleanPhone = contact.phone.replace(/\D/g, '');
-          const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(reportMessage)}`;
-          // Note: Actual WhatsApp API integration would be needed here
-          // This creates the URL that can be used to send the message
-          console.log(`WhatsApp report URL for ${contact.name}: ${whatsappUrl}`);
-        } catch (error) {
-          console.error(`Failed to prepare WhatsApp for ${contact.name}:`, error);
-        }
-      }
-    }
+    // WHATSAPP — NOT SUPPORTED for scheduled distribution. There is no
+    // WhatsApp API integration (a wa.me URL is only a manual deep link, and
+    // merely logging it previously produced a false "whatsapp_count sent").
+    // Truthful delivery state: scheduled reports are delivered by EMAIL
+    // only; configured WhatsApp recipients are reported as SKIPPED.
+    const whatsappSkipped = (schedule.whatsapp_recipients || []).length;
 
     // Update last_sent timestamp
     await base44.asServiceRole.entities.ReportSchedule.update(schedule_id, {
@@ -127,7 +119,9 @@ Deno.serve(async (req) => {
       success: true,
       message: 'Report sent successfully',
       email_count: schedule.email_recipients?.length || 0,
-      whatsapp_count: schedule.whatsapp_recipients?.length || 0
+      // TRUTHFUL DELIVERY — WhatsApp is not an automated channel.
+      whatsapp_count: 0,
+      whatsapp_skipped: whatsappSkipped,
     });
 
   } catch (error) {

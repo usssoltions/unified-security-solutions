@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
 
     // ── 0. Medical Appointment Reminders (shared tick) ──
     // Deadline-driven idempotent sweep; replaces the retired dedicated 30-minute
-    // reminder automation. Runs on this already-scheduled 2-hour tick regardless
+    // reminder automation. Runs on this already-scheduled 10-minute tick regardless
     // of the security toggles below, and early-exits inside when nothing is due.
     try {
       const rem = await base44.functions.invoke('sendAppointmentReminders', {});
@@ -402,7 +402,7 @@ Deno.serve(async (req) => {
               user_id: shift.guard_id,
               title: reminderTitle,
               body: reminderBody,
-              priority: 'normal',
+              priority: 'medium',
               action_label: 'Open My Shift', action_url: '/GuardShift',
               event_key: 'shift_reminder:' + shift.id,
             }).catch(() => {});
@@ -435,7 +435,7 @@ Deno.serve(async (req) => {
     // ── 6. Scheduled Patrol status monitor ──
     // Moved from the retired hourly patrol automation. Same thresholds (15-min
     // overdue, 60-min missed) and 10-min pre-patrol alerts; now runs on this
-    // shared 2-hour tick. Gated by the same "Auto-Generate Patrols" toggle that
+    // shared 10-minute tick. Gated by the same "Auto-Generate Patrols" toggle that
     // gated the old hourly run (enabled unless explicitly false).
     if (!(settings.generate_scheduled_patrols === false)) {
       try {
@@ -626,7 +626,7 @@ Deno.serve(async (req) => {
               user_id: patrol.guard_id,
               title: '🛡️ Patrol Due in 10 Minutes',
               body: `Patrol #${patrol.patrol_number} at ${patrol.site_name} starts at ${new Date(patrol.scheduled_start).toLocaleTimeString('en-ZA')}.`,
-              priority: 'normal',
+              priority: 'medium',
               action_label: 'Start Patrol', action_url: '/GuardPatrol',
               event_key: 'patrol_due10:' + patrol.id,
             }).catch(() => {});

@@ -1,6 +1,7 @@
 {
   "name": "Notification",
   "type": "object",
+  "description": "In-app notification record. CANONICAL REGISTRY: producers must use a type from this schema's enum and a priority of low/medium/high/critical only \u2014 the legacy 'normal' priority is invalid and normalizes to 'medium'. One notification record PER RECIPIENT (multi-recipient dispatches create one record each; a shared record leaves recipients with no in-app entry).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -31,9 +32,16 @@
         "status_change",
         "alarm_dispatch",
         "shift_reminder",
+        "shift_handover",
         "training_assigned",
         "task_assigned",
         "task_reassigned",
+        "patrol_due",
+        "patrol_overdue",
+        "missed_checkin",
+        "low_battery",
+        "laundry_request",
+        "assignment",
         "system"
       ]
     },

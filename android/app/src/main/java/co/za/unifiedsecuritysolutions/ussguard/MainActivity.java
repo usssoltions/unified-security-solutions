@@ -88,14 +88,18 @@ public class MainActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setGeolocationEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
+        // File/content access disabled — the chooser uses native intents; the
+        // WebView itself must never load file:// content.
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        // MIXED CONTENT DISABLED — the app origin is HTTPS-only; any mixed
+        // resource must fail to load, never silently render.
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -106,8 +110,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                if (url.contains("guard-track-pro-26cedab8.base44.app")
-                    || url.contains("base44.app")
+                // PRIVILEGED WEBVIEW — only the EXACT production origin (plus
+                // the Google OAuth screen) stays inside. Every other URL —
+                // including OTHER base44.app tenants — opens in the external
+                // browser so untrusted pages never reach the JS bridge.
+                if (url.startsWith(APP_URL)
                     || url.contains("accounts.google.com")) {
                     return false;
                 }
@@ -133,6 +140,13 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
+                    // Camera/mic are granted ONLY for the exact production
+                    // origin; any other origin's request is denied.
+                    String permOrigin = request.getOrigin() == null ? "" : request.getOrigin().toString();
+                    if (!permOrigin.startsWith(APP_URL)) {
+                        request.deny();
+                        return;
+                    }
                     String[] resources = request.getResources();
                     List<String> granted = new ArrayList<>();
                     for (String resource : resources) {
@@ -152,7 +166,8 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
+                // Geolocation only for the exact production origin.
+                callback.invoke(origin, origin != null && origin.startsWith(APP_URL), false);
             }
 
             @Override
@@ -215,19 +230,30 @@ public class MainActivity extends AppCompatActivity {
      * The web app checks window.AndroidBridge.isNativeApp() to detect native mode.
      */
     private class USSBridge {
+        // BRIDGE ORIGIN GATE — every bridge call is honored only while the
+        // WebView is showing the exact production origin. A page loaded from
+        // any other origin must not read the OneSignal player id or bind an
+        // external id.
+        private boolean isAppOrigin() {
+            String current = webView == null ? null : webView.getUrl();
+            return current != null && current.startsWith(APP_URL);
+        }
+
         @JavascriptInterface
         public boolean isNativeApp() {
-            return true;
+            return isAppOrigin();
         }
 
         @JavascriptInterface
         public String getOneSignalPlayerId() {
-            return USSGuardApplication.getOneSignalPlayerId();
+            return isAppOrigin() ? USSGuardApplication.getOneSignalPlayerId() : null;
         }
 
         @JavascriptInterface
         public void setExternalId(String userId) {
-            USSGuardApplication.setExternalId(userId);
+            if (isAppOrigin()) {
+                USSGuardApplication.setExternalId(userId);
+            }
         }
     }
 

@@ -1,5 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
+/**
+ * sendCallPushNotification — push leg of the incoming-call flow.
+ *
+ * PROVIDER DECISION: OneSignal is the DELIBERATELY SUPPORTED provider for
+ * CALL pushes (include_external_user_ids reaches every device the recipient
+ * has logged into OneSignal on, including the native Android app). The rest
+ * of the app uses native push, but native push for calls requires the
+ * Android Firebase credentials still pending upload — OneSignal remains
+ * authoritative for CALL pushes until that migration is complete.
+ *
+ * Caller identity is resolved server-side from the authenticated User
+ * record (impersonation fix). Recipient targeting remains subject to the
+ * broader RTC hardening (authoritative call membership validation).
+ */
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -10,11 +24,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { recipientId, callerName, callId, isGroupCall, callerAvatar } = await req.json();
+    const { recipientId, callId, isGroupCall, callerAvatar } = await req.json();
+
+    // CALLER IDENTITY IS RESOLVED SERVER-SIDE — the browser-supplied caller
+    // name is never trusted (impersonation fix): the push always carries the
+    // authenticated caller's authoritative name from their User record.
+    const callerRows = await base44.asServiceRole.entities.User.filter({ id: String(user.id) }).catch(() => []);
+    const callerRec = callerRows?.[0] || null;
+    const callerName = callerRec?.display_name || callerRec?.full_name || user.full_name || 'Unknown';
 
     console.log(`[sendCallPushNotification] Sending push — callId: ${callId}, caller: ${callerName}, recipient: ${recipientId}`);
 
-    if (!recipientId || !callerName) {
+    if (!recipientId) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 

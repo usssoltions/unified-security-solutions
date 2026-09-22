@@ -1031,7 +1031,7 @@ export default async function(req) {
             await svc.entities.Notification.create({
               customer_id: task.customer_id, reseller_id: task.reseller_id || null,
               recipient_id: r.id, recipient_name: r.name,
-              type: 'status_change', priority: 'normal',
+              type: 'status_change', priority: 'medium',
               title: 'TASK COMPLETED — ' + updated.title,
               message: 'Verified with both sign-offs by ' + callerName +
                 (updated.completed_late ? ' — COMPLETED LATE (deadline ' + fmtSast(updated.due_date) + ').' : '.'),
@@ -1044,7 +1044,7 @@ export default async function(req) {
             actionUrl: '/ScheduledTasks',
             pushTitle: 'TASK COMPLETED — ' + updated.title,
             pushBody: content.telegramText || content.emailBody,
-            priority: 'normal',
+            priority: 'medium',
             customerId: task.customer_id, resellerId: task.reseller_id || null });
           await logTaskAudit(svc, { event_type: 'task.completion_notified', actor: caller, task,
             notes: 'Supervisor notified — email:' + sent.email + ' telegram:' + sent.telegram });

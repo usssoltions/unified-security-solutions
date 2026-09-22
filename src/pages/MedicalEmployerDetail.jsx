@@ -88,7 +88,6 @@ export default function MedicalEmployerDetail() {
             {employer.primary_contact_name && <p className="text-slate-400">Contact: {employer.primary_contact_name}</p>}
             {employer.primary_contact_phone && <p className="text-slate-400 flex items-center gap-2"><Phone className="w-4 h-4" /> {employer.primary_contact_phone}</p>}
             {employer.primary_contact_email && <p className="text-slate-400 flex items-center gap-2"><Mail className="w-4 h-4" /> {employer.primary_contact_email}</p>}
-            {employer.billing_email && <p className="text-slate-400">Billing: {employer.billing_email}</p>}
           </CardContent>
         </Card>
 

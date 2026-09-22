@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
         recipient_id: admin.id,
         recipient_name: admin.full_name,
         type: 'laundry_request',
-        priority: 'normal',
+        priority: 'medium',
         title: `👕 Laundry Request — ${residentName}`,
         message: `${residentName} (Unit ${unitNumber || '—'}) scheduled a laundry pickup for ${pickupDate} ${pickupSlot}.`,
         read: false,
