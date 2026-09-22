@@ -116,7 +116,7 @@ export async function emailAdmins({ subject, body }) {
     // Tenant-scoped user list via the getTenantUsers gateway.
     const allUsers = await fetchTenantUsers();
     const admins = allUsers.filter(u =>
-      ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type) && u.email
+      ["admin", "dispatcher", "supervisor", "management", "customer_admin", "control_room_operator"].includes(u.role_type) && u.email
     );
     for (const admin of admins) {
       await base44.integrations.Core.SendEmail({ to: admin.email, subject, body }).catch(() => {});
@@ -132,7 +132,7 @@ export async function notifyAdmins({ type, title, message, relatedEntity, relate
     // Tenant-scoped user list via the getTenantUsers gateway.
     const allUsers = await fetchTenantUsers();
     const admins = allUsers.filter(u =>
-      ["admin", "dispatcher", "supervisor", "management"].includes(u.role_type)
+      ["admin", "dispatcher", "supervisor", "management", "customer_admin", "control_room_operator"].includes(u.role_type)
     );
     for (const admin of admins) {
       await base44.entities.Notification.create({

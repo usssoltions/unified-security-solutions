@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { getAllowedRolesForModules } from '../../shared/tenantRoles.ts';
-import { resolveTenantBrand, tenantDisplayName, buildInvitationEmail } from '../../shared/tenantBranding.ts';
+import { buildInvitationEmail } from '../../shared/tenantBranding.ts';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 /**
  * inviteTenantUser — securely invite a tenant-scoped user and queue the
@@ -137,28 +138,52 @@ async function sendBrandedInvitationEmail(base44: any, opts: {
   to: string; customerId?: string | null; resellerId?: string | null;
   roleType: string; inviteeName?: string | null; inviterName?: string | null; kind: string;
 }): Promise<void> {
+  // Delivery audit — every branded invitation email attempt is recorded in
+  // NotificationDelivery (sent/failed + reason), so a branded email that
+  // never reaches the invitee is diagnosable instead of silently swallowed.
+  const auditBase = {
+    event_key: `invitation_email:${opts.kind}:${opts.to}`,
+    channel: 'email',
+    customer_id: opts.customerId || undefined,
+    reseller_id: opts.resellerId || undefined,
+    recipient_name: opts.inviteeName || null,
+    recipient_address: opts.to,
+  };
   try {
-    const [custRows, resRows, ents] = await Promise.all([
-      opts.customerId ? base44.asServiceRole.entities.Customer.filter({ id: opts.customerId }).catch(() => []) : Promise.resolve([]),
-      opts.resellerId ? base44.asServiceRole.entities.Reseller.filter({ id: opts.resellerId }).catch(() => []) : Promise.resolve([]),
-      opts.customerId ? base44.asServiceRole.entities.ModuleEntitlement.filter({ customer_id: opts.customerId }).catch(() => []) : Promise.resolve([]),
-    ]);
-    const customer = (custRows && custRows[0]) || null;
-    const reseller = (resRows && resRows[0]) || null;
+    const ents = opts.customerId
+      ? await base44.asServiceRole.entities.ModuleEntitlement.filter({ customer_id: opts.customerId }).catch(() => [])
+      : [];
     const enabledKeys = (ents || [])
       .filter((e: any) => e.enabled && (!e.status || e.status === 'active'))
       .map((e: any) => e.module_key);
-    const brand = resolveTenantBrand(customer, reseller);
-    const displayName = tenantDisplayName(customer, reseller);
+    // ONE AUTHORITATIVE BRAND RESOLVER — the same shared resolver
+    // (Customer → Reseller → USS platform) every operational notification
+    // uses. The invitation previously resolved its brand through a separate
+    // duplicated resolver; both read the same authoritative tenant records,
+    // but there is now exactly ONE branding implementation platform-wide.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: opts.customerId || null, reseller_id: opts.resellerId || null });
     const email = buildInvitationEmail({
-      brand, displayName, role_type: opts.roleType, enabledModuleKeys: enabledKeys,
+      brand, displayName: brand.brand_name, role_type: opts.roleType, enabledModuleKeys: enabledKeys,
       inviteeName: opts.inviteeName, inviterName: opts.inviterName, kind: opts.kind,
     });
-    console.log('[inviteTenantUser] branded email subject:', email.subject);
     await base44.asServiceRole.integrations.Core.SendEmail({ to: opts.to, subject: email.subject, body: email.body });
-    console.log('[inviteTenantUser] branded email sent to', opts.to);
+    console.log('[inviteTenantUser] branded invitation email sent to', opts.to, 'as', brand.brand_name);
+    try {
+      await base44.asServiceRole.entities.NotificationDelivery.create({
+        ...auditBase, status: 'sent', send_time: new Date().toISOString(),
+        idempotency_key: auditBase.event_key,
+      });
+    } catch (_) {}
   } catch (e) {
-    console.log('[inviteTenantUser] branded email failed (non-critical)', String(e?.message || e));
+    const reason = String(e?.message || e);
+    console.log('[inviteTenantUser] branded invitation email FAILED for', opts.to, '-', reason);
+    try {
+      await base44.asServiceRole.entities.NotificationDelivery.create({
+        ...auditBase, status: 'failed', provider_response: reason.slice(0, 500),
+        retries: 0, idempotency_key: auditBase.event_key,
+      });
+    } catch (_) {}
   }
 }
 

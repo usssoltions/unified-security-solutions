@@ -57,34 +57,21 @@ export default function BatchShiftAcknowledgeModal({ shifts, user, onClose }) {
   const applyAll = async (sig) => {
     setSaving(true);
     try {
-      const nowIso = new Date().toISOString();
-      const updates = selectedShifts.map(s => ({
-        id: s.id,
-        guard_ack_status: status,
-        guard_ack_note: notes,
-        guard_ack_at: nowIso,
-        guard_ack_signature: sig,
-      }));
-      await base44.entities.Shift.bulkUpdate(updates);
-
-      // One consolidated MANAGEMENT notification through the SAME server-side
-      // notification service as the single-shift flow (in-app + branded
-      // email + Telegram, tenant-scoped recipients resolved server-side).
-      // The previous direct client-side create had no recipient_id and never
-      // reached management on any channel.
-      try {
-        await base44.functions.invoke("sendShiftNotification", {
-          type: "ack_batch",
-          shiftIds: selectedShifts.map(s => s.id),
-          guardName: getUserDisplayName(user),
-          status,
-          notes,
-        });
-      } catch (notifyErr) {
-        // Diagnostic: surfaces exactly where a live failure stops. Never
-        // breaks the acknowledgement itself.
-        console.error("Batch shift acknowledgement notification failed:", notifyErr);
-      }
+      // AUTHORITATIVE SERVER-SIDE BATCH ACKNOWLEDGEMENT — sendShiftNotification
+      // (type 'ack_batch') persists the response, note and shared signature
+      // to EVERY selected shift (service role) AND dispatches one
+      // consolidated branded in-app + email + Telegram management
+      // notification. The previous direct client-side Shift.bulkUpdate was
+      // a duplicate write that failed under RLS with a false
+      // "Admin permissions required" error.
+      await base44.functions.invoke("sendShiftNotification", {
+        type: "ack_batch",
+        shiftIds: selectedShifts.map(s => s.id),
+        guardName: getUserDisplayName(user),
+        status,
+        notes,
+        signature: sig,
+      });
 
       const lines = selectedShifts
         .map(s => `• ${s.site_name} — ${fmtDate(s.start_time)} ${fmtTime(s.start_time)}`)

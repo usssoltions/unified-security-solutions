@@ -58,30 +58,22 @@ export default function ShiftAcknowledgeModal({ shift, user, onClose }) {
     setSignature(sig);
     setSaving(true);
     try {
-      // Update shift acknowledgement on the Shift entity
-      await base44.entities.Shift.update(shift.id, {
-        guard_ack_status: status,
-        guard_ack_note: notes,
-        guard_ack_at: new Date().toISOString(),
-        guard_ack_signature: sig,
+      // AUTHORITATIVE SERVER-SIDE ACKNOWLEDGEMENT — sendShiftNotification
+      // persists the response, note and signature to the Shift record
+      // (service role) AND dispatches the branded management notification
+      // set. The previous direct client-side Shift.update was a duplicate
+      // write that failed under RLS with a false "Admin permissions required"
+      // error while the acknowledgement itself had already succeeded.
+      await base44.functions.invoke("sendShiftNotification", {
+        type: "ack",
+        shiftId: shift.id,
+        siteName: shift.site_name,
+        startTime: shift.start_time,
+        guardName: getUserDisplayName(user),
+        status,
+        notes,
+        signature: sig,
       });
-
-      // Notify admins via backend function (guards can't list users directly)
-      try {
-        await base44.functions.invoke("sendShiftNotification", {
-          type: "ack",
-          shiftId: shift.id,
-          siteName: shift.site_name,
-          startTime: shift.start_time,
-          guardName: getUserDisplayName(user),
-          status,
-          notes,
-        });
-      } catch (notifyErr) {
-        // Diagnostic: surfaces exactly where a live failure stops. Never
-        // breaks the acknowledgement itself.
-        console.error("Shift acknowledgement notification failed:", notifyErr);
-      }
 
       // Build WhatsApp message
       const msg = shiftAckMessage({

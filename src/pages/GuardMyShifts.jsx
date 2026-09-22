@@ -48,23 +48,12 @@ export default function GuardMyShifts() {
 
   const handleAcknowledge = async (shift, status) => {
     setSaving(true);
-    await base44.entities.Shift.update(shift.id, {
-      guard_ack_status: status,
-      guard_ack_note: ackNote,
-      guard_ack_at: new Date().toISOString(),
-    });
-    setShifts(prev =>
-      prev.map(s =>
-        s.id === shift.id
-          ? { ...s, guard_ack_status: status, guard_ack_note: ackNote, guard_ack_at: new Date().toISOString() }
-          : s
-      )
-    );
-    // Notify management through the SAME server-side ack dispatcher as the
-    // acknowledgement modals (sendShiftNotification type 'ack'): branded
-    // in-app + email + Telegram with tenant-scoped recipient resolution.
-    // The previous client-side Notification.create had NO recipient_id, so
-    // it was invisible to everyone and no email/Telegram was ever sent.
+    // AUTHORITATIVE SERVER-SIDE ACKNOWLEDGEMENT — sendShiftNotification
+    // (type 'ack') persists the response and note to the Shift record
+    // (service role) AND dispatches the branded in-app + email + Telegram
+    // management notification with tenant-scoped recipient resolution. The
+    // previous direct client-side Shift.update was a duplicate write that
+    // failed under RLS with a false "Admin permissions required" error.
     try {
       await base44.functions.invoke("sendShiftNotification", {
         type: "ack",
@@ -72,10 +61,16 @@ export default function GuardMyShifts() {
         status,
         notes: ackNote,
       });
-    } catch (notifyErr) {
-      // Diagnostic: surfaces exactly where a live failure stops. Never
-      // breaks the acknowledgement itself.
-      console.error("Shift acknowledgement notification failed:", notifyErr);
+      setShifts(prev =>
+        prev.map(s =>
+          s.id === shift.id
+            ? { ...s, guard_ack_status: status, guard_ack_note: ackNote, guard_ack_at: new Date().toISOString() }
+            : s
+        )
+      );
+    } catch (ackErr) {
+      console.error("Shift acknowledgement failed:", ackErr);
+      alert("Failed to save acknowledgement: " + (ackErr?.message || ackErr));
     }
     setResponding(null);
     setAckNote("");

@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    let { shiftId, guardId, guardEmail, guardName, siteName, startTime, endTime, notificationType, type, status, notes } = body;
+    let { shiftId, guardId, guardEmail, guardName, siteName, startTime, endTime, notificationType, type, status, notes, signature } = body;
 
     // TENANT CONTEXT — starts from the caller's authoritative tenant scope and
     // is refined from the shift/guard records below. Branding and recipients
@@ -162,7 +162,34 @@ Deno.serve(async (req) => {
         endTime = endTime || storedShift.end_time;
         guardName = guardName || storedShift.guard_name;
       }
-      const ackAt = (storedShift && storedShift.guard_ack_at) || new Date().toISOString();
+      // AUTHORITATIVE SERVER-SIDE ACK PERSISTENCE — the caller's response,
+      // note and signature are written to the Shift record HERE (service
+      // role). The previous client-side Shift.update (a duplicate write)
+      // failed under RLS with a false "Admin permissions required" error
+      // while the notification itself had already succeeded. Only the
+      // shift's own guard (or platform oversight) may acknowledge.
+      if (!storedShift) {
+        return Response.json({ error: 'The shift could not be resolved', code: 'shift_not_found' }, { status: 404 });
+      }
+      if (!status || !['accepted', 'declined', 'revision_requested'].includes(status)) {
+        return Response.json({ error: 'A valid acknowledgement status is required' }, { status: 400 });
+      }
+      const callerIsPlatformAck = user.role_type === 'admin' || isPlatformUser(user);
+      if (!callerIsPlatformAck && storedShift.guard_id && storedShift.guard_id !== user.id) {
+        return Response.json({ error: 'Only the assigned guard can acknowledge this shift', code: 'forbidden' }, { status: 403 });
+      }
+      const ackAt = new Date().toISOString();
+      try {
+        await base44.asServiceRole.entities.Shift.update(String(shiftId), {
+          guard_ack_status: status,
+          guard_ack_note: String(notes || '').trim(),
+          guard_ack_at: ackAt,
+          ...(signature ? { guard_ack_signature: signature } : {}),
+        });
+      } catch (persistErr) {
+        console.error('shift ack persistence failed:', String(persistErr?.message || persistErr));
+        return Response.json({ error: 'The acknowledgement could not be saved. Please try again.', code: 'persist_failed' }, { status: 500 });
+      }
       const ackNote = String(notes || (storedShift && storedShift.guard_ack_note) || '').trim();
       const STATUS_WORDS = { accepted: 'ACCEPTED', declined: 'DECLINED', revision_requested: 'REVISION REQUESTED' };
       const statusWord = STATUS_WORDS[status] || String(status || '').toUpperCase();
@@ -204,11 +231,35 @@ Deno.serve(async (req) => {
         } catch (_) { /* skip unresolvable id */ }
       }
       if (!resolvedShifts.length) return Response.json({ error: 'No shifts could be resolved' }, { status: 404 });
+      // AUTHORITATIVE SERVER-SIDE BATCH PERSISTENCE — response, note and the
+      // shared signature are written to EVERY selected shift HERE (service
+      // role); the previous client-side Shift.bulkUpdate duplicate write is
+      // removed. Only the caller's own shifts (or platform oversight) may be
+      // acknowledged.
+      const callerPlatformBatch = user.role_type === 'admin' || isPlatformUser(user);
+      for (const s of resolvedShifts) {
+        if (!callerPlatformBatch && s.guard_id && s.guard_id !== user.id) {
+          return Response.json({ error: 'You can only acknowledge your own shifts', code: 'forbidden' }, { status: 403 });
+        }
+      }
       const lead = resolvedShifts[0];
       if (lead.customer_id) tenantCustomerId = lead.customer_id;
       if (lead.reseller_id) tenantResellerId = lead.reseller_id;
       guardName = guardName || lead.guard_name;
-      const ackAt = lead.guard_ack_at || new Date().toISOString();
+      const ackAt = new Date().toISOString();
+      for (const s of resolvedShifts) {
+        try {
+          await base44.asServiceRole.entities.Shift.update(s.id, {
+            guard_ack_status: status,
+            guard_ack_note: String(notes || '').trim(),
+            guard_ack_at: ackAt,
+            ...(signature ? { guard_ack_signature: signature } : {}),
+          });
+        } catch (persistErr) {
+          console.error('batch shift ack persistence failed:', String(persistErr?.message || persistErr));
+          return Response.json({ error: 'The batch acknowledgement could not be saved. Please try again.', code: 'persist_failed' }, { status: 500 });
+        }
+      }
       const ackNote = String(notes || '').trim();
       const STATUS_WORDS = { accepted: 'ACCEPTED', declined: 'DECLINED', revision_requested: 'REVISION REQUESTED' };
       const statusWord = STATUS_WORDS[status] || String(status || '').toUpperCase();
