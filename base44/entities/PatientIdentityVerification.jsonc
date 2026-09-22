@@ -1,7 +1,7 @@
 {
   "name": "PatientIdentityVerification",
   "type": "object",
-  "description": "Medical module: Identity verification record. Documents the document used, realtime photo, verification result, and verifier. Human-assisted identity verification \u2014 NOT biometric facial recognition.",
+  "description": "Medical module: Identity verification record. Documents the document used, realtime photo, verification result, and verifier. Human-assisted identity verification \u2014 NOT biometric facial recognition. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -83,7 +83,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -95,7 +104,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -107,7 +125,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },

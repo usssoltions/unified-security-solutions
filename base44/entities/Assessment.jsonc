@@ -1,7 +1,7 @@
 {
   "name": "Assessment",
   "type": "object",
-  "description": "Medical module: Completed patient assessment. Stores the template version used so historical results remain interpretable. Clinical \u2014 employer portal users cannot access raw assessment answers. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
+  "description": "Medical module: Completed patient assessment. Stores the template version used so historical results remain interpretable. Clinical \u2014 employer portal users cannot access raw assessment answers. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -124,7 +124,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -141,7 +150,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -158,7 +176,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },

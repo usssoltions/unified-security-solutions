@@ -5,6 +5,7 @@ import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
+import { Suspense } from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -113,6 +114,11 @@ const AuthenticatedApp = () => {
   return (
     <>
       {user && <IncomingCallHandler user={user} />}
+      <Suspense fallback={(
+        <div className="fixed inset-0 flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+        </div>
+      )}>
       <Routes>
         <Route path="/" element={
           <LayoutWrapper currentPageName="RoleHomeRedirect">
@@ -379,6 +385,7 @@ const AuthenticatedApp = () => {
         } />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
+      </Suspense>
     </>
   );
 };
