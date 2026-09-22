@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Users, Building, CreditCard, Ticket, Calendar, Megaphone,
+  Users, Building, Ticket, Calendar, Megaphone,
   Plus, X, ShoppingBag, Car, Settings, Shield, Loader2, AlertCircle
 } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
@@ -122,7 +122,6 @@ export default function EstateManagerDashboard() {
     { label: "Residents", value: residents.length, color: "text-sky-400", icon: Users, loading: residentsQ.isLoading },
     { label: "Open Tickets", value: openTickets.length, color: "text-amber-400", icon: Ticket, loading: ticketsQ.isLoading },
     { label: "Pending Bookings", value: pendingBookings.length, color: "text-purple-400", icon: Calendar, loading: bookingsQ.isLoading },
-    { label: "Overdue Levies", value: overdueAccounts.length, color: "text-rose-400", icon: CreditCard, loading: levyQ.isLoading },
   ];
 
   // Entitlement-aware quick links — Access/Security only show when licensed

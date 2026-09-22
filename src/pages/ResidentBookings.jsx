@@ -121,10 +121,7 @@ export default function ResidentBookings() {
         guest_count: Number(c.guest_count) || 1,
         purpose: c.purpose,
         special_requirements: c.special_requirements,
-        booking_fee: c.venue.booking_fee,
-        deposit: c.venue.deposit_required,
         status: "pending",
-        payment_status: "unpaid",
         collision_checked: true,
       }));
       return await base44.entities.VenueBooking.bulkCreate(payload);
@@ -204,7 +201,6 @@ export default function ResidentBookings() {
                     <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
                       <Users className="w-3 h-3" /> {v.capacity} max
                     </div>
-                    {v.booking_fee > 0 ? <p className="text-sky-400 text-xs mt-1">R{v.booking_fee} fee</p> : <p className="text-emerald-400 text-xs mt-1">Free</p>}
                   </CardContent>
                 </Card>
               );

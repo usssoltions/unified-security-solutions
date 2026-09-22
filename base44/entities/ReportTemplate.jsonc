@@ -1,7 +1,7 @@
 {
   "name": "ReportTemplate",
   "type": "object",
-  "description": "Reusable report template. TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the template author sees their own records; platform admins retain oversight. Create/update additionally allow the tenant-scoped pattern (previously platform-only, which blocked tenant report administrators \u2014 same defect class as the estate LevyAccount create fix).",
+  "description": "Reusable report template. TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the template author sees their own records; platform admins retain oversight. Create/update additionally allow the tenant-scoped pattern (previously platform-only, which blocked tenant report administrators).",
   "properties": {
     "customer_id": {
       "type": "string",

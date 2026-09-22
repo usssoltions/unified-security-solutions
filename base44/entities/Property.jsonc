@@ -1,7 +1,7 @@
 {
   "name": "Property",
   "type": "object",
-  "description": "Estate module: Property/unit within an estate. Tracks ownership, occupancy, levy status, and property details for estate management. TENANT ISOLATION: reads/creates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's properties (owner names, phones, emails) to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
+  "description": "Estate module: Property/unit within an estate. Tracks ownership, occupancy, and property details for estate management. NO LEVY/FINANCIAL FUNCTIONALITY. TENANT ISOLATION: reads/creates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's properties (owner names, phones, emails) to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -61,18 +61,6 @@
         "unlisted"
       ],
       "default": "owner_occupied"
-    },
-    "levy_amount": {
-      "type": "number"
-    },
-    "levy_status": {
-      "type": "string",
-      "enum": [
-        "current",
-        "arrears",
-        "paid_advance"
-      ],
-      "default": "current"
     },
     "bedrooms": {
       "type": "number"

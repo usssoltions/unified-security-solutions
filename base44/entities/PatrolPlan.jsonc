@@ -1,7 +1,7 @@
 {
   "name": "PatrolPlan",
   "type": "object",
-  "description": "Assigned patrol plan (supervisor-planned route for a guard). TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the assigned guard and the planner see their own records; platform admins retain oversight. Create/update additionally allow the tenant-scoped pattern (previously platform-only, which blocked tenant supervisors \u2014 same defect class as the estate LevyAccount create fix).",
+  "description": "Assigned patrol plan (supervisor-planned route for a guard). TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the assigned guard and the planner see their own records; platform admins retain oversight. Create/update additionally allow the tenant-scoped pattern (previously platform-only, which blocked tenant supervisors).",
   "properties": {
     "customer_id": {
       "type": "string",

@@ -22,7 +22,7 @@ export default function EstateProperties() {
     unit_number: "", address: "", property_type: "house",
     owner_name: "", owner_email: "", owner_phone: "",
     tenant_name: "", tenant_email: "", tenant_phone: "",
-    occupancy_status: "owner_occupied", levy_amount: "", site_id: "",
+    occupancy_status: "owner_occupied", site_id: "",
     bedrooms: "", bathrooms: "", notes: "",
   });
 
@@ -62,14 +62,13 @@ export default function EstateProperties() {
       await base44.entities.Property.create({
         ...formData,
         customer_id: user.customer_id,
-        levy_amount: formData.levy_amount ? parseFloat(formData.levy_amount) : null,
         bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
         bathrooms: formData.bathrooms ? parseInt(formData.bathrooms) : null,
         site_name: site?.name || "",
         status: "active",
       });
       setShowForm(false);
-      setFormData({ unit_number: "", address: "", property_type: "house", owner_name: "", owner_email: "", owner_phone: "", tenant_name: "", tenant_email: "", tenant_phone: "", occupancy_status: "owner_occupied", levy_amount: "", site_id: "", bedrooms: "", bathrooms: "", notes: "" });
+      setFormData({ unit_number: "", address: "", property_type: "house", owner_name: "", owner_email: "", owner_phone: "", tenant_name: "", tenant_email: "", tenant_phone: "", occupancy_status: "owner_occupied", site_id: "", bedrooms: "", bathrooms: "", notes: "" });
       await loadData();
     } catch (e) {
       console.error("Failed to create property:", e);
@@ -84,12 +83,6 @@ export default function EstateProperties() {
     tenant_occupied: "bg-sky-500/20 text-sky-400",
     vacant: "bg-amber-500/20 text-amber-400",
     unlisted: "bg-slate-500/20 text-slate-400",
-  };
-
-  const levyColors = {
-    current: "bg-emerald-500/20 text-emerald-400",
-    arrears: "bg-rose-500/20 text-rose-400",
-    paid_advance: "bg-sky-500/20 text-sky-400",
   };
 
   if (loading) {
@@ -155,12 +148,6 @@ export default function EstateProperties() {
                   <div className="space-y-1.5 text-xs">
                     {p.owner_name && <p className="text-slate-400">Owner: {p.owner_name}</p>}
                     {p.tenant_name && <p className="text-slate-400">Tenant: {p.tenant_name}</p>}
-                    {p.levy_amount && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Levy: R{p.levy_amount}</span>
-                        <Badge className={`text-xs ${levyColors[p.levy_status] || levyColors.current}`}>{p.levy_status}</Badge>
-                      </div>
-                    )}
                     {(p.bedrooms || p.bathrooms) && (
                       <p className="text-slate-400">{p.bedrooms ? `${p.bedrooms} bed` : ""} {p.bathrooms ? `• ${p.bathrooms} bath` : ""}</p>
                     )}
@@ -222,12 +209,7 @@ export default function EstateProperties() {
                   className="bg-slate-800 border-slate-700 text-white mt-1" />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-slate-300 text-sm">Levy (R)</Label>
-                <Input type="number" value={formData.levy_amount} onChange={(e) => setFormData({ ...formData, levy_amount: e.target.value })}
-                  className="bg-slate-800 border-slate-700 text-white mt-1" />
-              </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-slate-300 text-sm">Beds</Label>
                 <Input type="number" value={formData.bedrooms} onChange={(e) => setFormData({ ...formData, bedrooms: e.target.value })}

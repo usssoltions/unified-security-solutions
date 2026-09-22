@@ -56,8 +56,7 @@ export default function ResidentDashboard() {
     { label: "Restaurant", icon: ShoppingBag, to: "/ResidentOrders?type=restaurant", color: "bg-orange-500", desc: "Order food" },
     { label: "Shop", icon: ShoppingBag, to: "/ResidentOrders?type=shop", color: "bg-green-500", desc: "Order groceries" },
     { label: "Laundry", icon: ShirtIcon, to: "/ResidentLaundry", color: "bg-pink-500", desc: "Schedule pickup" },
-    { label: "Payments", icon: CreditCard, to: "/ResidentPayments", color: "bg-emerald-500", desc: "Pay levies & more" },
-    { label: "My Tickets", icon: Ticket, to: "/ResidentTickets", color: "bg-amber-500", desc: "Report issues" },
+        { label: "My Tickets", icon: Ticket, to: "/ResidentTickets", color: "bg-amber-500", desc: "Report issues" },
     { label: "Security", icon: Shield, to: "/ResidentIncidents", color: "bg-rose-500", desc: "Report incidents" },
     { label: "Maintenance", icon: Wrench, to: "/ResidentMaintenance", color: "bg-amber-500", desc: "Report maintenance" },
   ];

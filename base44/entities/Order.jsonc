@@ -1,7 +1,7 @@
 {
   "name": "Order",
   "type": "object",
-  "description": "Estate resident order. TENANT ISOLATION: customer_id ownership stamped at creation; reads customer-scoped, reseller_id branch RESELLER-ADMIN-only (admin_level 'reseller').",
+  "description": "Estate resident order. TENANT ISOLATION: customer_id ownership stamped at creation; reads customer-scoped, reseller_id branch RESELLER-ADMIN-only (admin_level 'reseller'). NO PAYMENT COLLECTION \u2014 price fields exist solely to display and calculate order totals.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -80,18 +80,6 @@
         "cancelled"
       ],
       "default": "pending"
-    },
-    "payment_status": {
-      "type": "string",
-      "enum": [
-        "unpaid",
-        "paid",
-        "refunded"
-      ],
-      "default": "unpaid"
-    },
-    "payment_id": {
-      "type": "string"
     },
     "delivery_address": {
       "type": "string"

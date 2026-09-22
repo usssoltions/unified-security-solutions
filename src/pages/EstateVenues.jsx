@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building, Plus, X, Users, Clock, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 
-const EMPTY_FORM = { name: "", description: "", category: "clubhouse", capacity: "", booking_fee: "", deposit_required: "", available_hours_start: "07:00", available_hours_end: "22:00", rules: "", status: "active" };
+const EMPTY_FORM = { name: "", description: "", category: "clubhouse", capacity: "", available_hours_start: "07:00", available_hours_end: "22:00", rules: "", status: "active" };
 
 export default function EstateVenues() {
   const [showForm, setShowForm] = useState(false);
@@ -40,8 +40,6 @@ export default function EstateVenues() {
       reseller_id: user?.reseller_id,
       site_id: user?.site_id,
       capacity: Number(data.capacity) || 0,
-      booking_fee: Number(data.booking_fee) || 0,
-      deposit_required: Number(data.deposit_required) || 0,
     }),
     onSuccess: () => { qc.invalidateQueries(["all_venues"]); setShowForm(false); setForm(EMPTY_FORM); }
   });
@@ -50,8 +48,6 @@ export default function EstateVenues() {
     mutationFn: ({ id, data }) => base44.entities.Venue.update(id, {
       ...data,
       capacity: Number(data.capacity) || 0,
-      booking_fee: Number(data.booking_fee) || 0,
-      deposit_required: Number(data.deposit_required) || 0,
     }),
     onSuccess: () => { qc.invalidateQueries(["all_venues"]); setShowForm(false); setForm(EMPTY_FORM); setEditingVenue(null); }
   });
@@ -70,7 +66,7 @@ export default function EstateVenues() {
     setEditingVenue(v);
     setForm({
       name: v.name || "", description: v.description || "", category: v.category || "clubhouse",
-      capacity: v.capacity ?? "", booking_fee: v.booking_fee ?? "", deposit_required: v.deposit_required ?? "",
+      capacity: v.capacity ?? "",
       available_hours_start: v.available_hours_start || "07:00", available_hours_end: v.available_hours_end || "22:00",
       rules: v.rules || "", status: v.status || "active",
     });
@@ -168,8 +164,6 @@ export default function EstateVenues() {
                     </SelectContent>
                   </Select>
                   <Input type="number" placeholder="Max capacity" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
-                  <Input type="number" placeholder="Booking fee (R)" value={form.booking_fee} onChange={e => setForm({ ...form, booking_fee: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
-                  <Input type="number" placeholder="Deposit required (R)" value={form.deposit_required} onChange={e => setForm({ ...form, deposit_required: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
                   <Input type="time" value={form.available_hours_start} onChange={e => setForm({ ...form, available_hours_start: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
                   <Input type="time" value={form.available_hours_end} onChange={e => setForm({ ...form, available_hours_end: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
                   <Textarea placeholder="Rules & conditions" value={form.rules} onChange={e => setForm({ ...form, rules: e.target.value })} className="bg-slate-900 border-slate-700 text-white col-span-2" rows={2} />
@@ -191,7 +185,6 @@ export default function EstateVenues() {
                         <p className="text-slate-400 text-sm line-clamp-2">{v.description}</p>
                         <div className="flex gap-3 mt-2 text-xs text-slate-500">
                           <span className="flex items-center gap-1"><Users className="w-3 h-3" />{v.capacity} pax</span>
-                          <span className="text-emerald-400">R{v.booking_fee || 0} fee</span>
                           <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{v.available_hours_start}–{v.available_hours_end}</span>
                         </div>
                       </div>

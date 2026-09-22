@@ -17,7 +17,6 @@ export default function EstateResidents() {
   const qc = useQueryClient();
 
   const { data: residents = [] } = useQuery({ queryKey: ["all_residents"], queryFn: () => base44.entities.Resident.list(), initialData: [] });
-  const { data: levyAccounts = [] } = useQuery({ queryKey: ["all_levy"], queryFn: () => base44.entities.LevyAccount.list(), initialData: [] });
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.Resident.create(withTenant({ ...data, move_in_date: new Date().toISOString().split("T")[0] })),
@@ -35,9 +34,7 @@ export default function EstateResidents() {
     r.email?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const getLevyStatus = (residentId) => levyAccounts.find(l => l.resident_id === residentId);
   const statusColors = { active: "bg-emerald-600", suspended: "bg-rose-600", pending: "bg-amber-600" };
-  const levyColors = { current: "text-emerald-400", overdue: "text-rose-400", suspended: "text-amber-400" };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -75,7 +72,6 @@ export default function EstateResidents() {
 
         <div className="space-y-3">
           {filtered.map(r => {
-            const levy = getLevyStatus(r.id);
             return (
               <Card key={r.id} className="bg-slate-800/50 border-slate-700">
                 <CardContent className="p-4">
@@ -90,7 +86,6 @@ export default function EstateResidents() {
                         {r.phone && <p className="flex items-center gap-1"><Phone className="w-3 h-3" /> {r.phone}</p>}
                         {r.vehicles?.length > 0 && <p className="flex items-center gap-1"><Car className="w-3 h-3" /> {r.vehicles.length} vehicle(s)</p>}
                       </div>
-                      {levy && <p className={`text-xs mt-1 ${levyColors[levy.status]}`}>Levy: R{levy.balance_due?.toFixed(2)} due · {levy.status}</p>}
                     </div>
                     <div className="flex gap-2 ml-3">
                       {r.status === "active" ? (

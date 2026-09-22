@@ -1,7 +1,7 @@
 {
   "name": "TrainingModule",
   "type": "object",
-  "description": "Training module content with quiz. TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the module author sees their own records; platform admins retain oversight. Create/update remain administrator operations (platform + tenant-scoped admins via customer_id, previously platform-only which blocked tenant supervisors \u2014 same defect class as the estate LevyAccount create fix). New records carry customer_id/reseller_id.",
+  "description": "Training module content with quiz. TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the module author sees their own records; platform admins retain oversight. Create/update remain administrator operations (platform + tenant-scoped admins via customer_id, previously platform-only which blocked tenant supervisors). New records carry customer_id/reseller_id.",
   "properties": {
     "customer_id": {
       "type": "string",

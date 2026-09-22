@@ -1,7 +1,7 @@
 {
   "name": "LaundryRequest",
   "type": "object",
-  "description": "Estate laundry pickup/delivery request. TENANT ISOLATION: customer_id ownership stamped at creation; reads customer-scoped, reseller_id branch RESELLER-ADMIN-only (admin_level 'reseller').",
+  "description": "Estate laundry pickup/delivery request. TENANT ISOLATION: customer_id ownership stamped at creation; reads customer-scoped, reseller_id branch RESELLER-ADMIN-only (admin_level 'reseller'). NO PAYMENT FUNCTIONALITY \u2014 cost fields are display/estimate only; the app never collects payment.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -84,17 +84,6 @@
     },
     "final_cost": {
       "type": "number"
-    },
-    "payment_status": {
-      "type": "string",
-      "enum": [
-        "unpaid",
-        "paid"
-      ],
-      "default": "unpaid"
-    },
-    "payment_id": {
-      "type": "string"
     }
   },
   "required": [

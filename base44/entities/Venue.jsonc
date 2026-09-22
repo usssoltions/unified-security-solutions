@@ -1,7 +1,7 @@
 {
   "name": "Venue",
   "type": "object",
-  "description": "ESTATE module: bookable estate venue. TENANT ISOLATION: every tenant-facing operation is customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's venues to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
+  "description": "ESTATE module: bookable estate venue. NO BOOKING FEES OR DEPOSITS \u2014 venue booking is a reservation workflow only; the app never collects payment. TENANT ISOLATION: every tenant-facing operation is customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's venues to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -43,14 +43,6 @@
         "type": "string"
       },
       "default": []
-    },
-    "booking_fee": {
-      "type": "number",
-      "default": 0
-    },
-    "deposit_required": {
-      "type": "number",
-      "default": 0
     },
     "status": {
       "type": "string",

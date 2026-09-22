@@ -17,7 +17,7 @@ export const RESELLER_MODULES = [
   { key: "PATROL",                 label: "Patrol",                  description: "Patrol dashboard, analytics, checklists, route guidance." },
   { key: "ACCESS",                 label: "Access Control",         description: "Visitor access, QR scanning, access history, blacklist." },
   { key: "CALLING",                label: "Calling",                 description: "Contacts, call history, call recordings." },
-  { key: "ESTATE",                 label: "Estate Management",     description: "Residents, venues, vendors, levy, properties, voting." },
+  { key: "ESTATE",                 label: "Estate Management",     description: "Residents, venues, vendors, properties, voting." },
   { key: "OCCUPATIONAL_THERAPY",   label: "Occupational Therapy",   description: "Medical practice: patients, appointments, sessions, reports." },
   { key: "REPORTING_CORE",         label: "Reporting & Analytics",  description: "Reports, analytics, data hub, payroll, AI reports." },
   { key: "NOTIFICATION_CORE",      label: "Notification Engine",     description: "Multi-channel notifications (email, push, Telegram, in-app)." },
