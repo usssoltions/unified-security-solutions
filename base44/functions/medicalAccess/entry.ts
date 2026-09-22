@@ -230,6 +230,186 @@ export default async function main(req: Request): Promise<Response> {
       await audit('medical.verification.created', 'PatientIdentityVerification', created.id, 'identity verification (' + d.result + ')', created);
       return Response.json({ success: true, record: created });
     }
+
+    /* ── Private medical attachments ──────────────────────────────────────────
+     * Medical media is NEVER stored as a permanent public URL. Uploads go to
+     * PRIVATE storage through this gateway after content validation
+     * (magic bytes + declared MIME + extension + size; active content such
+     * as HTML/SVG/executables is rejected outright). Every view/download
+     * requires an authorized get_medical_file call that revalidates role,
+     * tenant, patient relationship and (for employer users) the LIVE report
+     * release state at access time, then mints a SHORT-LIVED signed URL.
+     * Storage ids and signed URLs are never written to notifications or
+     * audit notes. Access is invalidated via the registry (status
+     * 'revoked') or automatically by report state changes, checked live on
+     * every access. RETENTION: clinical preservation — no deletion through
+     * this gateway; revoked files become inaccessible but are retained. */
+    if (action === 'upload_medical_file') {
+      if (isEmployer) return err('Forbidden', 403);
+      const d = p.data || {};
+      const CATEGORY_ACCESS: Record<string, string> = {
+        identity_verification: 'staff',   // reception, therapist, practice admin
+        patient_document: 'staff',        // referral documents, ID scans
+        clinical_attachment: 'clinical', // session/assessment/note media
+        report_file: 'clinical',          // generated report PDFs
+      };
+      const cat = CATEGORY_ACCESS[d.category] ? d.category : null;
+      if (!cat) return err('Unknown medical file category.', 400);
+      if (!isStaff && !isAdmin) return err('Forbidden', 403);
+      if (CATEGORY_ACCESS[cat] === 'clinical' && !isClinical && !isAdmin) return err('Forbidden', 403);
+      const patient = d.patient_id ? await find('Patient', d.patient_id) : null;
+      if (!patient || !inScope(patient)) return err('Patient not found in your practice.', 404);
+      // Ownership: clinical attachments and report files must reference the
+      // caller's own clinical record.
+      if (cat === 'clinical_attachment' && d.entity_type === 'Session' && d.entity_id) {
+        const s = await find('Session', d.entity_id);
+        if (!s || !inScope(s) || !therapistOwns(s)) return err('Session not found in your scope.', 404);
+      }
+      if (cat === 'report_file' && d.entity_id) {
+        const r = await find('MedicalReport', d.entity_id);
+        if (!r || !inScope(r) || !therapistOwns(r)) return err('Report not found in your scope.', 404);
+      }
+      // ── Content acquisition: base64 in-payload, or a restricted source URL
+      // (the shared DocumentScanner's temporary capture) fetched SERVER-side.
+      // Only this platform's own upload storage may serve as a source.
+      let bytes: Uint8Array | null = null;
+      let declaredType = String(d.content_type || '').toLowerCase();
+      let filename = String(d.filename || '').toLowerCase().replace(/[^a-z0-9._-]/g, '_');
+      const MAX_BYTES = 5 * 1024 * 1024;
+      if (d.content_base64) {
+        try {
+          const b64 = String(d.content_base64).split(',').pop() || '';
+          const bin = atob(b64);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } catch (_) { return err('Invalid file content.', 400); }
+      } else if (d.source_url) {
+        let host = '';
+        try { host = new URL(String(d.source_url)).host; } catch (_) { return err('Unsupported file source.', 400); }
+        if (!/(\.|^)(([a-z0-9-]+\.)?base44\.app)$/i.test(host) && !/\.base44\.app$/i.test(host)) {
+          return err('Unsupported file source.', 400);
+        }
+        const res = await fetch(String(d.source_url)).catch(() => null);
+        if (!res || !res.ok) return err('The file source could not be read.', 400);
+        bytes = new Uint8Array(await res.arrayBuffer());
+        declaredType = (res.headers.get('content-type') || '').split(';')[0].toLowerCase().trim();
+      }
+      if (!bytes || !bytes.length) return err('No file content was provided.', 400);
+      if (bytes.length > MAX_BYTES) return err('The file is too large (limit 5 MB).', 413);
+      // ── Validation: MAGIC BYTES first, then declared MIME, then extension.
+      // Only passive media is accepted — executables, HTML, SVG and other
+      // active content can never match a signature below.
+      const MAGIC: Array<{ type: string; ext: string; sig: number[]; riff?: string }> = [
+        { type: 'image/jpeg', ext: '.jpg', sig: [0xFF, 0xD8, 0xFF] },
+        { type: 'image/png', ext: '.png', sig: [0x89, 0x50, 0x4E, 0x47] },
+        { type: 'image/webp', ext: '.webp', sig: [0x52, 0x49, 0x46, 0x46], riff: 'WEBP' },
+        { type: 'application/pdf', ext: '.pdf', sig: [0x25, 0x50, 0x44, 0x46] },
+      ];
+      let detected: { type: string; ext: string } | null = null;
+      for (const m of MAGIC) {
+        if (m.sig.every((b, i) => bytes![i] === b)) {
+          if (m.riff) {
+            const tag = String.fromCharCode(...Array.from(bytes!.slice(8, 12)));
+            if (tag !== m.riff) continue;
+          }
+          detected = { type: m.type, ext: m.ext }; break;
+        }
+      }
+      if (!detected) {
+        return err('Unsupported or dangerous file type. Only JPEG, PNG, WebP images and PDF documents are accepted.', 415);
+      }
+      if (declaredType && declaredType !== detected.type) {
+        return err('The file content does not match its declared type.', 415);
+      }
+      filename = (filename && filename.endsWith(detected.ext)) || (detected.type === 'image/jpeg' && filename.endsWith('.jpeg'))
+        ? filename : 'medical_file' + detected.ext;
+      // ── PRIVATE storage (never public).
+      const Core = ((svc as any).integrations && (svc as any).integrations.Core)
+        || ((base44 as any).integrations && (base44 as any).integrations.Core) || null;
+      if (!Core) return err('Secure file storage is unavailable. Please try again.', 500);
+      const fileObj = new File([bytes], filename, { type: detected.type });
+      const up = await Core.UploadPrivateFile({ file: fileObj }).catch(() => null);
+      if (!up || !up.file_uri) return err('The file could not be stored. Please try again.', 500);
+      const registry = await svc.entities.MedicalFile.create({
+        customer_id: scope.customer_id, reseller_id: patient.reseller_id || await resellerIdOf(),
+        file_uri: up.file_uri, category: cat, content_type: detected.type,
+        size_bytes: bytes.length, patient_id: patient.id,
+        entity_type: d.entity_type || null, entity_id: d.entity_id || null,
+        purpose: String(d.purpose || cat).slice(0, 120),
+        uploaded_by_id: caller.id, uploaded_by_name: callerName,
+        uploaded_at: new Date().toISOString(), status: 'active',
+      }).catch(() => null);
+      if (!registry) return err('The file registry entry could not be created.', 500);
+      // Short-lived signed URL for immediate in-session display only.
+      let signed_url: string | null = null;
+      try {
+        const s = await Core.CreateFileSignedUrl({ file_uri: up.file_uri, expires_in: 300 });
+        signed_url = (s && s.signed_url) || null;
+      } catch (_) { /* display link optional */ }
+      await audit('medical.file.uploaded', 'MedicalFile', registry.id, 'uploaded medical file (' + cat + ')', null);
+      return Response.json({ success: true, file_id: registry.id, file_uri: up.file_uri, signed_url, signed_expires_in: 300 });
+    }
+    if (action === 'get_medical_file') {
+      const rec = p.file_id
+        ? await find('MedicalFile', p.file_id)
+        : (p.file_uri ? ((await svc.entities.MedicalFile.filter({ file_uri: String(p.file_uri) }).catch(() => [])) || [])[0] : null);
+      if (!rec || !inScope(rec)) return err('File not found.', 404);
+      if (rec.status !== 'active') return err('Access to this file has been revoked.', 403);
+      // ── Category-based authorization, revalidated AT ACCESS TIME.
+      if (isEmployer) {
+        // Employer users: ONLY files of reports explicitly released to THEIR
+        // employer — checked live, so a withdrawn report immediately loses
+        // access without any migration.
+        if (rec.category !== 'report_file' || !rec.entity_id) return err('Forbidden', 403);
+        const rpt = await find('MedicalReport', rec.entity_id);
+        if (!rpt || rpt.employer_id !== scope.employer_id || rpt.status !== 'released' || rpt.shared_with_employer !== true) {
+          return err('This file has not been released to you.', 403);
+        }
+      } else if (rec.category === 'report_file') {
+        const rpt = rec.entity_id ? await find('MedicalReport', rec.entity_id) : null;
+        if (!rpt || !inScope(rpt) || !therapistOwns(rpt)) return err('File not found.', 404);
+      } else if (rec.category === 'clinical_attachment') {
+        if (!isClinical && !isAdmin) return err('Forbidden', 403);
+        if (rec.entity_type === 'Session' && rec.entity_id) {
+          const s = await find('Session', rec.entity_id);
+          if (!s || !inScope(s) || !therapistOwns(s)) return err('File not found.', 404);
+        }
+      } else {
+        // identity_verification / patient_document: practice staff only
+        // (reception included for check-in duties); everyone else fail closed.
+        if (!isStaff && !isAdmin) return err('Forbidden', 403);
+      }
+      const Core = ((svc as any).integrations && (svc as any).integrations.Core)
+        || ((base44 as any).integrations && (base44 as any).integrations.Core) || null;
+      if (!Core) return err('Secure file storage is unavailable. Please try again.', 500);
+      const ttl = Number(p.expires_in) > 0 && Number(p.expires_in) <= 300 ? Math.floor(Number(p.expires_in)) : 300;
+      const s = await Core.CreateFileSignedUrl({ file_uri: rec.file_uri, expires_in: ttl }).catch(() => null);
+      if (!s || !s.signed_url) return err('The file could not be opened. Please try again.', 500);
+      await audit('medical.file.accessed', 'MedicalFile', rec.id, 'accessed medical file (' + rec.category + ')', null);
+      return Response.json({ success: true, signed_url: s.signed_url, expires_in: ttl });
+    }
+    if (action === 'list_medical_files') {
+      if (!isStaff && !isAdmin) return err('Forbidden', 403);
+      const patient = p.patient_id ? await find('Patient', p.patient_id) : null;
+      if (!patient || !inScope(patient)) return err('Patient not found in your practice.', 404);
+      const rows = (await svc.entities.MedicalFile.filter({ customer_id: scope.customer_id, patient_id: patient.id }, '-created_date', 200).catch(() => [])) || [];
+      // Reception never sees clinical attachments or report files.
+      const visible = isClinical || isAdmin
+        ? rows
+        : rows.filter((f: any) => f.category !== 'clinical_attachment' && f.category !== 'report_file');
+      return Response.json({ files: visible });
+    }
+    if (action === 'revoke_medical_file') {
+      if (!isPracticeAdmin && !isPlatform && !isReseller) return err('Forbidden', 403);
+      const rec = await find('MedicalFile', p.id);
+      if (!rec || !inScope(rec)) return err('File not found.', 404);
+      const updated = await svc.entities.MedicalFile.update(rec.id, {
+        status: 'revoked', revoked_by_id: caller.id, revoked_by_name: callerName,
+        revoked_at: new Date().toISOString(),
+      });
+      await audit('medical.file.revoked', 'MedicalFile', rec.id, 'revoked medical file access', null);
+      return Response.json({ success: true, record: updated });
+    }
     if (action === 'list_verifications') {
       if (!isClinical && !isReception && !isAdmin) return err('Forbidden', 403);
       const patient = p.patient_id ? await find('Patient', p.patient_id) : null;
@@ -455,32 +635,89 @@ export default async function main(req: Request): Promise<Response> {
       const active = await svc.entities.Session.filter({ customer_id: scope.customer_id, patient_id: patient.id, status: 'in_progress' }).catch(() => []);
       if ((active || []).length > 0) return err('This patient already has an active session.', 409);
       const service = await find('MedicalService', d.service_id || appointment.service_id);
-      const created = await svc.entities.Session.create({
-        customer_id: scope.customer_id, reseller_id: patient.reseller_id || await resellerIdOf(),
-        appointment_id: appointment.id, patient_id: patient.id,
-        patient_name: (patient.first_names || '') + ' ' + (patient.surname || ''),
-        employer_id: patient.employer_id || null, employer_name: patient.employer_name || null,
-        service_id: service ? service.id : null, service_name: service ? service.name : (appointment.service_name || null),
-        therapist_id: therapistId,
-        therapist_name: isTherapist ? callerName : (d.therapist_name || appointment.therapist_name || null),
-        assessment_template_id: d.assessment_template_id || null,
-        actual_start_time: d.actual_start_time || new Date().toISOString(),
-        status: 'in_progress',
-      });
-      // ATOMIC CLAIM of the appointment (compare-and-swap on session_id):
-      // exactly ONE concurrent creator can win — the loser's duplicate
-      // session is removed and the winner returned, so double-clicks,
-      // retries and truly concurrent requests converge on one session.
-      await svc.entities.Appointment.updateMany(
-        { id: appointment.id, session_id: null, status: { $ne: 'cancelled' } },
-        { $set: { status: 'in_session', session_id: created.id } }
+      // ── RESERVE-THEN-CREATE (no duplicate session can ever be written) ──
+      // One session per appointment is enforced by a compare-and-swap
+      // RESERVATION taken on the appointment BEFORE the session record is
+      // created. The deterministic token 'medical-session:<appointment_id>:
+      // <ts>:<caller_id>' occupies the appointment's session_id slot, so no
+      // concurrent request can pass the claim. Only after the session exists
+      // is the reservation exchanged for the real session id (CAS from the
+      // token). A reservation whose create step crashed (partial failure) is
+      // recoverable: it can be stolen after 2 minutes. Stronger than
+      // create-then-claim — a losing duplicate session is never written,
+      // so no orphan can remain after any partial failure.
+      const RESERVE_PREFIX = 'medical-session:';
+      const existing = appointment.session_id;
+      if (existing) {
+        if (!String(existing).startsWith(RESERVE_PREFIX)) {
+          // A real session is already linked — idempotent return of the winner.
+          const winner = await find('Session', existing);
+          if (winner && inScope(winner) && therapistOwns(winner)) {
+            return Response.json({ success: true, record: winner, created: false });
+          }
+          return err('A session was already started for this appointment.', 409);
+        }
+        const ts = Number(String(existing).split(':')[2]) || 0;
+        if (Date.now() - ts < 2 * 60 * 1000) {
+          return err('A session is already being started for this appointment.', 409);
+        }
+      }
+      const token = RESERVE_PREFIX + appointment.id + ':' + Date.now() + ':' + caller.id;
+      const claim = await svc.entities.Appointment.updateMany(
+        existing
+          ? { id: appointment.id, session_id: existing }  // steal the stale reservation
+          : { id: appointment.id, session_id: null },
+        { $set: { status: 'in_session', session_id: token } }
       );
-      const claimed = await find('Appointment', appointment.id);
-      if (claimed && claimed.session_id && claimed.session_id !== created.id) {
+      if (!claim || !claim.updated) {
+        // Lost the claim race — return the actual state.
+        const raced = await find('Appointment', appointment.id);
+        if (raced && raced.session_id && !String(raced.session_id).startsWith(RESERVE_PREFIX)) {
+          const winner = await find('Session', raced.session_id);
+          if (winner && inScope(winner) && therapistOwns(winner)) {
+            return Response.json({ success: true, record: winner, created: false });
+          }
+        }
+        return err('A session was already started for this appointment.', 409);
+      }
+      let created;
+      try {
+        created = await svc.entities.Session.create({
+          customer_id: scope.customer_id, reseller_id: patient.reseller_id || await resellerIdOf(),
+          appointment_id: appointment.id, patient_id: patient.id,
+          patient_name: (patient.first_names || '') + ' ' + (patient.surname || ''),
+          employer_id: patient.employer_id || null, employer_name: patient.employer_name || null,
+          service_id: service ? service.id : null, service_name: service ? service.name : (appointment.service_name || null),
+          therapist_id: therapistId,
+          therapist_name: isTherapist ? callerName : (d.therapist_name || appointment.therapist_name || null),
+          assessment_template_id: d.assessment_template_id || null,
+          actual_start_time: d.actual_start_time || new Date().toISOString(),
+          status: 'in_progress',
+        });
+      } catch (e) {
+        // Session creation failed after the reservation — release it so the
+        // appointment is never stranded in 'in_session' with a dead token.
+        await svc.entities.Appointment.updateMany(
+          { id: appointment.id, session_id: token },
+          { $set: { session_id: null, status: appointment.status } }
+        ).catch(() => {});
+        throw e;
+      }
+      // Exchange the reservation for the real session id (CAS from our token).
+      const link = await svc.entities.Appointment.updateMany(
+        { id: appointment.id, session_id: token },
+        { $set: { session_id: created.id } }
+      );
+      if (!link || !link.updated) {
+        // Reservation was stolen after the stale timeout — remove the
+        // orphaned session; no duplicate remains.
         await svc.entities.Session.delete(created.id).catch(() => {});
-        const winner = await find('Session', claimed.session_id);
-        if (winner && inScope(winner) && therapistOwns(winner)) {
-          return Response.json({ success: true, record: winner, created: false });
+        const raced = await find('Appointment', appointment.id);
+        if (raced && raced.session_id && !String(raced.session_id).startsWith(RESERVE_PREFIX)) {
+          const winner = await find('Session', raced.session_id);
+          if (winner && inScope(winner) && therapistOwns(winner)) {
+            return Response.json({ success: true, record: winner, created: false });
+          }
         }
         return err('A session was already started for this appointment.', 409);
       }

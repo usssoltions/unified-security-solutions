@@ -1,7 +1,7 @@
 {
   "name": "Vendor",
   "type": "object",
-  "description": "Estate vendor/service provider. TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway (manager CRUD + vendor self-service scoped to the linked vendor record); direct client access is restricted to platform admins by RLS.",
+  "description": "Estate vendor/service provider. TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway (manager CRUD + vendor self-service scoped to the linked vendor record); direct client access is restricted to platform admins by RLS. NO PAYMENT FUNCTIONALITY \u2014 the app never collects fees, charges or payments; catalogue item prices are informational display values only.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -67,21 +67,21 @@
     },
     "delivery_available": {
       "type": "boolean",
-      "default": false
-    },
-    "delivery_fee": {
-      "type": "number",
-      "default": 0
+      "default": false,
+      "description": "Logistics capability flag only (offers delivery vs pickup). NO fee is attached to delivery \u2014 the app has no payment functionality."
     },
     "minimum_order": {
       "type": "number",
-      "default": 0
+      "default": 0,
+      "description": "Informational display value only \u2014 not enforced, charged or collected."
     },
     "bank_account": {
-      "type": "string"
+      "type": "string",
+      "description": "Vendor directory information for the estate manager's reference. Display-only \u2014 the app never processes payments."
     },
     "vat_number": {
-      "type": "string"
+      "type": "string",
+      "description": "Vendor registration/directory information. Display-only."
     }
   },
   "required": [

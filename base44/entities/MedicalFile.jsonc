@@ -1,0 +1,141 @@
+{
+  "name": "MedicalFile",
+  "type": "object",
+  "description": "Medical module: PRIVATE attachment registry. Every medical image/document (patient ID images, identity-verification photos, referral documents, consent documents, assessment/session media, generated report PDFs, employer-released reports) is stored in PRIVATE storage and registered here. No permanent public URLs: files are only viewable through the medicalAccess gateway (get_medical_file), which revalidates role, tenant, patient relationship and report release state at ACCESS time and returns a SHORT-LIVED signed URL. Uploads are content-validated server-side (extension + declared MIME + magic bytes + size; active content rejected) before private storage. RETENTION: files follow clinical preservation \u2014 no deletion through the gateway; access is invalidated via status 'revoked' (revocation) or automatically by report state changes checked live at every access. GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Medical practice/tenant ID"
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "file_uri": {
+      "type": "string",
+      "description": "PRIVATE storage object identifier (never a public URL). Signed URLs are minted only by the gateway at authorized access time."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "identity_verification",
+        "patient_document",
+        "clinical_attachment",
+        "report_file"
+      ]
+    },
+    "content_type": {
+      "type": "string",
+      "description": "Detected (magic-byte-verified) content type. Only passive media accepted: image/jpeg, image/png, image/webp, application/pdf."
+    },
+    "size_bytes": {
+      "type": "number"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Optional linked entity type (Session, MedicalReport, ...)"
+    },
+    "entity_id": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string",
+      "description": "Human-readable purpose of the file at capture time"
+    },
+    "uploaded_by_id": {
+      "type": "string"
+    },
+    "uploaded_by_name": {
+      "type": "string"
+    },
+    "uploaded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "revoked"
+      ],
+      "default": "active"
+    },
+    "revoked_by_id": {
+      "type": "string"
+    },
+    "revoked_by_name": {
+      "type": "string"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "customer_id",
+    "file_uri",
+    "category",
+    "patient_id",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "Order",
   "type": "object",
-  "description": "Estate resident order. TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway (resident self-service; vendor self-service for own orders; manager oversight). Direct client access is restricted to platform admins by RLS. NO PAYMENT COLLECTION \u2014 price fields exist solely to display and calculate order totals, which the gateway always computes server-side from the submitted items.",
+  "description": "Estate resident order. TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway (resident self-service; vendor self-service for own orders; manager oversight). Direct client access is restricted to platform admins by RLS. NO PAYMENT COLLECTION, NO FEES \u2014 price fields exist solely to display informational order totals, which the gateway always computes server-side from the submitted items (sum of quantity x catalogue unit_price). No delivery fees, surcharges, balances, paid/unpaid status, invoicing or settlement exist in the application.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -50,7 +50,8 @@
             "type": "number"
           },
           "unit_price": {
-            "type": "number"
+            "type": "number",
+            "description": "Informational catalogue value at order time."
           },
           "notes": {
             "type": "string"
@@ -60,14 +61,12 @@
       "default": []
     },
     "subtotal": {
-      "type": "number"
-    },
-    "delivery_fee": {
       "type": "number",
-      "default": 0
+      "description": "Informational only \u2014 sum of item values, computed server-side."
     },
     "total": {
-      "type": "number"
+      "type": "number",
+      "description": "Informational only \u2014 equals subtotal (items sum; no fees are ever added)."
     },
     "status": {
       "type": "string",
@@ -82,7 +81,8 @@
       "default": "pending"
     },
     "delivery_address": {
-      "type": "string"
+      "type": "string",
+      "description": "Logistics information only \u2014 no fee is attached to delivery."
     },
     "delivery_notes": {
       "type": "string"

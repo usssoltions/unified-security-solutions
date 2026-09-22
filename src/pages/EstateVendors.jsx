@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ShoppingBag, Plus, X, Phone, Star, Store } from "lucide-react";
 import { listVendors, createVendor, updateVendor } from "@/lib/estateApi";
 
-const EMPTY_FORM = { business_name: "", contact_name: "", email: "", phone: "", category: "restaurant", description: "", delivery_available: false, delivery_fee: "", minimum_order: "", operating_hours: "", status: "active" };
+const EMPTY_FORM = { business_name: "", contact_name: "", email: "", phone: "", category: "restaurant", description: "", delivery_available: false, minimum_order: "", operating_hours: "", status: "active" };
 
 export default function EstateVendors() {
   const [showForm, setShowForm] = useState(false);
@@ -21,7 +21,7 @@ export default function EstateVendors() {
   const { data: vendors = [] } = useQuery({ queryKey: ["all_vendors"], queryFn: () => listVendors().then(r => r.vendors), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => createVendor({ ...data, delivery_fee: Number(data.delivery_fee) || 0, minimum_order: Number(data.minimum_order) || 0 }),
+    mutationFn: (data) => createVendor({ ...data, minimum_order: Number(data.minimum_order) || 0 }),
     onSuccess: () => { qc.invalidateQueries(["all_vendors"]); setShowForm(false); setForm(EMPTY_FORM); }
   });
 
@@ -64,7 +64,6 @@ export default function EstateVendors() {
               </Select>
               <Input placeholder="Operating hours" value={form.operating_hours} onChange={e => setForm({ ...form, operating_hours: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Textarea placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="bg-slate-900 border-slate-700 text-white col-span-2" rows={2} />
-              <Input type="number" placeholder="Delivery fee (R)" value={form.delivery_fee} onChange={e => setForm({ ...form, delivery_fee: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Input type="number" placeholder="Min order (R)" value={form.minimum_order} onChange={e => setForm({ ...form, minimum_order: e.target.value })} className="bg-slate-900 border-slate-700 text-white" />
               <Button className="col-span-2 bg-orange-500 hover:bg-orange-600" onClick={() => createMutation.mutate(form)} disabled={!form.business_name || !form.phone || createMutation.isPending}>
                 {createMutation.isPending ? "Adding..." : "Add Vendor"}

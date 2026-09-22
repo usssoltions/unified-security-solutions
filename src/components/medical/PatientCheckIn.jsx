@@ -1,5 +1,4 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
 import { medicalApi } from "@/lib/medicalApi";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +28,7 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
   const [docType, setDocType] = useState("manual");
   const [docPhoto, setDocPhoto] = useState(null);
   const [realtimePhoto, setRealtimePhoto] = useState(null);
+  const [realtimeSigned, setRealtimeSigned] = useState(null);
   const [result, setResult] = useState(null);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -95,10 +95,20 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
 
     try {
-      const blob = await fetch(dataUrl).then(r => r.blob());
-      const file = new File([blob], "patient_realtime.jpg", { type: "image/jpeg" });
-      const res = await base44.integrations.Core.UploadFile({ file });
-      setRealtimePhoto(res.file_url);
+      // PRIVATE storage upload through the medicalAccess gateway — the photo
+      // is content-validated server-side (magic bytes, size) and never
+      // stored as a permanent public URL. The returned signed URL is
+      // short-lived, used only for immediate in-session display.
+      const res = await medicalApi.uploadMedicalFile({
+        category: "identity_verification",
+        patient_id: appointment.patient_id,
+        filename: "patient_realtime.jpg",
+        content_type: "image/jpeg",
+        content_base64: dataUrl,
+        purpose: "realtime check-in photo",
+      });
+      setRealtimePhoto(res.file_uri);
+      setRealtimeSigned(res.signed_url || null);
       setStep("compare");
     } catch (e) {
       setError("Failed to upload realtime photo: " + (e.message || e));
@@ -118,13 +128,28 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
         ? JSON.stringify(scanFields).slice(0, 500)
         : null;
 
+      // The scanned document photo is re-stored PRIVATELY through the
+      // gateway (the shared scanner's capture is only a temporary source);
+      // the verification record never keeps a permanent public URL.
+      let documentPhotoUri = docPhoto;
+      if (docPhoto && /^https?:/i.test(docPhoto)) {
+        const up = await medicalApi.uploadMedicalFile({
+          category: "identity_verification",
+          patient_id: appointment.patient_id,
+          filename: "document_photo.jpg",
+          source_url: docPhoto,
+          purpose: "scanned document photo",
+        });
+        documentPhotoUri = up.file_uri;
+      }
+
       // The gateway validates the patient is in the caller's practice and
       // stamps the verifier identity server-side. Note: verified_at is set
       // by the gateway only for verified results.
       const verificationRes = await medicalApi.createVerification({
         patient_id: appointment.patient_id,
         document_type: docType,
-        document_photo_url: docPhoto,
+        document_photo_url: documentPhotoUri,
         realtime_photo_url: realtimePhoto,
         result,
         failure_reason: result !== "verified" ? reason.trim() : null,
@@ -161,6 +186,7 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
     setScanFields(null);
     setDocPhoto(null);
     setRealtimePhoto(null);
+    setRealtimeSigned(null);
     setResult(null);
     setReason("");
     setError(null);
@@ -248,7 +274,7 @@ export default function PatientCheckIn({ appointment, user, onClose, onVerified 
                 <div>
                   <p className="text-slate-400 text-xs mb-2">Realtime photo:</p>
                   {realtimePhoto ? (
-                    <img src={realtimePhoto} alt="Realtime" className="w-full aspect-square object-cover rounded-lg border border-slate-700" />
+                    <img src={realtimeSigned || realtimePhoto} alt="Realtime" className="w-full aspect-square object-cover rounded-lg border border-slate-700" />
                   ) : (
                     <div className="w-full aspect-square bg-slate-800 rounded-lg flex items-center justify-center text-slate-500 text-sm">No photo</div>
                   )}

@@ -36,6 +36,13 @@ export const medicalApi = {
   createVerification: (data) => call({ action: "create_verification", data }),
   listVerifications: (patientId) => call({ action: "list_verifications", patient_id: patientId }),
 
+  // Private medical attachments (private storage, gateway-validated uploads,
+  // short-lived signed URLs minted only after authorized access)
+  uploadMedicalFile: (data) => call({ action: "upload_medical_file", data }),
+  getMedicalFileUrl: (opts) => call({ action: "get_medical_file", ...opts }),
+  listMedicalFiles: (patientId) => call({ action: "list_medical_files", patient_id: patientId }),
+  revokeMedicalFile: (id) => call({ action: "revoke_medical_file", id }),
+
   // Employers
   listEmployers: (filter) => call({ action: "list_employers", filter }),
   getEmployer: (id) => call({ action: "get_employer", id }),

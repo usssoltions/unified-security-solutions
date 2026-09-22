@@ -695,7 +695,7 @@ export default async function main(req: Request): Promise<Response> {
           email: d.email || null, phone: String(d.phone).trim(), whatsapp: d.whatsapp || null,
           category: d.category, description: d.description || null, logo_url: d.logo_url || null,
           status: d.status || 'active', rating: d.rating ?? null, operating_hours: d.operating_hours || null,
-          delivery_available: d.delivery_available === true, delivery_fee: d.delivery_fee || 0,
+          delivery_available: d.delivery_available === true,
           minimum_order: d.minimum_order || 0, bank_account: d.bank_account || null, vat_number: d.vat_number || null,
         };
       }, null);
@@ -871,9 +871,10 @@ export default async function main(req: Request): Promise<Response> {
         item_id: it.item_id || null, item_name: String(it.item_name || ''),
         quantity: Number(it.quantity) || 1, unit_price: Number(it.unit_price) || 0, notes: it.notes || null,
       }));
-      // Totals are ALWAYS computed server-side from submitted items.
+      // Totals are ALWAYS computed server-side from submitted items —
+      // informational only (catalogue values); the app has no payment
+      // functionality and no fees of any kind are added.
       const subtotal = items.reduce((s, it) => s + it.quantity * it.unit_price, 0);
-      const delivery_fee = d.delivery_address ? (vendor.delivery_fee || 0) : 0;
       const reseller_id = await resolveResellerId();
       const created = await svc.entities.Order.create({
         customer_id: scope.customer_id, reseller_id,
@@ -881,7 +882,7 @@ export default async function main(req: Request): Promise<Response> {
         resident_name: selfName(), unit_number: selfUnit(),
         vendor_id: vendor.id, vendor_name: vendor.business_name,
         order_type: d.order_type || vendor.category, items,
-        subtotal, delivery_fee, total: subtotal + delivery_fee,
+        subtotal, total: subtotal,
         status: 'pending', delivery_address: d.delivery_address || null,
         delivery_notes: d.delivery_notes || null,
         estimated_delivery: d.estimated_delivery || null, placed_at: new Date().toISOString(),
