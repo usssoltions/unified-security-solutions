@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { medicalApi } from "@/lib/medicalApi";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Loader2, Building2, User, Briefcase } from "lucide-react";
 import ReportDetailDialog from "@/components/medical/ReportDetailDialog";
