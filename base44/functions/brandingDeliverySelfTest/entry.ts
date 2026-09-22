@@ -200,8 +200,13 @@ Deno.serve(async (req) => {
       website_valid: brand.website ? webOk(brand.website) : null,
     };
 
+    let sourceTemplates = representativeTemplates(brand);
+    if (body?.template_key) {
+      // Resume/self-test mode: at most ONE representative email per brand.
+      sourceTemplates = sourceTemplates.filter((t) => t.key === String(body.template_key));
+    }
     // ── RENDER the six representative templates (send:false sends NOTHING) ──
-    const templates = representativeTemplates(brand).map((t) => {
+    const templates = sourceTemplates.map((t) => {
       const rendered = buildTransactionalEmail({
         brand,
         title: t.content.title,
@@ -239,6 +244,10 @@ Deno.serve(async (req) => {
           reference_id: 'AUDIT-SELFTEST-' + t.key,
           template_name: t.template_name,
           is_test_record: true,
+          // Resume-safe: an explicit idempotency key means a repeated or
+          // retried self-test for the same brand + template can never
+          // deliver a second copy of that email.
+          idempotency_key: 'branding_self_test:' + (customerId || 'platform') + ':' + t.key,
         });
         sends.push({
           template: t.key,
