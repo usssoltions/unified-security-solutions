@@ -23,6 +23,13 @@
  *    → platform. Emails go through the shared audited email helper.
  *  • Configuration changes (per-guard enable + interval) are validated:
  *    management roles only, same-tenant guards only, interval clamped.
+ *  • LATE/OFFLINE RESPONSE RULE (documented): an acknowledgement is valid
+ *    only before the server-issued deadline. A device that was offline and
+ *    responds after expiry receives PROMPT_EXPIRED — the missed outcome and
+ *    its escalation stand, and the guard's cycle resets with the next
+ *    scheduled prompt. No late acknowledgement can reverse or split a
+ *    missed outcome, and no expired challenge can be acknowledged as
+ *    current.
  *
  * ACTIONS
  *  • sweep       — platform/monitor only: cancel voided prompts, mark missed
@@ -86,7 +93,11 @@ Deno.serve(async (req) => {
       //    reassignment). Cancelled prompts are NEVER escalated.
       for (const log of pending) {
         const shift = shiftById.get(log.shift_id);
-        const stillValid = shift &&
+        // A pending prompt is also voided the moment Stay Awake monitoring is
+        // DISABLED for its guard — a disabled guard can never drift into a
+        // 'missed' escalation (disablement cancels pending/future checks).
+        const guardStillMonitored = enabledById.has(log.guard_id);
+        const stillValid = guardStillMonitored && shift &&
           shift.guard_id === log.guard_id &&
           shift.clock_in?.timestamp &&
           !shift.clock_out?.timestamp;
@@ -100,12 +111,21 @@ Deno.serve(async (req) => {
       //    guards double escalation between concurrent sweeps).
       for (const log of pending) {
         const shift = shiftById.get(log.shift_id);
-        const stillValid = shift &&
+        const guardStillMonitored = enabledById.has(log.guard_id);
+        const stillValid = guardStillMonitored && shift &&
           shift.guard_id === log.guard_id &&
           shift.clock_in?.timestamp &&
           !shift.clock_out?.timestamp;
         if (!stillValid) continue; // handled by cancel above
         if (!log.expires_at || new Date(log.expires_at) > now) continue;
+        // CAS-LITE TRANSITION — re-read the prompt and only escalate when
+        // THIS run observes it still 'sent' and performs the flip; a
+        // concurrent sweep that loses the race sees a non-'sent' status and
+        // skips (the per-channel idempotency keys below remain the final
+        // backstop, so a missed challenge produces exactly one outcome and
+        // exactly one escalation per recipient).
+        const fresh = (await svc.entities.StayAwakeLog.filter({ id: log.id }).catch(() => []))?.[0];
+        if (!fresh || fresh.status !== 'sent') continue;
         const updated = await svc.entities.StayAwakeLog.update(log.id, {
           status: 'missed',
         }).catch(() => null);
@@ -386,6 +406,9 @@ async function escalateMissed(svc, { log, shift, allUsers, results }) {
         recipient_name: r.display_name || r.full_name || null,
         event_type: 'stay_awake_missed',
         reference_id: log.id,
+        // Escalation idempotency: exactly ONE missed-check email per
+        // recipient per challenge, even across concurrent sweep retries.
+        idempotency_key: 'stay_awake_missed:' + log.id + ':' + (r.id || r.email),
       }).catch(() => {});
     }
     results.escalated++;

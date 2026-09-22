@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
 
 // Hex → [r,g,b] for jsPDF fill/text colours from the tenant brand.
 function hexToRgb(hex) {
@@ -404,46 +405,27 @@ Deno.serve(async (req) => {
         recipient_name: recipient.display_name || recipient.full_name || undefined,
         event_type: 'daily_activity_report',
         reference_id: `${(tenantScope && tenantScope.customer_id) || 'platform'}:${yesterday.toISOString().slice(0, 10)}`,
-        body: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0;">
-<div style="max-width:650px;margin:0 auto;background:white;">
-  <div style="background:linear-gradient(135deg,${BRAND_COLOR} 0%,${BRAND_SECONDARY} 100%);padding:40px 30px;text-align:center;">
-    ${BRAND_LOGO ? `<img src="${BRAND_LOGO}" alt="${BRAND_NAME}" style="max-width:160px;height:auto;margin-bottom:16px;border-radius:8px;"/>` : ''}
-    <h1 style="color:white;margin:0;font-size:26px;">📊 DAILY ACTIVITY REPORT</h1>
-    <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:15px;">${yesterday.toLocaleDateString('en-ZA')}</p>
-  </div>
-  <div style="padding:28px;">
-    ${noActivityNote}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-      <div style="background:#f8f9fa;padding:18px;border-radius:8px;border-left:4px solid ${BRAND_COLOR};"><p style="color:#64748b;margin:0 0 4px;font-size:12px;">INCIDENTS</p><p style="color:${BRAND_SECONDARY};margin:0;font-size:26px;font-weight:bold;">${yesterdayIncidents.length}</p></div>
-      <div style="background:#f8f9fa;padding:18px;border-radius:8px;border-left:4px solid #0ea5e9;"><p style="color:#64748b;margin:0 0 4px;font-size:12px;">MAINTENANCE</p><p style="color:${BRAND_SECONDARY};margin:0;font-size:26px;font-weight:bold;">${yesterdayMaintenance.length}</p></div>
-      <div style="background:#f8f9fa;padding:18px;border-radius:8px;border-left:4px solid #10b981;"><p style="color:#64748b;margin:0 0 4px;font-size:12px;">CHECKPOINT SCANS</p><p style="color:${BRAND_SECONDARY};margin:0;font-size:26px;font-weight:bold;">${yesterdayPatrols.length}</p></div>
-      <div style="background:#f8f9fa;padding:18px;border-radius:8px;border-left:4px solid #f59e0b;"><p style="color:#64748b;margin:0 0 4px;font-size:12px;">SHIFTS</p><p style="color:${BRAND_SECONDARY};margin:0;font-size:26px;font-weight:bold;">${yesterdayShifts.length}</p></div>
-    </div>
-    <div style="background:#f8fafc;border-radius:8px;padding:20px;margin-bottom:20px;border-left:4px solid ${BRAND_COLOR};">
-      <h3 style="margin:0 0 12px;color:${BRAND_SECONDARY};">Operational Summary</h3>
-      <p style="color:#475569;line-height:1.6;white-space:pre-line;">${aiSummary}</p>
-    </div>
-    ${criticalIncidents.length > 0 ? `
-    <div style="background:#fff5f5;border:2px solid ${BRAND_COLOR};border-radius:8px;padding:20px;margin-bottom:20px;">
-      <h3 style="margin:0 0 12px;color:${BRAND_SECONDARY};">⚠️ Critical Incidents</h3>
-      ${criticalIncidents.map((i) => `
-        <div style="background:white;padding:12px;border-radius:6px;margin-bottom:8px;border-left:4px solid ${BRAND_COLOR};">
-          <p style="margin:0 0 4px;font-weight:bold;">${i.title}</p>
-          <p style="margin:0;color:#64748b;font-size:13px;">Site: ${i.site_name || 'N/A'} | Priority: ${i.priority} | Status: ${i.status}</p>
-        </div>`).join('')}
-    </div>` : ''}
-    ${checkpointTableHtml}
-    ${movementHtml}
-    <div style="background:#f0f9ff;border:2px solid #0ea5e9;border-radius:8px;padding:20px;">
-      <h3 style="margin:0 0 12px;color:${BRAND_SECONDARY};">📋 Pending Items</h3>
-      <p style="margin:0;color:#475569;">Open Incidents: <strong>${openIncidents.length}</strong> &nbsp;|&nbsp; Pending Maintenance: <strong>${pendingMaintenance.length}</strong></p>
-    </div>
-    ${pdfButtonHtml}
-  </div>
-  <div style="background:${BRAND_SECONDARY};padding:20px;text-align:center;">
-   <p style="color:#94a3b8;margin:0;font-size:12px;">Automated Daily Report — ${BRAND_NAME}</p>
-  </div>
-</div></body></html>`
+        html: renderTransactionalShell({
+          brand,
+          title: 'Daily Activity Report',
+          bodyHtml: `${noActivityNote}
+          <table role="presentation" width="100%" style="border-collapse:collapse;margin:0 0 16px">
+            ${[['Incidents', yesterdayIncidents.length], ['Maintenance', yesterdayMaintenance.length], ['Checkpoint Scans', yesterdayPatrols.length], ['Shifts', yesterdayShifts.length], ['Open Incidents', openIncidents.length], ['Pending Maintenance', pendingMaintenance.length]]
+              .map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#64748b;font-size:13px;white-space:nowrap;width:1%">${k}</td><td style="padding:6px 0;color:#0f172a;font-size:14px;font-weight:700">${v}</td></tr>`).join('')}
+          </table>
+          ${aiSummary ? `<p style="margin:0 0 14px;color:#334155;line-height:1.6;white-space:pre-line;">${aiSummary}</p>` : ''}
+          ${criticalIncidents.map((i) => `<p style="margin:0 0 8px;color:#334155;font-size:13px"><b>Critical:</b> ${i.title} — Site: ${i.site_name || 'N/A'} · Priority: ${i.priority} · Status: ${i.status}</p>`).join('')}
+          ${checkpointTableHtml}
+          ${movementHtml}`,
+          cta: pdfDownloadUrl ? { label: 'Download PDF Report', url: pdfDownloadUrl } : null,
+        }),
+        text: [
+          `DAILY ACTIVITY REPORT — ${yesterday.toLocaleDateString('en-ZA')}`,
+          `Incidents: ${yesterdayIncidents.length} · Maintenance: ${yesterdayMaintenance.length} · Checkpoint scans: ${yesterdayPatrols.length} · Shifts: ${yesterdayShifts.length}`,
+          `Open incidents: ${openIncidents.length} · Pending maintenance: ${pendingMaintenance.length}`,
+          aiSummary || '',
+          pdfDownloadUrl ? `PDF report: ${pdfDownloadUrl}` : '',
+        ].filter(Boolean).join('\n\n')
       }).catch((err) => console.error(`Email failed to ${recipient.email}:`, err.message))
     ));
 

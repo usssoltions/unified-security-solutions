@@ -8,6 +8,7 @@ import {
   resolveCommunicationBrand, escHtml,
   formatSastDate, formatSastTime, formatSastDateTime,
 } from '../../shared/brandedCommunication.ts';
+import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
 
 /**
  * START OF SHIFT REPORT NOTIFICATION — In-App + Email + Telegram + native
@@ -150,21 +151,10 @@ Deno.serve(async (req) => {
         </audio>
       </div>`).join('');
 
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #f8fafc;">
-        <div style="max-width: 650px; margin: 0 auto; background: white;">
-          <div style="background: linear-gradient(135deg, ${escHtml(brand.primary_color)} 0%, ${escHtml(brand.accent_color)} 100%); padding: 40px 30px; text-align: center;">
-            ${brand.logo_url ? `<img src="${escHtml(brand.logo_url)}" alt="${escHtml(brand.brand_name)}" style="max-width: 200px; height: auto; margin-bottom: 20px; border-radius: 10px;" />` : ''}
-            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">🛡️ START OF SHIFT REPORT</h1>
-            <p style="color: rgba(255,255,255,0.95); margin: 10px 0 0 0; font-size: 16px;">${escHtml(brand.brand_name)}</p>
-          </div>
-
+    // CENTRAL RENDERER — the document shell (logo, header, branding, footer,
+    // CTA, contact details) comes from the ONE transactional renderer; only
+    // the operational report content is composed here.
+    const emailBodyHtml = `
           <div style="padding: 30px; background: #f8f9fa; border-bottom: 3px solid ${escHtml(brand.primary_color)};">
             <h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: ${escHtml(guardName)}</h2>
             <p style="color: #64748b; margin: 5px 0; font-size: 14px;">🏢 <strong>Client:</strong> ${escHtml(clientName)}</p>
@@ -230,19 +220,13 @@ Deno.serve(async (req) => {
               </div>
             </div>` : ''}
 
-            <div style="text-align: center; margin: 25px 0;">
-              <a href="${escHtml(REPORT_LINK)}" style="display: inline-block; background: ${escHtml(brand.primary_color)}; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">Open Report History</a>
-            </div>
-          </div>
-
-          <div style="background: ${escHtml(brand.accent_color)}; padding: 25px; text-align: center;">
-            ${brand.logo_url ? `<img src="${escHtml(brand.logo_url)}" alt="${escHtml(brand.brand_name)}" style="max-width: 120px; height: auto; margin-bottom: 15px; opacity: 0.8;" />` : ''}
-            <p style="color: #94a3b8; margin: 0 0 10px 0; font-size: 13px;">This is an automated notification from ${escHtml(brand.brand_name)}</p>
-            <p style="color: #64748b; margin: 0; font-size: 12px;">© ${new Date().getFullYear()} ${escHtml(brand.brand_name)}. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>`;
+          </div>`;
+    const emailHtml = renderTransactionalShell({
+      brand,
+      title: 'Start of Shift Report',
+      bodyHtml: emailBodyHtml,
+      cta: { label: 'Open Report History', url: REPORT_LINK },
+    });
     const emailSubject = `🛡️ Start of Shift Report — ${guardName} @ ${siteName} (${shiftDateStr})`;
 
     // ── Shared TELEGRAM text (branded, operational summary + evidence links) ──

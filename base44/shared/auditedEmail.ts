@@ -77,7 +77,10 @@ export function applyDeliveryGuard(p: {
   referenceId?: string | null;
   eventKey?: string | null;
 }): { deliver: boolean; to: string; subject: string; reason: string | null; mode: string | null } {
-  const mode = p.mode;
+  // The guard INDEPENDENTLY re-validates the mode (defense in depth): any
+  // value outside production/test/preview fails closed here too, even if a
+  // caller forgot to normalize before invoking the guard.
+  const mode = VALID_MODES.includes(String(p.mode || '')) ? p.mode : null;
   const to = String(p.to || '').trim();
   const subject = String(p.subject || '');
   const synthetic = !!p.isTestRecord ||
@@ -126,6 +129,11 @@ export async function sendAuditedEmail(
      *  provided — call sites without either keep their exact pre-migration
      *  send-every-time semantics (never collapsed by a coarse event type). */
     dedupe?: boolean;
+    /** ISOLATED SELF-TEST injection — when provided, overrides the
+     *  server-controlled DELIVERY_MODE/TEST_MAILBOX configuration and is
+     *  normalized with the SAME fail-closed validation (an invalid injected
+     *  mode is null → blocked). No production call site supplies this. */
+    config?: { mode?: string | null; testMailboxes?: string[] };
   },
 ): Promise<{ ok: boolean; skipped?: boolean; error?: string | null; mode?: string | null }> {
   const intendedTo = String(p.to || '').trim();
@@ -144,9 +152,18 @@ export async function sendAuditedEmail(
   const idemKey = p.idempotency_key || `${eventKey}:email:${intendedTo}`;
 
   // ── DELIVERY GUARD — the primary, server-controlled protection ──────────
+  // Configuration is server-controlled by default; an explicitly injected
+  // config (isolated self-tests only) passes through the SAME fail-closed
+  // normalization as the secrets path — an invalid injected mode becomes
+  // null and blocks delivery.
+  const injectedMode = (p.config && p.config.mode !== undefined) ? p.config.mode : undefined;
+  const rawMode = injectedMode !== undefined ? injectedMode : currentDeliveryMode();
+  const normalizedMode = VALID_MODES.includes(String(rawMode || '').trim().toLowerCase())
+    ? String(rawMode || '').trim().toLowerCase() : null;
+  const testMailboxes = (p.config && p.config.testMailboxes) || testMailboxAllowlist();
   const guard = applyDeliveryGuard({
-    mode: currentDeliveryMode(),
-    testMailboxes: testMailboxAllowlist(),
+    mode: normalizedMode,
+    testMailboxes,
     to: intendedTo,
     subject: p.subject,
     isTestRecord: p.is_test_record,

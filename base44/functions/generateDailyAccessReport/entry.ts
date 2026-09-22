@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
 
 /**
  * generateDailyAccessReport — Server-side daily access report.
@@ -101,35 +102,30 @@ export default async function(req: Request): Promise<Response> {
 
         const brandRgb = (brand.primary_color || '#C41E3A');
         const brandAccent = (brand.accent_color || '#1a1a1a');
-        const html = `
-          <html><body style="font-family: Arial, sans-serif;margin:0;padding:0;background:#f5f5f5;">
-          <div style="max-width:700px;margin:0 auto;background:#ffffff;">
-          <div style="background:linear-gradient(135deg,${brandRgb} 0%,${brandAccent} 100%);padding:28px 24px;text-align:center;">
-            ${brand.logo_url ? `<img src="${brand.logo_url}" alt="${esc(brand.brand_name)}" style="max-width:170px;height:auto;margin-bottom:12px;border-radius:10px;"/>` : ''}
-            <h2 style="color:#ffffff;margin:0;">Daily Access Report — ${esc(site.name)}</h2>
-          </div>
-          <div style="padding:24px;">
-          <p>Date: ${reportDate}</p>
-          <p>Generated: ${new Date().toISOString()}</p>
-          <h3>Summary</h3>
-          <ul>
-            <li>Total events: ${todayLogs.length}</li>
-            <li>Entries: ${entries.length}</li>
-            <li>Currently inside: ${stillInside.length}</li>
-            <li>Denied/Blacklisted: ${denied.length}</li>
-            <li>Overrides: ${overrides.length}</li>
-          </ul>
-          <h3>Detail</h3>
+        // CENTRAL RENDERER — the document shell (logo, header, branding,
+        // footer, contact details) comes from the one transactional
+        // renderer; only the structured report content is composed here.
+        const html = renderTransactionalShell({
+          brand,
+          title: `Daily Access Report — ${esc(site.name)}`,
+          bodyHtml: `
+          <p style="margin:0 0 12px;color:#334155;font-size:14px;">Date: ${esc(reportDate)} · Generated: ${esc(new Date().toISOString())}</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;margin:0 0 16px">
+            ${[['Total events', todayLogs.length], ['Entries', entries.length], ['Currently inside', stillInside.length], ['Denied/Blacklisted', denied.length], ['Overrides', overrides.length]]
+              .map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#64748b;font-size:13px;white-space:nowrap;width:1%">${esc(String(k))}</td><td style="padding:6px 0;color:#0f172a;font-size:14px;font-weight:700">${esc(String(v))}</td></tr>`).join('')}
+          </table>
+          <h3 style="margin:0 0 8px;color:#1e293b;font-size:16px;">Detail</h3>
           <table border="1" cellpadding="5" style="border-collapse: collapse; font-size: 12px;">
             <tr><th>Visitor</th><th>Phone</th><th>Type</th><th>Vehicle</th><th>Destination</th><th>Purpose</th><th>Gate</th><th>Entry</th><th>Exit</th><th>Minutes</th><th>Guard</th><th>Status</th></tr>
             ${rows}
-          </table>
-          </div>
-          <div style="background:${brandAccent};padding:18px;text-align:center;">
-            <p style="color:#ffffff;margin:0;font-size:13px;font-weight:bold;">${esc(brand.brand_name)}</p>
-            <p style="color:#64748b;margin:6px 0 0;font-size:11px;">Automated Daily Access Report — please do not reply directly.</p>
-          </div>
-          </div></body></html>`;
+          </table>`,
+        });
+
+        const textSummary = [
+          `DAILY ACCESS REPORT — ${site.name} — ${reportDate}`,
+          `Total events: ${todayLogs.length} · Entries: ${entries.length} · Currently inside: ${stillInside.length}`,
+          `Denied/Blacklisted: ${denied.length} · Overrides: ${overrides.length}`,
+        ].join('\n');
 
         const report = await base44.asServiceRole.entities.GeneratedReport.create({
           title: `Daily Access Report — ${site.name} — ${reportDate}`,
@@ -166,7 +162,8 @@ export default async function(req: Request): Promise<Response> {
                   from_name: brand.brand_name,
                   to: er.email,
                   subject: `Daily Access Report — ${site.name} — ${reportDate}`,
-                  body: html,
+                  html,
+                  text: textSummary,
                   brand,
                   customer_id: cid || null,
                   recipient_name: er.name || undefined,

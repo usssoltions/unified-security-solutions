@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 import { resolveCommunicationBrand, hexToRgb, escHtml } from '../../shared/brandedCommunication.ts';
+import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
 
 async function generateMonthlyPDF(currentMonthLabel, prevMonthLabel, stats, siteComparison, analysis, brand) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -309,53 +310,37 @@ Deno.serve(async (req) => {
           recipient_name: recipient.display_name || recipient.full_name || undefined,
           event_type: 'monthly_comparison_report',
           reference_id: `${group.customer_id}:${currentMonthStart.toISOString().slice(0, 7)}`,
-          body: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:0;">
-<div style="max-width:700px;margin:20px auto;background:white;border-radius:8px;overflow:hidden;">
-  <div style="background:linear-gradient(135deg,${escHtml(brand.primary_color)} 0%,${escHtml(brand.accent_color)} 100%);padding:30px;text-align:center;color:white;">
-    ${brand.logo_url ? `<img src="${escHtml(String(brand.logo_url))}" alt="${escHtml(brand.brand_name)}" style="max-width:120px;height:auto;margin-bottom:12px;border-radius:6px;"/>` : ''}
-    <h1 style="margin:0;font-size:26px;">Monthly Comparison Report</h1>
-    <p style="margin:6px 0 0;opacity:0.9;">${currentMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}</p>
-  </div>
-  <div style="padding:28px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:24px;">
-      <div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;">
-        <p style="color:#64748b;margin:0 0 4px;font-size:11px;text-transform:uppercase;">Incidents</p>
-        <p style="margin:0;font-size:24px;font-weight:bold;color:#1e293b;">${currentIncidents.length}</p>
-        <p style="margin:4px 0 0;font-size:12px;color:${incidentChange > 0 ? '#dc2626' : '#16a34a'};">${incidentChange > 0 ? '▲' : '▼'} ${Math.abs(incidentChange)}%</p>
-      </div>
-      <div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;">
-        <p style="color:#64748b;margin:0 0 4px;font-size:11px;text-transform:uppercase;">Critical</p>
-        <p style="margin:0;font-size:24px;font-weight:bold;color:#1e293b;">${currentCritical}</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Prev: ${prevCritical}</p>
-      </div>
-      <div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;">
-        <p style="color:#64748b;margin:0 0 4px;font-size:11px;text-transform:uppercase;">Maintenance</p>
-        <p style="margin:0;font-size:24px;font-weight:bold;color:#1e293b;">${currentMaintenance.length}</p>
-        <p style="margin:4px 0 0;font-size:12px;color:${maintenanceChange > 0 ? '#dc2626' : '#16a34a'};">${maintenanceChange > 0 ? '▲' : '▼'} ${Math.abs(maintenanceChange)}%</p>
-      </div>
-      <div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;">
-        <p style="color:#64748b;margin:0 0 4px;font-size:11px;text-transform:uppercase;">Patrols</p>
-        <p style="margin:0;font-size:24px;font-weight:bold;color:#1e293b;">${currentPatrols.length}</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Prev: ${prevPatrols.length}</p>
-      </div>
-    </div>
-    <h3 style="color:#1e293b;border-bottom:2px solid ${escHtml(brand.primary_color)};padding-bottom:8px;">Site Performance</h3>
-    <table border="1" cellpadding="10" style="border-collapse:collapse;width:100%;font-size:13px;">
-      <tr style="background:${escHtml(brand.primary_color)};color:white;"><th>Site</th><th>Current Inc.</th><th>Prev Inc.</th><th>Change</th><th>Maintenance</th></tr>
-      ${siteComparison.slice(0, 6).map(s => `<tr><td>${escHtml(s.name)}</td><td>${s.currentIncidents}</td><td>${s.prevIncidents}</td><td style="color:${s.incidentChange > 0 ? '#dc2626' : '#16a34a'};">${s.incidentChange > 0 ? '▲' : '▼'} ${Math.abs(s.incidentChange)}%</td><td>${s.currentMaintenance}</td></tr>`).join('')}
-    </table>
-    <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:20px;border-radius:8px;margin-top:20px;">
-      <h3 style="margin:0 0 12px;color:#166534;">Month-over-Month Analysis</h3>
-      <pre style="font-family:Arial,sans-serif;font-size:13px;line-height:1.7;white-space:pre-wrap;color:#166534;margin:0;">${escHtml(analysis)}</pre>
-    </div>
-    ${pdfButtonHtml}
-  </div>
-  <div style="background:${escHtml(brand.accent_color)};padding:16px;text-align:center;">
-    <p style="color:#ffffff;margin:0;font-size:12px;font-weight:bold;">${escHtml(brand.brand_name)}</p>
-    ${footerContact ? `<p style="color:#94a3b8;margin:6px 0 0;font-size:12px;">${footerContact}</p>` : ''}
-    <p style="color:#64748b;margin:8px 0 0;font-size:11px;">Automated Monthly Report</p>
-  </div>
-</div></body></html>`
+          html: renderTransactionalShell({
+            brand,
+            title: 'Monthly Comparison Report',
+            bodyHtml: `
+              <p style="margin:0 0 12px;color:#334155;font-size:14px;">${currentMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}</p>
+              <table role="presentation" width="100%" style="border-collapse:collapse;margin:0 0 16px">
+                ${[
+                  ['Incidents', `${currentIncidents.length} (${incidentChange > 0 ? '+' : ''}${incidentChange}% vs previous)`],
+                  ['Critical', `${currentCritical} (prev: ${prevCritical})`],
+                  ['Maintenance', `${currentMaintenance.length} (${maintenanceChange > 0 ? '+' : ''}${maintenanceChange}% vs previous)`],
+                  ['Patrols', `${currentPatrols.length} (prev: ${prevPatrols.length})`],
+                ].map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#64748b;font-size:13px;white-space:nowrap;width:1%">${escHtml(String(k))}</td><td style="padding:6px 0;color:#0f172a;font-size:14px;font-weight:700">${escHtml(String(v))}</td></tr>`).join('')}
+              </table>
+              <h3 style="margin:0 0 8px;color:#1e293b;font-size:16px;">Site Performance</h3>
+              <table border="1" cellpadding="10" style="border-collapse:collapse;width:100%;font-size:13px;">
+                <tr style="background:#1e293b;color:white;"><th>Site</th><th>Current Inc.</th><th>Prev Inc.</th><th>Change</th><th>Maintenance</th></tr>
+                ${siteComparison.slice(0, 6).map(s => `<tr><td>${escHtml(s.name)}</td><td>${s.currentIncidents}</td><td>${s.prevIncidents}</td><td>${s.incidentChange > 0 ? '+' : ''}${s.incidentChange}%</td><td>${s.currentMaintenance}</td></tr>`).join('')}
+              </table>
+              <h3 style="margin:16px 0 8px;color:#1e293b;font-size:16px;">Month-over-Month Analysis</h3>
+              <pre style="font-family:Arial,sans-serif;font-size:13px;line-height:1.7;white-space:pre-wrap;color:#334155;margin:0;">${escHtml(analysis)}</pre>`,
+            cta: pdfDownloadUrl ? { label: 'Download PDF Report', url: pdfDownloadUrl } : null,
+          }),
+          text: [
+            `MONTHLY COMPARISON REPORT — ${currentMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })} vs ${prevMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}`,
+            `Incidents: ${currentIncidents.length} (${incidentChange > 0 ? '+' : ''}${incidentChange}%)`,
+            `Critical: ${currentCritical} (prev: ${prevCritical})`,
+            `Maintenance: ${currentMaintenance.length} (${maintenanceChange > 0 ? '+' : ''}${maintenanceChange}%)`,
+            `Patrols: ${currentPatrols.length} (prev: ${prevPatrols.length})`,
+            analysis || '',
+            pdfDownloadUrl ? `PDF report: ${pdfDownloadUrl}` : '',
+          ].filter(Boolean).join('\n\n')
         }).catch(err => console.error(`Email failed to ${recipient.email}:`, err.message))
       ));
       reportsSent += group.users.length;

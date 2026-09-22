@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 import { resolveCommunicationBrand, hexToRgb, escHtml } from '../../shared/brandedCommunication.ts';
+import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
 
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
@@ -346,225 +347,33 @@ Deno.serve(async (req) => {
         recipient_name: recipient.display_name || recipient.full_name || undefined,
         event_type: 'guard_performance_report',
         reference_id: `${brand.customer_id || 'platform'}:${currentMonthStart.toISOString().slice(0, 7)}`,
-        body: `
-<p>Dear Board Member,</p>
-
-<p>Please find attached the <strong>Guard Performance & Site Activity Report</strong> for ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
-
-<p><strong>Report Highlights:</strong></p>
-<ul>
-  <li>Active Guards Analyzed: ${guardPerformance.length}</li>
-  <li>Total Shifts Completed: ${currentShifts.length}</li>
-  <li>Late Clock-Ins: ${guardPerformance.reduce((sum, g) => sum + g.late_clock_ins, 0)}</li>
-  <li>Missed Stay-Awake Alerts: ${guardPerformance.reduce((sum, g) => sum + g.stay_awake_missed, 0)}</li>
-  <li>Sites Monitored: ${siteActivity.length}</li>
-</ul>
-
-<p>The attached PDF contains comprehensive guard performance metrics, punctuality analysis, site activity summaries, and strategic recommendations for optimizing security operations.</p>
-
-<p><strong>Download Report:</strong> <a href="${pdfUrl}">Click here to download PDF</a></p>
-
-<p>Best regards,<br>
-<strong>${escHtml(brand.brand_name)}</strong><br>
-${escHtml(brand.support_email || brand.website || '')}</p>
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #0f172a; }
-    .container { max-width: 1000px; margin: 20px auto; background: #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-    .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 40px; text-align: center; border-bottom: 4px solid #dc2626; }
-    .logo { max-width: 200px; margin: 0 auto 20px; }
-    .header h1 { margin: 0; font-size: 32px; font-weight: 700; color: white; text-transform: uppercase; letter-spacing: 1px; }
-    .header p { margin: 10px 0 0; color: #94a3b8; font-size: 16px; }
-    .content { padding: 40px; background: white; }
-    .section { margin-bottom: 40px; }
-    .section h2 { color: #1e293b; font-size: 24px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid #dc2626; }
-    .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
-    .performance-table th { background: #1e293b; color: white; padding: 15px 10px; text-align: left; font-weight: 600; }
-    .performance-table td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; }
-    .performance-table tr:hover { background: #f8fafc; }
-    .score-badge { padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 12px; }
-    .score-excellent { background: #10b981; color: white; }
-    .score-good { background: #3b82f6; color: white; }
-    .score-fair { background: #f59e0b; color: white; }
-    .score-poor { background: #dc2626; color: white; }
-    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin: 30px 0; }
-    .metric-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 25px; border-radius: 10px; border-left: 5px solid #dc2626; color: white; }
-    .metric-card h3 { margin: 0 0 10px; font-size: 14px; color: #94a3b8; text-transform: uppercase; }
-    .metric-value { font-size: 36px; font-weight: bold; margin-bottom: 5px; }
-    .alert-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 20px; margin: 20px 0; border-radius: 6px; }
-    .alert-box h3 { color: #991b1b; margin: 0 0 10px; }
-    .alert-box ul { color: #7f1d1d; margin: 10px 0; padding-left: 20px; }
-    .detail-card { background: #f8fafc; padding: 15px; margin: 10px 0; border-radius: 6px; border-left: 3px solid #64748b; }
-    .footer { background: #0f172a; color: #94a3b8; padding: 30px; text-align: center; font-size: 13px; }
-    .footer strong { color: #dc2626; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <img src="${escHtml(brand.logo_url || '')}" alt="${escHtml(brand.brand_name)}" class="logo">
-      <h1>Guard Performance & Site Activity</h1>
-      <p>${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-    </div>
-    
-    <div class="content">
-      <div class="section">
-        <h2>📊 Overall Performance Summary</h2>
-        <div class="metric-grid">
-          <div class="metric-card">
-            <h3>Active Guards</h3>
-            <div class="metric-value">${guardPerformance.length}</div>
-          </div>
-          <div class="metric-card">
-            <h3>Total Shifts</h3>
-            <div class="metric-value">${currentShifts.length}</div>
-          </div>
-          <div class="metric-card">
-            <h3>Late Clock-Ins</h3>
-            <div class="metric-value">${guardPerformance.reduce((sum, g) => sum + g.late_clock_ins, 0)}</div>
-          </div>
-          <div class="metric-card">
-            <h3>Missed Stay-Awake</h3>
-            <div class="metric-value">${guardPerformance.reduce((sum, g) => sum + g.stay_awake_missed, 0)}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <h2>👮 Guard Performance Breakdown</h2>
-        <table class="performance-table">
-          <thead>
-            <tr>
-              <th>Guard Name</th>
-              <th>Shifts</th>
-              <th>Completion Rate</th>
-              <th>Punctuality</th>
-              <th>Late Clock-Ins</th>
-              <th>Patrols</th>
-              <th>Stay-Awake Response</th>
-              <th>Overall Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${guardPerformance.map(guard => {
-              const overallScore = (
-                parseFloat(guard.completion_rate) * 0.3 +
-                parseFloat(guard.punctuality_rate) * 0.3 +
-                parseFloat(guard.stay_awake_response_rate) * 0.2 +
-                parseFloat(guard.patrol_verification_rate) * 0.2
-              ).toFixed(1);
-              const scoreClass = overallScore >= 90 ? 'excellent' : overallScore >= 75 ? 'good' : overallScore >= 60 ? 'fair' : 'poor';
-              
-              return `
-              <tr>
-                <td><strong>${guard.guard_name}</strong></td>
-                <td>${guard.completed_shifts}/${guard.total_shifts}</td>
-                <td>${guard.completion_rate}%</td>
-                <td>${guard.punctuality_rate}%</td>
-                <td style="color: ${guard.late_clock_ins > 0 ? '#dc2626' : '#10b981'}; font-weight: 600;">
-                  ${guard.late_clock_ins}
-                </td>
-                <td>${guard.patrols_verified}/${guard.patrols_total} (${guard.patrol_verification_rate}%)</td>
-                <td>
-                  ${guard.stay_awake_response_rate}%
-                  ${guard.stay_awake_missed > 0 ? `<span style="color: #dc2626;">(${guard.stay_awake_missed} missed)</span>` : ''}
-                </td>
-                <td><span class="score-badge score-${scoreClass}">${overallScore}%</span></td>
-              </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      ${guardPerformance.some(g => g.late_clock_ins > 0) ? `
-      <div class="section">
-        <h2>⏰ Late Clock-In Details</h2>
-        ${guardPerformance.filter(g => g.late_clock_ins > 0).map(guard => `
-          <div class="detail-card">
-            <strong style="color: #1e293b; font-size: 16px;">${guard.guard_name}</strong> - ${guard.late_clock_ins} late arrival(s)
-            <ul style="margin: 10px 0 0; color: #475569;">
-              ${guard.late_clock_in_details.map(detail => `
-                <li>${detail.date} at ${detail.site}: Scheduled ${detail.scheduled}, arrived ${detail.actual} 
-                <span style="color: #dc2626; font-weight: 600;">(${detail.delay_minutes} min late)</span></li>
-              `).join('')}
-            </ul>
-          </div>
-        `).join('')}
-      </div>
-      ` : ''}
-
-      <div class="section">
-        <h2>🏢 Site Activity Summary</h2>
-        <table class="performance-table">
-          <thead>
-            <tr>
-              <th>Site Name</th>
-              <th>Total Shifts</th>
-              <th>Completed</th>
-              <th>Coverage Rate</th>
-              <th>Patrols</th>
-              <th>Verified Patrols</th>
-              <th>Unique Guards</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${siteActivity.map(site => `
-              <tr>
-                <td><strong>${site.site_name}</strong></td>
-                <td>${site.total_shifts}</td>
-                <td>${site.completed_shifts}</td>
-                <td>
-                  <span class="score-badge score-${site.coverage_rate >= 90 ? 'excellent' : site.coverage_rate >= 75 ? 'good' : 'fair'}">
-                    ${site.coverage_rate}%
-                  </span>
-                </td>
-                <td>${site.total_patrols}</td>
-                <td>${site.verified_patrols} (${site.total_patrols > 0 ? ((site.verified_patrols / site.total_patrols) * 100).toFixed(1) : 0}%)</td>
-                <td>${site.unique_guards}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="alert-box">
-        <h3>⚠️ Action Required</h3>
-        <ul>
-          ${guardPerformance.filter(g => g.late_clock_ins > 2).length > 0 ? 
-            `<li><strong>${guardPerformance.filter(g => g.late_clock_ins > 2).length} guard(s) with multiple late arrivals</strong> - Review punctuality and implement corrective measures</li>` : ''}
-          ${guardPerformance.filter(g => g.stay_awake_missed > 1).length > 0 ?
-            `<li><strong>${guardPerformance.filter(g => g.stay_awake_missed > 1).length} guard(s) missing stay-awake alerts</strong> - Investigate alertness issues</li>` : ''}
-          ${guardPerformance.filter(g => parseFloat(g.patrol_verification_rate) < 80).length > 0 ?
-            `<li><strong>Low patrol verification rates</strong> - ${guardPerformance.filter(g => parseFloat(g.patrol_verification_rate) < 80).map(g => g.guard_name).join(', ')}</li>` : ''}
-          ${siteActivity.filter(s => parseFloat(s.coverage_rate) < 90).length > 0 ?
-            `<li><strong>Sites needing attention:</strong> ${siteActivity.filter(s => parseFloat(s.coverage_rate) < 90).map(s => s.site_name).join(', ')}</li>` : ''}
-        </ul>
-      </div>
-
-      <div class="section" style="background: #f0fdf4; padding: 20px; border-radius: 8px;">
-        <h2 style="color: #166534;">✅ Recommendations</h2>
-        <ul style="color: #166534; line-height: 1.8;">
-          <li>Implement progressive discipline for repeated late arrivals</li>
-          <li>Provide additional training for guards with low performance scores</li>
-          <li>Review stay-awake alert settings and guard workload</li>
-          <li>Increase patrol frequency at sites with low coverage</li>
-          <li>Recognize and reward top-performing guards</li>
-          <li>Consider shift reassignments based on performance patterns</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="footer">
-      <p><strong>${escHtml(brand.brand_name)}</strong></p>
-      <p>Generated: ${new Date().toLocaleString()}</p>
-    </div>
-  </div>
-</body>
-</html>
-        `
+        html: renderTransactionalShell({
+          brand,
+          title: 'Guard Performance & Site Activity',
+          bodyHtml: `
+<p style="margin:0 0 12px;color:#334155;font-size:14px;">Dear Board Member,</p>
+<p style="margin:0 0 12px;color:#334155;font-size:14px;">Please find attached the <strong>Guard Performance &amp; Site Activity Report</strong> for ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+<table role="presentation" width="100%" style="border-collapse:collapse;margin:0 0 16px">
+  ${[
+    ['Active Guards Analyzed', guardPerformance.length],
+    ['Total Shifts Completed', currentShifts.length],
+    ['Late Clock-Ins', guardPerformance.reduce((sum, g) => sum + g.late_clock_ins, 0)],
+    ['Missed Stay-Awake Alerts', guardPerformance.reduce((sum, g) => sum + g.stay_awake_missed, 0)],
+    ['Sites Monitored', siteActivity.length],
+  ].map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#64748b;font-size:13px;white-space:nowrap;width:1%">${escHtml(String(k))}</td><td style="padding:6px 0;color:#0f172a;font-size:14px;font-weight:700">${escHtml(String(v))}</td></tr>`).join('')}
+</table>
+<p style="margin:0 0 12px;color:#334155;font-size:14px;">The attached PDF contains comprehensive guard performance metrics, punctuality analysis, site activity summaries, and strategic recommendations for optimizing security operations.</p>`,
+          cta: pdfUrl ? { label: 'Download Report PDF', url: pdfUrl } : null,
+        }),
+        text: [
+          `GUARD PERFORMANCE & SITE ACTIVITY — ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+          `Active guards analyzed: ${guardPerformance.length}`,
+          `Total shifts completed: ${currentShifts.length}`,
+          `Late clock-ins: ${guardPerformance.reduce((sum, g) => sum + g.late_clock_ins, 0)}`,
+          `Missed stay-awake alerts: ${guardPerformance.reduce((sum, g) => sum + g.stay_awake_missed, 0)}`,
+          `Sites monitored: ${siteActivity.length}`,
+          pdfUrl ? `Download report: ${pdfUrl}` : '',
+        ].filter(Boolean).join('\n\n')
       })
     );
 
