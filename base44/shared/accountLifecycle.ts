@@ -280,6 +280,9 @@ export async function resolveOrganisationName(svc, target) {
   return null;
 }
 
+import { buildBrandedEmail } from './brandedCommunication.ts';
+import { sendAuditedEmail } from './auditedEmail.ts';
+
 /* Audit — account lifecycle events carry actor, target, tenant, timestamp. */
 export async function auditAccountEvent(svc, eventType, actor, target, notes) {
   const record = {
@@ -311,7 +314,14 @@ export async function notifyUsers(svc, recipients, title, message, actionUrl) {
       sent_via: ['in_app'],
     }).catch(() => {});
     if (r.email) {
-      await svc.integrations.Core.SendEmail({ to: r.email, subject: title, body: message }).catch(() => {});
+      // Central transactional renderer + guarded audited delivery.
+      const tpl = buildBrandedEmail({ heading: title, intro: message });
+      await sendAuditedEmail(svc, {
+        to: r.email, subject: title,
+        html: tpl.html, text: tpl.text,
+        recipient_id: r.id || undefined,
+        event_type: 'account_lifecycle', template_name: 'account_lifecycle',
+      }).catch(() => {});
     }
   }
 }
