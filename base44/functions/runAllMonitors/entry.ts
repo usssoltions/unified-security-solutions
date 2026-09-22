@@ -3,6 +3,7 @@ import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 Deno.serve(async (req) => {
@@ -177,10 +178,13 @@ Deno.serve(async (req) => {
               closing: 'Please review the patrol status in the app.',
             });
             await Promise.all(targets.filter(s => s.email).map(sup =>
-              base44.asServiceRole.integrations.Core.SendEmail({
-                from_name: patrolBrand.brand_name, to: sup.email,
+              sendAuditedEmail(base44.asServiceRole, {
+                to: sup.email,
                 subject: '🚨 Overdue Patrol Alert',
-                body: overdueTpl.html
+                html: overdueTpl.html, text: overdueTpl.text,
+                brand: patrolBrand,
+                recipient_id: sup.id || undefined,
+                event_type: 'overdue_patrol', template_name: 'patrol_alert',
               }).catch(err => console.error('Email failed:', err.message))
             ));
             overdueAlerts++;
@@ -292,10 +296,13 @@ Deno.serve(async (req) => {
               }
               // EMAIL — tenant-branded from the shift's authoritative customer.
               if (t.email) {
-                await base44.asServiceRole.integrations.Core.SendEmail({
-                  from_name: clockinBrand.brand_name, to: t.email,
+                await sendAuditedEmail(base44.asServiceRole, {
+                  to: t.email,
                   subject: '🚨 Missed Clock-In Alert',
-                  body: clockinTpl.html
+                  html: clockinTpl.html, text: clockinTpl.text,
+                  brand: clockinBrand,
+                  recipient_id: t.id || undefined,
+                  event_type: 'missed_clockin', template_name: 'shift_alert',
                 }).catch(err => console.error('Email failed:', err.message));
               }
             }
@@ -403,10 +410,13 @@ Deno.serve(async (req) => {
             // EMAIL — only when the guard has an address; a missing email no
             // longer silently cancels the whole reminder (previous defect).
             if (guard.email) {
-              await base44.asServiceRole.integrations.Core.SendEmail({
-                from_name: reminderBrand.brand_name, to: guard.email,
+              await sendAuditedEmail(base44.asServiceRole, {
+                to: guard.email,
                 subject: reminderTitle,
-                body: reminderTpl.html
+                html: reminderTpl.html, text: reminderTpl.text,
+                brand: reminderBrand,
+                recipient_id: guard.id || undefined,
+                event_type: 'shift_reminder', template_name: 'shift_alert',
               }).catch(err => console.error(`Reminder failed:`, err.message));
             }
             // NATIVE PUSH — shared platform service: the 2-hour shift reminder
@@ -541,9 +551,12 @@ Deno.serve(async (req) => {
               }
               // EMAIL — important operational exceptions only (missed/overdue)
               if (t.email) {
-                await base44.asServiceRole.integrations.Core.SendEmail({
-                  from_name: `${exBrand.brand_name} — Patrol Alerts`, to: t.email, subject: title,
-                  body: exTpl.html,
+                await sendAuditedEmail(base44.asServiceRole, {
+                  to: t.email, subject: title,
+                  html: exTpl.html, text: exTpl.text,
+                  brand: exBrand,
+                  recipient_id: t.id || undefined,
+                  event_type: 'patrol_exception', template_name: 'patrol_alert',
                 }).catch(() => {});
               }
             }

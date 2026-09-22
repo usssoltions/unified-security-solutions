@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
@@ -169,9 +170,14 @@ async function dispatchAccessAlert(base44: any, caller: any, log: any, heading: 
           details,
           closing: log.photo_url ? `Captured ID photo: ${log.photo_url}` : 'Please review this access event in the Access History.',
         });
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name + ' — Access Alerts', to: r.email,
+        await sendAuditedEmail(base44.asServiceRole, {
+          to: r.email,
           subject: title, html: tpl.html, text: tpl.text,
+          brand,
+          recipient_id: r.id || undefined,
+          recipient_name: r.display_name || r.full_name || undefined,
+          event_type: 'access_alert', reference_id: log.id || null,
+          template_name: 'access_alert',
         }).catch(() => {});
       }
     }

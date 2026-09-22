@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { getAllowedRolesForModules } from '../../shared/tenantRoles.ts';
 import { buildInvitationEmail } from '../../shared/tenantBranding.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 /**
  * inviteTenantUser — securely invite a tenant-scoped user and queue the
@@ -167,7 +168,15 @@ async function sendBrandedInvitationEmail(base44: any, opts: {
       brand, displayName: brand.brand_name, role_type: opts.roleType, enabledModuleKeys: enabledKeys,
       inviteeName: opts.inviteeName, inviterName: opts.inviterName, kind: opts.kind,
     });
-    await base44.asServiceRole.integrations.Core.SendEmail({ to: opts.to, subject: email.subject, body: email.body });
+    // GUARDED AUDITED DELIVERY — invitation email passes the delivery-mode
+    // guard like every other application email (audit row written inside).
+    await sendAuditedEmail(base44.asServiceRole, {
+      to: opts.to, subject: email.subject, html: email.body,
+      brand,
+      recipient_name: opts.inviteeName || null,
+      event_type: 'tenant_invitation', reference_id: opts.to,
+      template_name: 'tenant_invitation',
+    });
     console.log('[inviteTenantUser] branded invitation email sent to', opts.to, 'as', brand.brand_name);
     try {
       await base44.asServiceRole.entities.NotificationDelivery.create({

@@ -29,6 +29,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
@@ -375,9 +376,13 @@ export default async function(req: Request): Promise<Response> {
                         customer_id: site.customer_id || null,
                         reseller_id: site.reseller_id || null,
                       });
-                      await base44.asServiceRole.integrations.Core.SendEmail({
-                        from_name: brand.brand_name, to: guard.email,
-                        subject: `${pTitle} — ${site.name}`, body: pBody,
+                      await sendAuditedEmail(base44.asServiceRole, {
+                        to: guard.email,
+                        subject: `${pTitle} — ${site.name}`, html: pBody,
+                        brand,
+                        customer_id: site.customer_id || null, reseller_id: site.reseller_id || null,
+                        recipient_id: guard.id || undefined,
+                        event_type: 'patrol_schedule', template_name: 'patrol_alert',
                       }).catch(() => {});
                     } catch (_) { /* email failure never blocks generation */ }
                   }

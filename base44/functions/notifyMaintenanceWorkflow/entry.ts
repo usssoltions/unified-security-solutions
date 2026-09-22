@@ -12,6 +12,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
@@ -174,11 +175,14 @@ Deno.serve(async (req) => {
     const emailPromises = recipients
       .filter((r) => r.email)
       .map((r) =>
-        base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name + ' — Maintenance Workflow',
+        sendAuditedEmail(base44.asServiceRole, {
           to: r.email,
           subject: emailSubject,
-          body: emailBody,
+          html: emailBody.html || emailBody, text: emailBody.text,
+          brand,
+          recipient_id: r.id || undefined,
+          recipient_name: r.display_name || r.full_name || undefined,
+          event_type: 'maintenance_workflow', template_name: 'maintenance_request',
         }).catch(() => {})
       );
 

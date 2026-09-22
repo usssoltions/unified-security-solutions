@@ -20,6 +20,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
@@ -132,9 +133,14 @@ export default async function(req) {
           r.telegram_chat_id, telegramText).catch(() => {});
       }
       if (r.email) {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name + ' — Patrol Alerts', to: r.email,
-          subject: title, body: brandTpl.html,
+        await sendAuditedEmail(base44.asServiceRole, {
+          to: r.email,
+          subject: title, html: brandTpl.html, text: brandTpl.text,
+          brand,
+          recipient_id: r.id || undefined,
+          recipient_name: r.display_name || r.full_name || undefined,
+          event_type: 'patrol_event', reference_id: action,
+          template_name: 'patrol_alert',
         }).catch(() => {});
       }
     }

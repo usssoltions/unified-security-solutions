@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 Deno.serve(async (req) => {
@@ -86,13 +87,18 @@ Deno.serve(async (req) => {
       closing: 'The visitor will present their QR code at the gate for scanning.',
     });
     try {
-      const emails = recipients.map((u) => u.email).filter(Boolean).join(',');
-      if (emails) {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name,
-          to: emails,
+      // PER-RECIPIENT guarded delivery — a single comma-joined recipient
+      // string would bypass the per-recipient test-mode rewrite, so each
+      // recipient is delivered (and audited) individually.
+      for (const u of recipients.filter((x) => x.email)) {
+        await sendAuditedEmail(base44.asServiceRole, {
+          to: u.email,
           subject: title,
-          body: brandTpl.html,
+          html: brandTpl.html, text: brandTpl.text,
+          brand,
+          recipient_id: u.id || undefined,
+          recipient_name: u.display_name || u.full_name || undefined,
+          event_type: 'visitor_registration', template_name: 'visitor_registration',
         });
       }
     } catch (_) {}

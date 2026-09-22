@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 
 /**
@@ -450,12 +451,20 @@ async function deliver(svc: any, recipients: any[], opts: {
         if (await alreadySent(svc, key)) { counts.deduped++; }
         else {
           const brand = await resolveCommunicationBrand(svc, { customer_id: opts.tenantId, reseller_id: opts.resellerId });
-          await svc.integrations.Core.SendEmail({
+          // GUARDED AUDITED DELIVERY — sendAuditedEmail records the
+          // NotificationDelivery audit row itself (mode, intended/effective
+          // recipient, template, branding source), replacing logDelivery here.
+          const res = await sendAuditedEmail(svc, {
             to: u.email, subject: opts.emailSubject || opts.title,
-            from_name: brand.brand_name, body: opts.emailHtml, text: opts.emailText,
+            html: opts.emailHtml, text: opts.emailText,
+            brand,
+            customer_id: opts.tenantId || null, reseller_id: opts.resellerId || null,
+            recipient_id: u.id || undefined,
+            recipient_name: u.display_name || u.full_name || undefined,
+            event_type: String(opts.eventKey || 'estate_notification').split(':')[0],
+            template_name: 'estate_notification',
           });
-          await logDelivery(svc, opts.eventKey, u.id, 'email', 'sent', opts, key, u.email);
-          counts.email++;
+          if (res.ok) counts.email++; else counts.failed++;
         }
       } catch { counts.failed++; }
     }

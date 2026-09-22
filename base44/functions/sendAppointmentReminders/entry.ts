@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 /**
  * sendAppointmentReminders — Backend-scheduled appointment reminders.
@@ -105,11 +106,15 @@ export default async function(req: Request): Promise<Response> {
             ],
             closing: 'Please arrive 10 minutes early.',
           });
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            from_name: brand.brand_name,
+          await sendAuditedEmail(base44.asServiceRole, {
             to: patient.email,
             subject: `Appointment Reminder — ${apt.service_name}`,
-            body: brandTpl.html
+            html: brandTpl.html, text: brandTpl.text,
+            brand,
+            customer_id: apt.customer_id || null,
+            recipient_name: patient.display_name || patient.full_name || undefined,
+            event_type: 'appointment_reminder', reference_id: apt.id,
+            template_name: 'appointment_reminder',
           }).catch((e: any) => console.error('Reminder email failed:', e.message));
         }
 

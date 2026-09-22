@@ -49,7 +49,8 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
-import { buildPanicEmail } from '../../shared/panicEmailTemplate.ts';
+import { buildPanicEmailFull } from '../../shared/panicEmailTemplate.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
@@ -292,11 +293,11 @@ Deno.serve(async (req) => {
     // authoritative tenant (customer → reseller → USS platform default).
     const panicBrand = await resolveCommunicationBrand(base44.asServiceRole, {
       customer_id: user.customer_id || null, reseller_id: user.reseller_id || null });
-    const emailBody = buildPanicEmail({
+    const emailBody = buildPanicEmailFull({
       userName, userRole: user.role_type, badgeNumber: user.badge_number,
       siteName: resolvedSiteName, panicNumber, activatedAt: nowIso,
       location, gpsAccuracy: gps_accuracy, notes, status: 'ACTIVE',
-      customerName, brandName: panicBrand.brand_name,
+      customerName, brand: panicBrand, brandName: panicBrand.brand_name,
     });
 
     const telegramText = [
@@ -339,11 +340,19 @@ Deno.serve(async (req) => {
 
       // 4b. EMAIL (required) — branded panic email, independently isolated.
       if (recipient.email) {
-        await svc.integrations.Core.SendEmail({
+        // GUARDED AUDITED DELIVERY — every recipient passes through the
+        // server-controlled delivery-mode guard (test rewrite / preview /
+        // fail-closed test records); no direct SendEmail path remains.
+        await sendAuditedEmail(svc, {
           to: recipient.email,
           from_name: `${panicBrand.brand_name} — Emergency`,
           subject: `🚨 PANIC ALERT — ${userName} — IMMEDIATE RESPONSE REQUIRED`,
-          body: emailBody
+          html: emailBody.html, text: emailBody.text,
+          brand: panicBrand,
+          customer_id: user.customer_id || null, reseller_id: user.reseller_id || null,
+          recipient_id: recipient.id || undefined,
+          event_type: 'panic_alert', reference_id: panicNumber,
+          template_name: 'panic_alert',
         }).catch(e => console.error(`Panic email failed for ${recipient.email}:`, e));
       }
 

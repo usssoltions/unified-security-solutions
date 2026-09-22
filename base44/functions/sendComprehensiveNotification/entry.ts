@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 /**
  * sendComprehensiveNotification — Central multi-channel notification engine.
@@ -248,14 +249,23 @@ export default async function(req: Request): Promise<Response> {
           if (await alreadyDelivered(base44, idempKey)) {
             results.push({ recipient: r.id, channel: 'email', status: 'deduped' });
           } else {
-            await base44.asServiceRole.integrations.Core.SendEmail({
+            const res = await sendAuditedEmail(base44.asServiceRole, {
               to: r.email,
-              subject: `🔔 ${title}`,
-              from_name: brandName,
-              body: brandEmail.html,
+              subject: title,
+              html: brandEmail.html, text: brandEmail.text,
+              brand,
+              recipient_id: r.id || undefined,
+              recipient_name: r.display_name || r.full_name || undefined,
+              event_type: String(evKey).split(':')[0],
+              template_name: 'admin_notification',
             });
-            await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'email', idempKey);
-            results.push({ recipient: r.id, channel: 'email', status: 'sent' });
+            if (res.ok) {
+              await logDelivery(base44, evKey, notificationId, r, 'sent', recipientScope, 'email', idempKey);
+              results.push({ recipient: r.id, channel: 'email', status: 'sent' });
+            } else {
+              await logDelivery(base44, evKey, notificationId, r, 'failed', recipientScope, 'email', null, res.error || 'SKIPPED');
+              results.push({ recipient: r.id, channel: 'email', status: res.skipped ? 'skipped' : 'failed', error: res.error || undefined });
+            }
           }
         } catch (e) {
           await logDelivery(base44, evKey, notificationId, r, 'failed', recipientScope, 'email', null, e.message);

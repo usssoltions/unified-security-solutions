@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
@@ -115,11 +116,15 @@ Deno.serve(async (req) => {
     const emailPromises = recipients
       .filter((a) => a.email)
       .map((admin) =>
-        base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name + (isMaintenance ? ' — Maintenance' : ' — Security'),
+        sendAuditedEmail(base44.asServiceRole, {
           to: admin.email,
           subject,
-          body: emailBody,
+          html: emailBody.html || emailBody, text: emailBody.text,
+          brand,
+          recipient_id: admin.id || undefined,
+          recipient_name: admin.display_name || admin.full_name || undefined,
+          event_type: 'resident_report',
+          template_name: isMaintenance ? 'maintenance_request' : 'incident_alert',
         }).catch(() => {})
       );
 

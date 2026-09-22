@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
 import { sendNativePush } from '../../shared/nativePush.ts';
-import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -95,11 +96,16 @@ Deno.serve(async (req) => {
     // Send email if enabled
     if (userPref?.[type]?.email) {
       try {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name,
+        // Central transactional renderer + guarded audited delivery.
+        const genericTpl = buildBrandedEmail({ brand, heading: title, intro: message });
+        await sendAuditedEmail(base44.asServiceRole, {
           to: recipient.email,
           subject: title,
-          body: `${message}\n\n---\nThis is an automated notification from ${brand.brand_name}.`
+          html: genericTpl.html, text: genericTpl.text,
+          brand,
+          recipient_id: recipient.id || undefined,
+          event_type: String(type || 'notification'),
+          template_name: 'admin_notification',
         });
         notification.sent_via.push('email');
       } catch (error) {

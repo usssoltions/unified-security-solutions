@@ -20,7 +20,8 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { secrets } from 'base44:runtime';
-import { buildPanicEmail, buildPanicEmailAsync, esc } from '../../shared/panicEmailTemplate.ts';
+import { buildPanicEmail, buildPanicEmailAsyncFull, esc } from '../../shared/panicEmailTemplate.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
@@ -490,7 +491,7 @@ Deno.serve(async (req) => {
             // TENANT BRANDING — resolved from the panic's authoritative tenant
             // (customer → reseller → USS platform default) by the shared
             // branded wrapper; business lifecycle logic is untouched.
-            const emailBody = await buildPanicEmailAsync(base44.asServiceRole, {
+            const emailBody = await buildPanicEmailAsyncFull(base44.asServiceRole, {
               customer_id: panic.customer_id || null, reseller_id: panic.reseller_id || null,
               userName: panic.user_name, userRole: panic.user_role, badgeNumber: panic.badge_number,
               siteName: panic.site_name, panicNumber: panic.panic_number, activatedAt: panic.activated_at,
@@ -502,11 +503,19 @@ Deno.serve(async (req) => {
               responderName: sendLifecycleEmail ? userName : undefined,
               lifecycleAt: sendLifecycleEmail ? nowIso : undefined,
             });
-            await base44.asServiceRole.integrations.Core.SendEmail({
+            // GUARDED AUDITED DELIVERY (see shared/auditedEmail.ts).
+            await sendAuditedEmail(base44.asServiceRole, {
               to: target.email,
               from_name: `${panicBrand.brand_name} — Emergency`,
               subject: notifyTitle,
-              body: emailBody
+              html: emailBody.html, text: emailBody.text,
+              brand: panicBrand,
+              customer_id: panic.customer_id || null, reseller_id: panic.reseller_id || null,
+              recipient_id: target.id || undefined,
+              recipient_name: target.display_name || target.full_name || undefined,
+              event_type: 'panic_' + action,
+              reference_id: String(panic.id || panic.panic_number || ''),
+              template_name: 'panic_alert',
             }).catch(e => console.error(`Panic workflow email failed for ${target.email}:`, e));
           }
 
