@@ -45,13 +45,12 @@ import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { secrets } from 'base44:runtime';
-
-const RESPONSE_TIMEOUT_SECONDS = 60; // server-authoritative acknowledge window
-const MIN_INTERVAL_MINUTES = 5;
-const MAX_INTERVAL_MINUTES = 120;
-const MANAGEMENT_ROLES = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
-const isPlatformUser = (u) =>
-  u?.role_type === 'admin' || u?.role_type === 'platform_admin' || u?.admin_level === 'platform';
+import {
+  RESPONSE_TIMEOUT_SECONDS, MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES,
+  MANAGEMENT_ROLES, isPlatformUser, evaluateAck, classifyAckStale,
+  ackCas, missedCas, isEscalationRecipient,
+  promptPushEventKey, missedEventKey, missedEmailIdemKey,
+} from '../../shared/stayAwakeCore.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -118,18 +117,17 @@ Deno.serve(async (req) => {
           !shift.clock_out?.timestamp;
         if (!stillValid) continue; // handled by cancel above
         if (!log.expires_at || new Date(log.expires_at) > now) continue;
-        // CAS-LITE TRANSITION — re-read the prompt and only escalate when
-        // THIS run observes it still 'sent' and performs the flip; a
-        // concurrent sweep that loses the race sees a non-'sent' status and
-        // skips (the per-channel idempotency keys below remain the final
-        // backstop, so a missed challenge produces exactly one outcome and
-        // exactly one escalation per recipient).
-        const fresh = (await svc.entities.StayAwakeLog.filter({ id: log.id }).catch(() => []))?.[0];
-        if (!fresh || fresh.status !== 'sent') continue;
-        const updated = await svc.entities.StayAwakeLog.update(log.id, {
-          status: 'missed',
-        }).catch(() => null);
-        if (!updated) continue;
+        // ATOMIC CAS TRANSITION — the conditional update matches the EXACT
+        // challenge id, requires status to STILL be 'sent' and the STORED
+        // deadline to be expired, then flips pending → missed and stamps
+        // missed_at server-side in ONE operation. A concurrent worker that
+        // already transitioned this record matches ZERO rows and continues
+        // without escalating — exactly one missed outcome per challenge.
+        const cas = await svc.entities.StayAwakeLog.updateMany(
+          missedCas.query({ logId: log.id, nowIso: now.toISOString() }),
+          missedCas.set({ nowIso: now.toISOString() })
+        ).catch(() => null);
+        if (!cas || !cas.updated) continue;
         // Only escalate if THIS run performed the transition (a concurrent
         // sweep may have marked it first — re-read and check status came back
         // as missed with our update; the per-recipient Notification check below
@@ -170,6 +168,7 @@ Deno.serve(async (req) => {
         }
         const challengeId = crypto.randomUUID();
         const expiresAt = new Date(now.getTime() + RESPONSE_TIMEOUT_SECONDS * 1000);
+        const isTestFixture = shift.is_test === true;
         const prompt = await svc.entities.StayAwakeLog.create({
           customer_id: shift.customer_id || undefined,
           reseller_id: shift.reseller_id || undefined,
@@ -182,25 +181,46 @@ Deno.serve(async (req) => {
           alert_time: now.toISOString(),
           expires_at: expiresAt.toISOString(),
           status: 'sent',
+          is_test: isTestFixture || undefined,
         }).catch((e) => {
           results.create_errors.push(String(e?.message || e).slice(0, 200));
           return null;
         });
         if (!prompt) { results.skipped++; results.skip_reasons.push(`${shift.id}:create_failed`); continue; }
+        // CONCURRENT-ISSUANCE RECONCILE: two overlapping monitor executions
+        // can both observe "no pending prompt" and both create one. The
+        // earliest-issued prompt wins; later duplicates are deleted, so a
+        // guard is never shown two challenges for one interval and monitor
+        // retries can never issue overlapping challenges.
+        const openForShift = await svc.entities.StayAwakeLog.filter({
+          shift_id: shift.id, status: 'sent',
+        }).catch(() => []);
+        const duplicates = (openForShift || []).filter((p) => p.id !== prompt.id);
+        const lostRace = duplicates.some((d) => new Date(d.alert_time) <= new Date(prompt.alert_time));
+        if (lostRace) {
+          await svc.entities.StayAwakeLog.delete(prompt.id).catch(() => {});
+          results.skipped++; results.skip_reasons.push(`${shift.id}:concurrent_duplicate`);
+          continue;
+        } else if (duplicates.length) {
+          await Promise.all(duplicates.map((d) => svc.entities.StayAwakeLog.delete(d.id).catch(() => {})));
+        }
         results.issued++;
         // Critical native push so a backgrounded/locked device can still be
         // woken; the in-app overlay appears via the guard's realtime
-        // subscription to their own StayAwakeLog records.
-        await sendNativePush(svc, {
-          user_id: shift.guard_id,
-          title: '⚡ Stay Awake Check',
-          body: 'Confirm you are alert now — open the app and acknowledge.',
-          priority: 'critical',
-          action_label: 'Open My Shift', action_url: '/GuardShift',
-          event_key: 'stayawake_prompt:' + prompt.id,
-          customer_id: shift.customer_id || undefined,
-          reseller_id: shift.reseller_id || undefined,
-        }).catch(() => {});
+        // subscription to their own StayAwakeLog records. Test fixtures
+        // NEVER wake a real device.
+        if (!isTestFixture) {
+          await sendNativePush(svc, {
+            user_id: shift.guard_id,
+            title: '⚡ Stay Awake Check',
+            body: 'Confirm you are alert now — open the app and acknowledge.',
+            priority: 'critical',
+            action_label: 'Open My Shift', action_url: '/GuardShift',
+            event_key: promptPushEventKey(prompt.id),
+            customer_id: shift.customer_id || undefined,
+            reseller_id: shift.reseller_id || undefined,
+          }).catch(() => {});
+        }
       }
 
       return Response.json({ success: true, results });
@@ -218,47 +238,54 @@ Deno.serve(async (req) => {
 
       const rows = await svc.entities.StayAwakeLog.filter({ id: logId }).catch(() => []);
       const log = rows?.[0];
+      const now = new Date();
       if (!log) return Response.json({ error: 'NOT_FOUND' }, { status: 404 });
-      if (log.guard_id !== caller.id) {
+
+      // PURE DECISION CORE — classification from the authoritative prompt
+      // record plus the LIVE shift record (both re-read server-side above).
+      const shiftRows = await svc.entities.Shift.filter({ id: String(log.shift_id) }).catch(() => []);
+      const decision = evaluateAck({ log, callerId: caller.id, shift: shiftRows?.[0], now });
+      if (decision.error === 'FORBIDDEN') {
         return Response.json({ error: 'FORBIDDEN' }, { status: 403 }); // not your prompt
       }
-      if (log.status === 'acknowledged') {
+      if (decision.ok && decision.already) {
         return Response.json({ success: true, already: true }); // idempotent replay
       }
-      if (log.status !== 'sent') {
+      if (decision.error === 'PROMPT_NO_LONGER_ACTIVE') {
         return Response.json({ error: 'PROMPT_NO_LONGER_ACTIVE', status: log.status }, { status: 409 });
       }
-      const now = new Date();
-      if (log.expires_at && new Date(log.expires_at) < now) {
-        return Response.json({ error: 'PROMPT_EXPIRED' }, { status: 409 }); // sweep will mark missed
+      if (decision.error === 'PROMPT_EXPIRED') {
+        return Response.json({ error: 'PROMPT_EXPIRED' }, { status: 409 }); // documented late rule; sweep marks missed
       }
-      // Revalidate the LIVE shift server-side: still active, still assigned to
-      // the acknowledging guard, still clocked in and not clocked out.
-      const shiftRows = await svc.entities.Shift.filter({ id: String(log.shift_id) }).catch(() => []);
-      const shift = shiftRows?.[0];
-      const shiftValid = shift &&
-        shift.status === 'active' &&
-        shift.guard_id === caller.id &&
-        shift.clock_in?.timestamp &&
-        !shift.clock_out?.timestamp;
-      if (!shiftValid) {
+      if (decision.error === 'SHIFT_NO_LONGER_ACTIVE') {
+        // The LIVE shift is no longer an active clocked-in shift assigned to
+        // the acknowledging guard (ended / clocked out / reassigned).
         await svc.entities.StayAwakeLog.update(log.id, { status: 'cancelled' }).catch(() => {});
         return Response.json({ error: 'SHIFT_NO_LONGER_ACTIVE' }, { status: 409 });
       }
 
-      const responseSeconds = Math.max(0, Math.round((now - new Date(log.alert_time)) / 1000));
       const permittedLocation =
         body?.location && Number.isFinite(Number(body.location?.lat)) && Number.isFinite(Number(body.location?.lng))
           ? { lat: Number(body.location.lat), lng: Number(body.location.lng) }
           : undefined;
-      await svc.entities.StayAwakeLog.update(log.id, {
-        status: 'acknowledged',
-        response_time: now.toISOString(),
-        response_method: 'button',
-        response_time_seconds: responseSeconds,
-        ...(permittedLocation ? { location: permittedLocation } : {}),
-      });
-      return Response.json({ success: true, response_time_seconds: responseSeconds });
+      // ATOMIC CAS ACKNOWLEDGEMENT — ownership (guard_id), still-'sent' and
+      // not-expired are enforced by the UPDATE CONDITION itself: two rapid
+      // taps, an offline double-send or a concurrent sweep resolve to exactly
+      // ONE acknowledged transition with the server-stamped response time.
+      const cas = await svc.entities.StayAwakeLog.updateMany(
+        ackCas.query({ logId: log.id, callerId: caller.id, nowIso: now.toISOString() }),
+        ackCas.set({ nowIso: now.toISOString(), responseSeconds: decision.responseSeconds, location: permittedLocation })
+      ).catch(() => null);
+      if (!cas || !cas.updated) {
+        // Lost the race — classify from the authoritative record (idempotent
+        // replay, documented late rule, or inactive) and NEVER re-stamp.
+        const fresh = (await svc.entities.StayAwakeLog.filter({ id: log.id }).catch(() => []))?.[0];
+        const stale = classifyAckStale({ fresh, now });
+        if (stale === 'already') return Response.json({ success: true, already: true });
+        if (stale === 'expired') return Response.json({ error: 'PROMPT_EXPIRED' }, { status: 409 });
+        return Response.json({ error: 'PROMPT_NO_LONGER_ACTIVE', status: fresh?.status || log.status }, { status: 409 });
+      }
+      return Response.json({ success: true, response_time_seconds: decision.responseSeconds });
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -318,11 +345,13 @@ async function escalateMissed(svc, { log, shift, allUsers, results }) {
   const bodyText = `${log.guard_name || 'Guard'} did not acknowledge the stay awake check at ${log.site_name || shift?.site_name || 'site'} — verify immediately.`;
 
   // Server-side tenant-scoped recipient resolution + control-room narrowing.
-  const candidates = (allUsers || []).filter((u) =>
-    MANAGEMENT_ROLES.includes(u.role_type) &&
-    (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
-    (isPlatformUser(u) || (scope.customer_id ? u.customer_id === scope.customer_id : false)));
+  const candidates = (allUsers || []).filter((u) => isEscalationRecipient(u, scope));
   const recipients = await narrowControlRoomOperators(svc, candidates, scope);
+  // Test fixtures never reach real devices or chats: native push and Telegram
+  // are suppressed; in-app notifications to test-tenant test users and the
+  // audited email (rewritten to the test mailbox by the delivery guard)
+  // remain, so escalation evidence is still produced and audited.
+  const isFixture = log.is_test === true;
 
   // Tenant-stamped operational alert (RLS-scoped tenant visibility).
   const existingAlerts = await svc.entities.Alert.filter({
@@ -374,18 +403,22 @@ async function escalateMissed(svc, { log, shift, allUsers, results }) {
         reseller_id: log.reseller_id || undefined,
       }).catch(() => {});
     }
-    // NATIVE PUSH — deterministic event key dedupes sweep retries
-    await sendNativePush(svc, {
-      user_id: r.id,
-      title, body: bodyText, priority: 'critical',
-      action_label: 'Open Scheduling', action_url: '/Scheduling',
-      event_key: 'stayawake_missed:' + log.id,
-      customer_id: log.customer_id || undefined,
-      reseller_id: log.reseller_id || undefined,
-    }).catch(() => {});
-    // TELEGRAM — verified per-user mapping, deduped
-    if (r.telegram_connected && r.telegram_notifications_enabled !== false && r.telegram_chat_id) {
-      await sendTaskTelegramDeduped(svc, secrets, 'stayawake_missed:' + log.id,
+    // NATIVE PUSH — deterministic event key dedupes sweep retries. Test
+    // fixtures never wake a real device.
+    if (!isFixture) {
+      await sendNativePush(svc, {
+        user_id: r.id,
+        title, body: bodyText, priority: 'critical',
+        action_label: 'Open Scheduling', action_url: '/Scheduling',
+        event_key: missedEventKey(log.id),
+        customer_id: log.customer_id || undefined,
+        reseller_id: log.reseller_id || undefined,
+      }).catch(() => {});
+    }
+    // TELEGRAM — verified per-user mapping, deduped. Test fixtures never
+    // reach a real chat.
+    if (!isFixture && r.telegram_connected && r.telegram_notifications_enabled !== false && r.telegram_chat_id) {
+      await sendTaskTelegramDeduped(svc, secrets, missedEventKey(log.id),
         r.telegram_chat_id,
         buildBrandedTelegram({ brand, heading: title, details: [
           { label: 'Guard', value: log.guard_name || 'N/A' },
@@ -408,7 +441,7 @@ async function escalateMissed(svc, { log, shift, allUsers, results }) {
         reference_id: log.id,
         // Escalation idempotency: exactly ONE missed-check email per
         // recipient per challenge, even across concurrent sweep retries.
-        idempotency_key: 'stay_awake_missed:' + log.id + ':' + (r.id || r.email),
+        idempotency_key: missedEmailIdemKey(log.id, r.id || r.email),
       }).catch(() => {});
     }
     results.escalated++;

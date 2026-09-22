@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import useWakeLock from "@/hooks/useWakeLock";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, Zap, Volume2 } from "lucide-react";
@@ -25,6 +26,11 @@ export default function StayAwakeAlert({ prompt, user, onDone, location }) {
   const [ackMessage, setAckMessage] = useState("");
   const audioRef = useRef(null);
   const vibrationInterval = useRef(null);
+
+  // Operation-scoped screen wake lock: acquired ONLY while this prompt is
+  // live, and released on acknowledgement (synced), timeout (expired),
+  // route change or unmount — never held for the whole session.
+  useWakeLock(!expired && ackState !== "synced", "stay_awake_prompt");
 
   // Countdown from the SERVER-issued deadline — the client never decides expiry.
   useEffect(() => {

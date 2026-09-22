@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Camera, AlertCircle, CheckCircle2, MapPin, Clock, Upload, PenTool, ScanLine } from "lucide-react";
 import DocumentScanner from "../components/documents/DocumentScanner";
 import SignaturePad from "../components/guard/SignaturePad";
+import useWakeLock from "@/hooks/useWakeLock";
 
 export default function QRScanner() {
   const [user, setUser] = useState(null);
@@ -30,6 +31,10 @@ export default function QRScanner() {
   const [submitting, setSubmitting] = useState(false);
   const [distanceFromCheckpoint, setDistanceFromCheckpoint] = useState(null);
   const [scanning, setScanning] = useState(false);
+
+  // Operation-scoped screen wake lock: held ONLY while the scanner is live
+  // (screen-off would interrupt the scan), released when scanning stops.
+  useWakeLock(scanning, "qr_scanning");
 
   const handleDocAccept = (scan) => {
     setScanning(false);

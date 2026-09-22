@@ -96,18 +96,11 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     sessionStorage.setItem('guard_session_active', 'true');
     loadUser();
-    let wakeLock = null;
-    const requestWakeLock = async () => {
-      if ('wakeLock' in navigator) {
-        try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
-      }
-    };
-    requestWakeLock();
-    document.addEventListener('visibilitychange', requestWakeLock);
-    return () => {
-      if (wakeLock) wakeLock.release();
-      document.removeEventListener('visibilitychange', requestWakeLock);
-    };
+    // Screen wake lock is NO LONGER session-wide. It is operation-scoped via
+    // useWakeLock inside the components that own the operations where
+    // screen-off would interrupt the guard (live Stay Awake prompt, active
+    // patrol, live QR scanning): acquired only while the operation is active
+    // and always released on its end, timeout or unmount.
   }, [retryCount]);
 
   // Notification count: initial fetch + realtime subscription (no 90s polling).

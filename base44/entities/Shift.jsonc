@@ -1,7 +1,7 @@
 {
   "name": "Shift",
   "type": "object",
-  "description": "Guard shift assignment. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's shifts (including clock-in GPS) to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21). Guards always see their own shifts; platform admins retain oversight.",
+  "description": "Guard shift assignment. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's shifts (including clock-in GPS) to every other customer under the same reseller (confirmed cross-tenant defect class 2026-09-21). Guards always see their own shifts; platform admins retain oversight.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -125,6 +125,11 @@
     "is_overtime": {
       "type": "boolean",
       "default": false
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "FIXTURE MARKER: true only for isolated lifecycle-test fixture shifts (stayAwakeSelfTest, dedicated test tenant). The Stay Awake sweep propagates it to StayAwakeLog.is_test, which suppresses native push/Telegram for fixtures so a test can never wake a real device or chat. Never set by the live scheduling path."
     }
   },
   "required": [

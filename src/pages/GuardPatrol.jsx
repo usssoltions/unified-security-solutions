@@ -6,6 +6,7 @@ import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import useWakeLock from "@/hooks/useWakeLock";
 import {
   Shield, MapPin, CheckCircle2, QrCode, Mic, MicOff, AlertTriangle,
   Navigation, Clock, Play, Pause, Square, Volume2, Camera, Zap
@@ -43,6 +44,10 @@ function distMetres(a, b) {
 export default function GuardPatrol() {
   const [user, setUser] = useState(null);
   const [activePatrol, setActivePatrol] = useState(null);
+
+  // Operation-scoped screen wake lock: held ONLY while a patrol is actually
+  // in progress, released when it ends or the page unmounts.
+  useWakeLock(!!activePatrol, "active_patrol");
   const [paused, setPaused] = useState(false);
   const [currentCheckpointIdx, setCurrentCheckpointIdx] = useState(0);
   const [gpsTrack, setGpsTrack] = useState([]);
