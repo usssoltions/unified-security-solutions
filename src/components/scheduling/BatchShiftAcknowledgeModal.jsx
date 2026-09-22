@@ -80,7 +80,11 @@ export default function BatchShiftAcknowledgeModal({ shifts, user, onClose }) {
           status,
           notes,
         });
-      } catch (_) { /* notification failure never breaks the acknowledgement */ }
+      } catch (notifyErr) {
+        // Diagnostic: surfaces exactly where a live failure stops. Never
+        // breaks the acknowledgement itself.
+        console.error("Batch shift acknowledgement notification failed:", notifyErr);
+      }
 
       const lines = selectedShifts
         .map(s => `• ${s.site_name} — ${fmtDate(s.start_time)} ${fmtTime(s.start_time)}`)

@@ -60,16 +60,23 @@ export default function GuardMyShifts() {
           : s
       )
     );
-    // In-app notification to admins
-    base44.entities.Notification.create({
-      type: "shift_reminder",
-      priority: "high",
-      title: `Shift ${status.replace("_", " ")} — ${user?.full_name}`,
-      message: `${user?.full_name} has ${status.replace("_", " ")} the shift at ${shift.site_name} on ${new Date(shift.start_time).toLocaleDateString("en-ZA")}.${ackNote ? ` Note: ${ackNote}` : ""}`,
-      read: false,
-      related_entity: "shift",
-      related_id: shift.id,
-    }).catch(() => {});
+    // Notify management through the SAME server-side ack dispatcher as the
+    // acknowledgement modals (sendShiftNotification type 'ack'): branded
+    // in-app + email + Telegram with tenant-scoped recipient resolution.
+    // The previous client-side Notification.create had NO recipient_id, so
+    // it was invisible to everyone and no email/Telegram was ever sent.
+    try {
+      await base44.functions.invoke("sendShiftNotification", {
+        type: "ack",
+        shiftId: shift.id,
+        status,
+        notes: ackNote,
+      });
+    } catch (notifyErr) {
+      // Diagnostic: surfaces exactly where a live failure stops. Never
+      // breaks the acknowledgement itself.
+      console.error("Shift acknowledgement notification failed:", notifyErr);
+    }
     setResponding(null);
     setAckNote("");
     setSaving(false);

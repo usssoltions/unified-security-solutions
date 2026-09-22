@@ -12,6 +12,15 @@ import BrandHeader from "@/components/branding/BrandHeader";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useNavigate } from "react-router-dom";
 
+// A location object is usable only when it carries real numeric coordinates
+// (the (0,0) placeholder is excluded). Missing site or device GPS must NEVER
+// crash the guard app — geofence validation is simply skipped instead.
+const validCoords = (loc) =>
+  !!loc &&
+  typeof loc.lat === "number" &&
+  typeof loc.lng === "number" &&
+  !(loc.lat === 0 && loc.lng === 0);
+
 export default function ClockInOut({ user, location }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -64,7 +73,11 @@ export default function ClockInOut({ user, location }) {
   });
 
   useEffect(() => {
-    if (assignedSite && location) {
+    // NULL-SAFE geofence maths: only runs when BOTH the device GPS and the
+    // site's configured coordinates are valid. A site with no GPS (the live
+    // "USS LIVE TEST SITE" case) previously crashed the whole app here with
+    // "Cannot read properties of null (reading 'lat')".
+    if (assignedSite && validCoords(assignedSite.location) && validCoords(location)) {
       const dist = calculateDistance(
         location.lat,
         location.lng,
@@ -73,6 +86,9 @@ export default function ClockInOut({ user, location }) {
       );
       setDistance(dist);
       setIsWithinGeofence(dist <= (assignedSite.geofence_radius || 100));
+    } else {
+      setDistance(null);
+      setIsWithinGeofence(false);
     }
   }, [assignedSite, location]);
 
@@ -102,7 +118,10 @@ export default function ClockInOut({ user, location }) {
         throw new Error("Location services must be enabled to clock in");
       }
 
-      if (!isWithinGeofence) {
+      // Geofence is enforced ONLY when the site has valid coordinates — a
+      // site without configured GPS can never be validated and must not block
+      // the shift (and previously crashed: assignedSite.location was null).
+      if (assignedSite && validCoords(assignedSite.location) && !isWithinGeofence) {
         throw new Error(`You must be within ${assignedSite.geofence_radius || 100}m of the site to clock in`);
       }
 
@@ -147,6 +166,9 @@ export default function ClockInOut({ user, location }) {
     setPinError("");
     clockInMutation.mutate();
   };
+
+  // Geofence is only enforceable when the site has valid GPS configured.
+  const enforceGeofence = !!assignedSite && validCoords(assignedSite.location);
 
   if (isLoading) {
     return (
@@ -212,6 +234,10 @@ export default function ClockInOut({ user, location }) {
                 <p className="text-sm text-slate-400 mb-2">Location Status</p>
                 {!location ? (
                   <Badge className="bg-rose-500">GPS Not Available</Badge>
+                ) : !assignedSite ? (
+                  <Badge className="bg-slate-500">Loading Site...</Badge>
+                ) : !enforceGeofence ? (
+                  <Badge className="bg-sky-500">Site Location Not Configured</Badge>
                 ) : !isWithinGeofence ? (
                   <div>
                     <Badge className="bg-orange-500 mb-2">Outside Geofence</Badge>
@@ -260,7 +286,7 @@ export default function ClockInOut({ user, location }) {
 
           <Button
             onClick={handleClockIn}
-            disabled={clockInMutation.isPending || !location || !isWithinGeofence || (user.security_pin && pin.length !== 4)}
+            disabled={clockInMutation.isPending || !location || !assignedSite || (enforceGeofence && !isWithinGeofence) || (user.security_pin && pin.length !== 4)}
             className="w-full h-14 text-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
           >
             {clockInMutation.isPending ? (

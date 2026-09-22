@@ -77,7 +77,11 @@ export default function ShiftAcknowledgeModal({ shift, user, onClose }) {
           status,
           notes,
         });
-      } catch (_) {}
+      } catch (notifyErr) {
+        // Diagnostic: surfaces exactly where a live failure stops. Never
+        // breaks the acknowledgement itself.
+        console.error("Shift acknowledgement notification failed:", notifyErr);
+      }
 
       // Build WhatsApp message
       const msg = shiftAckMessage({
