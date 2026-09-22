@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { secrets } from 'base44:runtime';
+import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 /**
  * notifyAdminsLaundry
@@ -32,8 +34,11 @@ Deno.serve(async (req) => {
           ? { customer_id: user.customer_id }
           : (user.reseller_id ? { reseller_id: user.reseller_id } : { id: user.id }));
     const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
+    // MODERN recipient resolution — customer_admin joins the estate roles so
+    // an estate managed by a post-split Customer Administrator still receives
+    // laundry requests (same confirmed defect class as Start of Shift).
     const recipients = allUsers.filter((u) =>
-      u.role_type === 'admin' || u.role_type === 'estate_manager' || u.role_type === 'dispatcher'
+      u.role_type === 'admin' || u.role_type === 'estate_manager' || u.role_type === 'dispatcher' || u.role_type === 'customer_admin'
     );
     if (recipients.length === 0) {
       return Response.json({ success: false, message: 'No admin/estate manager found' });
@@ -89,6 +94,23 @@ Deno.serve(async (req) => {
       );
 
     await Promise.all([...notificationPromises, ...emailPromises]);
+
+    // TELEGRAM — automatic channel to the same scoped recipients (routine
+    // informational request, mirroring the in-app/email channels); failure-
+    // isolated, deterministic per-recipient event key, shared renderer.
+    for (const admin of recipients) {
+      if (!admin.telegram_connected || admin.telegram_notifications_enabled === false || !admin.telegram_chat_id) continue;
+      await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+        'laundry_request:' + requestId + ':' + admin.id,
+        admin.telegram_chat_id,
+        buildBrandedTelegram({
+          brand,
+          heading: 'New Laundry Request',
+          details: brandDetails,
+          closing: 'Please assign a vendor and action the pickup.',
+        }))
+        .catch(() => {});
+    }
 
     return Response.json({ success: true, notificationsSent: recipients.length });
   } catch (error) {

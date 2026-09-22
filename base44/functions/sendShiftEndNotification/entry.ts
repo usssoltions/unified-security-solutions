@@ -10,7 +10,11 @@ import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } fr
 // safe to re-invoke (or to drive from a scheduled automation) — repeat calls
 // with ended_notified already true are short-circuited.
 
-const SUPERVISOR_ROLES = ['admin', 'dispatcher', 'supervisor', 'management'];
+// MODERN recipient resolution — customer_admin + control_room_operator join
+// the legacy supervisor roles (a customer whose managers hold the post-split
+// roles previously resolved ZERO recipients — same confirmed defect class as
+// the Start of Shift notification).
+const SUPERVISOR_ROLES = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
 
 export default async function(req) {
   try {

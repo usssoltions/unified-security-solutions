@@ -43,8 +43,11 @@ Deno.serve(async (req) => {
     // filter leaked visitor registrations across tenants.
     const allUsers = await base44.asServiceRole.entities.User.list();
     const isPlatformUser = (u) => u.role_type === 'platform_admin' || u.admin_level === 'platform';
+    // MODERN recipient resolution — customer_admin / control_room_operator /
+    // estate_manager join the legacy staff roles, so a customer whose staff
+    // hold the post-split roles still receives visitor pre-registrations.
     const recipients = allUsers.filter((u) =>
-      ['admin', 'dispatcher', 'supervisor', 'management', 'guard'].includes(u.role_type) &&
+      ['admin', 'dispatcher', 'supervisor', 'management', 'guard', 'customer_admin', 'control_room_operator', 'estate_manager'].includes(u.role_type) &&
       (isPlatformUser(u) || !user.customer_id || u.customer_id === user.customer_id));
 
     for (const u of recipients) {
