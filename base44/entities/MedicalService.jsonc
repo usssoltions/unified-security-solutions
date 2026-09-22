@@ -1,7 +1,7 @@
 {
   "name": "MedicalService",
   "type": "object",
-  "description": "Medical module: Configurable service offered by a practice. Each service can define duration, required documents, assessment template, availability, reminder rules, and employer visibility. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
+  "description": "Medical module: Configurable service offered by a practice. Each service can define duration, required documents, assessment template, availability, reminder rules, and employer visibility. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -112,7 +112,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -129,7 +138,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -146,7 +164,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },

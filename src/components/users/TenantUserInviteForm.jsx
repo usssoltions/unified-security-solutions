@@ -50,7 +50,7 @@ const SITE_SCOPED_ROLES = ["guard", "dispatcher"];
  *
  * ROLE OPTIONS ARE MODULE-AWARE: derived from the selected customer's ENABLED
  * modules and enforced server-side by inviteTenantUser against the shared
- * tenantRoles registry (fail closed). The USS Platform Admin role never
+ * tenantRoles registry (fail closed). The Platform Admin role never
  * appears.
  *
  * Identity fields are never cleared when the customer/role changes.
@@ -345,12 +345,12 @@ export default function TenantUserInviteForm({
               {customerLocked ? (
                 <>
                   Customer assignment is fixed to <span className="text-white font-medium">{lockedCustomer?.name || "your organisation"}</span>.
-                  The invitee is scoped automatically to your organisation — never to another customer or reseller — and the role is limited to the modules enabled for your organisation. The USS Platform Admin role is never granted.
+                  The invitee is scoped automatically to your organisation — never to another customer or reseller — and the role is limited to the modules enabled for your organisation. The Platform Admin role is never granted.
                 </>
               ) : (
                 <>
                   Reseller assignment is fixed to <span className="text-white font-medium">{resellerName || "this reseller"}</span>.
-                  The invitee receives a non-platform role and is scoped to this reseller{needsCustomer ? " and the selected customer" : ""}. The USS Platform Admin role is never granted.
+                  The invitee receives a non-platform role and is scoped to this reseller{needsCustomer ? " and the selected customer" : ""}. The Platform Admin role is never granted.
                 </>
               )}
             </p>

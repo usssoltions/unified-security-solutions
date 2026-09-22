@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useBranding } from '@/hooks/useBranding';
+import { resolveBrand, PLATFORM_APP_NAME } from '@/lib/branding';
 
 /**
  * Background Notification Manager
@@ -11,6 +13,14 @@ import { base44 } from '@/api/base44Client';
  * - Updates PWA app badge with combined unread count
  */
 export default function BackgroundNotificationManager({ user }) {
+  // Effective tenant app name — fallback title for browser notifications
+  // whose record has no title (white-label: never a hard-coded platform name).
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const brandNameRef = useRef(PLATFORM_APP_NAME);
+  useEffect(() => {
+    brandNameRef.current = resolveBrand(branding).appName || PLATFORM_APP_NAME;
+  }, [branding]);
+
   const wakeLockRef = useRef(null);
   const alertUnsubRef = useRef(null);
   const notifUnsubRef = useRef(null);
@@ -124,7 +134,7 @@ export default function BackgroundNotificationManager({ user }) {
 
         if (document.hidden && Notification.permission === 'granted' && !event.data?.read) {
           try {
-            new Notification(event.data?.title || 'USS Platform', {
+            new Notification(event.data?.title || brandNameRef.current, {
               body: event.data?.message || '',
               icon: '/icon-192.png',
               tag: `notif-${event.data?.id}`,

@@ -34,7 +34,7 @@ export default function ResellerManagement() {
         <div className="text-center max-w-md">
           <Shield className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <h2 className="text-white font-bold text-lg mb-2">Platform Admin Access Required</h2>
-          <p className="text-slate-400 text-sm">Reseller management is only available to USS Platform Administrators.</p>
+          <p className="text-slate-400 text-sm">Reseller management is only available to Platform Administrators.</p>
         </div>
       </div>
     );

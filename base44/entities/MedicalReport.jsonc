@@ -1,7 +1,7 @@
 {
   "name": "MedicalReport",
   "type": "object",
-  "description": "Medical module: Generated professional report. Distinguishes internal clinical report from employer-approved (released) report. Sharing is explicitly approved and audited. Employer portal users see only released reports for their employer. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'.",
+  "description": "Medical module: Generated professional report. Distinguishes internal clinical report from employer-approved (released) report. Sharing is explicitly approved and audited. Employer portal users see only released reports for their employer. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform'. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -147,7 +147,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -164,12 +173,26 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         },
         {
           "$and": [
             {
               "data.employer_id": "{{user.data.employer_id}}"
+            },
+            {
+              "data.employer_id": {
+                "$ne": null
+              }
             },
             {
               "data.shared_with_employer": true
@@ -191,7 +214,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },

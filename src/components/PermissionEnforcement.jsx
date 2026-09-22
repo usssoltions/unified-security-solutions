@@ -4,8 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Bell, BellOff, Battery, Wifi, Power, CheckCircle2, XCircle, AlertTriangle, X } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
+import { useBranding } from "@/hooks/useBranding";
+import { resolveBrand, PLATFORM_APP_NAME } from "@/lib/branding";
 
 export default function PermissionEnforcement() {
+  // Effective tenant app name — the installed-app label the user must find
+  // in Android settings (white-label: never a hard-coded platform name).
+  const { user } = useAuth();
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const brandName = resolveBrand(branding).appName || PLATFORM_APP_NAME;
   const [permissions, setPermissions] = useState({
     notifications: 'unknown',
     batteryOptimization: 'unknown',
@@ -149,11 +157,11 @@ export default function PermissionEnforcement() {
             <div className="px-3 pb-3 space-y-2 text-xs text-slate-300">
               <div>
                 <p className="font-semibold text-amber-400">Battery Optimization:</p>
-                <p>Settings → Apps → USS Platform → Battery → Unrestricted</p>
+                <p>Settings → Apps → {brandName} → Battery → Unrestricted</p>
               </div>
               <div>
                 <p className="font-semibold text-amber-400">Auto Launch:</p>
-                <p>Settings → Apps → USS Platform → Enable Auto-start</p>
+                <p>Settings → Apps → {brandName} → Enable Auto-start</p>
               </div>
             </div>
           </details>

@@ -117,7 +117,7 @@ export default function ResellerPortal() {
         <div className="text-center max-w-md">
           <Shield className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <h2 className="text-white font-bold text-lg mb-2">Reseller Access Required</h2>
-          <p className="text-slate-400 text-sm">Your account is not linked to a reseller. Contact your USS Platform Administrator.</p>
+          <p className="text-slate-400 text-sm">Your account is not linked to a reseller. Contact your Platform Administrator.</p>
         </div>
       </div>
     );

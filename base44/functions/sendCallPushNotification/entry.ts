@@ -11,8 +11,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
  * authoritative for CALL pushes until that migration is complete.
  *
  * Caller identity is resolved server-side from the authenticated User
- * record (impersonation fix). Recipient targeting remains subject to the
- * broader RTC hardening (authoritative call membership validation).
+ * record (impersonation fix), and the recipient must belong to the
+ * caller's own tenant (call membership validation).
  */
 Deno.serve(async (req) => {
   try {
@@ -37,6 +37,18 @@ Deno.serve(async (req) => {
 
     if (!recipientId) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // CALL MEMBERSHIP — the recipient must be in the caller's own tenant
+    // (platform oversight excepted); sequential User IDs were previously
+    // pushable by anyone, enabling cross-tenant ring spam.
+    const targetRec = await base44.asServiceRole.entities.User.get(recipientId).catch(() => null);
+    if (!targetRec) {
+      return Response.json({ error: 'Recipient not found' }, { status: 404 });
+    }
+    const isPlatform = (u) => !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
+    if (!isPlatform(callerRec) && !(callerRec?.customer_id && targetRec.customer_id === callerRec.customer_id)) {
+      return Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 });
     }
 
     // Send OneSignal push notification

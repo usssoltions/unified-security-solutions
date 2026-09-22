@@ -10,12 +10,30 @@ Deno.serve(async (req) => {
     }
 
     const { data } = await req.json();
-    const { targetUserId, callerName, callId, callType } = data;
+    const { targetUserId, callId, callType } = data;
+
+    // CALLER IDENTITY — resolved server-side; the browser-supplied caller
+    // name is never trusted (impersonation fix).
+    const [callerRec] = await base44.asServiceRole.entities.User.filter({ id: String(user.id) }).catch(() => []);
+    const callerName = callerRec?.display_name || callerRec?.full_name || user.full_name || 'Unknown';
+
+    // CALL MEMBERSHIP — the target must be in the caller's own tenant
+    // (platform oversight excepted); sequential User IDs were previously
+    // callable by anyone.
+    if (!targetUserId) {
+      return Response.json({ error: 'Missing targetUserId' }, { status: 400 });
+    }
+    const targetUser = await base44.asServiceRole.entities.User.get(targetUserId).catch(() => null);
+    if (!targetUser) {
+      return Response.json({ error: 'Target user not found' }, { status: 404 });
+    }
+    const isPlatform = (u) => !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
+    if (!isPlatform(callerRec) && !(callerRec?.customer_id && targetUser.customer_id === callerRec.customer_id)) {
+      return Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 });
+    }
 
     console.log(`[sendCallNotification] Creating in-app call notification — callId: ${callId}, caller: ${callerName}, target: ${targetUserId}`);
 
-    // Get target user
-    const targetUser = await base44.asServiceRole.entities.User.get(targetUserId);
     
     // Check for existing unread notification with the same callId (dedup)
     const existing = await base44.asServiceRole.entities.Notification.filter({

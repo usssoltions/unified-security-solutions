@@ -1,7 +1,7 @@
 {
   "name": "Session",
   "type": "object",
-  "description": "Medical module: Clinical session linked to an appointment. Records actual session start/completion times (NOT scheduled times). Contains assessment reference and is the basis for report generation. Clinical \u2014 employer portal users cannot access. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform' may read/create/update across tenants; tenant users are scoped by customer_id.",
+  "description": "Medical module: Clinical session linked to an appointment. Records actual session start/completion times (NOT scheduled times). Contains assessment reference and is the basis for report generation. Clinical \u2014 employer portal users cannot access. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform' may read/create/update across tenants; tenant users are scoped by customer_id. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user can never match another tenant's records via a null==null template comparison.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -143,7 +143,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -160,7 +169,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -177,7 +195,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },

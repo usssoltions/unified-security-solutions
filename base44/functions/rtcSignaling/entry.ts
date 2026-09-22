@@ -24,6 +24,24 @@ Deno.serve(async (req) => {
 
     const { action, targetUserId, offer, answer, candidate, callId } = await req.json();
 
+    // CALL MEMBERSHIP VALIDATION — signaling may only flow between users of
+    // the SAME tenant (platform oversight excepted). User IDs are sequential
+    // and were previously signalable by anyone, enabling cross-tenant call
+    // spam and unwanted ring attempts.
+    const SIGNALING_ACTIONS = ['send_offer', 'send_answer', 'call_answered', 'send_candidate', 'end_call'];
+    if (SIGNALING_ACTIONS.includes(action) && targetUserId && targetUserId !== user.id) {
+      const [callerRec] = await base44.asServiceRole.entities.User.filter({ id: String(user.id) }).catch(() => []);
+      const targetRec = await base44.asServiceRole.entities.User.get(targetUserId).catch(() => null);
+      if (!targetRec) {
+        return Response.json({ error: 'Target user not found' }, { status: 404 });
+      }
+      const isPlatform = (u) => !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
+      const sameTenant = !!(callerRec?.customer_id && targetRec.customer_id === callerRec.customer_id);
+      if (!isPlatform(callerRec) && !sameTenant) {
+        return Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 });
+      }
+    }
+
     const enqueue = async (type, toUserId, payload) => {
       await base44.asServiceRole.entities.SignalingMessage.create({
         to_user_id: toUserId,

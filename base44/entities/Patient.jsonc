@@ -1,7 +1,7 @@
 {
   "name": "Patient",
   "type": "object",
-  "description": "Medical module: Patient record. Identity, employer, contact, referral information. Tenant-isolated by customer_id (practice). Employer portal users see only their own employer's patients. Clinical data is stored in separate ClinicalNote/Assessment entities, not here. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform' may read/create/update across tenants.",
+  "description": "Medical module: Patient record. Identity, employer, contact, referral information. Tenant-isolated by customer_id (practice). Employer portal users see only their own employer's patients. Clinical data is stored in separate ClinicalNote/Assessment entities, not here. Platform oversight: built-in role 'admin' (app owner) and admin_level 'platform' may read/create/update across tenants. TENANT BRANCHES ARE NULL-GUARDED: an unscoped user (customer_id null) can never match another tenant's records via a null==null template comparison.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -144,7 +144,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -161,10 +170,28 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         },
         {
-          "data.employer_id": "{{user.data.employer_id}}"
+          "$and": [
+            {
+              "data.employer_id": "{{user.data.employer_id}}"
+            },
+            {
+              "data.employer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -181,7 +208,16 @@
           }
         },
         {
-          "data.customer_id": "{{user.data.customer_id}}"
+          "$and": [
+            {
+              "data.customer_id": "{{user.data.customer_id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": null
+              }
+            }
+          ]
         }
       ]
     },
