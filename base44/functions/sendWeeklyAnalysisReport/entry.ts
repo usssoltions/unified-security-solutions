@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
 
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -124,10 +126,17 @@ Deno.serve(async (req) => {
       });
 
       await Promise.all(group.users.map(recipient =>
-        base44.asServiceRole.integrations.Core.SendEmail({
+        sendAuditedEmail(base44.asServiceRole, {
           from_name: brand.brand_name,
           to: recipient.email,
           subject: `Weekly Security Analysis — ${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}`,
+          // DELIVERY AUDIT — standard application-controlled email auditing.
+          brand,
+          customer_id: group.customer_id || null,
+          recipient_id: recipient.id || undefined,
+          recipient_name: recipient.display_name || recipient.full_name || undefined,
+          event_type: 'weekly_analysis_report',
+          reference_id: `${group.customer_id}:${today.toISOString().slice(0, 10)}`,
           body: `<h2>Weekly Security Analysis Report</h2>
 <h3>${weekAgo.toLocaleDateString('en-ZA')} to ${today.toLocaleDateString('en-ZA')}</h3>
 <table border="1" cellpadding="10" style="border-collapse:collapse;">

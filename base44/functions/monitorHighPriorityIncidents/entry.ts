@@ -12,6 +12,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
+import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -53,8 +54,12 @@ Deno.serve(async (req) => {
       ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
       (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
       (isPlatformUser(u) || !incident.customer_id || u.customer_id === incident.customer_id));
-    const recipients = await narrowControlRoomOperators(base44.asServiceRole, roleRecipients, {
-      customer_id: incident.customer_id || null, site_id: incident.site_id || null });
+    // RECIPIENT PREFERENCES — high-priority incidents honour the explicit
+    // incident_critical preference field (a user may opt out of even these).
+    const recipients = await applyNotificationPreferences(base44.asServiceRole,
+      await narrowControlRoomOperators(base44.asServiceRole, roleRecipients, {
+        customer_id: incident.customer_id || null, site_id: incident.site_id || null }),
+      { pref_field: 'incident_critical' });
     if (recipients.length === 0) {
       return Response.json({ skipped: true, reason: 'No admins/dispatchers found' });
     }

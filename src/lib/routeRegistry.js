@@ -48,6 +48,7 @@ export const ROUTE_REGISTRY = {
     { title: "Clock In/Out", pageKey: "ClockInOutReports", icon: Clock },
     { title: "Sites", pageKey: "SiteManagement", icon: MapPin },
     { title: "Patrol Dashboard", pageKey: "PatrolDashboard", icon: Shield },
+    { title: "Patrol Monitoring", pageKey: "PatrolMonitoring", icon: Activity },
     { title: "Patrol Analytics", pageKey: "PatrolAnalytics", icon: BarChart3 },
     { title: "Site Map", pageKey: "SiteMapDashboard", icon: MapPin },
     { title: "Payroll", pageKey: "PayrollSummary", icon: BarChart3 },
@@ -82,6 +83,7 @@ export const ROUTE_REGISTRY = {
     { title: "Clock In/Out", pageKey: "ClockInOutReports", icon: Clock },
     { title: "Sites", pageKey: "SiteManagement", icon: MapPin },
     { title: "Patrol Dashboard", pageKey: "PatrolDashboard", icon: Shield },
+    { title: "Patrol Monitoring", pageKey: "PatrolMonitoring", icon: Activity },
     { title: "Patrol Analytics", pageKey: "PatrolAnalytics", icon: BarChart3 },
     { title: "Site Map", pageKey: "SiteMapDashboard", icon: MapPin },
     { title: "Payroll", pageKey: "PayrollSummary", icon: BarChart3 },
@@ -194,6 +196,14 @@ export const ROUTE_REGISTRY = {
   control_room_operator: [
     { title: "Task Queue", pageKey: "ScheduledTasks", icon: ClipboardList, isRoot: true },
     { title: "Panic Queue", pageKey: "PanicManagement", icon: Zap },
+    // DEEP-LINK ACCESS (2026-09-22 notification review): operational alert
+    // notifications link to these queues — the recipient must be able to
+    // open what the notification points at, otherwise the alert is defective.
+    { title: "Incident Queue", pageKey: "AdminIncidents", icon: AlertTriangle },
+    { title: "Maintenance Queue", pageKey: "AdminMaintenance", icon: Wrench },
+    { title: "Access History", pageKey: "AccessHistory", icon: FileText },
+    { title: "Patrol Monitoring", pageKey: "PatrolMonitoring", icon: Activity },
+    { title: "Shift Reports", pageKey: "StartOfShiftHistory", icon: FileText },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   attendance_staff: [

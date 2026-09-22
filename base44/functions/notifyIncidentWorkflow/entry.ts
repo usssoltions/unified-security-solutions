@@ -17,6 +17,7 @@ import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
+import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -61,8 +62,12 @@ Deno.serve(async (req) => {
         incidentSiteId = (incRows && incRows[0] && incRows[0].site_id) || null;
       }
     } catch (_) { /* narrowing failure never blocks the alert */ }
-    const management = await narrowControlRoomOperators(base44.asServiceRole, roleManagement, {
-      customer_id: user.customer_id || null, site_id: incidentSiteId });
+    // RECIPIENT PREFERENCES — workflow status updates respect the
+    // status_change opt-out; direct assignee notifications are separate.
+    const management = await applyNotificationPreferences(base44.asServiceRole,
+      await narrowControlRoomOperators(base44.asServiceRole, roleManagement, {
+        customer_id: user.customer_id || null, site_id: incidentSiteId }),
+      { pref_field: 'status_change' });
 
     const hasLocation = location && location.lat != null && location.lng != null;
     const googleMapsUrl = hasLocation

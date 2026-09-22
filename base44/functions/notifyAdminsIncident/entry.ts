@@ -15,6 +15,7 @@ import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
+import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -61,8 +62,16 @@ Deno.serve(async (req) => {
         incidentSiteId = (incRows && incRows[0] && incRows[0].site_id) || null;
       }
     } catch (_) { /* narrowing failure never blocks the alert */ }
-    const recipients = await narrowControlRoomOperators(base44.asServiceRole, roleRecipients, {
-      customer_id: user.customer_id || null, site_id: incidentSiteId });
+    // RECIPIENT PREFERENCES (policy: permission to VIEW is not the same as
+    // being an automatic recipient) — a user who disabled this event type in
+    // their Notification Preferences is dropped from the ROUTINE automatic
+    // recipient list; critical incidents honour the explicit
+    // incident_critical preference field instead.
+    const recipients = await applyNotificationPreferences(base44.asServiceRole,
+      await narrowControlRoomOperators(base44.asServiceRole, roleRecipients, {
+        customer_id: user.customer_id || null, site_id: incidentSiteId }),
+      { pref_field: (priority === 'high' || priority === 'critical')
+        ? 'incident_critical' : 'incident_assigned' });
 
     if (recipients.length === 0) {
       return Response.json({ success: false, message: 'No admin users found' });

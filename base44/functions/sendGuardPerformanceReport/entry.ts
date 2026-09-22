@@ -2,6 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 import { resolveCommunicationBrand, hexToRgb, escHtml } from '../../shared/brandedCommunication.ts';
 
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -332,10 +334,18 @@ Deno.serve(async (req) => {
     const { file_url: pdfUrl } = await base44.asServiceRole.integrations.Core.UploadFile({ file: pdfFile });
 
     const emailPromises = recipients.map(recipient =>
-      base44.asServiceRole.integrations.Core.SendEmail({
+      sendAuditedEmail(base44.asServiceRole, {
         from_name: brand.brand_name,
         to: recipient.email,
         subject: `Board Report: Guard Performance & Site Activity - ${currentMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+        // DELIVERY AUDIT — standard application-controlled email auditing.
+        brand,
+        customer_id: brand.customer_id || null,
+        reseller_id: brand.reseller_id || null,
+        recipient_id: recipient.id || undefined,
+        recipient_name: recipient.display_name || recipient.full_name || undefined,
+        event_type: 'guard_performance_report',
+        reference_id: `${brand.customer_id || 'platform'}:${currentMonthStart.toISOString().slice(0, 7)}`,
         body: `
 <p>Dear Board Member,</p>
 

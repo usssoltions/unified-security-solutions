@@ -151,12 +151,20 @@ export default async function(req: Request): Promise<Response> {
             const botToken = secrets.get('TELEGRAM_BOT_TOKEN');
             for (const er of externalRecipients) {
               if (er.email) {
-                await base44.asServiceRole.integrations.Core.SendEmail({
+                // DELIVERY AUDIT — standard application-controlled email
+                // auditing (helper never rejects; failures are recorded in
+                // the NotificationDelivery audit trail instead).
+                await sendAuditedEmail(base44.asServiceRole, {
                   from_name: brand.brand_name,
                   to: er.email,
                   subject: `Daily Access Report — ${site.name} — ${reportDate}`,
-                  body: html
-                }).catch((e: any) => console.error('DAR email failed:', e.message));
+                  body: html,
+                  brand,
+                  customer_id: cid || null,
+                  recipient_name: er.name || undefined,
+                  event_type: 'daily_access_report',
+                  reference_id: `${site.id}:${reportDate}`,
+                });
               }
               if (er.telegram_chat_id && botToken) {
                 try {

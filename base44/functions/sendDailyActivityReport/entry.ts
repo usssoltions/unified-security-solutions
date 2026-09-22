@@ -105,6 +105,8 @@ async function generateDailyPDF(date, stats, incidents, maintenance, brand) {
   return doc.output('arraybuffer');
 }
 
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -390,10 +392,18 @@ Deno.serve(async (req) => {
       : '';
 
     await Promise.all(recipients.map((recipient) =>
-      base44.asServiceRole.integrations.Core.SendEmail({
+      sendAuditedEmail(base44.asServiceRole, {
         from_name: BRAND_NAME,
         to: recipient.email,
         subject: `Daily Activity Report — ${yesterday.toLocaleDateString('en-ZA')}`,
+        // DELIVERY AUDIT — standard application-controlled email auditing
+        // (event type, reference/run id, tenant, recipient, branding source).
+        brand,
+        customer_id: (tenantScope && tenantScope.customer_id) || null,
+        recipient_id: recipient.id || undefined,
+        recipient_name: recipient.display_name || recipient.full_name || undefined,
+        event_type: 'daily_activity_report',
+        reference_id: `${(tenantScope && tenantScope.customer_id) || 'platform'}:${yesterday.toISOString().slice(0, 10)}`,
         body: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0;">
 <div style="max-width:650px;margin:0 auto;background:white;">
   <div style="background:linear-gradient(135deg,${BRAND_COLOR} 0%,${BRAND_SECONDARY} 100%);padding:40px 30px;text-align:center;">

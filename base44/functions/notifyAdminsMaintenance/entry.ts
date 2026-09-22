@@ -4,6 +4,7 @@ import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
+import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 
 /**
  * notifyAdminsMaintenance
@@ -52,8 +53,13 @@ Deno.serve(async (req) => {
         maintenanceSiteId = (mRows && mRows[0] && mRows[0].site_id) || null;
       }
     } catch (_) { /* narrowing failure never blocks the alert */ }
-    const admins = await narrowControlRoomOperators(base44.asServiceRole, roleAdmins, {
-      customer_id: user.customer_id || null, site_id: maintenanceSiteId });
+    // RECIPIENT PREFERENCES — a user who disabled maintenance notifications
+    // is dropped from the routine automatic recipient list (opt-OUT system:
+    // recipients without a preference record are always kept).
+    const admins = await applyNotificationPreferences(base44.asServiceRole,
+      await narrowControlRoomOperators(base44.asServiceRole, roleAdmins, {
+        customer_id: user.customer_id || null, site_id: maintenanceSiteId }),
+      { pref_field: 'maintenance_assigned' });
 
     if (admins.length === 0) {
       return Response.json({ success: false, message: 'No admins found' });

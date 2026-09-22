@@ -121,6 +121,8 @@ async function generateMonthlyPDF(currentMonthLabel, prevMonthLabel, stats, site
   return doc.output('arraybuffer');
 }
 
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -296,10 +298,17 @@ Deno.serve(async (req) => {
       ].filter(Boolean).join(' &bull; ');
 
       await Promise.all(group.users.map(recipient =>
-        base44.asServiceRole.integrations.Core.SendEmail({
+        sendAuditedEmail(base44.asServiceRole, {
           from_name: brand.brand_name,
           to: recipient.email,
           subject: `Monthly Comparison Report — ${currentMonthStart.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}`,
+          // DELIVERY AUDIT — standard application-controlled email auditing.
+          brand,
+          customer_id: group.customer_id || null,
+          recipient_id: recipient.id || undefined,
+          recipient_name: recipient.display_name || recipient.full_name || undefined,
+          event_type: 'monthly_comparison_report',
+          reference_id: `${group.customer_id}:${currentMonthStart.toISOString().slice(0, 7)}`,
           body: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:0;">
 <div style="max-width:700px;margin:20px auto;background:white;border-radius:8px;overflow:hidden;">
   <div style="background:linear-gradient(135deg,${escHtml(brand.primary_color)} 0%,${escHtml(brand.accent_color)} 100%);padding:30px;text-align:center;color:white;">

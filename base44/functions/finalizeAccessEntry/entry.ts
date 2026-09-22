@@ -117,11 +117,21 @@ async function dispatchAccessAlert(base44: any, caller: any, log: any, heading: 
       { label: 'Processed By', value: log.guard_name || '—' },
       { label: 'Time', value: when },
     ];
-    const message = `${log.person_name || 'A person'} was ${severity === 'security' ? 'DENIED access' : 'processed as an unexpected visitor'} at ${log.gate_name || 'the gate'}${log.site_name ? ' (' + log.site_name + ')' : ''}. ${log.flag_reason || ''}`.trim();
+    // Severity + event classification drive the wording: security denies,
+    // routine denies (in-app only) and unexpected-visitor entries.
+    const isDeny = log.event_type === 'denied' || log.status === 'denied';
+    const message = severity === 'security'
+      ? `${log.person_name || 'A person'} was DENIED access at ${log.gate_name || 'the gate'}${log.site_name ? ' (' + log.site_name + ')' : ''}. ${log.flag_reason || ''}`.trim()
+      : isDeny
+        ? `${log.person_name || 'A person'} was denied entry at ${log.gate_name || 'the gate'}${log.site_name ? ' (' + log.site_name + ')' : ''}. Reason: ${log.flag_reason || 'Manually denied at the gate'}`
+        : `${log.person_name || 'A person'} was processed as an unexpected visitor at ${log.gate_name || 'the gate'}${log.site_name ? ' (' + log.site_name + ')' : ''}.`;
     const title = severity === 'security'
       ? `⛔ ACCESS DENIED — ${log.person_name || 'Unknown'}`
-      : `⚠️ Unexpected Visitor — ${log.person_name || 'Unknown'}`;
-    const eventKey = (severity === 'security' ? 'access_denied:' : 'access_unexpected:') + log.id;
+      : isDeny
+        ? `⛔ Entry Denied — ${log.person_name || 'Unknown'}`
+        : `⚠️ Unexpected Visitor — ${log.person_name || 'Unknown'}`;
+    const eventKey = (severity === 'security' ? 'access_denied:'
+      : isDeny ? 'access_denied_routine:' : 'access_unexpected:') + log.id;
 
     for (const r of recipients) {
       await base44.asServiceRole.entities.Notification.create({
