@@ -57,8 +57,7 @@ export default function ResidentLaundry() {
         resident_id: user.id,
         resident_name: user.display_name || user.full_name,
         unit_number: user.unit_number,
-        status: "scheduled",
-        payment_status: "unpaid",
+        status: "scheduled"
       });
       // Notify admins + estate management so the request is actioned.
       try {

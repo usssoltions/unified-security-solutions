@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import BrandHeader from "@/components/branding/BrandHeader";
 import {
-  Home, UserPlus, Calendar, ShoppingBag, ShirtIcon, CreditCard,
+  Home, UserPlus, Calendar, ShoppingBag, ShirtIcon,
   Ticket, AlertTriangle, Wrench, Bell, ChevronRight, Megaphone,
   Car, Shield, MapPin, Clock
 } from "lucide-react";
@@ -38,14 +38,6 @@ export default function ResidentDashboard() {
     initialData: []
   });
 
-  const { data: levyAccount } = useQuery({
-    queryKey: ["levy", user?.id],
-    queryFn: async () => {
-      const res = await base44.entities.LevyAccount.filter({ resident_id: user?.id });
-      return res[0] || null;
-    },
-    enabled: !!user
-  });
 
   const { data: bookings = [] } = useQuery({
     queryKey: ["my_bookings", user?.id],
@@ -94,25 +86,6 @@ export default function ResidentDashboard() {
             </button>
           </Link>
         </div>
-
-        {/* Levy Status Card */}
-        {levyAccount && (
-          <Link to="/ResidentPayments">
-            <Card className={`border-0 ${levyAccount.status === "overdue" ? "bg-rose-600" : "bg-emerald-600"}`}>
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-white/80 text-sm">Levy Account</p>
-                  <p className="text-white font-bold text-xl">R {levyAccount.balance_due?.toFixed(2) || "0.00"}</p>
-                  <p className="text-white/70 text-xs capitalize">{levyAccount.status}</p>
-                </div>
-                <div className="text-right">
-                  <CreditCard className="w-8 h-8 text-white/60 mb-1 ml-auto" />
-                  <p className="text-white/70 text-xs">Monthly: R{levyAccount.monthly_levy}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        )}
 
         {/* Stats Row */}
         <div className="grid grid-cols-3 gap-3">

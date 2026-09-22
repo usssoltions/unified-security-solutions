@@ -55,11 +55,6 @@ export default function EstateManagerDashboard() {
     queryFn: () => base44.entities.Order.filter(tenantFilter, "-created_date", 50),
     enabled: !!user,
   });
-  const levyQ = useQuery({
-    queryKey: ["estate_levy", user?.customer_id],
-    queryFn: () => base44.entities.LevyAccount.filter(tenantFilter),
-    enabled: !!user,
-  });
   const announcementsQ = useQuery({
     queryKey: ["estate_announcements", user?.customer_id],
     queryFn: () => base44.entities.Announcement.filter(tenantFilter, "-created_date", 20),
@@ -75,13 +70,11 @@ export default function EstateManagerDashboard() {
   const tickets = ticketsQ.data || [];
   const bookings = bookingsQ.data || [];
   const orders = ordersQ.data || [];
-  const levyAccounts = levyQ.data || [];
   const announcements = announcementsQ.data || [];
   const accessLogs = accessQ.data || [];
 
   const openTickets = tickets.filter(t => !["resolved", "closed"].includes(t.status));
   const pendingBookings = bookings.filter(b => b.status === "pending");
-  const overdueAccounts = levyAccounts.filter(a => a.status === "overdue");
   const pendingOrders = orders.filter(o => o.status === "pending");
 
   const announceMutation = useMutation({
@@ -137,7 +130,6 @@ export default function EstateManagerDashboard() {
     { label: "Residents", to: "/EstateResidents", icon: Users, color: "bg-sky-600", show: true },
     { label: "Venues", to: "/EstateVenues", icon: Building, color: "bg-purple-600", show: true },
     { label: "Vendors", to: "/EstateVendors", icon: ShoppingBag, color: "bg-orange-600", show: true },
-    { label: "Levies", to: "/EstateLevy", icon: CreditCard, color: "bg-emerald-600", show: true },
     { label: "Access", to: "/AccessControl", icon: Car, color: "bg-amber-600", show: hasAccess },
     { label: "Security", to: "/ControlRoom", icon: Shield, color: "bg-rose-600", show: hasOperations },
   ].filter(l => l.show);

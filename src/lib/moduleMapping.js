@@ -12,7 +12,7 @@
  *   ACCESS                     — Access Control, Access History, Access Settings, QR Scanner
  *   PATROL                     — Patrol Dashboard, Patrol Analytics, Completed Patrols, etc.
  *   OPERATIONS                 — Control Room, Incidents, Maintenance, Panic, Scheduling, etc.
- *   ESTATE                     — Estate Manager, Residents, Venues, Vendors, Levy, Properties, Voting
+ *   ESTATE                     — Estate Manager, Residents, Venues, Vendors, Properties, Voting
  *   OCCUPATIONAL_THERAPY       — Medical Dashboard, Patients, Appointments, Sessions, etc.
  *   REPORTING_CORE             — Reports, Analytics, Data Hub, Payroll, AI Reports
  *   PLATFORM_ADMIN_ONLY        — Tenant Setup, Test Data, System Setup, OneSignal Test
@@ -74,7 +74,6 @@ export const PAGE_MODULE_MAP = {
   EstateResidents: "ESTATE",
   EstateVenues: "ESTATE",
   EstateVendors: "ESTATE",
-  EstateLevy: "ESTATE",
   EstateProperties: "ESTATE",
   EstateVoting: "ESTATE",
   VendorPortal: "ESTATE",
@@ -86,7 +85,6 @@ export const PAGE_MODULE_MAP = {
   ResidentMaintenance: "ESTATE",
   ResidentIncidents: "ESTATE",
   ResidentTickets: "ESTATE",
-  ResidentPayments: "ESTATE",
   ResidentAnnouncements: "ESTATE",
 
   // ── OCCUPATIONAL_THERAPY module (Medical) ───────────────────────
