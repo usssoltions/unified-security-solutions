@@ -26,6 +26,7 @@ import MedicalAppointments from './pages/MedicalAppointments';
 import MedicalEmployers from './pages/MedicalEmployers';
 import MedicalServices from './pages/MedicalServices';
 import MedicalSessions from './pages/MedicalSessions';
+import MedicalReports from './pages/MedicalReports';
 import MedicalAssessmentTemplates from './pages/MedicalAssessmentTemplates';
 import MedicalPatientDetail from './pages/MedicalPatientDetail';
 import MedicalEmployerDetail from './pages/MedicalEmployerDetail';
@@ -233,6 +234,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="MedicalSessions">
             <ProtectedPage pageKey="MedicalSessions">
               <MedicalSessions />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/MedicalReports" element={
+          <LayoutWrapper currentPageName="MedicalReports">
+            <ProtectedPage pageKey="MedicalReports">
+              <MedicalReports />
             </ProtectedPage>
           </LayoutWrapper>
         } />

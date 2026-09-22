@@ -414,6 +414,22 @@ export default async function main(req: Request): Promise<Response> {
       const d = p.data || {};
       const appointment = await find('Appointment', d.appointment_id);
       if (!appointment || !inScope(appointment)) return err('Appointment not found in your practice.', 404);
+      // IDEMPOTENCY — exactly ONE session per appointment: duplicate taps,
+      // retries and concurrent calls resume instead of duplicating.
+      if (appointment.session_id) {
+        const linked = await find('Session', appointment.session_id);
+        if (linked && inScope(linked) && therapistOwns(linked)) {
+          if (appointment.status !== 'in_session') {
+            await svc.entities.Appointment.update(appointment.id, { status: 'in_session' });
+          }
+          return Response.json({ success: true, record: linked, created: false });
+        }
+      }
+      const orphan = await svc.entities.Session.filter({ appointment_id: appointment.id }).catch(() => []);
+      if (orphan && orphan.length > 0 && inScope(orphan[0]) && therapistOwns(orphan[0])) {
+        await svc.entities.Appointment.update(appointment.id, { status: 'in_session', session_id: orphan[0].id });
+        return Response.json({ success: true, record: orphan[0], created: false });
+      }
       const patient = await find('Patient', d.patient_id || appointment.patient_id);
       if (!patient || !inScope(patient)) return err('Patient not found in your practice.', 404);
       const therapistId = isTherapist ? caller.id : (d.therapist_id || appointment.therapist_id || caller.id);
@@ -431,8 +447,10 @@ export default async function main(req: Request): Promise<Response> {
         actual_start_time: d.actual_start_time || new Date().toISOString(),
         status: 'in_progress',
       });
+      // Link the appointment atomically with creation (idempotent on resume).
+      await svc.entities.Appointment.update(appointment.id, { status: 'in_session', session_id: created.id });
       await audit('medical.session.created', 'Session', created.id, 'started clinical session', created);
-      return Response.json({ success: true, record: created });
+      return Response.json({ success: true, record: created, created: true });
     }
     if (action === 'update_session') {
       if (!isClinical && !isAdmin) return err('Forbidden', 403);

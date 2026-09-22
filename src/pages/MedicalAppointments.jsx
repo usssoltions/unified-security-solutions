@@ -161,8 +161,11 @@ export default function MedicalAppointments() {
     if (startingSessionId) return; // guard against double-tap
     setStartingSessionId(apt.id);
     try {
-      const res = await base44.functions.invoke("startMedicalSession", { appointment_id: apt.id });
-      const session = res?.data?.session;
+      // The medicalAccess gateway is the SOLE authority for session creation
+      // (idempotent: exactly one session per appointment; identities and
+      // tenant scope are stamped server-side).
+      const res = await medicalApi.createSession({ appointment_id: apt.id, patient_id: apt.patient_id });
+      const session = res?.record || null;
       // Open the Clinical Session workspace (Sessions page shows in-progress + complete).
       if (session) navigate("/MedicalSessions");
       await loadData();

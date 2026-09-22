@@ -51,7 +51,8 @@ export default function MedicalSessions() {
       // authoritative appointment record and the caller's identity.
       const res = await medicalApi.createSession({ appointment_id: apt.id, patient_id: apt.patient_id });
       const session = res?.record || null;
-      await medicalApi.updateAppointment(apt.id, { status: "in_session", session_id: session?.id });
+      // The gateway links the appointment (status in_session + session_id)
+      // atomically with session creation — no duplicate update here.
       await loadData();
     } catch (e) {
       console.error("Failed to start session:", e);
