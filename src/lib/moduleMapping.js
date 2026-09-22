@@ -86,6 +86,8 @@ export const PAGE_MODULE_MAP = {
   ResidentIncidents: "ESTATE",
   ResidentTickets: "ESTATE",
   ResidentAnnouncements: "ESTATE",
+  AnnouncementManagement: "ESTATE",
+  TicketManagement: "ESTATE",
 
   // ── OCCUPATIONAL_THERAPY module (Medical) ───────────────────────
   MedicalDashboard: "OCCUPATIONAL_THERAPY",

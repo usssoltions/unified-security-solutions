@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Search, Plus, X, Phone, Home, Car } from "lucide-react";
-import { listResidents, createResident, updateResident } from "@/lib/estateApi";
+import { Users, Search, Plus, X, Phone, Home, Car, UserCheck, Link2, Unlink } from "lucide-react";
+import { listResidents, createResident, updateResident, unlinkResidentUser } from "@/lib/estateApi";
+import ResidentLinkDialog from "@/components/estate/ResidentLinkDialog";
 
 export default function EstateResidents() {
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [linking, setLinking] = useState(null);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", status: "active" });
   const qc = useQueryClient();
 
@@ -26,6 +28,11 @@ export default function EstateResidents() {
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }) => updateResident(id, { status }),
+    onSuccess: () => qc.invalidateQueries(["all_residents"])
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: (id) => unlinkResidentUser(id),
     onSuccess: () => qc.invalidateQueries(["all_residents"])
   });
 
@@ -49,6 +56,8 @@ export default function EstateResidents() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input placeholder="Search by name, unit, email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 bg-slate-800/50 border-slate-700 text-white" />
         </div>
+
+        {linking && <ResidentLinkDialog resident={linking} onClose={() => setLinking(null)} />}
 
         {showForm && (
           <Card className="bg-slate-800 border-slate-700">
@@ -88,12 +97,30 @@ export default function EstateResidents() {
                         {r.vehicles?.length > 0 && <p className="flex items-center gap-1"><Car className="w-3 h-3" /> {r.vehicles.length} vehicle(s)</p>}
                       </div>
                     </div>
-                    <div className="flex gap-2 ml-3">
-                      {r.status === "active" ? (
-                        <Button size="sm" variant="outline" className="border-rose-500 text-rose-400" onClick={() => updateStatusMutation.mutate({ id: r.id, status: "suspended" })}>Suspend</Button>
-                      ) : (
-                        <Button size="sm" variant="outline" className="border-emerald-500 text-emerald-400" onClick={() => updateStatusMutation.mutate({ id: r.id, status: "active" })}>Activate</Button>
-                      )}
+                    <div className="flex flex-col gap-2 ml-3">
+                     <div className="flex items-center gap-1 justify-end">
+                       {r.user_id ? (
+                         <Badge className="bg-indigo-600"><UserCheck className="w-3 h-3 mr-1" />Account linked</Badge>
+                       ) : (
+                         <Badge variant="outline" className="border-slate-600 text-slate-400">No account</Badge>
+                       )}
+                     </div>
+                     <div className="flex gap-2 justify-end">
+                       {r.user_id ? (
+                         <Button size="sm" variant="outline" className="border-amber-500 text-amber-400" disabled={unlinkMutation.isPending} onClick={() => unlinkMutation.mutate(r.id)}>
+                           <Unlink className="w-3 h-3 mr-1" />Unlink
+                         </Button>
+                       ) : (
+                         <Button size="sm" variant="outline" className="border-sky-500 text-sky-400" onClick={() => setLinking(r)}>
+                           <Link2 className="w-3 h-3 mr-1" />Link Account
+                         </Button>
+                       )}
+                       {r.status === "active" ? (
+                         <Button size="sm" variant="outline" className="border-rose-500 text-rose-400" onClick={() => updateStatusMutation.mutate({ id: r.id, status: "suspended" })}>Suspend</Button>
+                       ) : (
+                         <Button size="sm" variant="outline" className="border-emerald-500 text-emerald-400" onClick={() => updateStatusMutation.mutate({ id: r.id, status: "active" })}>Activate</Button>
+                       )}
+                     </div>
                     </div>
                   </div>
                 </CardContent>

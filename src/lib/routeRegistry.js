@@ -176,6 +176,17 @@ export const ROUTE_REGISTRY = {
     { title: "Attendance Records", pageKey: "AttendanceRecords", icon: FileText },
     { title: "Attendance Reports", pageKey: "AttendanceReports", icon: BarChart3 },
     { title: "Attendance Settings", pageKey: "AttendanceSettings", icon: Sliders },
+    // ESTATE module pages — each entry is INDEPENDENTLY gated by the customer's
+    // ESTATE ModuleEntitlement (sidebar filter + ProtectedPage guard fail
+    // closed, so a customer without the estate licence never sees or reaches them).
+    { title: "Estate Dashboard", pageKey: "EstateManagerDashboard", icon: Building2 },
+    { title: "Estate Residents", pageKey: "EstateResidents", icon: Users },
+    { title: "Estate Venues", pageKey: "EstateVenues", icon: MapPin },
+    { title: "Estate Vendors", pageKey: "EstateVendors", icon: Package },
+    { title: "Estate Properties", pageKey: "EstateProperties", icon: Building2 },
+    { title: "Estate Voting", pageKey: "EstateVoting", icon: Vote },
+    { title: "Estate Announcements", pageKey: "AnnouncementManagement", icon: Bell },
+    { title: "Estate Tickets", pageKey: "TicketManagement", icon: FileText },
     { title: "User Management", pageKey: "UserManagement", icon: Users },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
