@@ -9,8 +9,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data } = await req.json();
-    const { targetUserId, callId, callType } = data;
+    // SDK contract: functions.invoke sends the payload as the raw JSON body
+    // (same as rtcSignaling). The previous { data } wrapper never matched the
+    // frontend's raw payload, so EVERY in-app call notification failed with a
+    // 500 (live regression confirmed in testing 2026-09-22).
+    const { targetUserId, callId } = await req.json();
 
     // CALLER IDENTITY — resolved server-side; the browser-supplied caller
     // name is never trusted (impersonation fix).

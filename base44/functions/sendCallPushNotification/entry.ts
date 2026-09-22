@@ -79,17 +79,20 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, deduplicated: true });
     }
 
-    // DELIVERY RATE LIMIT — per caller per minute across all calls.
-    const recent = await svc.entities.NotificationDelivery.filter({ recipient_id: String(user.id) }).catch(() => []);
+    // DELIVERY RATE LIMIT — ring-bombing guard: at most N call pushes to this
+    // recipient per minute (call CREATION itself is already rate-limited per
+    // caller by rtcSignaling initiate_call).
+    const recent = await svc.entities.NotificationDelivery.filter({ recipient_id: String(recipientId) }).catch(() => []);
     const pushesLastMinute = (recent || []).filter(d =>
-      d.event_type === 'call_push' && d.created_by_id === user.id &&
-      Date.now() - new Date(d.created_date).getTime() < 60 * 1000).length;
+      d.event_type === 'call_push' &&
+      Date.now() - new Date(d.created_date || 0).getTime() < 60 * 1000).length;
     if (pushesLastMinute >= MAX_PUSH_PER_CALLER_PER_MINUTE) {
       return Response.json({ error: 'Too many call pushes — please wait a moment' }, { status: 429 });
     }
 
-    // Claim the delivery record FIRST (idempotency), then dispatch.
-    const [delivery] = await svc.entities.NotificationDelivery.create({
+    // Claim the delivery record FIRST (idempotency), then dispatch. SDK create
+    // returns the created record object directly — never array-destructure it.
+    const delivery = await svc.entities.NotificationDelivery.create({
       event_key: idemKey,
       event_type: 'call_push',
       reference_id: String(callId),
@@ -100,7 +103,7 @@ Deno.serve(async (req) => {
       status: 'pending',
       send_time: new Date().toISOString(),
       idempotency_key: idemKey,
-    }).catch(() => []);
+    }).catch(() => null);
 
     // Deployment origin from the incoming request — never hard-coded, so
     // custom domains and preview deployments stay correct. The URL carries
@@ -155,7 +158,9 @@ Deno.serve(async (req) => {
         },
         priority: 10,
         ttl: 30,
-        android_channel_id: 'calls',
+        // No android_channel_id: the OneSignal app has no custom 'calls' channel
+        // (live rejection 2026-09-22). The DEFAULT channel is used, with
+        // importance 5 = heads-up ring behaviour.
         android_visibility: 1,
         android_importance: 5,
         android_sound: 'default',
