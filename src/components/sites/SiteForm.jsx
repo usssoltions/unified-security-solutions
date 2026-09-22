@@ -4,7 +4,6 @@ import { createSite, updateSite, listCustomersForSites } from "@/lib/siteApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { X, Plus, Trash2, MapPin, QrCode, Loader2, Sparkles, AlertCircle, Save, Lock, Crosshair } from "lucide-react";
 import {
   Select,
@@ -15,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import CheckpointQRGenerator from "./CheckpointQRGenerator";
 import PatrolSiteConfig from "@/components/patrol/PatrolSiteConfig";
+import SiteLocationSection from "./SiteLocationSection";
 
 export default function SiteForm({ site, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -29,7 +29,6 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     patrol_config: site?.patrol_config || { enabled: false, schedules: [] }
   });
   const [loading, setLoading] = useState(false);
-  const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState("");
@@ -110,48 +109,6 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     setFormData(prev => ({ ...prev, ...updates }));
     setHasUnsavedChanges(true);
     setError(null);
-  };
-
-  const geocodeAddress = async () => {
-    if (!formData.address || formData.address.trim().length < 5) {
-      setError("Please enter a valid address first");
-      return;
-    }
-
-    setGeocoding(true);
-    setError(null);
-
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(formData.address)}&limit=1`,
-        { timeout: 10000 }
-      );
-      
-      if (!response.ok) {
-        throw new Error("Geocoding service unavailable");
-      }
-
-      const data = await response.json();
-      
-      if (data && data.length > 0) {
-        const result = data[0];
-        updateFormData({
-          location: {
-            lat: parseFloat(result.lat),
-            lng: parseFloat(result.lon)
-          }
-        });
-        setError(null);
-        alert(`✅ Location found: ${result.display_name.substring(0, 100)}...`);
-      } else {
-        setError("Address not found. Please check spelling or enter coordinates manually.");
-      }
-    } catch (error) {
-      console.error("Geocoding error:", error);
-      setError("Failed to find address. Please enter GPS coordinates manually.");
-    } finally {
-      setGeocoding(false);
-    }
   };
 
   const generateQRCode = (checkpointName) => {
@@ -263,8 +220,13 @@ export default function SiteForm({ site, onClose, onSuccess }) {
       setError("Please select the customer this site belongs to");
       return false;
     }
-    if (formData.location.lat === 0 && formData.location.lng === 0) {
-      setError("Please set GPS location using 'Generate GPS Coordinates' or enter manually");
+    // (0,0) and non-numeric values are NEVER a valid configured location —
+    // a site without real coordinates must not save (and can therefore never
+    // activate geofence validation).
+    const lat = parseFloat(formData.location.lat);
+    const lng = parseFloat(formData.location.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
+      setError("Please set a valid GPS location — select an address suggestion, use 'Generate GPS Coordinates' / 'Use Current Location', or enter coordinates manually");
       return false;
     }
     return true;
@@ -392,38 +354,13 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                 />
               </div>
 
-              <div>
-                <label className="text-sm text-slate-400 mb-2 block">Address *</label>
-                <div className="space-y-2">
-                  <Textarea
-                    value={formData.address}
-                    onChange={(e) => updateFormData({ address: e.target.value })}
-                    className="bg-slate-900/50 border-slate-700 text-white"
-                    rows={2}
-                    required
-                    placeholder="123 Main Street, Cape Town, South Africa"
-                  />
-                  <Button
-                    type="button"
-                    onClick={geocodeAddress}
-                    disabled={geocoding || !formData.address}
-                    variant="outline"
-                    className="w-full border-sky-500/50 text-sky-400 hover:bg-sky-500/10"
-                  >
-                    {geocoding ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Finding Location...
-                      </>
-                    ) : (
-                      <>
-                        <MapPin className="w-4 h-4 mr-2" />
-                        Generate GPS Coordinates from Address
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
+              {/* Address + GPS location: autocomplete, generate, current
+                  location and manual entry — see SiteLocationSection. */}
+              <SiteLocationSection
+                address={formData.address}
+                location={formData.location}
+                onChange={(updates) => updateFormData(updates)}
+              />
 
               <div>
                 <label className="text-sm text-slate-400 mb-2 block">Customer *</label>
@@ -485,50 +422,6 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-lg space-y-3">
-              <div className="flex items-center gap-2 text-sky-400 font-semibold">
-                <MapPin className="w-5 h-5" />
-                <span>GPS Location</span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Use "Generate GPS Coordinates" button above or enter manually
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-slate-400 mb-2 block">Latitude</label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={formData.location.lat}
-                    onChange={(e) => updateFormData({
-                      location: { ...formData.location, lat: e.target.value }
-                    })}
-                    className="bg-slate-900/50 border-slate-700 text-white"
-                    placeholder="-33.3482"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-slate-400 mb-2 block">Longitude</label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={formData.location.lng}
-                    onChange={(e) => updateFormData({
-                      location: { ...formData.location, lng: e.target.value }
-                    })}
-                    className="bg-slate-900/50 border-slate-700 text-white"
-                    placeholder="18.1615"
-                  />
-                </div>
-              </div>
-              {formData.location.lat !== 0 && formData.location.lng !== 0 && (
-                <div className="flex items-center gap-2 text-emerald-400 text-sm">
-                  <MapPin className="w-4 h-4" />
-                  <span>Location set: {formData.location.lat}, {formData.location.lng}</span>
-                </div>
-              )}
             </div>
 
             <div className="space-y-3">
