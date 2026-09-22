@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     }
 
     // PRIVATE storage — no public recording URLs are ever created.
-    const { file_uri } = await svc.integrations.Core.UploadPrivateFile({ file: buffer });
+    const { file_uri } = await svc.integrations.Core.UploadPrivateFile({ file: new File([buffer], 'recording.webm', { type }) });
 
     await svc.entities.CallHistory.update(call.id, {
       recording_url: file_uri,

@@ -225,7 +225,7 @@ Deno.serve(async (req) => {
           return Response.json({ error: 'Recording is only available once the call has connected or ended' }, { status: 409 });
         }
         const buffer = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
-        const { file_uri } = await svc.integrations.Core.UploadPrivateFile({ file: buffer });
+        const { file_uri } = await svc.integrations.Core.UploadPrivateFile({ file: new File([buffer], 'recording.webm', { type }) });
         await svc.entities.CallSession.update(session.id, { recording_uri: file_uri });
         // Attach to the CallHistory record if it already exists (same call id).
         const [history] = await svc.entities.CallHistory.filter({ call_id: callId }).catch(() => []);
