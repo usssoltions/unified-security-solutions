@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import { gwErr as err, resolveAdminRoles, resolveCustomerScope, checkModuleLicense, tenantQueryOf, inScopeOf, findRecord, auditLog } from '../../shared/tenantGateway.ts';
 
 /**
  * estateAccess — the SOLE authorized data gateway for the ESTATE MANAGEMENT
@@ -37,10 +38,6 @@ const MODULE_KEY = 'ESTATE';
 const MANAGER_ROLES = ['estate_manager', 'customer_admin'];
 const BOOKING_ACTIVE_STATUSES = ['pending', 'approved', 'completed'];
 
-function err(message, status = 400) {
-  return Response.json({ error: message }, { status });
-}
-
 export default async function main(req: Request): Promise<Response> {
   const base44 = createClientFromRequest(req);
   const caller = await resolveTenantCaller(base44);
@@ -52,8 +49,7 @@ export default async function main(req: Request): Promise<Response> {
   const callerName = caller.display_name || caller.full_name || caller.email || 'Unknown';
 
   /* ── Server-side role resolution (User record wins over session claims) ── */
-  const isPlatform = caller.role === 'admin' || caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
-  const isReseller = !isPlatform && (caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller');
+  const { isPlatform, isReseller } = resolveAdminRoles(caller);
   const isManager = !isPlatform && !isReseller
     && (MANAGER_ROLES.includes(caller.role_type) || caller.admin_level === 'customer');
   const isResident = caller.role_type === 'resident';
@@ -61,37 +57,14 @@ export default async function main(req: Request): Promise<Response> {
   const isAdmin = isPlatform || isReseller || isManager;
 
   /* ── Tenant scope resolution (never trusts client tenant ids) ────────── */
-  let scope;
-  if (isPlatform) {
-    scope = { mode: 'platform', customer_id: p.customer_id || null, reseller_id: p.reseller_id || null };
-  } else if (isReseller) {
-    scope = { mode: 'reseller', customer_id: caller.customer_id || null, reseller_id: caller.reseller_id };
-    if (p.customer_id && p.customer_id !== scope.customer_id) {
-      const cust = await svc.entities.Customer.get(String(p.customer_id)).catch(() => null);
-      if (!cust || cust.reseller_id !== scope.reseller_id) return err('Forbidden', 403);
-      scope.customer_id = String(p.customer_id);
-    }
-  } else if (caller.customer_id) {
-    if (p.customer_id && p.customer_id !== caller.customer_id) return err('Forbidden', 403);
-    scope = { mode: 'customer', customer_id: caller.customer_id, reseller_id: caller.reseller_id || null };
-  } else {
-    scope = { mode: 'none', customer_id: null, reseller_id: null };
-  }
+  const scopeRes = await resolveCustomerScope(svc, caller, p, isPlatform, isReseller);
+  if (scopeRes.error) return scopeRes.error;
+  const scope = scopeRes.scope || { mode: 'none', customer_id: null, reseller_id: null };
 
   /* ── ESTATE module licence (API level, fail closed) ──────────────────── */
-  let licensed = true;
-  let reason = null;
-  if (!isPlatform) {
-    if (scope.mode === 'reseller' && !scope.customer_id) {
-      const lics = await svc.entities.ResellerEntitlement.filter({ reseller_id: scope.reseller_id, module_key: MODULE_KEY }).catch(() => []);
-      if (!lics.some((l) => l.enabled && (!l.status || l.status === 'active'))) { licensed = false; reason = 'Estate Management is not licensed for this reseller.'; }
-    } else if (scope.customer_id) {
-      const ents = await svc.entities.ModuleEntitlement.filter({ customer_id: scope.customer_id, module_key: MODULE_KEY }).catch(() => []);
-      if (!ents.some((e) => e.enabled && (!e.status || e.status === 'active'))) { licensed = false; reason = 'Estate Management is not enabled for this customer.'; }
-    } else {
-      licensed = false; reason = 'This account has no tenant scope for Estate Management.';
-    }
-  }
+  const licRes = await checkModuleLicense(svc, isPlatform, scope, MODULE_KEY);
+  const licensed = licRes.licensed;
+  const reason = licRes.reason;
   const authorized = licensed && (isPlatform || isReseller || isManager || isResident || isVendor);
   const deny = () => err(reason || 'Not authorized for Estate Management', 403);
 
@@ -126,34 +99,15 @@ export default async function main(req: Request): Promise<Response> {
   };
 
   /* Tenant filter for manager/platform/reseller lists */
-  const tenantQuery = (extra) => {
-    const q = { ...(extra || {}) };
-    if (scope.customer_id) q.customer_id = scope.customer_id;
-    else if (scope.reseller_id) q.reseller_id = scope.reseller_id;
-    return q;
-  };
+  const tenantQuery = (extra) => tenantQueryOf(scope, extra);
 
   /* Record is in the caller's manage scope */
-  const inManageScope = (r) => {
-    if (!r) return false;
-    if (isPlatform) return true;
-    if (isReseller) return r.reseller_id === scope.reseller_id;
-    return !!scope.customer_id && r.customer_id === scope.customer_id;
-  };
+  const inManageScope = (r) => inScopeOf(scope, r, isPlatform, isReseller);
 
-  const find = async (entityName, id) => {
-    if (!id) return null;
-    const rows = await svc.entities[entityName].filter({ id: String(id) }).catch(() => []);
-    return (rows && rows[0]) || null;
-  };
+  const find = (entityName, id) => findRecord(svc, entityName, id);
 
   const audit = (event_type, entity_name, entity_id, notes, rec) =>
-    svc.entities.PlatformAuditLog.create({
-      event_type, user_id: caller.id, user_name: callerName,
-      customer_id: (rec && rec.customer_id) || scope.customer_id || null,
-      reseller_id: (rec && rec.reseller_id) || scope.reseller_id || null,
-      entity_name, entity_id: entity_id || null, action: event_type, notes,
-    }).catch(() => null);
+    auditLog(svc, { callerId: caller.id, callerName, scope }, event_type, entity_name, entity_id, notes, rec);
 
   /* Server-side notification dispatch — failures NEVER fail the business op */
   const notify = async (payload) => {
