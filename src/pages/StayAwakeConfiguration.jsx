@@ -1,52 +1,50 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { fetchTenantGuards } from "@/lib/tenantLookups";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Zap, Save, Users, Clock, AlertCircle } from "lucide-react";
+import { Zap, Save, Users, Clock, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+const MANAGEMENT_UI_ROLES = ["admin", "platform_admin", "dispatcher", "supervisor", "management", "customer_admin"];
+
+/**
+ * StayAwakeConfiguration — management page for per-guard Stay Awake settings.
+ *
+ * All changes go through the stayAwakeService gateway ('configure' action),
+ * which revalidates server-side that the caller is an authorized management
+ * role, that the guard belongs to the caller's tenant, and that the interval
+ * is within allowed bounds. The page performs NO direct user-record writes.
+ */
 export default function StayAwakeConfiguration() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
   const [guardSettings, setGuardSettings] = useState({});
-  const [globalSettings, setGlobalSettings] = useState({
-    enabled: true,
-    interval_minutes: 30,
-    response_timeout_seconds: 30
-  });
   const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState(null); // { ok: boolean, message: string }
 
   useEffect(() => {
-    loadUser();
+    base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
-  const loadUser = async () => {
-    const currentUser = await base44.auth.me();
-    setUser(currentUser);
-  };
-
-  const { data: guards } = useQuery({
+  const { data: guards = [] } = useQuery({
     queryKey: ["guards"],
-    queryFn: async () => {
-      // Tenant-scoped via the getTenantUsers gateway (server-side resolution).
-      return fetchTenantGuards();
-    },
+    queryFn: async () => fetchTenantGuards(),
     enabled: !!user,
-    initialData: []
+    initialData: [],
   });
 
   useEffect(() => {
     if (guards.length > 0) {
       const settings = {};
-      guards.forEach(guard => {
+      guards.forEach((guard) => {
         settings[guard.id] = {
           enabled: guard.stay_awake_enabled === true,
-          interval_minutes: guard.stay_awake_interval_minutes || 30
+          interval_minutes: guard.stay_awake_interval_minutes || 30,
         };
       });
       setGuardSettings(settings);
@@ -56,51 +54,55 @@ export default function StayAwakeConfiguration() {
   const handleGuardToggle = (guardId, enabled) => {
     setGuardSettings({
       ...guardSettings,
-      [guardId]: {
-        ...guardSettings[guardId],
-        enabled
-      }
+      [guardId]: { ...guardSettings[guardId], enabled },
     });
   };
 
   const handleGuardIntervalChange = (guardId, interval) => {
     setGuardSettings({
       ...guardSettings,
-      [guardId]: {
-        ...guardSettings[guardId],
-        interval_minutes: parseInt(interval) || 30
-      }
+      [guardId]: { ...guardSettings[guardId], interval_minutes: parseInt(interval) || 30 },
     });
   };
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveState(null);
     try {
-      // Update each guard's settings
+      let failed = 0;
+      // Each guard's change is validated and persisted by the gateway —
+      // role, tenant scope and interval bounds are enforced SERVER-SIDE.
       for (const guardId in guardSettings) {
-        await base44.entities.User.update(guardId, {
+        const res = await base44.functions.invoke("stayAwakeService", {
+          action: "configure",
+          guard_id: guardId,
           stay_awake_enabled: guardSettings[guardId].enabled,
-          stay_awake_interval_minutes: guardSettings[guardId].interval_minutes
+          stay_awake_interval_minutes: guardSettings[guardId].interval_minutes,
         });
+        const data = res?.data ?? res;
+        if (!data?.success) failed++;
       }
-
-      alert("✅ Stay Awake settings saved successfully!");
-      queryClient.invalidateQueries(["guards"]);
+      if (failed > 0) {
+        setSaveState({ ok: false, message: `${failed} setting(s) could not be saved — the server rejected them (check your role and the guard's tenant).` });
+      } else {
+        setSaveState({ ok: true, message: "Stay Awake settings saved successfully." });
+      }
+      queryClient.invalidateQueries({ queryKey: ["guards"] });
     } catch (error) {
-      alert("Failed to save settings: " + error.message);
+      setSaveState({ ok: false, message: "Failed to save settings: " + (error?.message || "unknown error") });
     } finally {
       setSaving(false);
     }
   };
 
-  if (!user || (user.role_type !== "admin" && user.role_type !== "dispatcher")) {
+  if (!user || !MANAGEMENT_UI_ROLES.includes(user.role_type)) {
     return (
       <div className="min-h-screen p-4 flex items-center justify-center">
         <Card className="bg-slate-800/50 border-slate-700">
           <CardContent className="pt-12 pb-12 text-center">
             <AlertCircle className="w-16 h-16 text-rose-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-white mb-2">Access Denied</h3>
-            <p className="text-slate-400">Only administrators and dispatchers can access this page</p>
+            <p className="text-slate-400">Only authorized management roles can access this page</p>
           </CardContent>
         </Card>
       </div>
@@ -122,8 +124,10 @@ export default function StayAwakeConfiguration() {
       <Alert className="bg-sky-500/10 border-sky-500/20">
         <AlertCircle className="w-4 h-4 text-sky-400" />
         <AlertDescription className="text-slate-300">
-          <strong>How it works:</strong> Guards receive periodic alerts during their shifts requiring immediate response. 
-          Failure to respond triggers a notification to the control room.
+          <strong>How it works:</strong> While a guard is clocked in, the platform issues a
+          periodic Stay Awake check during their active shift. The guard must acknowledge
+          each check within {60} seconds; failure is recorded as missed and your tenant's
+          management team is alerted. Checks stop automatically at clock-out.
         </AlertDescription>
       </Alert>
 
@@ -182,11 +186,8 @@ export default function StayAwakeConfiguration() {
                       </div>
                     </div>
 
-                    <Badge 
-                      className={guardSettings[guard.id]?.enabled 
-                        ? "bg-emerald-500" 
-                        : "bg-slate-600"
-                      }
+                    <Badge
+                      className={guardSettings[guard.id]?.enabled ? "bg-emerald-500" : "bg-slate-600"}
                     >
                       {guardSettings[guard.id]?.enabled ? "Active" : "Inactive"}
                     </Badge>
@@ -204,6 +205,17 @@ export default function StayAwakeConfiguration() {
           </div>
         </CardContent>
       </Card>
+
+      {saveState && (
+        <Alert className={saveState.ok
+          ? "bg-emerald-500/10 border-emerald-500/30"
+          : "bg-rose-500/10 border-rose-500/30"}>
+          {saveState.ok
+            ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            : <XCircle className="w-4 h-4 text-rose-400" />}
+          <AlertDescription className="text-slate-200">{saveState.message}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex justify-end">
         <Button

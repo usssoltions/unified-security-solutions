@@ -1,32 +1,52 @@
 {
   "name": "StayAwakeLog",
   "type": "object",
-  "description": "Stay-awake (fatigue) check log. TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the guard always sees their own logs; platform admins retain oversight. New records carry customer_id/reseller_id (stamped at creation); legacy unscoped records remain visible via the guard's own-record branch and to platform admins.",
+  "description": "Stay-awake (fatigue) check log \u2014 SERVER-AUTHORITATIVE (rebuilt 2026-09-22). Every prompt is ISSUED by the stayAwakeService gateway from the monitor sweep (runAllMonitors tick): the ACTIVE, CLOCKED-IN shift, guard, site, customer and reseller are resolved server-side; each prompt carries a unique server-generated challenge_id and expires_at; acknowledgement is validated and stamped by the same gateway (response time, status, guard and shift are NEVER client-supplied). GATEWAY-ONLY WRITES: create/update/delete are restricted to platform administration by RLS \u2014 clients can only READ (guard sees own logs; customer staff see their tenant's; reseller admins their reseller's; platform retains oversight). Outcome state machine: sent \u2192 acknowledged (own guard, before expiry, idempotent) | missed (timeout \u2192 tenant-scoped escalation, deduplicated) | cancelled (shift ended / clock-out / reassignment before expiry \u2014 never escalated).",
   "properties": {
     "customer_id": {
       "type": "string",
-      "description": "Tenant/customer ownership for multi-tenant isolation"
+      "description": "Tenant/customer ownership \u2014 stamped server-side from the authoritative shift"
     },
     "reseller_id": {
       "type": "string",
-      "description": "Reseller ownership for reseller-scoped oversight access"
+      "description": "Reseller ownership \u2014 stamped server-side from the authoritative shift"
     },
     "guard_id": {
-      "type": "string"
+      "type": "string",
+      "description": "Guard User id \u2014 server-resolved from the active shift, never client-supplied"
     },
     "guard_name": {
       "type": "string"
     },
     "shift_id": {
+      "type": "string",
+      "description": "Active shift id \u2014 server-resolved; prompts are only issued for shifts with a clock-in"
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Site stamped server-side from the shift (escalation control-room narrowing uses it)"
+    },
+    "site_name": {
       "type": "string"
+    },
+    "challenge_id": {
+      "type": "string",
+      "description": "Unique server-generated challenge/event id for this prompt (crypto.randomUUID)"
     },
     "alert_time": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "description": "Server-issued prompt timestamp"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-issued acknowledgement deadline \u2014 expired prompts cannot be acknowledged as current"
     },
     "response_time": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "description": "Server-stamped acknowledgement time (gateway only)"
     },
     "response_method": {
       "type": "string",
@@ -52,12 +72,15 @@
       "enum": [
         "sent",
         "acknowledged",
-        "missed"
+        "missed",
+        "cancelled"
       ],
-      "default": "sent"
+      "default": "sent",
+      "description": "sent (issued, awaiting response) \u2192 acknowledged | missed (timeout, escalated) | cancelled (shift no longer active at check time \u2014 never escalated)"
     },
     "response_time_seconds": {
-      "type": "number"
+      "type": "number",
+      "description": "Computed server-side at acknowledgement ((response_time - alert_time)/1000)"
     }
   },
   "required": [
@@ -77,24 +100,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "data.guard_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
         }
       ]
     },
@@ -141,9 +146,6 @@
         },
         {
           "data.guard_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
         }
       ]
     },
@@ -158,24 +160,6 @@
           "user_condition": {
             "admin_level": "platform"
           }
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": "{{user.data.customer_id}}"
-            },
-            {
-              "data.customer_id": {
-                "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "data.guard_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
         }
       ]
     },

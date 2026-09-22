@@ -42,7 +42,7 @@ export default function GuardShift() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
   const [location, setLocation] = useState(null);
-  const [showStayAwake, setShowStayAwake] = useState(false);
+  const [stayAwakePrompt, setStayAwakePrompt] = useState(null);
   const [showPatrolRoute, setShowPatrolRoute] = useState(false);
   const [showForceSignOut, setShowForceSignOut] = useState(false);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
@@ -56,7 +56,6 @@ export default function GuardShift() {
   const [ackDismissed, setAckDismissed] = useState(false);
   const [showDailyReportModal, setShowDailyReportModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const lastStayAwakeCheck = useRef(null);
   const lastPatrolCheck = useRef(null);
 
   useEffect(() => {
@@ -244,22 +243,32 @@ export default function GuardShift() {
     return () => unsub();
   }, [user?.id, queryClient]);
 
-  // Stay Awake system
+  // STAY AWAKE — SERVER-AUTHORITATIVE PROMPTS. The stayAwakeService gateway
+  // issues each prompt (unique server challenge, expiry, tenant stamping)
+  // from the monitor sweep; this client only LISTENS. A prompt appears while
+  // it is the guard's own, still 'sent' and unexpired, and disappears the
+  // moment the gateway records acknowledgement/cancellation/missed. No
+  // client-side scheduling and no client entity writes remain — prompts can
+  // never fire before clock-in or after clock-out, and the interval is
+  // enforced server-side (including catch-up on a delayed sweep).
+  const loadStayAwakePrompt = async () => {
+    if (!user || !activeShift) { setStayAwakePrompt(null); return; }
+    try {
+      const logs = await base44.entities.StayAwakeLog.filter(
+        { guard_id: user.id, status: "sent" }, "-alert_time", 5);
+      const now = Date.now();
+      const valid = (logs || []).find((l) => !l.expires_at || new Date(l.expires_at).getTime() > now);
+      setStayAwakePrompt(valid || null);
+    } catch (_) {}
+  };
+
   useEffect(() => {
-    if (!user || !activeShift || !user.stay_awake_enabled) return;
-    if (!lastStayAwakeCheck.current) lastStayAwakeCheck.current = Date.now();
-    const id = setInterval(() => {
-      const interval = (user.stay_awake_interval_minutes || 30) * 60 * 1000;
-      if (Date.now() - lastStayAwakeCheck.current >= interval) {
-        lastStayAwakeCheck.current = Date.now();
-        setShowStayAwake(true);
-      }
-    }, 30000);
-    return () => clearInterval(id);
-    // Depend only on primitive identities (not the activeShift object, which
-    // refetches every 30s and would otherwise reset this interval before it
-    // ever ticks — which was why stay-awake alerts never fired).
-  }, [user?.id, activeShift?.id, user?.stay_awake_enabled]);
+    if (!user) return;
+    const unsub = base44.entities.StayAwakeLog.subscribe(() => loadStayAwakePrompt());
+    loadStayAwakePrompt();
+    const tick = setInterval(loadStayAwakePrompt, 10000);
+    return () => { unsub(); clearInterval(tick); };
+  }, [user?.id, activeShift?.id]);
 
   // Patrol reminder system
   useEffect(() => {
@@ -472,8 +481,8 @@ export default function GuardShift() {
 
           {/* Alerts & Modals */}
           <AnimatePresence>
-            {showStayAwake && (
-              <StayAwakeAlert shift={activeShift} user={user} onConfirm={() => { setShowStayAwake(false); lastStayAwakeCheck.current = Date.now(); }} location={location} />
+            {stayAwakePrompt && (
+              <StayAwakeAlert prompt={stayAwakePrompt} user={user} onDone={loadStayAwakePrompt} location={location} />
             )}
             {showPatrolRoute && (
               <PatrolRouteGuidance user={user} shift={activeShift} location={location} onDismiss={() => { setShowPatrolRoute(false); lastPatrolCheck.current = Date.now(); }} />

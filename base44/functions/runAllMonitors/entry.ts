@@ -30,6 +30,19 @@ Deno.serve(async (req) => {
       results.appointment_reminders = { error: e.message };
     }
 
+    // ── 0.5 Stay Awake sweep — per-guard configuration is the gate (not the
+    //    automation toggles, so it deliberately runs BEFORE the early-exit).
+    //    The gateway cancels prompts whose shift ended/clocked out, marks
+    //    expired prompts missed and escalates to same-tenant management
+    //    (deduplicated), and issues due prompts for active clocked-in guards
+    //    with Stay Awake enabled — server-authoritative throughout.
+    try {
+      const sa = await base44.functions.invoke('stayAwakeService', { action: 'sweep' });
+      results.stay_awake = sa?.data !== undefined ? sa.data : { invoked: true };
+    } catch (e) {
+      results.stay_awake = { error: e.message };
+    }
+
     // Load toggle settings — exit immediately if ALL are disabled
     const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
     const settings = settingsRecs?.[0] || {};

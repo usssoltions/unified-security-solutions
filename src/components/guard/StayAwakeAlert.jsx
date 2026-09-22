@@ -1,80 +1,81 @@
 import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { fetchTenantUsersInRoles } from "@/lib/tenantLookups";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, Zap, Volume2 } from "lucide-react";
 
-export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
-  const [timeRemaining, setTimeRemaining] = useState(60);
-  const [alertSent, setAlertSent] = useState(false);
+/**
+ * StayAwakeAlert — SERVER-AUTHORITATIVE stay awake prompt overlay.
+ *
+ * The prompt record (issued by the stayAwakeService gateway with a unique
+ * server-generated challenge and server-issued expiry) drives the countdown.
+ * Acknowledgement goes through the SAME gateway, which revalidates ownership,
+ * live shift state and expiry server-side and stamps the response time — this
+ * component performs NO direct entity writes and cannot forge guard/shift
+ * identity, duplicate log records or mark outcomes. The alarm state clearly
+ * shows whether the acknowledgement was recorded, already recorded
+ * (idempotent replay), queued for retry (offline — NOT yet recorded), or
+ * failed; a missed prompt states the truth and hands recording to the
+ * server sweep. The global panic button stays available outside this overlay.
+ */
+export default function StayAwakeAlert({ prompt, user, onDone, location }) {
+  const [secondsLeft, setSecondsLeft] = useState(60);
+  const [expired, setExpired] = useState(false);
+  const [ackState, setAckState] = useState("idle"); // idle | sending | synced | failed
+  const [ackMessage, setAckMessage] = useState("");
   const audioRef = useRef(null);
   const vibrationInterval = useRef(null);
 
+  // Countdown from the SERVER-issued deadline — the client never decides expiry.
   useEffect(() => {
-    const alertTime = new Date().toISOString();
-    
-    if (!alertSent) {
-      base44.entities.StayAwakeLog.create({
-        customer_id: user?.customer_id || undefined,
-        reseller_id: user?.reseller_id || undefined,
-        guard_id: shift.guard_id,
-        guard_name: shift.guard_name,
-        shift_id: shift.id,
-        alert_time: alertTime,
-        status: "sent"
-      });
-      setAlertSent(true);
-      playLoudAlarm();
-      startVibration();
-    }
-
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          handleMissed(alertTime);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
+    const expiry = prompt.expires_at ? new Date(prompt.expires_at).getTime() : Date.now() + 60000;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((expiry - Date.now()) / 1000));
+      setSecondsLeft(left);
+      if (left <= 0) {
+        setExpired(true);
+        stopAlarm();
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    playLoudAlarm();
+    startVibration();
     return () => {
       clearInterval(timer);
       stopAlarm();
     };
-  }, []);
+  }, [prompt?.id]);
 
   const playLoudAlarm = () => {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
-      
+
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
-      
-      oscillator.type = 'square';
+
+      oscillator.type = "square";
       oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
       gainNode.gain.setValueAtTime(1.0, audioContext.currentTime);
-      
+
       oscillator.start();
-      
-      setInterval(() => {
+      const toneInterval = setInterval(() => {
         oscillator.frequency.setValueAtTime(
           oscillator.frequency.value === 880 ? 440 : 880,
           audioContext.currentTime
         );
       }, 500);
-      
-      audioRef.current = { audioContext, oscillator, gainNode };
 
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('⚡ STAY AWAKE CHECK!', {
-          body: 'Confirm you are alert immediately!',
+      audioRef.current = { audioContext, oscillator, toneInterval };
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("⚡ STAY AWAKE CHECK!", {
+          body: "Confirm you are alert immediately!",
           requireInteraction: true,
-          tag: 'stay-awake',
-          vibrate: [500, 200, 500, 200, 500]
+          tag: "stay-awake",
+          vibrate: [500, 200, 500, 200, 500],
         });
       }
     } catch (error) {
@@ -83,7 +84,7 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
   };
 
   const startVibration = () => {
-    if ('vibrate' in navigator) {
+    if ("vibrate" in navigator) {
       vibrationInterval.current = setInterval(() => {
         navigator.vibrate([500, 200, 500, 200, 500]);
       }, 2000);
@@ -93,103 +94,115 @@ export default function StayAwakeAlert({ shift, onConfirm, location, user }) {
   const stopAlarm = () => {
     if (audioRef.current) {
       try {
+        clearInterval(audioRef.current.toneInterval);
         audioRef.current.oscillator.stop();
         audioRef.current.audioContext.close();
       } catch (e) {}
       audioRef.current = null;
     }
-    
     if (vibrationInterval.current) {
       clearInterval(vibrationInterval.current);
-      navigator.vibrate(0);
-    }
-  };
-
-  const handleMissed = async (alertTime) => {
-    await base44.entities.Alert.create({
-      type: "stay_awake",
-      priority: "critical",
-      title: "⚠️ MISSED STAY AWAKE RESPONSE",
-      message: `Guard ${shift.guard_name} did not respond to stay awake alert - IMMEDIATE ACTION REQUIRED`,
-      guard_id: shift.guard_id,
-      guard_name: shift.guard_name,
-      shift_id: shift.id,
-      status: "active"
-    });
-
-    // Tenant-scoped admin recipients via the getTenantUsers gateway.
-    const admins = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor']);
-
-    for (const admin of admins) {
-      await base44.functions.invoke('sendNotification', {
-        recipient_id: admin.id,
-        type: 'incident_critical',
-        priority: 'critical',
-        title: '⚠️ GUARD NOT RESPONDING',
-        message: `${shift.guard_name} missed stay awake check - verify immediately!`,
-        related_entity: 'alert',
-        related_id: shift.id
-      });
+      try { navigator.vibrate(0); } catch (e) {}
     }
   };
 
   const handleConfirm = async () => {
-    const responseTime = new Date().toISOString();
-    const alertTime = new Date(Date.now() - (60 - timeRemaining) * 1000).toISOString();
-
-    await base44.entities.StayAwakeLog.create({
-      customer_id: user?.customer_id || undefined,
-      reseller_id: user?.reseller_id || undefined,
-      guard_id: shift.guard_id,
-      guard_name: shift.guard_name,
-      shift_id: shift.id,
-      alert_time: alertTime,
-      response_time: responseTime,
-      response_method: "button",
-      location: location,
-      status: "acknowledged",
-      response_time_seconds: 60 - timeRemaining
-    });
-
-    stopAlarm();
-    onConfirm();
+    if (expired || ackState === "sending" || ackState === "synced") return;
+    setAckState("sending");
+    try {
+      const res = await base44.functions.invoke("stayAwakeService", {
+        action: "acknowledge",
+        log_id: prompt.id,
+        location: location && Number.isFinite(location?.lat) && Number.isFinite(location?.lng)
+          ? { lat: location.lat, lng: location.lng }
+          : null,
+      });
+      const data = res?.data ?? res;
+      if (data?.success) {
+        stopAlarm();
+        setAckState("synced");
+        setAckMessage(data.already ? "Acknowledgement already recorded." : "Acknowledgement recorded.");
+        setTimeout(() => onDone && onDone(), 1200);
+      } else {
+        setAckState("failed");
+        setAckMessage(
+          data?.error === "PROMPT_EXPIRED"
+            ? "This prompt expired before your response — the missed check has been recorded."
+            : data?.error === "SHIFT_NO_LONGER_ACTIVE"
+              ? "Your shift is no longer active — this prompt was cancelled."
+              : "Acknowledgement failed — please try again."
+        );
+      }
+    } catch (e) {
+      // Offline: the server is the only authority on whether the response
+      // counts — never claim success locally.
+      setAckState("failed");
+      setAckMessage("No connection — your response was NOT recorded. Reconnect and confirm before the timer ends.");
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-rose-900/98 z-[9999] flex items-center justify-center p-4 animate-pulse">
-      <Card className="max-w-md w-full bg-gradient-to-br from-rose-600/50 to-orange-600/50 border-4 border-rose-500 shadow-2xl animate-bounce">
+    <div className="fixed inset-0 bg-rose-900/98 z-[9999] flex items-center justify-center p-4">
+      <Card className="max-w-md w-full bg-gradient-to-br from-rose-600/50 to-orange-600/50 border-4 border-rose-500 shadow-2xl">
         <CardHeader className="text-center border-b-4 border-rose-500">
-          <div className="w-32 h-32 mx-auto mb-4 bg-rose-500 rounded-full flex items-center justify-center animate-ping">
-            <Zap className="w-16 h-16 text-white" />
+          <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${expired ? "bg-slate-600" : "bg-rose-500 animate-ping"}`}>
+            <Zap className="w-10 h-10 text-white" />
           </div>
-          <CardTitle className="text-4xl text-white mb-3 animate-pulse">
-            🚨 STAY AWAKE CHECK 🚨
+          <CardTitle className="text-3xl text-white mb-3">
+            {expired ? "MISSED STAY AWAKE CHECK" : "🚨 STAY AWAKE CHECK 🚨"}
           </CardTitle>
-          <div className="flex items-center justify-center gap-2 text-rose-100 text-xl">
-            <Volume2 className="w-6 h-6 animate-bounce" />
-            <p>CONFIRM YOU ARE ALERT!</p>
-            <Volume2 className="w-6 h-6 animate-bounce" />
+          <div className="flex items-center justify-center gap-2 text-rose-100 text-lg">
+            <Volume2 className="w-5 h-5" />
+            <p>{expired ? "YOUR RESPONSE WAS NOT RECORDED" : "CONFIRM YOU ARE ALERT!"}</p>
+            <Volume2 className="w-5 h-5" />
           </div>
         </CardHeader>
-        <CardContent className="space-y-6 pt-6">
+        <CardContent className="space-y-5 pt-6">
           <div className="text-center">
-            <div className="text-9xl font-bold text-white mb-4 animate-pulse drop-shadow-[0_0_30px_rgba(255,255,255,0.8)]">
-              {timeRemaining}
+            <div className={`text-8xl font-bold text-white mb-3 ${expired ? "" : "animate-pulse drop-shadow-[0_0_30px_rgba(255,255,255,0.8)]"}`}>
+              {secondsLeft}
             </div>
-            <p className="text-white text-2xl font-bold animate-pulse">SECONDS TO RESPOND!</p>
+            <p className="text-white text-xl font-bold">
+              {expired ? "SECONDS ELAPSED" : "SECONDS TO RESPOND"}
+            </p>
+            <p className="text-rose-100 text-sm mt-1">
+              {prompt.site_name ? `Site: ${prompt.site_name}` : ""}
+            </p>
           </div>
 
-          <Button
-            className="w-full h-24 text-3xl font-bold bg-emerald-500 hover:bg-emerald-600 shadow-2xl animate-pulse border-4 border-white"
-            onClick={handleConfirm}
-          >
-            ✓ I AM AWAKE - CONFIRM NOW!
-          </Button>
+          {!expired ? (
+            <Button
+              className="w-full h-24 text-2xl font-bold bg-emerald-500 hover:bg-emerald-600 shadow-2xl border-4 border-white"
+              onClick={handleConfirm}
+              disabled={ackState === "sending" || ackState === "synced"}
+            >
+              {ackState === "sending" ? "RECORDING…" : ackState === "synced" ? "✓ RECORDED" : "✓ I AM AWAKE - CONFIRM NOW"}
+            </Button>
+          ) : (
+            <Button variant="outline" className="w-full h-16 text-lg font-bold" onClick={() => onDone && onDone()}>
+              Close
+            </Button>
+          )}
 
-          <div className="flex items-start gap-3 p-6 bg-rose-950/90 rounded-lg border-4 border-rose-500 animate-pulse">
-            <AlertCircle className="w-8 h-8 text-rose-300 flex-shrink-0 mt-1 animate-bounce" />
-            <p className="text-lg text-rose-100 font-bold leading-relaxed">
-              ⚠️ CRITICAL: No response will trigger IMMEDIATE ALERT to control room and supervisors!
+          {ackMessage && (
+            <div
+              className={`flex items-start gap-3 p-4 rounded-lg border-2 ${
+                ackState === "synced"
+                  ? "bg-emerald-950/80 border-emerald-500"
+                  : "bg-rose-950/80 border-rose-500"
+              }`}
+            >
+              <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5 text-white" />
+              <p className="text-sm text-white font-semibold leading-relaxed">{ackMessage}</p>
+            </div>
+          )}
+
+          <div className="flex items-start gap-3 p-4 bg-rose-950/90 rounded-lg border-2 border-rose-500">
+            <AlertCircle className="w-6 h-6 text-rose-300 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-rose-100 font-bold leading-relaxed">
+              {expired
+                ? "The missed check is recorded and your supervisor has been notified. Contact your control room if this was unexpected."
+                : "CRITICAL: No response will be recorded as MISSED and your control room will be alerted."}
             </p>
           </div>
         </CardContent>
