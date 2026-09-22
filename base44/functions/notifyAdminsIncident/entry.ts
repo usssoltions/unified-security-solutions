@@ -14,6 +14,7 @@ import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } fr
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -45,10 +46,23 @@ Deno.serve(async (req) => {
     // post-split roles previously resolved ZERO recipients (same confirmed
     // defect class as the Start of Shift notification). Suspended/inactive
     // users are excluded.
-    const recipients = (allUsers || []).filter((u) =>
+    const roleRecipients = (allUsers || []).filter((u) =>
       ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
       (!u.status || (u.status !== 'suspended' && u.status !== 'inactive'))
     );
+    // CONTROL ROOM narrowing — an operator receives an incident alert only
+    // when assigned to an ACTIVE Control Room covering the incident's site
+    // (role membership alone is never sufficient). The site is resolved from
+    // the Incident record itself — authoritative, never client-supplied.
+    let incidentSiteId = null;
+    try {
+      if (incidentId) {
+        const incRows = await base44.asServiceRole.entities.Incident.filter({ id: String(incidentId) });
+        incidentSiteId = (incRows && incRows[0] && incRows[0].site_id) || null;
+      }
+    } catch (_) { /* narrowing failure never blocks the alert */ }
+    const recipients = await narrowControlRoomOperators(base44.asServiceRole, roleRecipients, {
+      customer_id: user.customer_id || null, site_id: incidentSiteId });
 
     if (recipients.length === 0) {
       return Response.json({ success: false, message: 'No admin users found' });

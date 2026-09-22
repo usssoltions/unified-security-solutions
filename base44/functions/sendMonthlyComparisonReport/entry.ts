@@ -163,8 +163,13 @@ Deno.serve(async (req) => {
     // tenant that OWNS the data (Customer → Reseller → platform). No session
     // state, no cross-tenant data, no foreign branding.
     const allUsers = await base44.asServiceRole.entities.User.filter({});
+    // MODERN role resolution — customer_admin joins the management roles (a
+    // customer whose administrator holds the post-split role previously
+    // received ZERO comparison reports). Operators are deliberately excluded
+    // (management-level report).
     const recipients = allUsers.filter(u =>
-      (u.role_type === 'admin' || u.role_type === 'management' || u.role_type === 'supervisor') && u.email
+      (u.role_type === 'admin' || u.role_type === 'customer_admin' || u.role_type === 'management' || u.role_type === 'supervisor') &&
+      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) && u.email
     );
 
     if (recipients.length === 0) {

@@ -286,10 +286,21 @@ Deno.serve(async (req) => {
         : '✅ No critical incidents reported.',
     ].join('\n');
 
+    // TENANT-SCOPED + MODERN role recipients. Previous defect: recipients
+    // were filtered by role ONLY — every tenant's management received this
+    // report (cross-tenant email leak). The scope now mirrors the report's
+    // OWN tenant scope; platform oversight is always permitted.
     const allUsers = await base44.asServiceRole.entities.User.list();
+    const inReportScope = (u) => {
+      if (!tenantScope) return isPlatformAdmin(u);
+      if (tenantScope.customer_id) return isPlatformAdmin(u) || u.customer_id === tenantScope.customer_id;
+      if (tenantScope.reseller_id) return isPlatformAdmin(u) || u.reseller_id === tenantScope.reseller_id;
+      return isPlatformAdmin(u);
+    };
     const recipients = allUsers.filter((u) =>
-      (u.role_type === 'admin' || u.role_type === 'dispatcher' || u.role_type === 'supervisor' || u.role_type === 'management') &&
-      u.email
+      ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin'].includes(u.role_type) &&
+      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
+      u.email && inReportScope(u)
     );
 
     if (recipients.length === 0) {

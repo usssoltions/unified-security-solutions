@@ -1,5 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import { secrets } from 'base44:runtime';
+import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { sendNativePush } from '../../shared/nativePush.ts';
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 /**
  * finalizeAccessEntry — Backend access control finalisation.
@@ -77,6 +82,91 @@ const isPlatformUser = (u) =>
   u.role_type === 'platform_admin' || u.admin_level === 'platform' || u.role === 'admin';
 const isResellerAdmin = (u) =>
   u.admin_level === 'reseller' || u.role_type === 'reseller_admin';
+
+/* ── ACCESS-CONTROL SECURITY ALERTS ──────────────────────────────────────
+ * Blacklist hit / manual gate deny (severity 'security'): in-app + email +
+ * Telegram + native push to the customer's OWN operational recipients
+ * (modern roles + CONTROL ROOM narrowing, tenant-branded through the ONE
+ * shared renderers). Unexpected visitor entry (severity 'info'): in-app
+ * ONLY — routine gate oversight, never an email/Telegram storm per scan.
+ * Fully failure-isolated: an alert failure never blocks or rolls back the
+ * gate transaction that already succeeded. */
+async function dispatchAccessAlert(base44: any, caller: any, log: any, heading: string, severity: string) {
+  try {
+    const cid = caller.customer_id || null;
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: cid, reseller_id: caller.reseller_id || null });
+    const allUsers = (await base44.asServiceRole.entities.User
+      .filter(cid ? { customer_id: cid } : {}).catch(() => [])) || [];
+    const isPlatformUser = (u: any) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
+    const role = allUsers.filter((u: any) =>
+      ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
+      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
+      (isPlatformUser(u) || !!cid));
+    const recipients = await narrowControlRoomOperators(base44.asServiceRole, role, {
+      customer_id: cid, site_id: (log.site_id || caller.site_id) || null });
+    if (!recipients.length) return;
+
+    const when = new Date().toLocaleString('en-ZA');
+    const details = [
+      { label: 'Person', value: log.person_name || 'Unknown' },
+      { label: 'Person Type', value: log.person_type || 'unknown' },
+      { label: 'Gate', value: log.gate_name || '—' },
+      { label: 'Site', value: log.site_name || '—' },
+      { label: 'Reason', value: log.flag_reason || 'Access denied at the gate' },
+      { label: 'Processed By', value: log.guard_name || '—' },
+      { label: 'Time', value: when },
+    ];
+    const message = `${log.person_name || 'A person'} was ${severity === 'security' ? 'DENIED access' : 'processed as an unexpected visitor'} at ${log.gate_name || 'the gate'}${log.site_name ? ' (' + log.site_name + ')' : ''}. ${log.flag_reason || ''}`.trim();
+    const title = severity === 'security'
+      ? `⛔ ACCESS DENIED — ${log.person_name || 'Unknown'}`
+      : `⚠️ Unexpected Visitor — ${log.person_name || 'Unknown'}`;
+    const eventKey = (severity === 'security' ? 'access_denied:' : 'access_unexpected:') + log.id;
+
+    for (const r of recipients) {
+      await base44.asServiceRole.entities.Notification.create({
+        recipient_id: r.id,
+        recipient_name: r.display_name || r.full_name,
+        type: 'system',
+        priority: severity === 'security' ? 'critical' : 'medium',
+        title, message, read: false,
+        related_entity: 'AccessLog', related_id: log.id,
+        action_url: '/AccessHistory',
+        sent_via: severity === 'security' ? ['in_app', 'email', 'telegram', 'push'] : ['in_app'],
+        customer_id: cid || undefined,
+        reseller_id: caller.reseller_id || undefined,
+      }).catch(() => {});
+
+      if (severity !== 'security') continue;
+
+      await sendNativePush(base44.asServiceRole, {
+        user_id: r.id, title, body: message, priority: 'critical',
+        action_label: 'Open Access History', action_url: '/AccessHistory',
+        event_key: eventKey,
+        customer_id: cid || null, reseller_id: caller.reseller_id || null,
+      }).catch(() => {});
+      if (r.telegram_connected && r.telegram_notifications_enabled !== false && r.telegram_chat_id) {
+        await sendTaskTelegramDeduped(base44.asServiceRole, secrets, eventKey + ':' + r.id,
+          r.telegram_chat_id,
+          buildBrandedTelegram({ brand, heading, details, closing: 'Please review this access security event.' }))
+          .catch(() => {});
+      }
+      if (r.email) {
+        const tpl = buildBrandedEmail({
+          brand, heading,
+          greeting: 'Hello,',
+          intro: 'A person was denied access at the gate. Please review this security event.',
+          details,
+          closing: log.photo_url ? `Captured ID photo: ${log.photo_url}` : 'Please review this access event in the Access History.',
+        });
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          from_name: brand.brand_name + ' — Access Alerts', to: r.email,
+          subject: title, html: tpl.html, text: tpl.text,
+        }).catch(() => {});
+      }
+    }
+  } catch (_) { /* alert failure NEVER blocks the gate transaction */ }
+}
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -240,6 +330,9 @@ export default async function(req: Request): Promise<Response> {
         flag_reason: d.flag_reason || 'Manually denied at the gate',
         notes: d.notes || '',
       });
+      // SECURITY ALERT — in-app + email + Telegram + push to the customer's
+      // own operational recipients (failure-isolated, never blocks the deny).
+      await dispatchAccessAlert(base44, caller, log, 'Access Denied at Gate', 'security');
       return Response.json({ log });
     }
 
@@ -372,8 +465,19 @@ export default async function(req: Request): Promise<Response> {
         timestamp: now,
         guard_id: caller.id,
         guard_name: caller.display_name || caller.full_name,
+        flagged: !!blacklistMatch,
+        flag_reason: blacklistMatch ? ('Blacklist match: ' + (blacklistMatch.reason || 'banned identifier')) : undefined,
         blacklist_match_id: blacklistMatch?.id
       });
+
+      // SECURITY ALERT on a blacklist hit (all channels) / IN-APP ONLY for an
+      // unexpected visitor (routine gate oversight — no email/Telegram per
+      // scan). Failure-isolated; never blocks the entry transaction.
+      if (blacklistMatch) {
+        await dispatchAccessAlert(base44, caller, log, 'Blacklisted Person Denied Entry', 'security');
+      } else if (person_type === 'visitor' && (visitor_type === 'unexpected' || scan_method === 'manual')) {
+        await dispatchAccessAlert(base44, caller, log, 'Unexpected Visitor Entered', 'info');
+      }
 
       return Response.json({ success: true, access_log: log, blacklist_match: blacklistMatch ? { id: blacklistMatch.id, reason: blacklistMatch.reason } : null });
     }

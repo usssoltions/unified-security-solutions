@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { resolveShiftReportRecipients } from '../../shared/shiftReportRecipients.ts';
 import {
   resolveCommunicationBrand, escHtml,
   formatSastDate, formatSastTime, formatSastDateTime,
@@ -101,10 +102,10 @@ Deno.serve(async (req) => {
 
     // ── TENANT-SCOPED RECIPIENTS — modern role resolution + platform oversight ──
     const allUsers = await base44.asServiceRole.entities.User.list();
-    const recipients = (allUsers || []).filter(u =>
-      RECIPIENT_ROLES.includes(u.role_type) &&
-      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
-      (isPlatformUser(u) || (!!tenantCustomerId && u.customer_id === tenantCustomerId)));
+    // SHARED recipient resolution (modern roles + tenant scope + CONTROL
+    // ROOM narrowing) — identical to the End of Shift report path.
+    const recipients = await resolveShiftReportRecipients(base44.asServiceRole, allUsers, {
+      customer_id: tenantCustomerId, site_id: siteId });
     diag.recipients = recipients.map(r => r.id);
     if (!recipients.length) diag.failures.push('no_recipients_resolved');
 

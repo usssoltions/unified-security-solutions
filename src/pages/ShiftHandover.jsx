@@ -144,6 +144,15 @@ export default function ShiftHandover() {
         });
       }
 
+      // SERVER-SIDE END OF SHIFT REPORT NOTIFICATION — branded email +
+      // Telegram + in-app + push to the customer's operational management
+      // with the full proof-of-duty evidence (proof parity with Start of
+      // Shift). Failure-isolated server-side; never blocks submission, and
+      // the local incoming-guard notice above is untouched.
+      try {
+        await base44.functions.invoke("sendShiftHandoverNotification", { handover_id: handover.id });
+      } catch (_) {}
+
       return handover;
     },
     onSuccess: () => {

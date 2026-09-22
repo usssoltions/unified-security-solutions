@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -22,28 +23,82 @@ Deno.serve(async (req) => {
 
     // Get the schedule
     const schedule = await base44.asServiceRole.entities.ReportSchedule.get(schedule_id);
-    
+
     if (!schedule || schedule.status !== 'active') {
       return Response.json({ error: 'Schedule not found or inactive' }, { status: 404 });
     }
 
-    // Generate report data based on report_type
-    const reportData = await generateReportData(base44, schedule);
-    
+    // ── TENANT SCOPE (server-side, mandatory) ─────────────────────────────
+    // The schedule's CREATOR's authoritative tenant owns this report: it can
+    // only ever contain records from that tenant (or the platform-managed
+    // pool for a platform creator). The previous implementation pulled
+    // platform-wide data into every schedule's report — a cross-tenant data
+    // leak into explicitly-configured recipient inboxes.
+    let scopeCid = null;
+    let scopeRid = null;
+    try {
+      if (schedule.created_by_id) {
+        const creatorRows = await base44.asServiceRole.entities.User.filter({ id: String(schedule.created_by_id) });
+        const creator = (creatorRows && creatorRows[0]) || null;
+        scopeCid = creator?.customer_id || null;
+        scopeRid = creator?.reseller_id || null;
+      }
+    } catch (_) { /* unresolvable scope fails CLOSED below via scopeMatch */ }
+
+    // TENANT BRANDING — resolved from the report's OWN tenant scope
+    // (customer → reseller → USS platform default). No hard-coded identity.
+    const brand = await resolveCommunicationBrand(base44.asServiceRole, {
+      customer_id: scopeCid, reseller_id: scopeRid });
+
+    // Generate report data based on report_type — TENANT SCOPED
+    const reportData = await generateReportData(base44, scopeCid);
+
     // Format report message
     const reportMessage = formatReportMessage(schedule, reportData);
 
-    // Send to email recipients
+    // ONE shared branded email renderer (branded header/footer, tenant logo,
+    // colours, support contact) with the plain-text report as alternative.
+    const reportDetails = [
+      { label: 'Report', value: schedule.name },
+      { label: 'Date', value: new Date().toLocaleDateString('en-ZA') },
+      { label: 'Incidents', value: String(reportData.incidents?.length || 0) },
+      { label: 'Shifts', value: String(reportData.shifts?.length || 0) },
+      { label: 'Maintenance Requests', value: String(reportData.maintenance?.length || 0) },
+      { label: 'Patrol Checkpoints', value: String(reportData.patrols?.length || 0) },
+    ];
+    const brandTpl = buildBrandedEmail({
+      brand,
+      heading: schedule.name,
+      greeting: 'Hello,',
+      intro: 'Your scheduled report is ready.',
+      details: reportDetails,
+      closing: reportMessage.replace(/\n/g, '<br/>'),
+    });
+
+    // Send to the schedule's EXPLICITLY CONFIGURED email recipients
     if (schedule.email_recipients && schedule.email_recipients.length > 0) {
       for (const email of schedule.email_recipients) {
         try {
           await base44.asServiceRole.integrations.Core.SendEmail({
+            from_name: brand.brand_name,
             to: email,
-            subject: `${schedule.name} - ${new Date().toLocaleDateString()}`,
-            body: reportMessage
+            subject: `${schedule.name} - ${new Date().toLocaleDateString('en-ZA')}`,
+            html: brandTpl.html,
+            text: brandTpl.text,
           });
         } catch (error) {
+          // DELIVERY AUDIT — a failed report email is never silently dropped.
           console.error(`Failed to send email to ${email}:`, error);
+          await base44.asServiceRole.entities.NotificationDelivery.create({
+            event_key: `scheduled_report:${schedule_id}`,
+            channel: 'email',
+            status: 'failed',
+            customer_id: scopeCid || undefined,
+            reseller_id: scopeRid || undefined,
+            recipient_address: email,
+            send_time: new Date().toISOString(),
+            provider_response: String(error?.message || error).slice(0, 500),
+          }).catch(() => {});
         }
       }
     }
@@ -68,8 +123,8 @@ Deno.serve(async (req) => {
       last_sent: new Date().toISOString()
     });
 
-    return Response.json({ 
-      success: true, 
+    return Response.json({
+      success: true,
       message: 'Report sent successfully',
       email_count: schedule.email_recipients?.length || 0,
       whatsapp_count: schedule.whatsapp_recipients?.length || 0
@@ -81,42 +136,47 @@ Deno.serve(async (req) => {
   }
 });
 
-async function generateReportData(base44, schedule) {
+async function generateReportData(base44, scopeCid) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   const data = {};
+
+  // TENANT SCOPE MATCH — customer scope: only that customer's records;
+  // no customer scope (platform creator): only unscoped legacy records.
+  const scopeMatch = (rec) =>
+    scopeCid ? rec.customer_id === scopeCid : (!rec.customer_id && !rec.reseller_id);
 
   try {
     // Get incidents
     const incidents = await base44.asServiceRole.entities.Incident.list();
     data.incidents = incidents.filter(inc => {
       const incDate = new Date(inc.reported_at);
-      return incDate >= today && incDate < tomorrow;
+      return scopeMatch(inc) && incDate >= today && incDate < tomorrow;
     });
 
     // Get shifts
     const shifts = await base44.asServiceRole.entities.Shift.list();
     data.shifts = shifts.filter(shift => {
       const shiftDate = new Date(shift.start_time);
-      return shiftDate >= today && shiftDate < tomorrow;
+      return scopeMatch(shift) && shiftDate >= today && shiftDate < tomorrow;
     });
 
     // Get maintenance requests
     const maintenance = await base44.asServiceRole.entities.MaintenanceRequest.list();
     data.maintenance = maintenance.filter(req => {
       const reqDate = new Date(req.reported_at);
-      return reqDate >= today && reqDate < tomorrow;
+      return scopeMatch(req) && reqDate >= today && reqDate < tomorrow;
     });
 
     // Get patrol logs
     const patrols = await base44.asServiceRole.entities.PatrolLog.list();
     data.patrols = patrols.filter(patrol => {
       const patrolDate = new Date(patrol.timestamp);
-      return patrolDate >= today && patrolDate < tomorrow;
+      return scopeMatch(patrol) && patrolDate >= today && patrolDate < tomorrow;
     });
 
   } catch (error) {
@@ -127,12 +187,12 @@ async function generateReportData(base44, schedule) {
 }
 
 function formatReportMessage(schedule, data) {
-  const date = new Date().toLocaleDateString();
-  
+  const date = new Date().toLocaleDateString('en-ZA');
+
   let message = `📊 ${schedule.name}\n`;
   message += `📅 Date: ${date}\n`;
   message += `\n`;
-  
+
   if (schedule.report_type === 'daily_activity' || schedule.report_type === 'incidents') {
     message += `🚨 Incidents: ${data.incidents?.length || 0}\n`;
     if (data.incidents && data.incidents.length > 0) {
@@ -163,8 +223,7 @@ function formatReportMessage(schedule, data) {
   }
 
   message += `\n---\n`;
-  message += `Generated by Unified Security Solutions\n`;
-  message += `${new Date().toLocaleString()}`;
+  message += `Generated: ${new Date().toLocaleString('en-ZA')}`;
 
   return message;
 }

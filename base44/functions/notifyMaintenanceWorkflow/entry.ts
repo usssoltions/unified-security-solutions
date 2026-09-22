@@ -15,6 +15,7 @@ import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } fr
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -47,7 +48,18 @@ Deno.serve(async (req) => {
     // MODERN recipient resolution — post-split management roles join the
     // legacy list (same confirmed defect class as Start of Shift).
     const managementRoles = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
-    const management = (allUsers || []).filter((u) => managementRoles.includes(u.role_type));
+    const roleManagement = (allUsers || []).filter((u) => managementRoles.includes(u.role_type));
+    // CONTROL ROOM narrowing — an operator receives a workflow update only
+    // when assigned to an ACTIVE Control Room covering the request's site.
+    let maintenanceSiteId = null;
+    try {
+      if (maintenanceId) {
+        const mRows = await base44.asServiceRole.entities.MaintenanceRequest.filter({ id: String(maintenanceId) });
+        maintenanceSiteId = (mRows && mRows[0] && mRows[0].site_id) || null;
+      }
+    } catch (_) { /* narrowing failure never blocks the alert */ }
+    const management = await narrowControlRoomOperators(base44.asServiceRole, roleManagement, {
+      customer_id: user.customer_id || null, site_id: maintenanceSiteId });
 
     const hasLocation = location && location.lat != null && location.lng != null;
     const googleMapsUrl = hasLocation

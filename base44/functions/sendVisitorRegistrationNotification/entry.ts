@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { secrets } from 'base44:runtime';
+import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -94,6 +96,32 @@ Deno.serve(async (req) => {
         });
       }
     } catch (_) {}
+
+    // TELEGRAM — automatic operational channel for visitor pre-registration
+    // (same shared infrastructure + branded renderer as every other
+    // operational notification), failure-isolated with a deterministic
+    // per-recipient event key.
+    const preregEventKey = 'visitor_prereg:' + (visitorId || Date.now());
+    for (const u of recipients) {
+      if (!u.telegram_connected || u.telegram_notifications_enabled === false || !u.telegram_chat_id) continue;
+      await sendTaskTelegramDeduped(base44.asServiceRole, secrets,
+        preregEventKey + ':' + u.id,
+        u.telegram_chat_id,
+        buildBrandedTelegram({
+          brand,
+          heading: 'Visitor Pre-Registered',
+          details: [
+            { label: 'Visitor', value: visitorName || 'N/A' },
+            visitorIdNumber ? { label: 'ID / Licence', value: visitorIdNumber } : null,
+            vehicleReg ? { label: 'Vehicle', value: vehicleReg } : null,
+            { label: 'Host', value: hostName || 'N/A' },
+            { label: 'Valid', value: dateRange },
+            qrCode ? { label: 'QR pass', value: qrCode } : null,
+          ],
+          closing: 'The visitor will present their QR code at the gate for scanning.',
+        }))
+        .catch(() => {});
+    }
 
     return Response.json({ success: true, notified: recipients.length });
   } catch (error) {

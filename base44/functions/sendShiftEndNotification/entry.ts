@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 
 // Phase H — shift-end notification dispatcher.
@@ -103,9 +104,14 @@ export default async function(req) {
     // shift-end notifications.
     const allUsers = await base44.asServiceRole.entities.User.list();
     const isPlatformUser = (u) => u.role_type === 'platform_admin' || u.admin_level === 'platform';
-    const admins = (allUsers || []).filter(u =>
+    const roleAdmins = (allUsers || []).filter(u =>
       SUPERVISOR_ROLES.includes(u.role_type) &&
+      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
       (isPlatformUser(u) || !shift.customer_id || u.customer_id === shift.customer_id));
+    // CONTROL ROOM narrowing — an operator receives the shift-end alert only
+    // when assigned to an ACTIVE Control Room covering the shift's site.
+    const admins = await narrowControlRoomOperators(base44.asServiceRole, roleAdmins, {
+      customer_id: shift.customer_id || null, site_id: shift.site_id || null });
 
     let notified = 0;
     for (const admin of admins) {

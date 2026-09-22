@@ -3,6 +3,7 @@ import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } fr
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 /**
  * notifyAdminsMaintenance
@@ -37,10 +38,22 @@ Deno.serve(async (req) => {
     // control_room_operator (post-split roles) — legacy-only filters
     // previously resolved ZERO recipients for customers whose managers hold
     // the modern roles. Suspended/inactive users are excluded.
-    const admins = (allUsers || []).filter((u) =>
+    const roleAdmins = (allUsers || []).filter((u) =>
       ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
       (!u.status || (u.status !== 'suspended' && u.status !== 'inactive'))
     );
+    // CONTROL ROOM narrowing — an operator receives a maintenance alert only
+    // when assigned to an ACTIVE Control Room covering the request's site.
+    // The site is resolved from the MaintenanceRequest record itself.
+    let maintenanceSiteId = null;
+    try {
+      if (maintenanceId) {
+        const mRows = await base44.asServiceRole.entities.MaintenanceRequest.filter({ id: String(maintenanceId) });
+        maintenanceSiteId = (mRows && mRows[0] && mRows[0].site_id) || null;
+      }
+    } catch (_) { /* narrowing failure never blocks the alert */ }
+    const admins = await narrowControlRoomOperators(base44.asServiceRole, roleAdmins, {
+      customer_id: user.customer_id || null, site_id: maintenanceSiteId });
 
     if (admins.length === 0) {
       return Response.json({ success: false, message: 'No admins found' });

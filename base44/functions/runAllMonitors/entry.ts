@@ -3,6 +3,7 @@ import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -79,12 +80,20 @@ Deno.serve(async (req) => {
             }
             return null;
           };
-          const scopedSupervisors = (scope) => allUsers.filter(u =>
-            ['dispatcher', 'admin', 'supervisor', 'customer_admin'].includes(u.role_type) &&
-            (isPlatformUser(u) ||
+          // MODERN roles (management/customer_admin/control_room_operator) + CONTROL
+          // ROOM narrowing: an operator receives a monitor alert for a site only when
+          // assigned to an ACTIVE Control Room covering that site.
+          const scopedSupervisors = async (scope, siteId) => {
+            const role = allUsers.filter(u =>
+              ['dispatcher', 'admin', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
+              (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
+              (isPlatformUser(u) ||
               (scope?.customer_id
                 ? u.customer_id === scope.customer_id
                 : (scope?.reseller_id ? u.reseller_id === scope.reseller_id : false))));
+            return await narrowControlRoomOperators(base44.asServiceRole, role, {
+              customer_id: scope?.customer_id || null, site_id: siteId || null });
+          };
           const alertedPatrolIds = new Set(existingOverdueAlerts.map(a => a.metadata?.patrol_id).filter(Boolean));
           const OVERDUE_THRESHOLD_MINUTES = 30;
           let overdueAlerts = 0;
@@ -112,7 +121,7 @@ Deno.serve(async (req) => {
               reseller_id: scope?.reseller_id || undefined,
               metadata: { patrol_id: patrol.id, checkpoints_completed: completed, total_checkpoints: total }
             });
-            const targets = scope ? scopedSupervisors(scope) : [];
+            const targets = scope ? await scopedSupervisors(scope, patrol.site_id) : [];
             if (!scope) {
               await base44.asServiceRole.entities.PlatformAuditLog.create({
                 event_type: 'patrol.notification.skipped',
@@ -188,9 +197,14 @@ Deno.serve(async (req) => {
           // dispatcher/supervisor/customer admin (platform oversight always
           // permitted). No cross-tenant missed-clock-in notifications.
           const isPlatformUser = (u) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
-          const scopedAdmins = (shift) => allUsers.filter(u =>
-            ['admin', 'dispatcher', 'supervisor', 'customer_admin'].includes(u.role_type) &&
-            (isPlatformUser(u) || !shift.customer_id || u.customer_id === shift.customer_id));
+          const scopedAdmins = async (shift) => {
+            const role = allUsers.filter(u =>
+              ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
+              (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
+              (isPlatformUser(u) || !shift.customer_id || u.customer_id === shift.customer_id));
+            return await narrowControlRoomOperators(base44.asServiceRole, role, {
+              customer_id: shift.customer_id || null, site_id: shift.site_id || null });
+          };
           const alertedShiftIds = new Set(existingMissedAlerts.map(a => a.shift_id).filter(Boolean));
           let clockinAlerts = 0;
           for (const shift of missedShifts) {
@@ -208,7 +222,7 @@ Deno.serve(async (req) => {
             // supervisors. Every channel failure-isolated; deterministic
             // event key 'missed_clockin:<shiftId>' dedupes sweep retries.
             const guardUser = allUsers.find(u => u.id === shift.guard_id) || null;
-            const targets = [guardUser, ...scopedAdmins(shift)].filter(Boolean);
+            const targets = [guardUser, ...(await scopedAdmins(shift))].filter(Boolean);
             // TENANT BRANDING — resolved once per shift (customer → reseller →
             // USS platform default) for the email and Telegram bodies.
             const clockinBrand = await resolveCommunicationBrand(base44.asServiceRole, {
@@ -446,12 +460,15 @@ Deno.serve(async (req) => {
           // always permitted). No cross-tenant recipient is ever notified.
           const allUsers = (await base44.asServiceRole.entities.User.list().catch(() => [])) || [];
           const isPlatformUser = (u) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
-          const resolvePatrolRecipients = (patrol) => ({
-            guard: allUsers.find(u => u.id === patrol.guard_id) || null,
-            supervisors: allUsers.filter(u =>
-              ['admin', 'dispatcher', 'supervisor', 'customer_admin'].includes(u.role_type) &&
-              (isPlatformUser(u) || !patrol.customer_id || u.customer_id === patrol.customer_id)),
-          });
+          const resolvePatrolRecipients = async (patrol) => {
+            const role = allUsers.filter(u =>
+              ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(u.role_type) &&
+              (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
+              (isPlatformUser(u) || !patrol.customer_id || u.customer_id === patrol.customer_id));
+            const supervisors = await narrowControlRoomOperators(base44.asServiceRole, role, {
+              customer_id: patrol.customer_id || null, site_id: patrol.site_id || null });
+            return { guard: allUsers.find(u => u.id === patrol.guard_id) || null, supervisors };
+          };
 
           // Multi-channel patrol exception dispatch — every channel is
           // FAILURE-ISOLATED (a Telegram/email/in-app failure never blocks
@@ -526,7 +543,7 @@ Deno.serve(async (req) => {
             if (minsLate > missedThreshold) {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'missed' });
               markedMissed++;
-              const { guard, supervisors } = resolvePatrolRecipients(patrol);
+              const { guard, supervisors } = await resolvePatrolRecipients(patrol);
               if (patrol.guard_name || guard) {
                 await dispatchPatrolException(patrol, [guard, ...supervisors], 'patrol_missed',
                   `⚠️ Missed Patrol — ${patrol.site_name}`,
@@ -535,7 +552,7 @@ Deno.serve(async (req) => {
             } else if (minsLate > overdueThreshold) {
               await base44.asServiceRole.entities.ScheduledPatrol.update(patrol.id, { status: 'overdue' });
               markedOverdue++;
-              const { guard, supervisors } = resolvePatrolRecipients(patrol);
+              const { guard, supervisors } = await resolvePatrolRecipients(patrol);
               if (patrol.guard_name || guard) {
                 await dispatchPatrolException(patrol, [guard, ...supervisors], 'patrol_overdue',
                   `⏰ Patrol Overdue — ${patrol.site_name}`,
@@ -547,7 +564,7 @@ Deno.serve(async (req) => {
               // PATROL DUE NOW — guard notification (in-app + push + Telegram;
               // no email on high-frequency reminders). Failure-isolated; the
               // deterministic event key dedupes sweep retries.
-              const { guard: dueGuard } = resolvePatrolRecipients(patrol);
+              const { guard: dueGuard } = await resolvePatrolRecipients(patrol);
               const dueTitle = '🛡️ Patrol Due Now';
               const dueBody = `Patrol #${patrol.patrol_number} at ${patrol.site_name} is due now — ${patrol.checkpoints_total || 0} checkpoints.`;
               if (dueGuard) {

@@ -96,11 +96,16 @@ Deno.serve(async (req) => {
     const allUsers = await base44.asServiceRole.entities.User.filter({});
     // Recipients are scoped to the caller's OWN tenant — Customer A's board
     // report is never emailed to Customer B's administrators.
+    // MODERN role resolution — customer_admin joins the management roles (a
+    // customer whose administrator holds the post-split role previously
+    // received ZERO board reports). Control room operators are deliberately
+    // excluded: this is a management-level report.
     const recipients = allUsers.filter(u =>
       u.role_type === 'admin' ||
+      u.role_type === 'customer_admin' ||
       u.role_type === 'management' ||
       u.role_type === 'supervisor'
-    ).filter(u => u.email && matchesScope(u));
+    ).filter(u => u.email && (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) && matchesScope(u));
 
     // Generate PDF Report with enhanced visuals
     const doc = new jsPDF();

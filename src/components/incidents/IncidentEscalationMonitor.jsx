@@ -1,13 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { fetchTenantUsers, fetchTenantUsersInRoles } from "@/lib/tenantLookups";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { useBranding } from "@/hooks/useBranding";
+import { resolveBrand } from "@/lib/branding";
 
 export default function IncidentEscalationMonitor({ user }) {
   const [lastCheck, setLastCheck] = useState(Date.now());
+  // TENANT BRANDING — effective brand for the escalation emails (server-
+  // resolved white-label branding; platform default as fallback).
+  const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  const brandNameRef = useRef(null);
+  brandNameRef.current = resolveBrand(branding)?.appName || null;
 
   useEffect(() => {
-    if (!user || !['admin', 'dispatcher', 'supervisor'].includes(user.role_type)) {
+    if (!user || !['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'].includes(user.role_type)) {
       return;
     }
 
@@ -68,12 +75,15 @@ export default function IncidentEscalationMonitor({ user }) {
         // Tenant-scoped recipients via the getTenantUsers gateway — the
         // server resolves the caller's organisation; never a platform-wide
         // client-side User read.
-        const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor']);
+        // MODERN recipient resolution — customer_admin / control_room_operator
+        // / management join the legacy roles (post-split defect class).
+        const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator']);
 
         const emailPromises = (Array.isArray(supervisors) ? supervisors : [])
           .filter(sup => sup.email && sup.id !== incident.guard_id)
           .map(supervisor =>
             base44.integrations.Core.SendEmail({
+              from_name: brandNameRef.current || undefined,
               to: supervisor.email,
               subject: `🚨 ESCALATED INCIDENT: ${incident.title}`,
               body: `
@@ -191,12 +201,15 @@ export default function IncidentEscalationMonitor({ user }) {
           // Tenant-scoped recipients via the getTenantUsers gateway — the
           // server resolves the caller's organisation; never a platform-wide
           // client-side User read.
-          const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor']);
+          // MODERN recipient resolution — customer_admin / control_room_operator
+          // / management join the legacy roles (post-split defect class).
+          const supervisors = await fetchTenantUsersInRoles(['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator']);
 
           const reassignmentEmails = (Array.isArray(supervisors) ? supervisors : [])
             .filter(sup => sup.email)
             .map(supervisor =>
               base44.integrations.Core.SendEmail({
+                from_name: brandNameRef.current || undefined,
                 to: supervisor.email,
                 subject: `Incident Reassigned: ${incident.title}`,
                 body: `

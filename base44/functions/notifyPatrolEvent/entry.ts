@@ -22,6 +22,7 @@ import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 const MONITORING_ROLES = ['admin', 'dispatcher', 'supervisor', 'customer_admin', 'control_room_operator'];
 
@@ -89,10 +90,15 @@ export default async function(req) {
     // permitted). The reporting guard is excluded — they already know.
     const allUsers = (await base44.asServiceRole.entities.User.list().catch(() => [])) || [];
     const isPlatformUser = (u) => u.role_type === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform';
-    const recipients = allUsers.filter(u =>
+    const roleRecipients = allUsers.filter(u =>
       MONITORING_ROLES.includes(u.role_type) &&
+      (!u.status || (u.status !== 'suspended' && u.status !== 'inactive')) &&
       u.id !== patrol.guard_id &&
       (isPlatformUser(u) || !patrol.customer_id || u.customer_id === patrol.customer_id));
+    // CONTROL ROOM narrowing — an operator receives a patrol event alert
+    // only when assigned to an ACTIVE Control Room covering the patrol's site.
+    const recipients = await narrowControlRoomOperators(base44.asServiceRole, roleRecipients, {
+      customer_id: patrol.customer_id || null, site_id: patrol.site_id || null });
 
     let notified = 0;
     for (const r of recipients) {
