@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShirtIcon, Plus, X, Trash2, Clock, Calendar } from "lucide-react";
+import { listVendors, listLaundry, createLaundry, updateLaundry } from "@/lib/estateApi";
 
 const TIME_SLOTS = ["08:00 - 10:00", "10:00 - 12:00", "12:00 - 14:00", "14:00 - 16:00", "16:00 - 18:00"];
 const ITEM_TYPES = ["Shirts", "Trousers", "Suits", "Dresses", "Bedding", "Curtains", "Other"];
@@ -34,35 +35,29 @@ export default function ResidentLaundry() {
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  // Vendors and the resident's own requests are tenant-scoped server-side.
   const { data: vendors = [] } = useQuery({
     queryKey: ["laundry_vendors"],
-    queryFn: () => base44.entities.Vendor.filter({ category: "laundry", status: "active" }),
+    queryFn: () => listVendors({ category: "laundry", status: "active" }).then(r => r.vendors),
     initialData: [],
   });
 
   const { data: myRequests = [] } = useQuery({
     queryKey: ["my_laundry", user?.id],
-    queryFn: () => base44.entities.LaundryRequest.filter({ resident_id: user?.id }),
+    queryFn: () => listLaundry().then(r => r.laundry),
     enabled: !!user, initialData: [],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
       const vendor = vendors.find((v) => v.id === data.vendor_id);
-      const created = await base44.entities.LaundryRequest.create({
-        ...data,
-        customer_id: user.customer_id || undefined,
-        reseller_id: user.reseller_id || undefined,
-        vendor_name: vendor?.business_name || "",
-        resident_id: user.id,
-        resident_name: user.display_name || user.full_name,
-        unit_number: user.unit_number,
-        status: "scheduled"
-      });
+      // The gateway validates the vendor, stamps the resident/tenant identity
+      // and enforces tenant isolation server-side.
+      const created = await createLaundry(data);
       // Notify admins + estate management so the request is actioned.
       try {
         await base44.functions.invoke("notifyAdminsLaundry", {
-          requestId: created.id,
+          requestId: created?.record?.id,
           residentName: user.display_name || user.full_name,
           unitNumber: user.unit_number,
           pickupDate: data.pickup_date,
@@ -84,7 +79,7 @@ export default function ResidentLaundry() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id) => base44.entities.LaundryRequest.update(id, { status: "cancelled" }),
+    mutationFn: (id) => updateLaundry(id, { status: "cancelled" }),
     onSuccess: () => qc.invalidateQueries(["my_laundry"]),
   });
 

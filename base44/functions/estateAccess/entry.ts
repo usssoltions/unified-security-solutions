@@ -345,6 +345,22 @@ export default async function main(req: Request): Promise<Response> {
       const rows = await svc.entities.VenueBooking.filter(tenantQuery(p.filter || {}), '-created_date', 500).catch(() => []);
       return Response.json({ bookings: rows || [] });
     }
+    /* Resident availability preview — busy time ranges only (no names). */
+    if (action === 'venue_availability') {
+      if (!authorized || !(isResident || isManager)) return err('Forbidden', 403);
+      if (!p.venue_id || !p.date) return err('venue_id and date are required.');
+      const venue = await find('Venue', p.venue_id);
+      if (!venue || !inManageScope(venue)) return err('Venue not available.', 404);
+      const existing = await svc.entities.VenueBooking.filter({ venue_id: venue.id }, '-created_date', 500).catch(() => []);
+      const busy = (existing || []).filter((b) => BOOKING_ACTIVE_STATUSES.includes(b.status)).map((b) => {
+        if (b.start_datetime && b.end_datetime) return { start: b.start_datetime.slice(11, 16), end: b.end_datetime.slice(11, 16) };
+        if (b.booking_date === p.date && b.start_time && b.end_time) return { start: b.start_time, end: b.end_time };
+        return null;
+      }).filter(Boolean);
+      return Response.json({ busy, blocked: (venue.blocked_periods || []).map((bp) => ({
+        start: bp.start_datetime, end: bp.end_datetime, reason: bp.reason || null,
+      })) });
+    }
     if (action === 'create_booking') {
       if (!authorized || !(isResident || isManager)) return err('Forbidden', 403);
       if (!scope.customer_id) return err('A customer scope is required.', 400);
@@ -354,10 +370,22 @@ export default async function main(req: Request): Promise<Response> {
       if (!venue || !inManageScope(venue) || venue.status !== 'active') {
         return err('Venue not available.', 404);
       }
-      const start = d.start_datetime ? new Date(d.start_datetime) : null;
-      const end = d.end_datetime ? new Date(d.end_datetime) : null;
-      if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
-        return err('Valid start and end datetimes are required.');
+      // Accept either a datetime pair or the legacy date + times. LOCAL
+      // strings are preserved verbatim (never converted through UTC) so
+      // booking_date / start_time / end_time always stay in estate time.
+      let startStr = null;
+      let endStr = null;
+      if (d.start_datetime && d.end_datetime) {
+        startStr = String(d.start_datetime);
+        endStr = String(d.end_datetime);
+      } else if (d.booking_date && d.start_time && d.end_time) {
+        startStr = `${d.booking_date}T${d.start_time}:00`;
+        endStr = `${d.booking_date}T${d.end_time}:00`;
+      }
+      const start = startStr ? new Date(startStr) : null;
+      const end = endStr ? new Date(endStr) : null;
+      if (!startStr || !endStr || isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+        return err('Valid booking date, start and end times are required.');
       }
       // Advance booking window
       const advanceDays = venue.advance_booking_days ?? 90;
@@ -374,22 +402,33 @@ export default async function main(req: Request): Promise<Response> {
           return err('Venue is unavailable for that period.', 409);
         }
       }
-      // Collision with existing active bookings
+      // Collision with existing active bookings (datetime pair OR legacy
+      // booking_date + start_time/end_time — both stored as local strings).
       const existing = await svc.entities.VenueBooking.filter({ venue_id: venue.id }, '-created_date', 500).catch(() => []);
-      const clash = (existing || []).find((b) =>
-        BOOKING_ACTIVE_STATUSES.includes(b.status) && b.start_datetime && b.end_datetime &&
-        start < new Date(b.end_datetime) && end > new Date(b.start_datetime));
+      const bookRange = (b) => {
+        if (b.start_datetime && b.end_datetime) return { s: new Date(b.start_datetime), e: new Date(b.end_datetime) };
+        if (b.booking_date && b.start_time && b.end_time) {
+          return { s: new Date(`${b.booking_date}T${b.start_time}:00`), e: new Date(`${b.booking_date}T${b.end_time}:00`) };
+        }
+        return null;
+      };
+      const clash = (existing || []).find((b) => {
+        if (!BOOKING_ACTIVE_STATUSES.includes(b.status)) return false;
+        const r = bookRange(b);
+        return r && start < r.e && end > r.s;
+      });
       if (clash) return err('That time slot is already booked.', 409);
 
       const reseller_id = await resolveResellerId();
       const residentId = isResident ? caller.id : (d.resident_id || caller.id);
-      const firstDay = start.toISOString().slice(0, 10);
       const created = await svc.entities.VenueBooking.create({
         customer_id: scope.customer_id, reseller_id, site_id: venue.site_id || null,
         venue_id: venue.id, venue_name: venue.name,
         resident_id: residentId, resident_name: selfName(), unit_number: selfUnit(),
-        start_datetime: start.toISOString(), end_datetime: end.toISOString(),
-        booking_date: firstDay, start_time: start.toISOString().slice(11, 16), end_time: end.toISOString().slice(11, 16),
+        start_datetime: startStr, end_datetime: endStr,
+        booking_date: d.booking_date || startStr.slice(0, 10),
+        start_time: d.start_time || startStr.slice(11, 16),
+        end_time: d.end_time || endStr.slice(11, 16),
         guest_count: Number(d.guest_count) || 1, purpose: d.purpose || null,
         status: venue.approval_mode === 'automatic' ? 'approved' : 'pending',
         approval_mode: venue.approval_mode || 'automatic',
@@ -483,6 +522,19 @@ export default async function main(req: Request): Promise<Response> {
         return null;
       });
     if (announcementResult) return announcementResult;
+    /* Resident acknowledgement — appends ONLY the caller's own id to read_by. */
+    if (action === 'acknowledge_announcement') {
+      if (!authorized) return deny();
+      if (!p.id) return err('An announcement id is required.');
+      const rec = await find('Announcement', p.id);
+      if (!rec || !inManageScope(rec) || !rec.published) return err('Announcement not found in your scope.', 404);
+      const readBy = Array.isArray(rec.read_by) ? rec.read_by : [];
+      if (!readBy.includes(caller.id)) {
+        await svc.entities.Announcement.update(rec.id, { read_by: [...readBy, caller.id] });
+      }
+      return Response.json({ success: true });
+    }
+
     /* publish_announcement — explicit publish action (single intent) */
     if (action === 'publish_announcement') {
       if (!authorized || !isManager) return err('Forbidden', 403);

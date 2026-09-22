@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, Users, X, CheckCircle2, Building2, Plus, AlertCircle, ShoppingCart } from "lucide-react";
+import {
+  listVenues, listBookings, createBooking, updateBooking, venueAvailability,
+} from "@/lib/estateApi";
 
 const toMin = (t) => {
   if (!t) return 0;
@@ -36,39 +39,48 @@ export default function ResidentBookings() {
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  // Venues and the resident's own bookings are tenant-scoped server-side.
   const { data: venues = [] } = useQuery({
     queryKey: ["venues_active"],
-    queryFn: () => base44.entities.Venue.filter({ status: "active" }),
+    queryFn: () => listVenues({ status: "active" }).then(r => r.venues),
     initialData: [],
   });
 
   const { data: myBookings = [] } = useQuery({
     queryKey: ["my_bookings_list", user?.id],
-    queryFn: () => base44.entities.VenueBooking.filter({ resident_id: user?.id }),
+    queryFn: () => listBookings().then(r => r.bookings),
     enabled: !!user, initialData: [],
   });
 
-  // All bookings (to detect conflicts across the whole estate on a date).
-  const { data: allBookings = [] } = useQuery({
-    queryKey: ["all_venue_bookings"],
-    queryFn: () => base44.entities.VenueBooking.list("-created_date", 500),
-    initialData: [],
-  });
+  // Busy time ranges per cart venue, resolved server-side by the gateway
+  // (occupancy preview only — the definitive collision check happens on
+  // booking create inside the gateway).
+  const [busyMap, setBusyMap] = useState({});
+  const cartVenueKey = cart.map((c) => c.venue.id).join(",");
+  useEffect(() => {
+    const ids = [...new Set(cartVenueKey.split(",").filter(Boolean))];
+    if (!date || ids.length === 0) { setBusyMap({}); return; }
+    let cancelled = false;
+    Promise.all(ids.map((id) => venueAvailability(id, date).catch(() => ({ busy: [] }))))
+      .then((results) => {
+        if (cancelled) return;
+        const map = {};
+        ids.forEach((id, i) => { map[id] = results[i]?.busy || []; });
+        setBusyMap(map);
+      });
+    return () => { cancelled = true; };
+  }, [cartVenueKey, date]);
 
-  // Existing bookings for a venue on a date that count as "taken" (pending or approved).
-  const bookingsFor = (venueId, bookingDate) =>
-    allBookings.filter((b) => b.venue_id === venueId && b.booking_date === bookingDate && ["pending", "approved"].includes(b.status));
-
-  // Conflicting bookings for a cart item's time range.
+  // Conflicting busy ranges for a cart item's time range.
   const conflictsFor = (item) =>
-    bookingsFor(item.venue.id, item.booking_date).filter((b) => overlaps(item.start_time, item.end_time, b.start_time, b.end_time));
+    (busyMap[item.venue.id] || []).filter((b) => overlaps(item.start_time, item.end_time, b.start, b.end));
 
   // Available slots for a venue+date (not overlapping any taken booking).
-  const availableSlots = (venueId, bookingDate) => {
-    const taken = bookingsFor(venueId, bookingDate);
+  const availableSlots = (venueId) => {
+    const taken = busyMap[venueId] || [];
     return generateSlots().filter((slot) => {
       const [s, e] = slotToRange(slot);
-      return !taken.some((b) => overlaps(s, e, b.start_time, b.end_time));
+      return !taken.some((b) => overlaps(s, e, b.start, b.end));
     });
   };
 
@@ -85,72 +97,39 @@ export default function ResidentBookings() {
 
   const bookMutation = useMutation({
     mutationFn: async () => {
-      // Final guard: block any conflicting items before creating anything.
-      const conflicting = cart.filter((c) => conflictsFor(c).length > 0);
-      if (conflicting.length > 0) {
-        throw new Error(`${conflicting.length} booking(s) conflict with existing reservations. Please pick an available slot.`);
-      }
-      // Server-side collision validation for each cart item.
+      // Each cart item is created through the estateAccess gateway, which
+      // validates the venue, checks collisions server-side, stamps the
+      // resident/tenant identity and notifies the estate managers for
+      // approval-mode venues.
+      const created = [];
       for (const c of cart) {
-        try {
-          const { data: collision } = await base44.functions.invoke('checkVenueCollision', {
-            venue_id: c.venue.id,
-            booking_date: c.booking_date,
-            start_time: c.start_time,
-            end_time: c.end_time,
-          });
-          if (collision?.has_collision) {
-            throw new Error(`${c.venue.name} is already booked for this time slot.`);
-          }
-        } catch (e) {
-          if (e.message?.includes('already booked')) throw e;
-          // If collision check fails (network/permission), fall through to client-side guard.
-        }
+        const res = await createBooking({
+          venue_id: c.venue.id,
+          booking_date: c.booking_date,
+          start_time: c.start_time,
+          end_time: c.end_time,
+          guest_count: Number(c.guest_count) || 1,
+          purpose: c.purpose,
+          special_requirements: c.special_requirements,
+        });
+        if (res?.record) created.push(res.record);
       }
-      const payload = cart.map((c) => ({
-        venue_id: c.venue.id,
-        venue_name: c.venue.name,
-        customer_id: user.customer_id,
-        reseller_id: user.reseller_id,
-        resident_id: user.id,
-        resident_name: user.display_name || user.full_name,
-        unit_number: user.unit_number,
-        booking_date: c.booking_date,
-        start_time: c.start_time,
-        end_time: c.end_time,
-        guest_count: Number(c.guest_count) || 1,
-        purpose: c.purpose,
-        special_requirements: c.special_requirements,
-        status: "pending",
-        collision_checked: true,
-      }));
-      return await base44.entities.VenueBooking.bulkCreate(payload);
+      return created;
     },
-    onSuccess: (created) => {
+    onSuccess: () => {
       qc.invalidateQueries(["my_bookings_list"]);
-      qc.invalidateQueries(["all_venue_bookings"]);
       setCart([]);
       setDate("");
-      const createdBookings = Array.isArray(created) ? created : [created];
-      const bookingIds = createdBookings.map((b) => b?.id).filter(Boolean);
-      if (bookingIds.length) {
-        // Notify the estate managers server-side (tenant audience resolution).
-        base44.functions.invoke("estateNotify", { action: "booking_request", booking_ids: bookingIds }).catch(() => {});
-      }
       alert("Booking request(s) submitted! Awaiting approval.");
     },
-    onError: (e) => alert(e.message || "Booking failed."),
+    onError: (e) => alert(
+      (e?.response?.data?.error) || e?.error || e?.message || "Booking failed."),
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (b) => base44.entities.VenueBooking.update(b.id, { status: "cancelled" }),
-    onSuccess: (_data, b) => {
+    mutationFn: (b) => updateBooking(b.id, { status: "cancelled" }),
+    onSuccess: () => {
       qc.invalidateQueries(["my_bookings_list"]);
-      qc.invalidateQueries(["all_venue_bookings"]);
-      if (b?.id) {
-        // Informational in-app notice to the estate managers (no spam channels).
-        base44.functions.invoke("estateNotify", { action: "booking_decision", booking_id: b.id, decision: "cancelled" }).catch(() => {});
-      }
     },
   });
 

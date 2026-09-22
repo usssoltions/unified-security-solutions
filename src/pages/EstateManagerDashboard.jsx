@@ -14,7 +14,10 @@ import {
   Plus, X, ShoppingBag, Car, Settings, Shield, Loader2, AlertCircle
 } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
-import { useTenantContext } from "@/hooks/useTenantContext";
+import {
+  listResidents, listTickets, listBookings, listOrders, listAnnouncements,
+  createAnnouncement, publishAnnouncement, updateBooking, updateTicket,
+} from "@/lib/estateApi";
 import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import BrandHeader from "@/components/branding/BrandHeader";
@@ -24,7 +27,6 @@ export default function EstateManagerDashboard() {
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({ title: "", body: "", category: "news", priority: "normal", target_audience: "all" });
   const qc = useQueryClient();
-  const { withTenant } = useTenantContext();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
@@ -33,33 +35,34 @@ export default function EstateManagerDashboard() {
   const hasAccess = platformAdmin || isModuleEnabled(entitlements, "ACCESS", false);
   const hasOperations = platformAdmin || isModuleEnabled(entitlements, "OPERATIONS", false);
 
-  const tenantFilter = user?.customer_id ? { customer_id: user.customer_id } : {};
-
+  // Estate data flows through the estateAccess gateway — the tenant scope is
+  // resolved server-side from the caller's authoritative User record.
   const residentsQ = useQuery({
     queryKey: ["estate_residents", user?.customer_id],
-    queryFn: () => base44.entities.Resident.filter(tenantFilter),
+    queryFn: () => listResidents().then(r => r.residents),
     enabled: !!user,
   });
   const ticketsQ = useQuery({
     queryKey: ["estate_tickets", user?.customer_id],
-    queryFn: () => base44.entities.ServiceTicket.filter(tenantFilter, "-created_date", 50),
+    queryFn: () => listTickets().then(r => r.tickets),
     enabled: !!user,
   });
   const bookingsQ = useQuery({
     queryKey: ["estate_bookings", user?.customer_id],
-    queryFn: () => base44.entities.VenueBooking.filter(tenantFilter, "-created_date", 50),
+    queryFn: () => listBookings().then(r => r.bookings),
     enabled: !!user,
   });
   const ordersQ = useQuery({
     queryKey: ["estate_orders", user?.customer_id],
-    queryFn: () => base44.entities.Order.filter(tenantFilter, "-created_date", 50),
+    queryFn: () => listOrders().then(r => r.orders),
     enabled: !!user,
   });
   const announcementsQ = useQuery({
     queryKey: ["estate_announcements", user?.customer_id],
-    queryFn: () => base44.entities.Announcement.filter(tenantFilter, "-created_date", 20),
+    queryFn: () => listAnnouncements().then(r => r.announcements),
     enabled: !!user,
   });
+  const tenantFilter = user?.customer_id ? { customer_id: user.customer_id } : {};
   const accessQ = useQuery({
     queryKey: ["estate_access_today", user?.customer_id],
     queryFn: () => base44.entities.AccessLog.filter(tenantFilter, "-timestamp", 30),
@@ -77,45 +80,32 @@ export default function EstateManagerDashboard() {
   const pendingBookings = bookings.filter(b => b.status === "pending");
   const pendingOrders = orders.filter(o => o.status === "pending");
 
+  // Create as a server-side draft, then PUBLISH through the gateway — the
+  // publish action stamps the timestamp and dispatches the branded
+  // notification to the resolved tenant audience in one step.
   const announceMutation = useMutation({
-    mutationFn: (data) => base44.entities.Announcement.create(withTenant({
-      ...data,
-      published: true,
-      published_at: new Date().toISOString(),
-      created_by: user?.id,
-      created_by_name: getUserDisplayName(user),
-    })),
-    onSuccess: (created) => {
+    mutationFn: async (data) => {
+      const created = await createAnnouncement(data);
+      if (created?.record?.id) await publishAnnouncement(created.record.id);
+      return created;
+    },
+    onSuccess: () => {
       qc.invalidateQueries(["estate_announcements"]);
       setShowAnnouncement(false);
       setAnnouncementForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all" });
-      // Communication event — server-side audience resolution + branded channels.
-      if (created?.id) {
-        base44.functions.invoke("estateNotify", { action: "publish_announcement", announcement_id: created.id }).catch(() => {});
-      }
     }
   });
 
+  // Booking decisions run through the gateway, which stamps the approver
+  // server-side and notifies the resident itself.
   const updateBookingMutation = useMutation({
-    mutationFn: ({ id, status, reason }) => base44.entities.VenueBooking.update(id, { status, rejection_reason: reason, approved_by: getUserDisplayName(user) }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries(["estate_bookings"]);
-      if (["approved", "rejected"].includes(variables?.status) && variables?.id) {
-        // Notify the resident through the estate communication gateway.
-        base44.functions.invoke("estateNotify", { action: "booking_decision", booking_id: variables.id, decision: variables.status }).catch(() => {});
-      }
-    }
+    mutationFn: ({ id, status, reason }) => updateBooking(id, { status, rejection_reason: reason }),
+    onSuccess: () => { qc.invalidateQueries(["estate_bookings"]); }
   });
 
   const updateTicketMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.ServiceTicket.update(id, data),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries(["estate_tickets"]);
-      if (variables?.id && variables?.data?.status) {
-        // Inform the resident of assignment/resolution through the gateway.
-        base44.functions.invoke("estateNotify", { action: "ticket_status", ticket_id: variables.id, status: variables.data.status }).catch(() => {});
-      }
-    }
+    mutationFn: ({ id, data }) => updateTicket(id, data),
+    onSuccess: () => { qc.invalidateQueries(["estate_tickets"]); }
   });
 
   const stats = [

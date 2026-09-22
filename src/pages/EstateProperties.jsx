@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { listSites } from "@/lib/siteApi";
+import { listProperties, createProperty } from "@/lib/estateApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,10 +33,8 @@ export default function EstateProperties() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      if (!cid) { setLoading(false); return; }
       const [props, sts] = await Promise.all([
-        base44.entities.Property.filter({ customer_id: cid }).catch(() => []),
+        listProperties().catch(() => []),
         listSites().catch(() => []),
       ]);
       setProperties(props);
@@ -59,13 +58,13 @@ export default function EstateProperties() {
     setSaving(true);
     try {
       const site = sites.find(s => s.id === formData.site_id);
-      await base44.entities.Property.create({
+      // Tenant scope, validation and audit are enforced server-side by the
+      // estateAccess gateway — the page never stamps tenant ids.
+      await createProperty({
         ...formData,
-        customer_id: user.customer_id,
         bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
         bathrooms: formData.bathrooms ? parseInt(formData.bathrooms) : null,
         site_name: site?.name || "",
-        status: "active",
       });
       setShowForm(false);
       setFormData({ unit_number: "", address: "", property_type: "house", owner_name: "", owner_email: "", owner_phone: "", tenant_name: "", tenant_email: "", tenant_phone: "", occupancy_status: "owner_occupied", site_id: "", bedrooms: "", bathrooms: "", notes: "" });

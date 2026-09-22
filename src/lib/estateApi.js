@@ -41,6 +41,7 @@ export const listBookings = (filter) => invoke("list_bookings", { filter });
 export const createBooking = (data) => invoke("create_booking", { data });
 export const updateBooking = (id, changes) => invoke("update_booking", { id, changes });
 export const deleteBooking = (id) => invoke("delete_booking", { id });
+export const venueAvailability = (venue_id, date) => invoke("venue_availability", { venue_id, date });
 
 /* ── Announcements ────────────────────────────────────────────────────── */
 export const listAnnouncements = (filter) => invoke("list_announcements", { filter });
@@ -48,6 +49,7 @@ export const createAnnouncement = (data) => invoke("create_announcement", { data
 export const updateAnnouncement = (id, changes) => invoke("update_announcement", { id, changes });
 export const deleteAnnouncement = (id) => invoke("delete_announcement", { id });
 export const publishAnnouncement = (id) => invoke("publish_announcement", { id });
+export const acknowledgeAnnouncement = (id) => invoke("acknowledge_announcement", { id });
 
 /* ── Voting ────────────────────────────────────────────────────────────── */
 export const listQuestions = (filter) => invoke("list_questions", { filter });

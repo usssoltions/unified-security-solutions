@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ShoppingBag, Plus, Minus, ShoppingCart, X, Clock, CheckCircle2 } from "lucide-react";
+import { listVendors, listMenuItems, listOrders, createOrder } from "@/lib/estateApi";
 
 export default function ResidentOrders() {
   const [user, setUser] = useState(null);
@@ -19,21 +20,23 @@ export default function ResidentOrders() {
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  // Vendors, menus and the resident's own orders are tenant-scoped
+  // server-side by the estateAccess gateway.
   const { data: vendors = [] } = useQuery({
     queryKey: ["vendors_by_type", orderType],
-    queryFn: () => base44.entities.Vendor.filter({ category: orderType, status: "active" }),
+    queryFn: () => listVendors({ category: orderType, status: "active" }).then(r => r.vendors),
     initialData: []
   });
 
   const { data: menuItems = [] } = useQuery({
     queryKey: ["menu_items", orderType],
-    queryFn: () => base44.entities.MenuItem.filter({ category: orderType, available: true }),
+    queryFn: () => listMenuItems({ category: orderType, available: true }).then(r => r.menu_items),
     initialData: []
   });
 
   const { data: myOrders = [] } = useQuery({
     queryKey: ["my_orders", user?.id],
-    queryFn: () => base44.entities.Order.filter({ resident_id: user?.id }),
+    queryFn: () => listOrders().then(r => r.orders),
     enabled: !!user, initialData: []
   });
 
@@ -41,24 +44,14 @@ export default function ResidentOrders() {
     mutationFn: async () => {
       if (cart.length === 0) return;
       const vendor = vendors[0];
-      const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-      const deliveryFee = vendor?.delivery_fee || 0;
-      return await base44.entities.Order.create({
-        customer_id: user.customer_id || undefined,
-        reseller_id: user.reseller_id || undefined,
-        resident_id: user.id,
-        resident_name: user.full_name,
-        unit_number: user.unit_number,
-        vendor_id: vendor?.id || "",
-        vendor_name: vendor?.business_name || "",
+      // The gateway validates the vendor, stamps the resident/tenant identity
+      // and computes the totals SERVER-SIDE from the submitted items.
+      return await createOrder({
+        vendor_id: vendor?.id,
         order_type: orderType,
         items: cart.map(item => ({ item_id: item.id, item_name: item.name, quantity: item.qty, unit_price: item.price })),
-        subtotal,
-        delivery_fee: deliveryFee,
-        total: subtotal + deliveryFee,
         delivery_address: `Unit ${user.unit_number}`,
         delivery_notes: deliveryNotes,
-        placed_at: new Date().toISOString()
       });
     },
     onSuccess: () => {

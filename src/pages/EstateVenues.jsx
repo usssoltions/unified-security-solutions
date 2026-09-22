@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building, Plus, X, Users, Clock, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
-import { getUserDisplayName } from "@/lib/userDisplayName";
+import {
+  listVenues, listBookings, createVenue, updateVenue, deleteVenue, updateBooking,
+} from "@/lib/estateApi";
 
 const EMPTY_FORM = { name: "", description: "", category: "clubhouse", capacity: "", available_hours_start: "07:00", available_hours_end: "22:00", rules: "", status: "active" };
 
@@ -23,42 +25,35 @@ export default function EstateVenues() {
     base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
-  const { data: venues = [] } = useQuery({ queryKey: ["all_venues"], queryFn: () => base44.entities.Venue.list(), initialData: [] });
+  const { data: venues = [] } = useQuery({ queryKey: ["all_venues"], queryFn: () => listVenues().then(r => r.venues), initialData: [] });
 
   const { data: bookings = [] } = useQuery({
     queryKey: ["venue_bookings_mgmt"],
-    queryFn: () => base44.entities.VenueBooking.list("-created_date", 200),
+    queryFn: () => listBookings().then(r => r.bookings),
     initialData: [],
   });
 
   const [editingVenue, setEditingVenue] = useState(null);
 
+  // All venue CRUD runs through the estateAccess gateway — tenant scope and
+  // validation are enforced server-side (no client-stamped tenant ids).
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Venue.create({
-      ...data,
-      customer_id: user?.customer_id,
-      reseller_id: user?.reseller_id,
-      site_id: user?.site_id,
-      capacity: Number(data.capacity) || 0,
-    }),
+    mutationFn: (data) => createVenue({ ...data, capacity: Number(data.capacity) || 0 }),
     onSuccess: () => { qc.invalidateQueries(["all_venues"]); setShowForm(false); setForm(EMPTY_FORM); }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Venue.update(id, {
-      ...data,
-      capacity: Number(data.capacity) || 0,
-    }),
+    mutationFn: ({ id, data }) => updateVenue(id, { ...data, capacity: Number(data.capacity) || 0 }),
     onSuccess: () => { qc.invalidateQueries(["all_venues"]); setShowForm(false); setForm(EMPTY_FORM); setEditingVenue(null); }
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Venue.delete(id),
+    mutationFn: (id) => deleteVenue(id),
     onSuccess: () => qc.invalidateQueries(["all_venues"])
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }) => base44.entities.Venue.update(id, { status }),
+    mutationFn: ({ id, status }) => updateVenue(id, { status }),
     onSuccess: () => qc.invalidateQueries(["all_venues"])
   });
 
@@ -86,22 +81,14 @@ export default function EstateVenues() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  // Booking decisions go through the gateway, which stamps the approver
+  // server-side and dispatches the resident notification itself.
   const updateBookingMutation = useMutation({
-    mutationFn: ({ id, status, notes }) => base44.entities.VenueBooking.update(id, {
+    mutationFn: ({ id, status, notes }) => updateBooking(id, {
       status,
       ...(notes ? { notes } : {}),
-      approved_by: user?.id,
-      approved_by_name: getUserDisplayName(user),
-      approved_at: status === "approved" ? new Date().toISOString() : undefined,
     }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries(["venue_bookings_mgmt"]);
-      if (["approved", "rejected"].includes(variables?.status) && variables?.id) {
-        // Notify the resident through the estate communication gateway
-        // (server-side re-validation, tenant branding, all channels).
-        base44.functions.invoke("estateNotify", { action: "booking_decision", booking_id: variables.id, decision: variables.status }).catch(() => {});
-      }
-    }
+    onSuccess: () => { qc.invalidateQueries(["venue_bookings_mgmt"]); }
   });
 
   const statusColors = { active: "bg-emerald-600", inactive: "bg-slate-600", maintenance: "bg-amber-600" };

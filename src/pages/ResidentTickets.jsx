@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Ticket, X, Plus, Camera, Star } from "lucide-react";
+import { listTickets, createTicket, updateTicket } from "@/lib/estateApi";
 
 export default function ResidentTickets() {
   const [user, setUser] = useState(null);
@@ -18,35 +19,25 @@ export default function ResidentTickets() {
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  // Tickets are self-scoped server-side; the gateway stamps identity,
+  // generates the ticket number and notifies the estate managers.
   const { data: tickets = [] } = useQuery({
     queryKey: ["my_tickets", user?.id],
-    queryFn: () => base44.entities.ServiceTicket.filter({ resident_id: user?.id }),
+    queryFn: () => listTickets().then(r => r.tickets),
     enabled: !!user, initialData: []
   });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.ServiceTicket.create({
-      ...data,
-      resident_id: user.id,
-      resident_name: user.full_name,
-      unit_number: user.unit_number,
-      customer_id: user.customer_id,
-      reseller_id: user.reseller_id,
-      ticket_number: `TKT-${Date.now().toString().slice(-6)}`,
-      status: "open"
-    }),
-    onSuccess: (created) => {
+    mutationFn: (data) => createTicket(data),
+    onSuccess: () => {
       qc.invalidateQueries(["my_tickets"]);
       setShowForm(false);
       setForm({ title: "", category: "", priority: "medium", description: "" });
-      if (created?.id) {
-        base44.functions.invoke("estateNotify", { action: "ticket_created", ticket_id: created.id }).catch(() => {});
-      }
     }
   });
 
   const rateMutation = useMutation({
-    mutationFn: ({ id, stars, feedback }) => base44.entities.ServiceTicket.update(id, { resident_rating: stars, resident_feedback: feedback }),
+    mutationFn: ({ id, stars, feedback }) => updateTicket(id, { resident_rating: stars, resident_feedback: feedback }),
     onSuccess: () => { qc.invalidateQueries(["my_tickets"]); setRating({ ticketId: null, stars: 0, feedback: "" }); }
   });
 

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Megaphone, Bell, AlertTriangle, Info, Calendar } from "lucide-react";
+import { listAnnouncements, acknowledgeAnnouncement } from "@/lib/estateApi";
 
 export default function ResidentAnnouncements() {
   const [user, setUser] = useState(null);
@@ -11,16 +12,19 @@ export default function ResidentAnnouncements() {
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  // Published announcements for the resident's own estate, resolved
+  // server-side by the estateAccess gateway.
   const { data: announcements = [] } = useQuery({
     queryKey: ["announcements_active"],
-    queryFn: () => base44.entities.Announcement.filter({ published: true }),
+    queryFn: () => listAnnouncements().then(r => r.announcements),
     initialData: []
   });
 
+  // Acknowledgement appends ONLY the caller's own id server-side.
   const markReadMutation = useMutation({
     mutationFn: (ann) => {
       if (ann.read_by?.includes(user?.id)) return Promise.resolve();
-      return base44.entities.Announcement.update(ann.id, { read_by: [...(ann.read_by || []), user.id] });
+      return acknowledgeAnnouncement(ann.id);
     },
     onSuccess: () => qc.invalidateQueries(["announcements_active"])
   });

@@ -11,37 +11,38 @@ import {
   Ticket, AlertTriangle, Wrench, Bell, ChevronRight, Megaphone,
   Car, Shield, MapPin, Clock
 } from "lucide-react";
+import {
+  getEstateContext, listTickets, listAnnouncements, listBookings,
+} from "@/lib/estateApi";
 
 export default function ResidentDashboard() {
   const [user, setUser] = useState(null);
   const [resident, setResident] = useState(null);
 
   useEffect(() => {
-    base44.auth.me().then(u => {
-      setUser(u);
-      base44.entities.Resident.filter({ user_id: u.id }).then(res => {
-        if (res.length > 0) setResident(res[0]);
-      });
-    });
+    base44.auth.me().then(setUser).catch(() => {});
+    // The resident's linked profile is resolved SERVER-SIDE by the gateway.
+    getEstateContext().then(ctx => setResident(ctx?.my_profile || null)).catch(() => {});
   }, []);
 
+  // All resident data is self-scoped server-side by the estateAccess gateway.
   const { data: tickets = [] } = useQuery({
     queryKey: ["my_tickets", user?.id],
-    queryFn: () => base44.entities.ServiceTicket.filter({ resident_id: user?.id }),
+    queryFn: () => listTickets().then(r => r.tickets),
     enabled: !!user,
     initialData: []
   });
 
   const { data: announcements = [] } = useQuery({
     queryKey: ["announcements_active"],
-    queryFn: () => base44.entities.Announcement.filter({ published: true }),
+    queryFn: () => listAnnouncements().then(r => r.announcements),
     initialData: []
   });
 
 
   const { data: bookings = [] } = useQuery({
     queryKey: ["my_bookings", user?.id],
-    queryFn: () => base44.entities.VenueBooking.filter({ resident_id: user?.id }),
+    queryFn: () => listBookings().then(r => r.bookings),
     enabled: !!user,
     initialData: []
   });

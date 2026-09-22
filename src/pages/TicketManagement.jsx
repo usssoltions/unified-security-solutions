@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Ticket, Search, User, MapPin, Clock, X, CheckCircle2, AlertTriangle } from "lucide-react";
+import { listTickets, listVendors as listVendorsApi, updateTicket } from "@/lib/estateApi";
 
 export default function TicketManagement() {
   const [user, setUser] = useState(null);
@@ -21,21 +22,23 @@ export default function TicketManagement() {
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  // Tickets and vendors flow through the estateAccess gateway — tenant
+  // scope resolved server-side; updates dispatch resident notifications.
   const { data: tickets = [] } = useQuery({
     queryKey: ["all_tickets_mgmt"],
-    queryFn: () => base44.entities.ServiceTicket.list("-created_date", 200),
+    queryFn: () => listTickets().then(r => r.tickets),
     initialData: [],
     refetchInterval: 30000
   });
 
   const { data: vendors = [] } = useQuery({
     queryKey: ["vendors_active"],
-    queryFn: () => base44.entities.Vendor.filter({ status: "active" }),
+    queryFn: () => listVendorsApi({ status: "active" }).then(r => r.vendors),
     initialData: []
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.ServiceTicket.update(id, data),
+    mutationFn: ({ id, data }) => updateTicket(id, data),
     onSuccess: () => {
       qc.invalidateQueries(["all_tickets_mgmt"]);
       setSelectedTicket(null);

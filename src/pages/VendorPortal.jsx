@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Store, ShoppingBag, Plus, X, CheckCircle2, Clock, Package } from "lucide-react";
 import BrandHeader from "@/components/branding/BrandHeader";
+import {
+  getEstateContext, listMenuItems, listOrders, listTickets,
+  saveMenuItem, updateOrder,
+} from "@/lib/estateApi";
 
 const EMPTY_ITEM = { name: "", description: "", price: "", item_category: "", preparation_time_minutes: "", available: true };
 
@@ -20,54 +24,51 @@ export default function VendorPortal() {
   const [itemForm, setItemForm] = useState(EMPTY_ITEM);
   const qc = useQueryClient();
 
+  // The vendor's own profile and all vendor data are resolved SERVER-SIDE by
+  // the estateAccess gateway (self-service scoped to the linked vendor).
   useEffect(() => {
-    base44.auth.me().then(u => {
-      setUser(u);
-      base44.entities.Vendor.filter({ user_id: u.id }).then(res => {
-        if (res.length > 0) setVendor(res[0]);
-      });
-    });
+    base44.auth.me().then(setUser).catch(() => {});
+    getEstateContext().then(ctx => setVendor(ctx?.my_vendor || null)).catch(() => setVendor(null));
   }, []);
 
   const { data: menuItems = [] } = useQuery({
     queryKey: ["vendor_menu", vendor?.id],
-    queryFn: () => base44.entities.MenuItem.filter({ vendor_id: vendor.id }),
+    queryFn: () => listMenuItems().then(r => r.menu_items),
     enabled: !!vendor, initialData: []
   });
 
   const { data: orders = [] } = useQuery({
     queryKey: ["vendor_orders", vendor?.id],
-    queryFn: () => base44.entities.Order.filter({ vendor_id: vendor.id }),
+    queryFn: () => listOrders().then(r => r.orders),
     enabled: !!vendor, initialData: []
   });
 
   const { data: tickets = [] } = useQuery({
     queryKey: ["vendor_tickets", vendor?.id],
-    queryFn: () => base44.entities.ServiceTicket.filter({ vendor_id: vendor.id }),
+    queryFn: () => listTickets().then(r => r.tickets),
     enabled: !!vendor, initialData: []
   });
 
   const addItemMutation = useMutation({
-    mutationFn: (data) => base44.entities.MenuItem.create({
-      customer_id: vendor?.customer_id || undefined,
-      reseller_id: vendor?.reseller_id || undefined,
+    mutationFn: (data) => saveMenuItem({
       ...data,
       price: Number(data.price),
       preparation_time_minutes: Number(data.preparation_time_minutes) || null,
-      vendor_id: vendor.id,
-      vendor_name: vendor.business_name,
-      category: vendor.category
     }),
     onSuccess: () => { qc.invalidateQueries(["vendor_menu"]); setShowItemForm(false); setItemForm(EMPTY_ITEM); }
   });
 
   const toggleItemMutation = useMutation({
-    mutationFn: ({ id, available }) => base44.entities.MenuItem.update(id, { available }),
+    mutationFn: ({ item, available }) => saveMenuItem({
+      id: item.id, name: item.name, price: item.price,
+      description: item.description, item_category: item.item_category,
+      preparation_time_minutes: item.preparation_time_minutes, available,
+    }),
     onSuccess: () => qc.invalidateQueries(["vendor_menu"])
   });
 
   const updateOrderMutation = useMutation({
-    mutationFn: ({ id, status }) => base44.entities.Order.update(id, { status, ...(status === "delivered" ? { completed_at: new Date().toISOString() } : {}) }),
+    mutationFn: ({ id, status }) => updateOrder(id, { status, ...(status === "delivered" ? { completed_at: new Date().toISOString() } : {}) }),
     onSuccess: () => qc.invalidateQueries(["vendor_orders"])
   });
 
@@ -195,7 +196,7 @@ export default function VendorPortal() {
                   <div className="flex items-center gap-3">
                     <p className="text-white font-bold">R{item.price}</p>
                     <Button size="sm" variant="outline" className={item.available ? "border-rose-500 text-rose-400" : "border-emerald-500 text-emerald-400"}
-                      onClick={() => toggleItemMutation.mutate({ id: item.id, available: !item.available })}>
+                      onClick={() => toggleItemMutation.mutate({ item, available: !item.available })}>
                       {item.available ? "Hide" : "Show"}
                     </Button>
                   </div>

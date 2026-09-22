@@ -7,24 +7,25 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Search, Plus, X, Phone, Home, Car } from "lucide-react";
-import { useTenantContext } from "@/hooks/useTenantContext";
+import { listResidents, createResident, updateResident } from "@/lib/estateApi";
 
 export default function EstateResidents() {
-  const { withTenant } = useTenantContext();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", status: "active" });
   const qc = useQueryClient();
 
-  const { data: residents = [] } = useQuery({ queryKey: ["all_residents"], queryFn: () => base44.entities.Resident.list(), initialData: [] });
+  // All resident records flow through the estateAccess gateway — tenant scope
+  // is resolved and stamped server-side.
+  const { data: residents = [] } = useQuery({ queryKey: ["all_residents"], queryFn: () => listResidents().then(r => r.residents), initialData: [] });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Resident.create(withTenant({ ...data, move_in_date: new Date().toISOString().split("T")[0] })),
+    mutationFn: (data) => createResident({ ...data, move_in_date: new Date().toISOString().split("T")[0] }),
     onSuccess: () => { qc.invalidateQueries(["all_residents"]); setShowForm(false); setForm({ full_name: "", email: "", phone: "", unit_number: "", id_number: "", status: "active" }); }
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }) => base44.entities.Resident.update(id, { status }),
+    mutationFn: ({ id, status }) => updateResident(id, { status }),
     onSuccess: () => qc.invalidateQueries(["all_residents"])
   });
 

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Megaphone, Plus, X, Send, Eye, Trash2, Globe, Users } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
-import { useTenantContext } from "@/hooks/useTenantContext";
+import { listAnnouncements, createAnnouncement, publishAnnouncement, deleteAnnouncement } from "@/lib/estateApi";
 
 export default function AnnouncementManagement() {
   const [user, setUser] = useState(null);
@@ -20,41 +20,35 @@ export default function AnnouncementManagement() {
     target_audience: "all", send_email: true, send_push: true
   });
   const qc = useQueryClient();
-  const { withTenant } = useTenantContext();
 
   useEffect(() => { base44.auth.me().then(setUser); }, []);
 
+  // Announcements flow through the estateAccess gateway — tenant scope,
+  // publishing and notification dispatch are enforced server-side.
   const { data: announcements = [] } = useQuery({
     queryKey: ["all_announcements"],
-    queryFn: () => base44.entities.Announcement.list("-created_date", 50),
+    queryFn: () => listAnnouncements().then(r => r.announcements),
     initialData: []
   });
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      return await base44.entities.Announcement.create(withTenant({
-        ...data,
-        created_by: user.id,
-        created_by_name: getUserDisplayName(user),
-        published: true,
-        published_at: new Date().toISOString()
-      }));
+      // Draft on the server, then PUBLISH — the publish action stamps the
+      // timestamp and dispatches the branded notification to the resolved
+      // tenant audience in one step.
+      const created = await createAnnouncement(data);
+      if (created?.record?.id) await publishAnnouncement(created.record.id);
+      return created;
     },
-    onSuccess: (created) => {
+    onSuccess: () => {
       qc.invalidateQueries(["all_announcements"]);
       setShowForm(false);
       setForm({ title: "", body: "", category: "news", priority: "normal", target_audience: "all", send_email: true, send_push: true });
-      // Communication event — the gateway re-reads the record, resolves the
-      // tenant audience server-side and delivers branded email/telegram/push/in-app.
-      if (created?.id) {
-        base44.functions.invoke("estateNotify", { action: "publish_announcement", announcement_id: created.id })
-          .catch(() => {});
-      }
     }
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Announcement.delete(id),
+    mutationFn: (id) => deleteAnnouncement(id),
     onSuccess: () => qc.invalidateQueries(["all_announcements"])
   });
 

@@ -10,6 +10,7 @@ import { Vote, Plus, CheckCircle, Clock, Loader2, BarChart3, AlertCircle } from 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { listQuestions, createQuestion, updateQuestion, openQuestion, castVote as castVoteApi } from "@/lib/estateApi";
 
 export default function EstateVoting() {
   const [user, setUser] = useState(null);
@@ -33,10 +34,9 @@ export default function EstateVoting() {
     try {
       const u = await base44.auth.me();
       setUser(u);
-      const cid = u.customer_id;
-      if (!cid) { setLoading(false); return; }
-      const qs = await base44.entities.VotingQuestion.filter({ customer_id: cid }).catch(() => []);
-      setQuestions(qs.sort((a, b) => new Date(b.created_date) - new Date(a.created_date)));
+      // Questions come tenant-scoped from the estateAccess gateway.
+      const res = await listQuestions().catch(() => ({ questions: [] }));
+      setQuestions((res.questions || []).sort((a, b) => new Date(b.created_date) - new Date(a.created_date)));
     } catch (e) {
       console.error("Failed to load voting questions:", e);
     } finally {
@@ -52,22 +52,11 @@ export default function EstateVoting() {
     if (!formData.title || !hasTenant) return;
     setSaving(true);
     try {
-      const created = await base44.entities.VotingQuestion.create({
-        ...formData,
-        customer_id: user.customer_id,
-        reseller_id: user.reseller_id,
-        options: formData.options.map(o => ({ text: o.text, votes: 0 })),
-        total_votes: 0,
-        voted_user_ids: [],
-        status: "open",
-        open_date: new Date().toISOString(),
-        created_by_name: getUserDisplayName(user),
-      });
-      if (created?.id) {
-        // Notify residents through the estate communication gateway
-        // (manager-only, enforced server-side; branded channels).
-        base44.functions.invoke("estateNotify", { action: "vote_opened", question_id: created.id }).catch(() => {});
-      }
+      // Create as draft, then OPEN through the gateway — opening is the
+      // single server-side event that notifies residents (branded channels).
+      const created = await createQuestion(formData);
+      const record = created?.record;
+      if (record?.id) await openQuestion(record.id);
       setShowForm(false);
       setFormData({ title: "", description: "", question_type: "yes_no", options: [{ text: "Yes" }, { text: "No" }] });
       await loadData();
@@ -83,12 +72,9 @@ export default function EstateVoting() {
     setVoting(question.id);
     setVoteError(null);
     try {
-      const res = await base44.functions.invoke("castVote", {
-        question_id: question.id,
-        option_indices: Array.isArray(optionIndices) ? optionIndices : [optionIndices],
-      });
+      const res = await castVoteApi(question.id, Array.isArray(optionIndices) ? optionIndices : [optionIndices]);
       // Replace the updated question in-state from the server response.
-      const updated = res?.data?.question;
+      const updated = res?.question;
       if (updated) {
         setQuestions(prev => prev.map(q => q.id === updated.id ? updated : q));
       } else {
@@ -112,7 +98,7 @@ export default function EstateVoting() {
 
   const closeVote = async (q) => {
     try {
-      await base44.entities.VotingQuestion.update(q.id, { status: "closed" });
+      await updateQuestion(q.id, { status: "closed" });
       await loadData();
     } catch (e) {
       console.error("Failed to close vote:", e);
