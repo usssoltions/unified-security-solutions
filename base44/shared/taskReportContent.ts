@@ -27,7 +27,7 @@ export function fmtSast(iso) {
   } catch (e) { return String(iso); }
 }
 
-const APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
+import { DEFAULT_DEPLOYMENT_URL as APP_URL } from './appUrl.ts';
 export const MY_TASKS_LINK = APP_URL + '/ScheduledTasks';
 
 function fmtYmd(ymd) {

@@ -4,6 +4,7 @@ import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -146,13 +147,17 @@ export default async function(req) {
     }
 
     try {
-      const emails = admins.map(a => a.email).filter(Boolean).join(',');
-      if (emails) {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name,
-          to: emails,
+      // PER-RECIPIENT guarded delivery (comma-joined recipients would bypass
+      // the per-recipient test-mode rewrite).
+      for (const a of admins.filter((x) => x.email)) {
+        await sendAuditedEmail(base44.asServiceRole, {
+          to: a.email,
           subject: title,
-          body: brandTpl.html,
+          html: brandTpl.html, text: brandTpl.text,
+          brand,
+          recipient_id: a.id || undefined,
+          recipient_name: a.display_name || a.full_name || undefined,
+          event_type: 'shift_end', template_name: 'shift_alert',
         });
       }
     } catch (_) {}

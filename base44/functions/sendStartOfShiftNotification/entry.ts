@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveShiftReportRecipients } from '../../shared/shiftReportRecipients.ts';
 import {
@@ -28,7 +29,7 @@ import {
  * values are only a fallback. Every channel leg is failure-isolated and
  * diagnosable; a failure on one channel never stops the others.
  */
-const REPORT_LINK = 'https://guard-track-pro-26cedab8.base44.app/StartOfShiftHistory';
+import { resolveAppUrl, appUrlFor } from '../../shared/appUrl.ts';
 const RECIPIENT_ROLES = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
 const isPlatformUser = (u) => u.role_type === 'platform_admin' || u.admin_level === 'platform';
 
@@ -43,6 +44,8 @@ function haversineMetres(a, b) {
 }
 
 Deno.serve(async (req) => {
+  // Deployment URL resolved centrally per request (custom-domain ready).
+  const REPORT_LINK = appUrlFor(resolveAppUrl(secrets, req), '/StartOfShiftHistory');
   const diag = { event: 'start_of_shift_report', tenant: null, recipients: [], in_app: 0, email: 0, telegram: 0, push: 0, failures: [] };
   try {
     const base44 = createClientFromRequest(req);
@@ -296,12 +299,15 @@ Deno.serve(async (req) => {
       // EMAIL — branded rich report, one per recipient.
       try {
         if (admin.email) {
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            from_name: brand.brand_name,
+          await sendAuditedEmail(base44.asServiceRole, {
             to: admin.email,
             subject: emailSubject,
             html: firstName ? emailHtml.replace('<h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: ', `<p style="color:#334155;font-size:15px;margin:0 0 10px;">Hello ${firstName},</p><h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: `) : emailHtml,
             text: `START OF SHIFT REPORT\n\nOfficer: ${guardName}\nClient: ${clientName}\nSite: ${siteName}\nShift date: ${shiftDateStr}\nScheduled start: ${scheduledStartStr}\nClock-in: ${clockInStr}\nSubmitted: ${submittedStr}\nLocation: ${locationStr}\nGeofence: ${distanceStr}\n\nFull report: ${REPORT_LINK}`,
+            brand,
+            recipient_id: admin.id || undefined,
+            recipient_name: admin.display_name || admin.full_name || undefined,
+            event_type: 'start_of_shift_report', template_name: 'start_of_shift_report',
           });
           diag.email++;
         }

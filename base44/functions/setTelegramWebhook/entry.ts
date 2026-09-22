@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
+import { resolveAppUrl } from '../../shared/appUrl.ts';
 
 /**
  * setTelegramWebhook — Sets the Telegram bot webhook to point to the
@@ -24,7 +25,11 @@ export default async function(req: Request): Promise<Response> {
     // which Telegram accepts but can never route back to this app — the cause
     // of the live defect where every /start <token> vanished and all
     // enrollments stayed 'pending' (2026-09-09).
-    const PUBLISHED_APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
+    // Central URL resolver — APP_DEPLOYMENT_URL (custom domain) when set,
+    // otherwise the authoritative published deployment. The request origin is
+    // deliberately NOT used for webhook registration: a preview deployment
+    // origin must never repoint the production Telegram webhook.
+    const PUBLISHED_APP_URL = resolveAppUrl(secrets, null);
     const webhookUrl = `${PUBLISHED_APP_URL}/functions/telegramWebhook`;
 
     const resp = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {

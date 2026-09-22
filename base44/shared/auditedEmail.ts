@@ -108,6 +108,10 @@ export async function sendAuditedEmail(
     idempotency_key?: string | null;
     template_name?: string | null;
     is_test_record?: boolean;
+    /** Opt-in idempotency: dedupe only when an explicit key or this flag is
+     *  provided — call sites without either keep their exact pre-migration
+     *  send-every-time semantics (never collapsed by a coarse event type). */
+    dedupe?: boolean;
   },
 ): Promise<{ ok: boolean; skipped?: boolean; error?: string | null; mode?: string | null }> {
   const intendedTo = String(p.to || '').trim();
@@ -166,13 +170,18 @@ export async function sendAuditedEmail(
     return { ok: false, skipped: true, error: guard.reason || 'BLOCKED', mode: guard.mode };
   }
 
-  // Idempotency — an identical key already SENT means this exact email went
-  // out; skip. Reruns use fresh reference ids, so repeats are never lost.
-  try {
-    const prior = await svc.entities.NotificationDelivery
-      .filter({ idempotency_key: idemKey, channel: 'email', status: 'sent' });
-    if (prior && prior.length) return { ok: true, skipped: true, mode: guard.mode };
-  } catch (_) { /* audit store unavailable — proceed with the send */ }
+  // Idempotency is OPT-IN (p.idempotency_key or p.dedupe): call sites without
+  // an explicit key keep exact pre-migration send-every-time semantics and
+  // can never be collapsed by a coarse event-type key; call sites that pass
+  // a run-unique key (scheduled reports, per-transition incident workflow)
+  // keep their retry-safe exactly-once delivery.
+  if (p.idempotency_key || p.dedupe) {
+    try {
+      const prior = await svc.entities.NotificationDelivery
+        .filter({ idempotency_key: idemKey, channel: 'email', status: 'sent' });
+      if (prior && prior.length) return { ok: true, skipped: true, mode: guard.mode };
+    } catch (_) { /* audit store unavailable — proceed with the send */ }
+  }
 
   let ok = true;
   let provider: string | undefined;

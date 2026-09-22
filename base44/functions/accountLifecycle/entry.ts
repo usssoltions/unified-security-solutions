@@ -6,7 +6,8 @@ import {
   performAccountRemoval, applySuspension, applyDeactivation, applyReactivation,
   resolveApprovers, resolveOrganisationName, auditAccountEvent, notifyUsers,
 } from '../../shared/accountLifecycle.ts';
-import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, escHtml, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 /**
  * accountLifecycle — THE ONE account lifecycle gateway.
@@ -51,7 +52,7 @@ import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunic
  *                           pending request and never duplicate it.
  */
 
-const PUBLIC_APP_URL = 'https://guard-track-pro-26cedab8.base44.app';
+import { DEFAULT_DEPLOYMENT_URL as PUBLIC_APP_URL } from '../../shared/appUrl.ts';
 const VERIFICATION_TTL_MINUTES = 30;
 const RESEND_THROTTLE_MINUTES = 2;
 
@@ -140,20 +141,21 @@ export default async function(req: Request): Promise<Response> {
             customer_id: target.customer_id || null,
             reseller_id: target.reseller_id || null,
           });
-          await svc.integrations.Core.SendEmail({
+          // Central transactional renderer + guarded audited delivery.
+          const removalTpl = buildBrandedEmail({
+            brand,
+            heading: 'Verify your account removal request',
+            intro: 'A request to remove your USS user account and personal information was initiated from our public account-removal page. This link is single-use and expires in 30 minutes. If you did not request this, you can safely ignore this email — no request is created until you open the link and confirm.',
+            closing: 'Account removal is never instant: your organisation\'s authorised administrator reviews every request. Security and audit records may be retained where required by law.',
+            ctaUrl: verifyUrl, ctaLabel: 'Verify and continue',
+          });
+          await sendAuditedEmail(svc, {
             to: email,
             subject: `Verify your account removal request — ${brand.brand_name}`,
-            html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
-              <h2 style="color:#0f172a;margin:0 0 16px">${escHtml(brand.brand_name)}</h2>
-              <p style="color:#334155">A request to remove your USS user account and personal information was initiated from our public account-removal page.</p>
-              <p style="color:#334155"><b>This link is single-use and expires in 30 minutes.</b> If you did not request this, you can safely ignore this email — no request is created until you open the link and confirm.</p>
-              <p style="margin:32px 0">
-                <a href="${verifyUrl}" style="background:#b45309;color:#ffffff;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">Verify and continue</a>
-              </p>
-              <p style="color:#64748b;font-size:12px">If the button does not work, copy this link into your browser:<br>${verifyUrl}</p>
-              <p style="color:#64748b;font-size:12px">Account removal is never instant: your organisation's authorised administrator reviews every request. Security and audit records may be retained where required by law.</p>
-            </div>`,
-            text: `${brand.brand_name} — verify your account removal request. Open this single-use link within 30 minutes: ${verifyUrl}. If you did not request this, ignore this email.`,
+            html: removalTpl.html, text: removalTpl.text,
+            brand,
+            event_type: 'account_removal_verification', reference_id: token,
+            template_name: 'account_lifecycle',
           }).catch(() => {});
         }
       }

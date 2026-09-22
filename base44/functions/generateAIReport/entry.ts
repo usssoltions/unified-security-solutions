@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
+import { resolveCommunicationBrand, escHtml, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -212,40 +213,30 @@ Deno.serve(async (req) => {
       email => email && registeredEmails.has(String(email).toLowerCase())
     );
     if (safeRecipients.length > 0) {
+      // Central transactional renderer + guarded audited delivery — the
+      // inline gradient-hero template is retired.
+      const reportTpl = buildBrandedEmail({
+        brand,
+        heading: reportTitle,
+        intro: periodLabel,
+        details: [
+          { label: 'Report', value: reportTitle },
+          { label: 'Period', value: periodLabel },
+          { label: 'Total Incidents', value: String(filteredIncidents.length) },
+          { label: 'Maintenance Requests', value: String(filteredMaintenance.length) },
+          { label: 'Shifts Logged', value: String(filteredShifts.length) },
+          { label: 'Critical Incidents', value: String(filteredIncidents.filter(i => i.priority === 'critical').length) },
+        ],
+        closing: reportContent,
+      });
       await Promise.all(safeRecipients.map(email =>
-        base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name,
+        sendAuditedEmail(base44.asServiceRole, {
           to: email,
           subject: `${reportTitle} — ${now.toLocaleDateString()}`,
-          body: `
-<html>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f8fafc;">
-  <div style="max-width: 700px; margin: 0 auto;">
-    <div style="background: linear-gradient(135deg, ${escHtml(brand.primary_color)} 0%, ${escHtml(brand.accent_color)} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-      <h1 style="color: white; margin: 0; font-size: 22px;">${reportTitle}</h1>
-      <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">${periodLabel}</p>
-    </div>
-    <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e2e8f0;">
-      <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid ${escHtml(brand.primary_color)};">
-        <h2 style="color: #1a1a1a; margin: 0 0 8px; font-size: 16px;">Summary Statistics</h2>
-        <ul style="list-style: none; padding: 0; margin: 0; color: #475569; font-size: 14px;">
-          <li style="padding: 4px 0;">Total Incidents: <strong>${filteredIncidents.length}</strong></li>
-          <li style="padding: 4px 0;">Maintenance Requests: <strong>${filteredMaintenance.length}</strong></li>
-          <li style="padding: 4px 0;">Shifts Logged: <strong>${filteredShifts.length}</strong></li>
-          <li style="padding: 4px 0;">Critical Incidents: <strong>${filteredIncidents.filter(i => i.priority === 'critical').length}</strong></li>
-        </ul>
-      </div>
-      <div style="margin-top: 20px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <h2 style="color: #1a1a1a; margin: 0 0 12px; font-size: 16px;">Report Details</h2>
-        <pre style="white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 13px; color: #334155; line-height: 1.7; margin: 0;">${reportContent}</pre>
-      </div>
-      <p style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-        Automated report — ${escHtml(brand.brand_name)}
-      </p>
-    </div>
-  </div>
-</body>
-</html>`
+          html: reportTpl.html, text: reportTpl.text,
+          brand,
+          event_type: 'ai_report', reference_id: reportRecord.id,
+          template_name: 'generated_report',
         }).catch(e => console.error('Email failed:', e))
       ));
     }

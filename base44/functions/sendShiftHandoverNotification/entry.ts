@@ -3,6 +3,7 @@ import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveShiftReportRecipients } from '../../shared/shiftReportRecipients.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import {
   resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram, escHtml,
   formatSastDate, formatSastTime, formatSastDateTime,
@@ -200,9 +201,12 @@ Deno.serve(async (req) => {
 
       // EMAIL (branded + evidence)
       if (r.email) {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name, to: r.email,
-          subject: heading, html: richHtml, text: brandTpl.text,
+        await sendAuditedEmail(base44.asServiceRole, {
+          to: r.email, subject: heading, html: richHtml, text: brandTpl.text,
+          brand,
+          recipient_id: r.id || undefined,
+          recipient_name: r.display_name || r.full_name || undefined,
+          event_type: 'shift_handover', template_name: 'shift_handover',
         }).catch(() => { diag.failures.push('email:' + r.id); }) && diag.email++;
       }
 

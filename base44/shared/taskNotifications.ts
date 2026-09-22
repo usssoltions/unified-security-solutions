@@ -12,6 +12,7 @@
 
 import { resolveTenantBrand, tenantDisplayName } from './tenantBranding.ts';
 import { sendNativePush } from './nativePush.ts';
+import { sendAuditedEmail } from './auditedEmail.ts';
 
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // Africa/Johannesburg, UTC+2, no DST
 
@@ -42,16 +43,22 @@ export function sastInstantYmd(dateYmd, timeHHMM) {
 
 /** ── Delivery channels (module-owned) ─────────────────────────────────── */
 
-export async function sendTaskEmail(svc, { to, subject, body, html, from_name }) {
+export async function sendTaskEmail(svc, { to, subject, body, html, from_name, brand, customer_id, reseller_id, reference_id }) {
   if (!to) return false;
   try {
-    const payload = { to, subject, from_name: from_name || 'Task Scheduling' };
-    // Branded HTML email: html is the rich body, body rides along as the
-    // plain-text alternative (multipart/alternative). Plain send keeps body.
-    if (html) { payload.html = html; payload.text = body; }
-    else { payload.body = body; }
-    await svc.integrations.Core.SendEmail(payload);
-    return true;
+    // GUARDED AUDITED DELIVERY — the delivery-mode guard applies to Task
+    // Scheduling emails exactly like every other channel (test-mode rewrite
+    // to the allowlisted mailbox, '[TEST]' subjects, fail-closed test data).
+    const res = await sendAuditedEmail(svc, {
+      to, subject,
+      ...(html ? { html, text: body } : { body }),
+      from_name: from_name || 'Task Scheduling',
+      brand, customer_id: customer_id || null, reseller_id: reseller_id || null,
+      event_type: 'task_scheduling',
+      reference_id: reference_id || null,
+      template_name: 'task_scheduling',
+    });
+    return !!res.ok;
   } catch (e) {
     console.error('task email failed:', e?.message || e);
     return false;

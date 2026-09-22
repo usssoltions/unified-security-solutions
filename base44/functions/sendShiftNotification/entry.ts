@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { resolveAppUrl, appUrlFor } from '../../shared/appUrl.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import {
   resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram,
@@ -44,7 +46,7 @@ Deno.serve(async (req) => {
        resolved SERVER-SIDE; platform oversight always permitted; every other
        customer, site, control room and user is excluded. */
     const notifyShiftAckManagement = async ({ heading, summary, detailRows, relatedShiftId, status, eventKey }) => {
-      const linkUrl = 'https://guard-track-pro-26cedab8.base44.app/Scheduling';
+      const linkUrl = appUrlFor(resolveAppUrl(secrets, req), '/Scheduling');
       const brand = await resolveCommunicationBrand(base44.asServiceRole, {
         customer_id: tenantCustomerId, reseller_id: tenantResellerId });
       const allUsers = await base44.asServiceRole.entities.User.list();
@@ -89,12 +91,15 @@ Deno.serve(async (req) => {
               details: detailRows,
               closing: 'Open Scheduling to review the shift: ' + linkUrl,
             });
-            await base44.asServiceRole.integrations.Core.SendEmail({
-              from_name: brand.brand_name,
+            await sendAuditedEmail(base44.asServiceRole, {
               to: admin.email,
               subject: heading,
-              text: tpl.text,
-              html: tpl.html,
+              html: tpl.html, text: tpl.text,
+              brand,
+              recipient_id: admin.id || undefined,
+              recipient_name: admin.display_name || admin.full_name || undefined,
+              event_type: 'shift_ack', reference_id: relatedShiftId || null,
+              template_name: 'shift_alert',
             });
             email++;
           }
@@ -375,12 +380,12 @@ Deno.serve(async (req) => {
     let emailSent = false;
     if (guardEmail) {
       try {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name,
+        await sendAuditedEmail(base44.asServiceRole, {
           to: guardEmail,
           subject: heading,
-          text: tpl.text,
-          html: tpl.html,
+          html: tpl.html, text: tpl.text,
+          brand,
+          event_type: 'shift_notification', template_name: 'shift_alert',
         });
         emailSent = true;
       } catch (error) {
