@@ -1,7 +1,7 @@
 {
   "name": "NotificationDelivery",
   "type": "object",
-  "description": "Delivery audit record for every notification sent through any channel. Tracks success/failure, retries, and provider response. Idempotency key prevents duplicate deliveries for the same event+recipient+channel. The 'task_event' channel marks a Task Scheduling event (e.g. a deadline-threshold overdue alert) as dispatched ONCE across all its channels \u2014 the idempotency key 'task_event:<eventKey>' makes later sweep runs skip the whole event so immediate alerts are never duplicated. AUDIT STANDARD (2026-09-22): every important application-controlled EMAIL attempt is recorded here via the shared auditedEmail helper with event_type, reference_id and branding_source (customer/reseller/platform). Never logged in these records: authentication tokens, passwords, invitation tokens, full sensitive message bodies or protected media contents.",
+  "description": "Delivery audit record for every notification sent through any channel. Tracks success/failure, retries, and provider response. Idempotency key prevents duplicate deliveries for the same event+recipient+channel. The 'task_event' channel marks a Task Scheduling event (e.g. a deadline-threshold overdue alert) as dispatched ONCE across all its channels \u2014 the idempotency key 'task_event:<eventKey>' makes later sweep runs skip the whole event so immediate alerts are never duplicated. DELIVERY-SAFETY AUDIT (2026-09-22): every audited email attempt now also records the server-controlled delivery_mode (production/test/preview), the INTENDED recipient address (differs from recipient_address in test mode, where every recipient is rewritten to the TEST_MAILBOX allowlist), and the template_name of the central transactional renderer used. Blocked/skipped attempts are recorded truthfully (status 'skipped' with skip_reason such as TEST_RECORD_BLOCKED_IN_PRODUCTION, BLOCKED_INVALID_DELIVERY_MODE, PREVIEW_MODE, TEST_MODE_NO_ALLOWLISTED_MAILBOX). Never logged in these records: authentication tokens, passwords, invitation tokens, full sensitive message bodies or protected media contents.",
   "properties": {
     "event_key": {
       "type": "string"
@@ -23,6 +23,33 @@
       ],
       "description": "Which level of the branding hierarchy won for this correspondence (Customer override \u2192 Reseller default \u2192 Platform default)."
     },
+    "template_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Central transactional template used for this correspondence (e.g. incident_alert, missed_stay_awake_check, scheduled_report)."
+    },
+    "delivery_mode": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "production",
+        "test",
+        "preview",
+        null
+      ],
+      "description": "Server-controlled delivery-safety mode in force when the attempt was made. 'test' means the effective recipient was rewritten to the TEST_MAILBOX allowlist and the subject prefixed '[TEST]'."
+    },
+    "intended_recipient_address": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The ORIGINAL intended recipient before test-mode rewriting. Differs from recipient_address only in test mode; null when identical/unknown."
+    },
     "notification_id": {
       "type": "string",
       "description": "ID of the related Notification entity if in-app"
@@ -42,7 +69,7 @@
     },
     "recipient_address": {
       "type": "string",
-      "description": "Email, telegram chat ID, or OneSignal player ID"
+      "description": "The EFFECTIVE address the correspondence actually went to: email, telegram chat ID, or OneSignal player ID. In test mode this is the allowlisted test mailbox, with the original recorded in intended_recipient_address."
     },
     "channel": {
       "type": "string",
@@ -80,11 +107,11 @@
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Prevents duplicate deliveries for the same event+recipient+channel"
+      "description": "Prevents duplicate deliveries for the same event+recipient+channel (keyed on the INTENDED recipient so test-mode rewriting never collapses distinct recipients)."
     },
     "skip_reason": {
       "type": "string",
-      "description": "Reason the channel was skipped (e.g. NO_TELEGRAM_CHAT_ID, TELEGRAM_DISABLED, NO_EMAIL, NO_PUSH_TOKEN)."
+      "description": "Reason the channel was skipped (e.g. NO_TELEGRAM_CHAT_ID, TELEGRAM_DISABLED, NO_EMAIL, NO_PUSH_TOKEN, TEST_RECORD_BLOCKED_IN_PRODUCTION, BLOCKED_INVALID_DELIVERY_MODE, PREVIEW_MODE, TEST_MODE_NO_ALLOWLISTED_MAILBOX, RECIPIENT_NOT_APPROVED)."
     }
   },
   "required": [

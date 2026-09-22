@@ -20,7 +20,7 @@
  * Pure functions: no SDK access, no side effects.
  */
 
-const DEFAULT_PRIMARY = '#0ea5e9';
+import { renderTransactionalShell } from './transactionalEmail.ts';
 
 export function escHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
@@ -83,28 +83,21 @@ export function summaryCards(cards) {
 /** THE shared Task Scheduling email shell — logo, heading, badge, body, CTA,
  * branded footer with support contact. All module emails use only this. */
 export function renderTaskEmail({ brand, brandName, heading, badgeHtml, introHtml, bodyHtml, ctaLabel, ctaUrl, footerNote }) {
-  const primary = (brand && brand.primary_color) || DEFAULT_PRIMARY;
-  const support = [];
-  if (brand && brand.support_email) support.push(escHtml(brand.support_email));
-  if (brand && brand.website) support.push(escHtml(brand.website));
-  return ''
-    + '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#ffffff">'
-    + ((brand && brand.logo_url)
-      ? '<div style="padding:20px;text-align:center;background:#f8fafc"><img src="' + escHtml(brand.logo_url) + '" alt="' + escHtml(brandName || '') + '" style="max-height:56px;max-width:180px;object-fit:contain"/></div>'
-      : '')
-    + '<div style="padding:24px 20px">'
-    + '<h2 style="color:' + escHtml(primary) + ';margin:0 0 10px;font-size:20px">' + escHtml(heading) + '</h2>'
-    + (badgeHtml ? '<div style="margin:0 0 14px">' + badgeHtml + '</div>' : '')
-    + (introHtml || '')
-    + (bodyHtml || '')
-    + ((ctaLabel && ctaUrl)
-      ? '<a href="' + escHtml(ctaUrl) + '" style="background:' + escHtml(primary) + ';color:#ffffff;padding:14px 28px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:bold;font-size:15px">' + escHtml(ctaLabel) + '</a>'
-      : '')
-    + '</div>'
-    + '<div style="padding:16px 20px;background:#f8fafc;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0">'
-    + (brandName ? '<div style="margin-bottom:4px">' + escHtml(brandName) + '</div>' : '')
-    + (support.length ? '<div>Questions? Contact ' + support.join(' · ') + '.</div>' : '')
-    + (footerNote ? '<div>' + escHtml(footerNote) + '</div>' : '')
-    + '</div>'
-    + '</div>';
+  // WRAPPER ONLY — the shell (header, logo, footer, CTA styling, support
+  // details, plain-text contract) comes from the ONE central transactional
+  // renderer; this function keeps only the task-specific BODY composition
+  // (badges, cards, summary tables) via the helpers below.
+  const shellBrand = Object.assign({}, brand || {}, {
+    brand_name: brandName || (brand && brand.brand_name) || 'Unified Security Solutions',
+  });
+  return renderTransactionalShell({
+    brand: shellBrand,
+    title: heading,
+    bodyHtml:
+      (badgeHtml ? '<div style="margin:0 0 14px;text-align:center">' + badgeHtml + '</div>' : '') +
+      (introHtml || '') +
+      (bodyHtml || ''),
+    cta: ctaLabel && ctaUrl ? { label: ctaLabel, url: ctaUrl } : null,
+    footerNote,
+  });
 }

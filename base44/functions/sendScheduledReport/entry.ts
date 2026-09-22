@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { friendlyLabel } from '../../shared/transactionalEmail.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 /**
@@ -140,25 +141,35 @@ Deno.serve(async (req) => {
     // day boundaries.
     const bounds = jhbDayBounds();
     const reportData = await generateReportData(svc, scopeCid, bounds.startIso, bounds.endIso);
-    const reportMessage = formatReportMessage(schedule, reportData);
-
+    // READABLE SUMMARY — counts are computed from the schedule's
+    // authoritative tenant at DATABASE-QUERY level (generateReportData).
+    // No raw HTML fragments appended as text, no internal enum values:
+    // "daily_activity" renders as "Daily Activity Report" through the
+    // central renderer's friendlyLabel, and both the HTML and plain-text
+    // versions are generated from this one structured content set.
+    const completedShifts = (reportData.shifts || []).filter((s) => s.status === 'completed').length;
+    const activeShifts = (reportData.shifts || []).filter((s) => s.status === 'active').length;
     const reportDetails = [
-      { label: 'Report', value: schedule.name || schedule.report_type },
+      { label: 'Report', value: schedule.name || friendlyLabel(schedule.report_type) },
       { label: 'Date', value: new Date().toLocaleDateString('en-ZA') },
       { label: 'Incidents', value: String(reportData.incidents?.length || 0) },
       { label: 'Shifts', value: String(reportData.shifts?.length || 0) },
+      { label: 'Completed Shifts', value: String(completedShifts) },
+      { label: 'Active Shifts', value: String(activeShifts) },
       { label: 'Maintenance Requests', value: String(reportData.maintenance?.length || 0) },
       { label: 'Patrol Checkpoints', value: String(reportData.patrols?.length || 0) },
     ];
+    const summaryLines = (reportData.incidents || []).slice(0, 5)
+      .map((inc) => `Incident: ${inc.title || 'Untitled incident'} (${friendlyLabel(inc.priority)} priority)`);
+
     const brandTpl = buildBrandedEmail({
       brand,
-      heading: schedule.name || schedule.report_type,
-      greeting: 'Hello,',
+      heading: schedule.name || friendlyLabel(schedule.report_type),
       intro: 'Your scheduled report is ready.',
       details: reportDetails,
-      closing: reportMessage.replace(/\n/g, '<br/>'),
+      closing: summaryLines.join('\n'),
     });
-    const subject = `${schedule.name || schedule.report_type} - ${new Date().toLocaleDateString('en-ZA')}`;
+    const subject = `${friendlyLabel(schedule.report_type)} — ${new Date().toLocaleDateString('en-ZA')}`;
 
     // ── DELIVERY — idempotent per schedule + JHB day + recipient ───────────
     const runKey = `scheduled_report:${schedule_id}:${bounds.ymd}`;
@@ -260,48 +271,5 @@ async function generateReportData(svc, scopeCid, startIso, endIso) {
   return data;
 }
 
-function formatReportMessage(schedule, data) {
-  const date = new Date().toLocaleDateString('en-ZA');
-
-  let message = `📊 ${schedule.name || schedule.report_type}\n`;
-  message += `📅 Date: ${date}\n`;
-  message += `\n`;
-
-  if (schedule.report_type === 'daily_activity' || schedule.report_type === 'incidents'
-    || schedule.report_type === 'incident_maintenance_summary') {
-    message += `🚨 Incidents: ${data.incidents?.length || 0}\n`;
-    if (data.incidents && data.incidents.length > 0) {
-      data.incidents.slice(0, 5).forEach((inc) => {
-        message += `  • ${inc.title} - ${inc.priority}\n`;
-      });
-    }
-    message += `\n`;
-  }
-
-  if (schedule.report_type === 'daily_activity' || schedule.report_type === 'shift_attendance'
-    || schedule.report_type === 'guard_performance') {
-    message += `👮 Shifts: ${data.shifts?.length || 0}\n`;
-    const completedShifts = data.shifts?.filter((s) => s.status === 'completed').length || 0;
-    const activeShifts = data.shifts?.filter((s) => s.status === 'active').length || 0;
-    message += `  ✅ Completed: ${completedShifts}\n`;
-    message += `  🔄 Active: ${activeShifts}\n`;
-    message += `\n`;
-  }
-
-  if (schedule.report_type === 'daily_activity' || schedule.report_type === 'maintenance'
-    || schedule.report_type === 'incident_maintenance_summary') {
-    message += `🔧 Maintenance Requests: ${data.maintenance?.length || 0}\n`;
-    message += `\n`;
-  }
-
-  if (schedule.report_type === 'patrol_coverage' || schedule.report_type === 'site_activity'
-    || schedule.report_type === 'comprehensive_monthly') {
-    message += `🚶 Patrol Checkpoints: ${data.patrols?.length || 0}\n`;
-    message += `\n`;
-  }
-
-  message += `\n---\n`;
-  message += `Generated: ${new Date().toLocaleString('en-ZA')}`;
-
-  return message;
-}
+// formatReportMessage retired — the central transactional renderer now
+// renders the structured summary (no emoji soup, no '<br/>' as plain text).
