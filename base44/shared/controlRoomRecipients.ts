@@ -1,45 +1,49 @@
 /**
  * Shared CONTROL ROOM narrowing for operational notification recipients.
  *
- * Mirrors the site-aware panic narrowing (activatePanic): a
- * control_room_operator receives an operational alert for a site ONLY when
- * they are explicitly assigned (operator_user_ids / supervisor_user_ids) to an
- * ACTIVE Control Room whose linked_site_ids cover that site. Role membership
- * alone is NEVER sufficient.
+ * SECURITY CONTRACT (fail-closed — 2026-09-22 security review): EXPLICIT
+ * OPERATOR ASSIGNMENT IS AUTHORITATIVE. A control_room_operator receives an
+ * operational alert for a site ONLY when the customer has an ACTIVE Control
+ * Room that BOTH (a) explicitly lists them in operator_user_ids /
+ * supervisor_user_ids AND (b) links that site via linked_site_ids.
  *
- * Narrowing is deliberately conservative (fail-open to the existing
- * customer-level recipient set, never to a WIDER set):
- *   - no customer scope, no active rooms, or no site context → unchanged
- *   - site given but NO active room is linked to it → unchanged
- *     (panic parity: no linkage = customer-level membership)
- *   - site given and active rooms ARE linked to it → operators/supervisors
- *     NOT in those rooms' user lists are dropped. customer_admin and platform
- *     users are never dropped (tenant administration / oversight).
+ * EVERY other configuration state EXCLUDES the operator entirely (they receive
+ * NONE of the Control-Room-scoped operational alerts):
+ *   - no active rooms configured for the customer,
+ *   - the site not linked to any room,
+ *   - no site context on the event,
+ *   - the operator not explicitly assigned to a linked room.
+ * Incomplete or missing configuration NEVER broadens an operator to
+ * customer-wide notification scope — that fail-open behaviour was the exact
+ * Control-Room scoping defect class this helper exists to prevent.
+ *
+ * This now matches the live-verified panic queue scope (panicScope): an
+ * unassigned operator has an EMPTY site set, never customer-wide visibility.
+ *
+ * customer_admin / platform users are NEVER dropped here — customer
+ * administration and platform oversight are a separate authority from the
+ * operator contract and must not be restricted by operator logic.
  */
 export async function narrowControlRoomOperators(
   svc: any,
   recipients: any[],
   opts: { customer_id?: string | null; site_id?: string | null } = {},
 ): Promise<any[]> {
-  const list: any[] = Array.isArray(recipients) ? recipients : [];
+  const list: any[] = Array.isArray(recipients) ? recipients.filter(Boolean) : [];
   const customerId = opts.customer_id || null;
   const siteId = opts.site_id ? String(opts.site_id) : null;
-  if (!customerId || !siteId || !list.length) return list;
   if (!list.some((u) => u && u.role_type === 'control_room_operator')) return list;
 
-  const rooms = (await svc.entities.ControlRoom
-    .filter({ customer_id: String(customerId), status: 'active' }).catch(() => [])) || [];
-  if (!rooms.length) return list;
-
-  const linked = rooms.filter((r) => (r.linked_site_ids || []).includes(siteId));
-  if (!linked.length) return list;
-
   const roomUserIds = new Set<string>();
-  for (const room of linked) {
-    (room.operator_user_ids || []).forEach((id: string) => roomUserIds.add(String(id)));
-    (room.supervisor_user_ids || []).forEach((id: string) => roomUserIds.add(String(id)));
+  if (customerId && siteId) {
+    const rooms = (await svc.entities.ControlRoom
+      .filter({ customer_id: String(customerId), status: 'active' }).catch(() => [])) || [];
+    for (const room of rooms) {
+      if (!(room.linked_site_ids || []).includes(siteId)) continue;
+      (room.operator_user_ids || []).forEach((id: string) => roomUserIds.add(String(id)));
+      (room.supervisor_user_ids || []).forEach((id: string) => roomUserIds.add(String(id)));
+    }
   }
   return list.filter((u) =>
-    u.role_type !== 'control_room_operator' ||
-    roomUserIds.has(String(u.id)));
+    u.role_type !== 'control_room_operator' || roomUserIds.has(String(u.id)));
 }
