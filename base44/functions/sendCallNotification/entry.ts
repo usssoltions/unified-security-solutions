@@ -41,6 +41,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unknown call session' }, { status: 404 });
     }
 
+    // MEMBERSHIP — the target must be a listed participant of this exact
+    // session, not merely a same-tenant user.
+    const participantIds = [session.callee_id, ...(session.participants || []).map(p => p.user_id)].filter(Boolean);
+    if (!participantIds.includes(targetUserId)) {
+      return Response.json({ error: 'Target is not a participant in this call' }, { status: 403 });
+    }
+
+    // Dead sessions never ring — ended/declined/expired are rejected.
+    if (session.status === 'ended' || session.status === 'declined' || session.status === 'expired') {
+      return Response.json({ error: `Call is ${session.status} — notification not sent` }, { status: 409 });
+    }
+
     console.log(`[sendCallNotification] Creating in-app call notification — callId: ${callId}, caller: ${callerName}, target: ${targetUserId}`);
 
     

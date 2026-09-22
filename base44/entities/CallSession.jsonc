@@ -1,20 +1,21 @@
 {
   "name": "CallSession",
   "type": "object",
-  "description": "RTC module: AUTHORITATIVE call session record created server-side by the rtcSignaling gateway on initiate_call. Every signaling action (offer/answer/candidate/answered/end) is validated against this record: the requester must be a listed participant, the call must be in a status that permits the action, and stale ringing sessions auto-expire. Push notifications and in-app call notifications are only sent for sessions whose caller is the authenticated requester. GATEWAY-ONLY ACCESS: rtcSignaling reads/writes these records through the service role; direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. NULLABLE FIELDS: customer_id/reseller_id are legitimately null for platform-admin calls (tenant-exempt oversight). NO PAYMENT FUNCTIONALITY.",
+  "description": "RTC module: AUTHORITATIVE call session record created server-side by the rtcSignaling gateway on initiate_call. Every signaling action (offer/answer/candidate/answered/end) is validated against this record: the requester must be a listed participant, the call must be in a status that permits the action, and stale ringing sessions auto-expire. Push notifications and in-app call notifications are only sent for sessions whose caller is the authenticated requester. GATEWAY-ONLY ACCESS: rtcSignaling reads/writes these records through the service role; direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. NULLABLE FIELDS: customer_id/reseller_id are null ONLY for explicitly classified platform-to-platform sessions (platform_scope true). A platform administrator calling a tenant user gets the session BOUND to the target user's authoritative customer/reseller \u2014 tenant-less platform callers never create globally unscoped sessions. Platform-initiated tenant calls require an explicit reason (initiation_reason) and are audit-logged to PlatformAuditLog (event call.platform_initiated). NO PAYMENT FUNCTIONALITY.",
   "properties": {
     "customer_id": {
       "type": [
         "string",
         "null"
       ],
-      "description": "Caller's tenant \u2014 membership is tenant-scoped. Null for platform-admin calls (platform oversight is tenant-exempt by design)."
+      "description": "Authoritative tenant scope of the call. Tenant callers: their own customer. Platform admin \u2192 tenant user: the TARGET's customer. Null ONLY for platform-to-platform sessions (platform_scope true)."
     },
     "reseller_id": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "Reseller scope matching the session's customer scope. Null for platform-to-platform sessions."
     },
     "call_id": {
       "type": "string",
@@ -36,7 +37,7 @@
     },
     "participants": {
       "type": "array",
-      "description": "All invited User ids resolved at initiate time; signaling targets must be listed here.",
+      "description": "All invited User ids resolved at initiate time; signaling targets must be listed here. Participants can only be set at initiation \u2014 there is no mid-call add operation.",
       "items": {
         "type": "object",
         "properties": {
@@ -57,6 +58,18 @@
         "group"
       ],
       "default": "direct"
+    },
+    "platform_scope": {
+      "type": "boolean",
+      "default": false,
+      "description": "True ONLY for explicitly classified platform sessions: platform-to-platform calls, or platform-oversight calls into a single tenant (which are additionally bound to that tenant's customer_id/reseller_id and carry an initiation_reason). Server-classified; a browser-supplied value is ignored."
+    },
+    "initiation_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Required explicit reason/operational context for platform-initiated tenant calls. Null for ordinary tenant calls."
     },
     "status": {
       "type": "string",

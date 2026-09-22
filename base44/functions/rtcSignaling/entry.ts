@@ -48,27 +48,32 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // NOTE: customer_id / reseller_id / platform_scope / caller identity are
+    // NEVER accepted from the request — the call context is resolved
+    // exclusively from the authenticated User record and the target records
+    // loaded below. Client-supplied values are ignored entirely.
     const { action, targetUserId, participantIds, offer, answer, candidate, callId,
-            audioBase64, duration, contentType, recordingUri } = await req.json();
+            audioBase64, duration, contentType, recordingUri, platformReason } = await req.json();
 
     /* ── Caller + tenant resolution (User record wins over session claims) ── */
     const [callerRec] = await svc.entities.User.filter({ id: String(user.id) }).catch(() => []);
     const isPlatform = (u) => !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
 
-    /* ── Participant/tenant validation for a NEW call ────────────────────── */
+    /* ── Participant resolution for a NEW call ──────────────────────────── *
+     * Only the target User ids are accepted; every tenant/scope decision is
+     * made in initiate_call from the resolved records, never from input. */
     const validateInvitees = async (ids) => {
       const uniqueIds = [...new Set((ids || []).filter(Boolean))];
       if (!uniqueIds.length) return { error: Response.json({ error: 'Missing call participants' }, { status: 400 }) };
       const resolved = [];
+      const records = [];
       for (const id of uniqueIds) {
         const target = await svc.entities.User.get(id).catch(() => null);
         if (!target) return { error: Response.json({ error: 'Target user not found' }, { status: 404 }) };
-        if (!isPlatform(callerRec) && !(callerRec?.customer_id && target.customer_id === callerRec.customer_id)) {
-          return { error: Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 }) };
-        }
+        records.push(target);
         resolved.push({ user_id: target.id, user_name: target.full_name || target.display_name || 'Unknown' });
       }
-      return { resolved };
+      return { resolved, records };
     };
 
     /* ── Session lookup + participant/status gate ─────────────────────────── */
@@ -118,10 +123,78 @@ Deno.serve(async (req) => {
           : (targetUserId ? [targetUserId] : []);
         const check = await validateInvitees(ids);
         if (check.error) return check.error;
+
+        const callerIsPlatform = isPlatform(callerRec);
+        const targets = check.records;
+        const platformTargets = targets.filter(t => isPlatform(t));
+        const tenantTargets = targets.filter(t => !isPlatform(t));
+
+        /* ── Call context classification (server-side, exclusive) ────────── */
+        let scope = { customer_id: null, reseller_id: null, platform_scope: false, initiation_reason: null };
+
+        if (callerIsPlatform) {
+          if (!tenantTargets.length) {
+            // Platform admin → platform admin: explicitly classified platform
+            // session. customer_id stays null ONLY here — never as a general
+            // platform-admin bypass.
+            scope.platform_scope = true;
+          } else {
+            if (platformTargets.length) {
+              return Response.json({ error: 'Platform calls cannot mix platform and tenant participants' }, { status: 403 });
+            }
+            // Platform oversight into ONE tenant: bind the session to the
+            // TARGET's authoritative tenant, not the (tenant-less) caller.
+            const custIds = [...new Set(tenantTargets.map(t => t.customer_id).filter(Boolean))];
+            if (custIds.length !== 1) {
+              // No cross-tenant support workflow exists → bridging refused.
+              return Response.json({ error: 'Cross-tenant calls are not permitted' }, { status: 403 });
+            }
+            const reason = typeof platformReason === 'string' ? platformReason.trim() : '';
+            if (reason.length < 3) {
+              return Response.json({ error: 'An explicit reason is required for platform-to-tenant calls' }, { status: 400 });
+            }
+            scope = {
+              customer_id: custIds[0],
+              reseller_id: tenantTargets.find(t => t.reseller_id)?.reseller_id || null,
+              platform_scope: true,
+              initiation_reason: reason.slice(0, 500),
+            };
+          }
+        } else {
+          // Tenant caller — a missing tenant scope fails CLOSED (unscoped
+          // legacy users cannot initiate ordinary tenant calls).
+          if (!callerRec?.customer_id) {
+            return Response.json({ error: 'Your account has no organisation scope — calls are unavailable. Contact support through the support channel.' }, { status: 403 });
+          }
+          for (const t of targets) {
+            if (isPlatform(t)) {
+              return Response.json({ error: 'Platform staff cannot be called directly — use the support channel' }, { status: 403 });
+            }
+            if (!t.customer_id || t.customer_id !== callerRec.customer_id) {
+              return Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 });
+            }
+          }
+          scope = {
+            customer_id: callerRec.customer_id,
+            reseller_id: callerRec.reseller_id || null,
+            platform_scope: false,
+            initiation_reason: null,
+          };
+        }
+
+        /* ── Initiation rate limit ───────────────────────────────────────── */
+        const recentSessions = await svc.entities.CallSession.filter({ caller_id: String(user.id) }).catch(() => []);
+        const recentCount = (recentSessions || []).filter(s =>
+          Date.now() - new Date(s.created_date).getTime() < 60 * 1000).length;
+        if (recentCount >= 5) {
+          return Response.json({ error: 'Too many calls started — please wait a moment' }, { status: 429 });
+        }
+
         const callIdAuth = `call_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         const callee = check.resolved[0];
         const session = await svc.entities.CallSession.create({
-          customer_id: callerRec?.customer_id || null,
+          customer_id: scope.customer_id,
+          reseller_id: scope.reseller_id,
           call_id: callIdAuth,
           caller_id: user.id,
           caller_name: callerRec?.display_name || callerRec?.full_name || user.full_name || 'Unknown',
@@ -129,10 +202,36 @@ Deno.serve(async (req) => {
           callee_name: callee.user_name,
           participants: check.resolved,
           call_type: (check.resolved.length > 1 || participantIds?.length > 1) ? 'group' : 'direct',
+          platform_scope: scope.platform_scope,
+          initiation_reason: scope.initiation_reason,
           status: 'ringing',
           started_at: new Date().toISOString(),
         });
-        return Response.json({ success: true, callId: session.call_id, sessionId: session.id });
+
+        // Platform-initiated tenant call — explicit platform audit trail.
+        if (callerIsPlatform && scope.customer_id) {
+          try {
+            await svc.entities.PlatformAuditLog.create({
+              event_type: 'call.platform_initiated',
+              user_id: String(user.id),
+              user_name: session.caller_name,
+              customer_id: scope.customer_id,
+              reseller_id: scope.reseller_id,
+              entity_name: 'CallSession',
+              entity_id: session.call_id,
+              action: 'initiate_call (platform oversight)',
+              notes: `Platform administrator placed a call into a tenant. Reason: ${scope.initiation_reason}`,
+            });
+          } catch (_) { /* audit must never break the call path */ }
+        }
+
+        return Response.json({
+          success: true,
+          callId: session.call_id,
+          sessionId: session.id,
+          platform_scope: scope.platform_scope,
+          session_scope: scope.customer_id ? 'tenant' : 'platform',
+        });
       }
 
       /* ── Signaling actions — validated against the session ────────────── */

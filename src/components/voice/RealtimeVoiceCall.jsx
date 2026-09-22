@@ -641,9 +641,9 @@ export default function RealtimeVoiceCall({
 
       console.log('→ Realtime signaling message:', message.type, 'from:', message.from);
       handleSignalingMessage(message);
-
-      // Delete the message so it's not re-delivered
-      base44.entities.SignalingMessage.delete(m.id).catch(() => {});
+      // Delivery cleanup is server-side (rtcSignaling poll_messages deletes
+      // the queue) — signaling messages are gateway-write-only by RLS, so the
+      // client cannot and must not mutate them.
     });
 
     // Fallback: slow reconciliation poll ONLY during active call setup.

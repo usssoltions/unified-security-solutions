@@ -1,7 +1,7 @@
 {
   "name": "SignalingMessage",
   "type": "object",
-  "description": "Persistent store for WebRTC signaling messages so rtcSignaling works reliably across serverless invocations.",
+  "description": "Persistent store for WebRTC signaling messages so rtcSignaling works reliably across serverless invocations. GATEWAY-WRITE-ONLY: every signaling message is created by the rtcSignaling gateway through the service role after participant/session validation \u2014 direct client creation/update was removed (a client could previously craft an 'offer' to any user, bypassing session membership checks). Clients may only READ their own queue (to/from self); deletion is performed by the gateway (poll_messages).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -35,19 +35,9 @@
   ],
   "rls": {
     "create": {
-      "$or": [
-        {
-          "user_condition": {
-            "admin_level": "platform"
-          }
-        },
-        {
-          "data.from_user_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
-        }
-      ]
+      "user_condition": {
+        "admin_level": "platform"
+      }
     },
     "read": {
       "$or": [
@@ -68,22 +58,9 @@
       ]
     },
     "update": {
-      "$or": [
-        {
-          "user_condition": {
-            "admin_level": "platform"
-          }
-        },
-        {
-          "data.from_user_id": "{{user.id}}"
-        },
-        {
-          "data.to_user_id": "{{user.id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
-        }
-      ]
+      "user_condition": {
+        "admin_level": "platform"
+      }
     },
     "delete": {
       "user_condition": {

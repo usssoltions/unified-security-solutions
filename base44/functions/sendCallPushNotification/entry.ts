@@ -1,83 +1,143 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 
 /**
  * sendCallPushNotification — push leg of the incoming-call flow.
  *
- * PROVIDER DECISION: OneSignal is the DELIBERATELY SUPPORTED provider for
- * CALL pushes (include_external_user_ids reaches every device the recipient
- * has logged into OneSignal on, including the native Android app). The rest
- * of the app uses native push, but native push for calls requires the
- * Android Firebase credentials still pending upload — OneSignal remains
- * authoritative for CALL pushes until that migration is complete.
+ * PROVIDER DECISION (documented, deliberate): OneSignal is the SUPPORTED
+ * provider for CALL pushes. Native push (Core.SendPushNotification) is used
+ * for the rest of the app, but it cannot replace OneSignal for calls yet
+ * because the native Android Firebase upload credentials required for
+ * production native push delivery have not been provided/uploaded to the
+ * platform — until they are, native push cannot reliably wake the Android
+ * app for an incoming call, and include_external_user_ids currently reaches
+ * every recipient device (Android native SDK + web SDK) via OneSignal.login.
  *
- * Caller identity is resolved server-side from the authenticated User
- * record (impersonation fix), and the recipient must belong to the
- * caller's own tenant (call membership validation).
+ * SERVER-AUTHORITATIVE CONTROLS:
+ *  - caller identity resolved from the authenticated User record only;
+ *    browser-supplied caller name/avatar/URL/tenant are NEVER used;
+ *  - the recipient must be a listed participant of the server-created
+ *    CallSession the authenticated caller placed (cross-tenant and forged
+ *    call ids are rejected before any push dispatch);
+ *  - ended/declined/expired sessions are rejected;
+ *  - delivery is deduplicated per call + recipient (NotificationDelivery
+ *    idempotency key) and rate-limited per caller;
+ *  - branding (push accent colour) follows customer → reseller → platform;
+ *  - the tap URL opens the validated call session only (call id; identity
+ *    is re-resolved in-app from the session, never from the URL);
+ *  - truthful provider results are recorded in NotificationDelivery —
+ *    no credentials, tokens or audio content are ever logged.
  */
+const MAX_PUSH_PER_CALLER_PER_MINUTE = 10;
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const svc = base44.asServiceRole;
 
-    // Authenticate the caller — only a logged-in user may trigger a call push.
     const user = await base44.auth.me();
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { recipientId, callId, isGroupCall, callerAvatar } = await req.json();
+    // Browser-supplied caller identity/branding fields are deliberately NOT
+    // read from the body.
+    const { recipientId, callId, isGroupCall } = await req.json();
 
-    // CALLER IDENTITY IS RESOLVED SERVER-SIDE — the browser-supplied caller
-    // name is never trusted (impersonation fix): the push always carries the
-    // authenticated caller's authoritative name from their User record.
-    const callerRows = await base44.asServiceRole.entities.User.filter({ id: String(user.id) }).catch(() => []);
-    const callerRec = callerRows?.[0] || null;
-    const callerName = callerRec?.display_name || callerRec?.full_name || user.full_name || 'Unknown';
-
-    console.log(`[sendCallPushNotification] Sending push — callId: ${callId}, caller: ${callerName}, recipient: ${recipientId}`);
-
-    if (!recipientId) {
+    if (!recipientId || !callId) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // CALL MEMBERSHIP — the recipient must be in the caller's own tenant
-    // (platform oversight excepted); sequential User IDs were previously
-    // pushable by anyone, enabling cross-tenant ring spam.
-    const targetRec = await base44.asServiceRole.entities.User.get(recipientId).catch(() => null);
-    if (!targetRec) {
-      return Response.json({ error: 'Recipient not found' }, { status: 404 });
-    }
-    const isPlatform = (u) => !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
-    if (!isPlatform(callerRec) && !(callerRec?.customer_id && targetRec.customer_id === callerRec.customer_id)) {
-      return Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 });
-    }
+    // CALLER IDENTITY — resolved server-side (impersonation fix).
+    const [callerRec] = await svc.entities.User.filter({ id: String(user.id) }).catch(() => []);
+    const callerName = callerRec?.display_name || callerRec?.full_name || user.full_name || 'Unknown';
 
     // AUTHORITATIVE SESSION — push is only sent for a call the authenticated
-    // user actually placed (server-created CallSession). Forged call ids are
-    // rejected before any push is dispatched.
-    const [session] = await base44.asServiceRole.entities.CallSession.filter({ call_id: callId }).catch(() => []);
+    // user actually placed (server-created CallSession).
+    const [session] = await svc.entities.CallSession.filter({ call_id: String(callId) }).catch(() => []);
     if (!session || session.caller_id !== user.id) {
       return Response.json({ error: 'Unknown call session' }, { status: 404 });
     }
 
-    // Deployment origin is derived from the incoming request — never
-    // hard-coded, so custom domains and preview deployments stay correct.
+    // Reject ended/declined/expired sessions — no push for dead calls.
+    if (session.status === 'ended' || session.status === 'declined' || session.status === 'expired') {
+      return Response.json({ error: `Call is ${session.status} — push not sent` }, { status: 409 });
+    }
+
+    // MEMBERSHIP — the recipient must be a listed participant of this exact
+    // session (prevents cross-tenant/stranger ring spam even within a tenant).
+    const participantIds = [session.callee_id, ...(session.participants || []).map(p => p.user_id)].filter(Boolean);
+    if (!participantIds.includes(recipientId)) {
+      return Response.json({ error: 'Recipient is not a participant in this call' }, { status: 403 });
+    }
+
+    // DEDUPLICATION — one push per call + recipient + event. A repeated
+    // request (double-tap, retry) is a no-op, not a second ring.
+    const idemKey = `call_push:${callId}:${recipientId}`;
+    const existing = await svc.entities.NotificationDelivery.filter({ idempotency_key: idemKey }).catch(() => []);
+    if (existing && existing.length) {
+      return Response.json({ success: true, deduplicated: true });
+    }
+
+    // DELIVERY RATE LIMIT — per caller per minute across all calls.
+    const recent = await svc.entities.NotificationDelivery.filter({ recipient_id: String(user.id) }).catch(() => []);
+    const pushesLastMinute = (recent || []).filter(d =>
+      d.event_type === 'call_push' && d.created_by_id === user.id &&
+      Date.now() - new Date(d.created_date).getTime() < 60 * 1000).length;
+    if (pushesLastMinute >= MAX_PUSH_PER_CALLER_PER_MINUTE) {
+      return Response.json({ error: 'Too many call pushes — please wait a moment' }, { status: 429 });
+    }
+
+    // Claim the delivery record FIRST (idempotency), then dispatch.
+    const [delivery] = await svc.entities.NotificationDelivery.create({
+      event_key: idemKey,
+      event_type: 'call_push',
+      reference_id: String(callId),
+      customer_id: session.customer_id || undefined,
+      reseller_id: session.reseller_id || undefined,
+      recipient_id: String(recipientId),
+      channel: 'push',
+      status: 'pending',
+      send_time: new Date().toISOString(),
+      idempotency_key: idemKey,
+    }).catch(() => []);
+
+    // Deployment origin from the incoming request — never hard-coded, so
+    // custom domains and preview deployments stay correct. The URL carries
+    // ONLY the validated call id; identity is resolved in-app from the
+    // session (never trusted from the URL).
     const appOrigin = new URL(req.url).origin;
 
-    // Send OneSignal push notification
+    // BRANDING — customer → reseller → platform accent colour for Android.
+    const brand = await resolveCommunicationBrand(svc, {
+      customer_id: session.customer_id || null,
+      reseller_id: session.reseller_id || null,
+    }).catch(() => null);
+    const hex = String(brand?.primary_color || '#10B981').replace('#', '');
+    const accent = /^[0-9a-fA-F]{6}$/.test(hex) ? `FF${hex.toUpperCase()}` : 'FF10B981';
+
     const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');
     const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
 
+    const recordResult = async (status: string, provider_response: string, skip_reason?: string) => {
+      if (!delivery) return;
+      try {
+        await svc.entities.NotificationDelivery.update(delivery.id, {
+          status,
+          provider_response: String(provider_response || '').slice(0, 300),
+          ...(skip_reason ? { skip_reason } : {}),
+        });
+      } catch (_) { /* delivery logging must never break the call path */ }
+    };
+
     if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
+      await recordResult('failed', 'OneSignal not configured', 'NO_ONESIGNAL_CREDENTIALS');
       console.warn('[sendCallPushNotification] OneSignal not configured');
-      return Response.json({ 
-        success: false, 
-        message: 'OneSignal not configured' 
-      });
+      return Response.json({ success: false, message: 'OneSignal not configured' });
     }
 
-    // Use include_external_user_ids so the push reaches ALL of the recipient's
-    // devices (Android native SDK + web SDK) without needing to track player IDs.
-    // The app sets the external ID via OneSignal.login(userId) on both platforms.
+    // include_external_user_ids reaches ALL of the recipient's devices
+    // (Android native SDK + web SDK) via OneSignal.login(userId).
     const response = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
@@ -87,10 +147,10 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
         include_external_user_ids: [recipientId],
-        headings: { en: "📞 Incoming Call" },
-        contents: { 
-          en: isGroupCall 
-            ? `${callerName} is calling (Group Call)` 
+        headings: { en: '📞 Incoming Call' },
+        contents: {
+          en: isGroupCall
+            ? `${callerName} is calling (Group Call)`
             : `${callerName} is calling you`
         },
         priority: 10,
@@ -99,12 +159,10 @@ Deno.serve(async (req) => {
         android_visibility: 1,
         android_importance: 5,
         android_sound: 'default',
-        android_accent_color: 'FF10B981',
-        android_led_color: 'FF10B981',
+        android_accent_color: accent,
+        android_led_color: accent,
         android_group: 'calls',
-        android_group_message: {
-          en: "Incoming calls"
-        },
+        android_group_message: { en: 'Incoming calls' },
         content_available: true,
         mutable_content: true,
         ios_sound: 'default',
@@ -112,26 +170,26 @@ Deno.serve(async (req) => {
         ios_badgeCount: 1,
         ios_category: 'call',
         apns_alert: {
-          title: "📞 Incoming Call",
-          subtitle: isGroupCall ? "Group Call" : "Direct Call"
+          title: '📞 Incoming Call',
+          subtitle: isGroupCall ? 'Group Call' : 'Direct Call'
         },
-        url: `${appOrigin}/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
-        web_url: `${appOrigin}/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
+        url: `${appOrigin}/?call_id=${encodeURIComponent(String(callId))}`,
+        web_url: `${appOrigin}/?call_id=${encodeURIComponent(String(callId))}`,
         data: {
           type: 'call',
           callId: callId,
-          callerName: callerName,
-          callerAvatar: callerAvatar || '',
-          isGroupCall: isGroupCall
+          isGroupCall: !!isGroupCall
         }
       })
     });
 
-    const result = await response.json();
-    console.log(`[sendCallPushNotification] ✅ OneSignal response:`, JSON.stringify(result));
+    const result = await response.json().catch(() => ({}));
+    const ok = response.ok && !(result as any).errors;
 
-    return Response.json({ 
-      success: true,
+    await recordResult(ok ? 'sent' : 'failed', ok ? JSON.stringify(result).slice(0, 300) : JSON.stringify((result as any).errors || result).slice(0, 300));
+
+    return Response.json({
+      success: ok,
       onesignal_response: result
     });
 
