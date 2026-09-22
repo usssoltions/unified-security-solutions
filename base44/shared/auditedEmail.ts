@@ -41,13 +41,27 @@ function isSyntheticReference(...vals: any[]): boolean {
   return vals.some((v) => /\b(AUDIT|TEST|FIXTURE|SAMPLE|DEMO)[-_]/i.test(String(v || '')));
 }
 
+/** Secret read that works with both runtime shapes (get() method or
+ *  plain properties) — a missing/invalid secret is an EMPTY string, which
+ *  the mode validation then treats as fail-closed. */
+function readSecret(name: string): string {
+  try {
+    if (secrets && typeof (secrets as any).get === 'function') {
+      return String((secrets as any).get(name) ?? '');
+    }
+    return String((secrets as any)?.[name] ?? '');
+  } catch (_) {
+    return '';
+  }
+}
+
 export function currentDeliveryMode(): string | null {
-  const mode = String(secrets?.DELIVERY_MODE || '').trim().toLowerCase();
+  const mode = readSecret('DELIVERY_MODE').trim().toLowerCase();
   return VALID_MODES.includes(mode) ? mode : null;
 }
 
 export function testMailboxAllowlist(): string[] {
-  return String(secrets?.TEST_MAILBOX || '')
+  return readSecret('TEST_MAILBOX')
     .split(',')
     .map((s: string) => s.trim().toLowerCase())
     .filter(Boolean);
