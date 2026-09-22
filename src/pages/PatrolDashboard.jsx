@@ -23,7 +23,7 @@ const STATUS_CONFIG = {
   failed:    { color: "bg-rose-800",   text: "Failed",    dot: "bg-rose-600" },
 };
 
-function StatCard({ label, value, color, icon: Icon }) { // eslint-disable-line
+function StatCard({ label, value, color, icon: Icon }) {  
   return (
     <Card className={`bg-slate-800 border-slate-700 border-l-4 ${color}`}>
       <CardContent className="p-4 flex items-center gap-3">

@@ -182,6 +182,23 @@ Deno.serve(async (req) => {
           };
         }
 
+        /* ── CLASSIFICATION INVARIANTS (asserted server-side, fail closed) ── *
+         * platform_scope=true requires either every participant to be a
+         * platform administrator (platform-to-platform) or the explicitly
+         * classified platform-oversight relationship (single tenant scope +
+         * recorded initiation_reason). platform_scope=false requires an
+         * authoritative customer tenant — an ordinary unscoped CallSession
+         * can NEVER be created. */
+        if (scope.platform_scope && !scope.customer_id && tenantTargets.length) {
+          return Response.json({ error: 'Invalid platform session classification' }, { status: 500 });
+        }
+        if (scope.platform_scope && scope.customer_id && !scope.initiation_reason) {
+          return Response.json({ error: 'Invalid platform session classification' }, { status: 500 });
+        }
+        if (!scope.platform_scope && !scope.customer_id) {
+          return Response.json({ error: 'Refusing to create an unscoped call session' }, { status: 500 });
+        }
+
         /* ── Initiation rate limit ───────────────────────────────────────── */
         const recentSessions = await svc.entities.CallSession.filter({ caller_id: String(user.id) }).catch(() => []);
         const recentCount = (recentSessions || []).filter(s =>
@@ -208,11 +225,13 @@ Deno.serve(async (req) => {
           started_at: new Date().toISOString(),
         });
 
-        // Platform-initiated tenant call — explicit platform audit trail.
-        if (callerIsPlatform && scope.customer_id) {
+        // Platform-initiated call — explicit platform audit trail for BOTH
+        // platform-oversight calls into a tenant AND platform-to-platform
+        // calls: every platform call is audited as a platform call.
+        if (callerIsPlatform) {
           try {
             await svc.entities.PlatformAuditLog.create({
-              event_type: 'call.platform_initiated',
+              event_type: scope.customer_id ? 'call.platform_initiated' : 'call.platform_to_platform',
               user_id: String(user.id),
               user_name: session.caller_name,
               customer_id: scope.customer_id,
@@ -220,7 +239,9 @@ Deno.serve(async (req) => {
               entity_name: 'CallSession',
               entity_id: session.call_id,
               action: 'initiate_call (platform oversight)',
-              notes: `Platform administrator placed a call into a tenant. Reason: ${scope.initiation_reason}`,
+              notes: scope.customer_id
+                ? `Platform administrator placed a call into a tenant. Reason: ${scope.initiation_reason}`
+                : 'Platform administrator placed a platform-to-platform call.',
             });
           } catch (_) { /* audit must never break the call path */ }
         }
@@ -282,6 +303,14 @@ Deno.serve(async (req) => {
         if (bad) return bad;
         if (targetUserId && ![session.caller_id, session.callee_id, ...(session.participants || []).map(p => p.user_id)].includes(targetUserId)) {
           return Response.json({ error: 'Target is not a participant in this call' }, { status: 403 });
+        }
+        // CANDIDATE FLOOD CAP — ICE produces dozens of candidates normally,
+        // but a runaway or hostile participant must not enqueue unbounded
+        // signaling records. The cap is per CALL SESSION (never global), so
+        // one busy customer can never affect another tenant's calls.
+        const candRows = await svc.entities.SignalingMessage.filter({ call_id: callId, type: 'candidate' }).catch(() => []);
+        if ((candRows || []).length >= 200) {
+          return Response.json({ error: 'Too many connection candidates for this call' }, { status: 429 });
         }
         await enqueue('candidate', targetUserId, candidate);
         return Response.json({ success: true });

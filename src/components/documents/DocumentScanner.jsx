@@ -160,7 +160,7 @@ export default function DocumentScanner({
       if (_scannerContainer && _scannerContainer.parentNode) _scannerContainer.parentNode.removeChild(_scannerContainer);
       console.log("[barKoder] DocumentScanner closed (instance retained for next open)");
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [documentType]);
 
   const beginScanning = useCallback(async () => {
@@ -190,7 +190,7 @@ export default function DocumentScanner({
       console.log("[barKoder] camera_started", { profile: documentType, caller });
       scanner.logDebug("camera_started", { profile: documentType, caller });
     } catch (e) { reportError(e); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [documentType, caller]);
 
   const handleResult = useCallback(async (raw) => {
@@ -228,7 +228,7 @@ export default function DocumentScanner({
       return;
     }
     setStatus("result");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [caller, documentType, autoAccept]);
 
   const handleClose = useCallback(() => { scanner.stopScanner(); onClose?.(); }, [onClose]);

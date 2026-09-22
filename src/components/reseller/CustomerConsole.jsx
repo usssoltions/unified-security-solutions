@@ -151,7 +151,7 @@ export default function CustomerConsole({ customerId }) {
       loadUsers();    // background
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [customerId]);
 
   const resellerLicensedKeys = resellerEnts

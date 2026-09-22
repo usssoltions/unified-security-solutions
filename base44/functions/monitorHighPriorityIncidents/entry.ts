@@ -13,6 +13,7 @@ import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brand
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
+import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -34,12 +35,15 @@ Deno.serve(async (req) => {
     // incident from the database so priority, tenant scope and the
     // notification_sent gate all come from the stored record.
     const incId = body?.data?.id || body?.id || body?.incident_id;
-    let incident = body?.data || null;
+    // AUTHORITATIVE RELOAD — the stored record is the ONLY accepted source.
+    // A failed reload fails CLOSED: request-supplied incident content and
+    // tenant scope are never trusted (no payload fallback).
+    let incident = null;
     if (incId) {
       try {
         const rows = await base44.asServiceRole.entities.Incident.filter({ id: String(incId) });
         if (rows?.[0]) incident = rows[0];
-      } catch (_) { /* fall back to the payload only if the reload fails */ }
+      } catch (_) { /* fail closed below */ }
     }
     if (!incident) {
       return Response.json({ skipped: true, reason: 'No incident data' });
@@ -113,8 +117,16 @@ Deno.serve(async (req) => {
 
     const subject = `🚨 CRITICAL INCIDENT — ${(incident.category || '').toUpperCase()} at ${incident.site_name || 'site'}`;
 
-    const notifPromises = recipients.map((admin) =>
-      base44.asServiceRole.entities.Notification.create({
+    // IN-APP — one record per recipient, deduplicated per recipient+incident
+    // so a RETRY never duplicates bell entries or re-fires an already
+    // delivered leg (partial channel failure is truthfully audited and the
+    // un-delivered legs remain eligible).
+    for (const admin of recipients) {
+      const existing = await base44.asServiceRole.entities.Notification
+        .filter({ recipient_id: admin.id, related_entity: 'incident', related_id: incident.id, type: 'incident_critical' })
+        .catch(() => []);
+      if (existing && existing.length) continue;
+      await base44.asServiceRole.entities.Notification.create({
         recipient_id: admin.id,
         recipient_name: admin.full_name,
         type: 'incident_critical',
@@ -128,21 +140,29 @@ Deno.serve(async (req) => {
         customer_id: incident.customer_id || undefined,
         reseller_id: incident.reseller_id || undefined,
         sent_via: ['in_app', 'email'],
-      }).catch(() => {})
-    );
+      }).catch(() => {});
+    }
 
-    const emailPromises = recipients
-      .filter((u) => u.email)
-      .map((admin) =>
-        base44.asServiceRole.integrations.Core.SendEmail({
-          from_name: brand.brand_name + ' — Critical Alerts',
-          to: admin.email,
-          subject,
-          body: brandTpl.html,
-        }).catch(() => {})
-      );
-
-    await Promise.all([...notifPromises, ...emailPromises]);
+    // EMAIL — shared audited helper: idempotent per incident + recipient
+    // (a retry never re-sends a delivered email), failures recorded in the
+    // delivery audit trail.
+    for (const admin of recipients) {
+      if (!admin.email) continue;
+      await sendAuditedEmail(base44.asServiceRole, {
+        to: admin.email,
+        subject,
+        html: brandTpl.html,
+        text: brandTpl.text,
+        from_name: brand.brand_name + ' — Critical Alerts',
+        customer_id: incident.customer_id || null,
+        reseller_id: incident.reseller_id || null,
+        recipient_id: admin.id,
+        recipient_name: admin.full_name,
+        event_type: 'incident_critical',
+        reference_id: incident.id,
+        idempotency_key: `incident_critical:${incident.id}:email:${admin.id}`,
+      });
+    }
 
     // NATIVE PUSH — shared platform service. A CRITICAL incident must reach
     // management with the app closed (CRITICAL policy priority). Deterministic

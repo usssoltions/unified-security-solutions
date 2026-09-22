@@ -12,6 +12,13 @@ export default [
     ],
     languageOptions: { globals: globals.browser },
     ...pluginJs.configs.recommended,
+    rules: {
+      // Empty catch blocks are this codebase's deliberate, documented pattern
+      // for best-effort notification/audit legs that must never break the
+      // main operation (RTC push, notification fan-out, wake locks). Real
+      // errors — hooks, undefined variables, unsafe patterns — remain errors.
+      "no-empty": ["error", { allowEmptyCatch: true }],
+    },
   },
   {
     files: [

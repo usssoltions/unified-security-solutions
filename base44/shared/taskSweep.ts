@@ -250,7 +250,7 @@ export async function runTaskSweep(svc, secrets) {
         await svc.entities.Notification.create({
           customer_id: batch.customer_id, reseller_id: batch.reseller_id || null,
           recipient_id: r.id, recipient_name: r.name,
-          type: 'status_change', priority: 'normal',
+          type: 'status_change', priority: 'medium',
           title: 'OUTSTANDING TASKS — ' + batch.title,
           message: outstanding.length + ' task(s) still outstanding in ' + (batch.control_room_name || 'your control room') +
             ' (window ' + batch.active_start_time + '–' + batch.deadline_time + ').',
@@ -265,7 +265,7 @@ export async function runTaskSweep(svc, secrets) {
         pushTitle: 'OUTSTANDING TASKS — ' + batch.title,
         pushBody: outstanding.length + ' task(s) still outstanding in ' + (batch.control_room_name || 'your control room') +
           ' (window ' + batch.active_start_time + '–' + batch.deadline_time + ').',
-        priority: 'normal',
+        priority: 'medium',
         customerId: batch.customer_id, resellerId: batch.reseller_id || null });
       await svc.entities.TaskBatch.update(batch.id, {
         reminder_count: dueReminders, last_reminder_at: new Date().toISOString(),

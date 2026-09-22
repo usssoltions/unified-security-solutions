@@ -99,7 +99,7 @@ export default function TenantUserInviteForm({
       })
       .catch(() => {});
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open, customerLocked, resellerId]);
 
   // Preselect the single in-context customer once the list resolves.
@@ -107,7 +107,7 @@ export default function TenantUserInviteForm({
     if (customerList.length === 1 && !form.customer_id) {
       setForm((f) => ({ ...f, customer_id: customerList[0].id }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [customerList]);
 
   // Fetch the selected customer's ENABLED modules — authoritative for both
@@ -129,7 +129,7 @@ export default function TenantUserInviteForm({
       .then((keys) => { if (alive) setEnabledModuleKeys(keys); })
       .catch(() => { if (alive) setEnabledModuleKeys([]); });
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open, customerLocked, form.customer_id]);
 
   const roles = getInviteRolesForCustomer(enabledModuleKeys || [], { allowResellerAdmin });
@@ -143,7 +143,7 @@ export default function TenantUserInviteForm({
     if (!roles.some((r) => r.value === form.role_type)) {
       setForm((f) => ({ ...f, role_type: "customer_admin" }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [enabledModuleKeys]);
 
   const isResellerAdminRole = form.role_type === "reseller_admin";
@@ -171,7 +171,7 @@ export default function TenantUserInviteForm({
       })
       .catch(() => { if (alive) setSites([]); });
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open, form.customer_id, needsCustomer]);
 
   const showSiteField = needsCustomer && SITE_SCOPED_ROLES.includes(form.role_type);

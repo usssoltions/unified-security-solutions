@@ -160,7 +160,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       stopStream();
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // Guide geometry — scales with the viewport, always preserving the

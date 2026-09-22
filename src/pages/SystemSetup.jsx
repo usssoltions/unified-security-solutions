@@ -69,7 +69,7 @@ export default function SystemSetup() {
       
       // Force hard refresh after delay
       setTimeout(() => {
-        window.location.href = window.location.href;
+        window.location.reload();
       }, 3000);
       
     } catch (error) {

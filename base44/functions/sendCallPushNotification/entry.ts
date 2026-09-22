@@ -75,7 +75,11 @@ Deno.serve(async (req) => {
     // request (double-tap, retry) is a no-op, not a second ring.
     const idemKey = `call_push:${callId}:${recipientId}`;
     const existing = await svc.entities.NotificationDelivery.filter({ idempotency_key: idemKey }).catch(() => []);
-    if (existing && existing.length) {
+    const prior = (existing && existing.length) ? existing[existing.length - 1] : null;
+    // DEDUPLICATION: a SENT (or in-flight pending) push is never repeated.
+    // A FAILED push remains eligible for a controlled retry per
+    // call+recipient — deduplication must never trap a provider failure.
+    if (prior && prior.status !== 'failed') {
       return Response.json({ success: true, deduplicated: true });
     }
 
@@ -92,18 +96,30 @@ Deno.serve(async (req) => {
 
     // Claim the delivery record FIRST (idempotency), then dispatch. SDK create
     // returns the created record object directly — never array-destructure it.
-    const delivery = await svc.entities.NotificationDelivery.create({
-      event_key: idemKey,
-      event_type: 'call_push',
-      reference_id: String(callId),
-      customer_id: session.customer_id || undefined,
-      reseller_id: session.reseller_id || undefined,
-      recipient_id: String(recipientId),
-      channel: 'push',
-      status: 'pending',
-      send_time: new Date().toISOString(),
-      idempotency_key: idemKey,
-    }).catch(() => null);
+    let delivery = prior;
+    if (delivery) {
+      // Retry of a FAILED push — REUSE the same idempotency record (counted
+      // in `retries`) instead of creating a duplicate delivery row.
+      try {
+        await svc.entities.NotificationDelivery.update(delivery.id, {
+          status: 'pending', send_time: new Date().toISOString(),
+          retries: (delivery.retries || 0) + 1,
+        });
+      } catch (_) { /* reuse the record as-is */ }
+    } else {
+      delivery = await svc.entities.NotificationDelivery.create({
+        event_key: idemKey,
+        event_type: 'call_push',
+        reference_id: String(callId),
+        customer_id: session.customer_id || undefined,
+        reseller_id: session.reseller_id || undefined,
+        recipient_id: String(recipientId),
+        channel: 'push',
+        status: 'pending',
+        send_time: new Date().toISOString(),
+        idempotency_key: idemKey,
+      }).catch(() => null);
+    }
 
     // Deployment origin from the incoming request — never hard-coded, so
     // custom domains and preview deployments stay correct. The URL carries
