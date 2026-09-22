@@ -117,6 +117,8 @@ export const ROUTE_REGISTRY = {
     { title: "Vendors", pageKey: "EstateVendors", icon: Package },
     { title: "Properties", pageKey: "EstateProperties", icon: Building2 },
     { title: "Voting", pageKey: "EstateVoting", icon: Vote },
+    { title: "Announcements", pageKey: "AnnouncementManagement", icon: Bell },
+    { title: "Tickets", pageKey: "TicketManagement", icon: FileText },
     { title: "Access Control", pageKey: "AccessControl", icon: QrCode },
     { title: "Panic Queue", pageKey: "PanicManagement", icon: Zap },
     { title: "Security", pageKey: "ControlRoom", icon: Shield },

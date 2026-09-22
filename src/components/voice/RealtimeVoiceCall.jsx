@@ -231,6 +231,7 @@ export default function RealtimeVoiceCall({
       const { data: initData } = await base44.functions.invoke('rtcSignaling', {
         action: 'initiate_call',
         targetUserId: firstParticipant.id,
+        participantIds: callParticipants.map(p => p.id),
         isGroupCall: isGroupCall
       });
       
@@ -374,14 +375,26 @@ export default function RealtimeVoiceCall({
           }
           
           const blob = new Blob(recordedChunks.current, { type: 'audio/webm' });
-          const file = new File([blob], `call_${callId.current}_${Date.now()}.webm`, { type: 'audio/webm' });
-          
+
           console.log('Uploading recording, size:', blob.size, 'bytes');
-          
-          // Upload recording to cloud storage via Base44
-          const { data } = await base44.integrations.Core.UploadFile({ file });
-          console.log('Recording uploaded successfully:', data.file_url);
-          resolve(data.file_url);
+
+          // Upload recording through the rtcSignaling gateway — participant-
+          // validated and stored in PRIVATE storage (signed access only).
+          const buf = await blob.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let bin = '';
+          for (let i = 0; i < bytes.length; i += 0x8000) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+          }
+          const { data } = await base44.functions.invoke('rtcSignaling', {
+            action: 'upload_recording',
+            callId: callId.current,
+            audioBase64: btoa(bin),
+            contentType: 'audio/webm',
+            duration: callDuration
+          });
+          console.log('Recording uploaded to private storage');
+          resolve(data.recording_uri);
         } catch (error) {
           console.error('Error uploading recording:', error);
           resolve(null);

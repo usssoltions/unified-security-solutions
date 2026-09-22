@@ -53,20 +53,22 @@ function run() {
   }
 
   // 4. pages.config.js map — every entry must exist and have a route
-  const configKeys = [...pagesConfig.matchAll(/^\s*"?([A-Za-z0-9_-]+)"?\s*:/gm)].map(m => m[1]);
+  // (mainPage/Pages/Layout are config meta-keys, not page entries)
+  const metaKeys = new Set(['mainPage', 'Pages', 'Layout']);
+  const configKeys = [...pagesConfig.matchAll(/^\s*"?([A-Za-z0-9_-]+)"?\s*:/gm)].map(m => m[1])
+    .filter((k) => !metaKeys.has(k));
   for (const k of configKeys) {
     if (!pageSet.has(k)) problems.push('pages.config entry has no component: ' + k);
   }
 
-  // 5. routeRegistry: page keys referenced in the registry must exist as pages
-  const regPages = [...registry.matchAll(/page:\s*["']([A-Za-z0-9_-]+)["']/g)].map(m => m[1]);
-  const regRoots = [...registry.matchAll(/isRoot:\s*true[^}]*?page:\s*["']([A-Za-z0-9_-]+)["']/g)].map(m => m[1]);
+  // 5. routeRegistry: pageKey references must exist as pages
+  const regPages = [...registry.matchAll(/pageKey:\s*["']([A-Za-z0-9_-]+)["']/g)].map(m => m[1]);
+  const regRoots = [...registry.matchAll(/isRoot:\s*true[^}]*?pageKey:\s*["']([A-Za-z0-9_-]+)["']/g)].map(m => m[1]);
+  const rootsByInline = [...registry.matchAll(/pageKey:\s*["']([A-Za-z0-9_-]+)["'],\s*icon:[^}]*isRoot:\s*true/g)].map(m => m[1]);
   for (const p of new Set(regPages)) {
     if (!pageSet.has(p)) problems.push('routeRegistry references missing page: ' + p);
   }
-  // each role's root page must exist and be in that role's nav list
-  const roleBlocks = [...registry.matchAll(/\((["']([a-z_]+)["'][^)]*)\)/g)];
-  for (const p of new Set(regRoots)) {
+  for (const p of new Set([...regRoots, ...rootsByInline])) {
     if (!pageSet.has(p)) problems.push('ROLE_HOME/root references missing page: ' + p);
   }
 
@@ -76,8 +78,11 @@ function run() {
     if (/^[A-Z]/.test(p) && !pageSet.has(p)) problems.push('PAGE_MODULE_MAP references missing page: ' + p);
   }
 
-  // 7. every page file should be reachable: declared route OR config key OR registry reference
-  const reachable = new Set([...declaredRoutes, ...configKeys, ...regPages]);
+  // 7. every page file should be reachable: declared route OR config key OR
+  // registry reference OR an explicit App.jsx special-case branch
+  // (PublicAccountRemoval is rendered by the /account-removal branch, no <Route>).
+  const specialBranch = new Set(app.includes("PublicAccountRemoval") && app.includes('account-removal') ? ['PublicAccountRemoval'] : []);
+  const reachable = new Set([...declaredRoutes, ...configKeys, ...regPages, ...specialBranch]);
   for (const p of pages) {
     if (!reachable.has(p)) problems.push('Page file exists but is unreachable (no route/config/registry): ' + p);
   }

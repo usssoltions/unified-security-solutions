@@ -33,6 +33,8 @@ import MedicalEmployerDetail from './pages/MedicalEmployerDetail';
 import PlatformDiagnostics from './pages/PlatformDiagnostics';
 import EstateProperties from './pages/EstateProperties';
 import EstateVoting from './pages/EstateVoting';
+import AnnouncementManagement from './pages/AnnouncementManagement';
+import TicketManagement from './pages/TicketManagement';
 import ClientDashboard from './pages/ClientDashboard';
 import ClientReports from './pages/ClientReports';
 import ClientIncidents from './pages/ClientIncidents';
@@ -283,6 +285,20 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="EstateVoting">
             <ProtectedPage pageKey="EstateVoting">
               <EstateVoting />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/AnnouncementManagement" element={
+          <LayoutWrapper currentPageName="AnnouncementManagement">
+            <ProtectedPage pageKey="AnnouncementManagement">
+              <AnnouncementManagement />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/TicketManagement" element={
+          <LayoutWrapper currentPageName="TicketManagement">
+            <ProtectedPage pageKey="TicketManagement">
+              <TicketManagement />
             </ProtectedPage>
           </LayoutWrapper>
         } />

@@ -51,6 +51,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 });
     }
 
+    // AUTHORITATIVE SESSION — push is only sent for a call the authenticated
+    // user actually placed (server-created CallSession). Forged call ids are
+    // rejected before any push is dispatched.
+    const [session] = await base44.asServiceRole.entities.CallSession.filter({ call_id: callId }).catch(() => []);
+    if (!session || session.caller_id !== user.id) {
+      return Response.json({ error: 'Unknown call session' }, { status: 404 });
+    }
+
+    // Deployment origin is derived from the incoming request — never
+    // hard-coded, so custom domains and preview deployments stay correct.
+    const appOrigin = new URL(req.url).origin;
+
     // Send OneSignal push notification
     const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID');
     const ONESIGNAL_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY');
@@ -103,8 +115,8 @@ Deno.serve(async (req) => {
           title: "📞 Incoming Call",
           subtitle: isGroupCall ? "Group Call" : "Direct Call"
         },
-        url: `https://guard-track-pro-26cedab8.base44.app/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
-        web_url: `https://guard-track-pro-26cedab8.base44.app/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
+        url: `${appOrigin}/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
+        web_url: `${appOrigin}/?call_id=${callId}&caller_name=${encodeURIComponent(callerName)}`,
         data: {
           type: 'call',
           callId: callId,

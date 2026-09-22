@@ -583,6 +583,11 @@ export default async function main(req: Request): Promise<Response> {
     }
 
     /* ── Service tickets ────────────────────────────────────────────────── */
+    // The application has NO financial functionality: ticket categories that
+    // describe money (billing, levy, payment, invoice, ...) are rejected at the
+    // gateway for BOTH create and manager update, so no client can file or
+    // re-categorise a ticket as a financial matter.
+    const TICKET_BLOCKED_CATEGORIES = ['billing', 'payment', 'levy', 'invoice', 'checkout', 'deposit', 'finance', 'fees', 'accounts', 'refund', 'settlement'];
     if (action === 'list_tickets') {
       if (!authorized) return deny();
       if (isResident) {
@@ -606,6 +611,9 @@ export default async function main(req: Request): Promise<Response> {
       await loadSelf();
       const d = p.data || {};
       if (!d.title || !d.category) return err('Title and category are required.');
+      if (TICKET_BLOCKED_CATEGORIES.includes(String(d.category).toLowerCase().trim())) {
+        return err('Financial categories are not supported. Please choose a non-financial category.', 400);
+      }
       const residentId = isResident ? caller.id : (d.resident_id || caller.id);
       const ticketNumber = 'EST-' + Date.now().toString(36).toUpperCase();
       const reseller_id = await resolveResellerId();
@@ -658,6 +666,9 @@ export default async function main(req: Request): Promise<Response> {
         return Response.json({ success: true, record: updated });
       }
       if (!isAdmin) return err('Forbidden', 403);
+      if (changes.category !== undefined && TICKET_BLOCKED_CATEGORIES.includes(String(changes.category).toLowerCase().trim())) {
+        return err('Financial categories are not supported. Please choose a non-financial category.', 400);
+      }
       delete changes.customer_id; delete changes.reseller_id; delete changes.resident_id;
       if (Object.keys(changes).length) {
         if (['resolved', 'closed'].includes(changes.status) && !changes.resolved_at) {

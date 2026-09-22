@@ -1,0 +1,147 @@
+{
+  "name": "CallSession",
+  "type": "object",
+  "description": "RTC module: AUTHORITATIVE call session record created server-side by the rtcSignaling gateway on initiate_call. Every signaling action (offer/answer/candidate/answered/end) is validated against this record: the requester must be a listed participant, the call must be in a status that permits the action, and stale ringing sessions auto-expire. Push notifications and in-app call notifications are only sent for sessions whose caller is the authenticated requester. GATEWAY-ONLY ACCESS: rtcSignaling reads/writes these records through the service role; direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. NULLABLE FIELDS: customer_id/reseller_id are legitimately null for platform-admin calls (tenant-exempt oversight). NO PAYMENT FUNCTIONALITY.",
+  "properties": {
+    "customer_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Caller's tenant \u2014 membership is tenant-scoped. Null for platform-admin calls (platform oversight is tenant-exempt by design)."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "call_id": {
+      "type": "string",
+      "description": "Server-generated authoritative call identifier (unique per call)."
+    },
+    "caller_id": {
+      "type": "string",
+      "description": "Authenticated User id of the caller \u2014 never client-supplied."
+    },
+    "caller_name": {
+      "type": "string"
+    },
+    "callee_id": {
+      "type": "string",
+      "description": "Primary callee User id (direct calls)."
+    },
+    "callee_name": {
+      "type": "string"
+    },
+    "participants": {
+      "type": "array",
+      "description": "All invited User ids resolved at initiate time; signaling targets must be listed here.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "user_name": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "call_type": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "group"
+      ],
+      "default": "direct"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ringing",
+        "active",
+        "ended",
+        "declined",
+        "expired"
+      ],
+      "default": "ringing"
+    },
+    "recording_uri": {
+      "type": "string",
+      "description": "PRIVATE storage uri of the call recording (if uploaded) \u2014 signed access only via rtcSignaling get_recording."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "call_id",
+    "caller_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -61,27 +61,48 @@ export default function CallRecordings() {
     enabled: !!user
   });
 
-  const handlePlayPause = (recording) => {
+  // Recordings live in PRIVATE storage — a short-lived signed URL is minted
+  // per access via the rtcSignaling gateway (participant-validated). Legacy
+  // public recordings (pre-migration https URLs) play directly.
+  const getPlaybackUrl = async (recording) => {
+    if (!recording.recording_url) return null;
+    if (/^https?:/i.test(recording.recording_url)) return recording.recording_url;
+    try {
+      const { data } = await base44.functions.invoke('rtcSignaling', {
+        action: 'get_recording',
+        callId: recording.call_id,
+        recordingUri: recording.recording_url
+      });
+      return data?.signed_url || null;
+    } catch (error) {
+      console.error('Signed recording access failed:', error);
+      return null;
+    }
+  };
+
+  const handlePlayPause = async (recording) => {
     if (playingRecording?.id === recording.id) {
       if (audioElement) {
         audioElement.pause();
         setPlayingRecording(null);
       }
-    } else {
-      if (audioElement) {
-        audioElement.pause();
-      }
-      const audio = new Audio(recording.recording_url);
-      audio.play();
-      audio.onended = () => setPlayingRecording(null);
-      setAudioElement(audio);
-      setPlayingRecording(recording);
+      return;
     }
+    if (audioElement) {
+      audioElement.pause();
+    }
+    const url = await getPlaybackUrl(recording);
+    if (!url) return;
+    const audio = new Audio(url);
+    audio.play();
+    audio.onended = () => setPlayingRecording(null);
+    setAudioElement(audio);
+    setPlayingRecording(recording);
   };
 
   const handleDownload = async (recording) => {
     try {
-      const response = await fetch(recording.recording_url);
+      const response = await fetch(await getPlaybackUrl(recording));
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");

@@ -32,6 +32,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden — calls are limited to your own organisation' }, { status: 403 });
     }
 
+    // AUTHORITATIVE SESSION — a call notification is only sent for a call the
+    // authenticated user actually placed (server-created CallSession). Forged
+    // call ids (or replaying someone else's id) are rejected before any
+    // notification is created.
+    const [session] = await base44.asServiceRole.entities.CallSession.filter({ call_id: callId }).catch(() => []);
+    if (!session || session.caller_id !== user.id) {
+      return Response.json({ error: 'Unknown call session' }, { status: 404 });
+    }
+
     console.log(`[sendCallNotification] Creating in-app call notification — callId: ${callId}, caller: ${callerName}, target: ${targetUserId}`);
 
     

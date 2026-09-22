@@ -1,7 +1,7 @@
 {
   "name": "ServiceTicket",
   "type": "object",
-  "description": "Estate resident service ticket (support request). TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway (resident self-service; manager assignment/resolution); direct client access is restricted to platform admins by RLS.",
+  "description": "Estate resident service ticket (support request). NO FINANCIAL CATEGORIES \u2014 the category list covers physical/operational/communal issues only; billing, levy, payment, invoice and every other financial label is deliberately absent and rejected server-side by the estateAccess gateway. TENANT ACCESS: every tenant read/write goes through the estateAccess backend gateway (resident self-service; manager assignment/resolution); direct client access is restricted to platform admins by RLS.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -10,6 +10,13 @@
     "reseller_id": {
       "type": "string",
       "description": "Reseller ownership for reseller-scoped oversight access."
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "ticket_number": {
+      "type": "string",
+      "description": "Server-generated ticket reference (EST-<base36 timestamp>)."
     },
     "resident_id": {
       "type": "string"
@@ -20,7 +27,11 @@
     "unit_number": {
       "type": "string"
     },
-    "subject": {
+    "vendor_id": {
+      "type": "string",
+      "description": "Contractor/vendor assigned to this ticket (self-service scoped server-side)."
+    },
+    "title": {
       "type": "string"
     },
     "description": {
@@ -29,13 +40,17 @@
     "category": {
       "type": "string",
       "enum": [
+        "plumbing",
+        "electrical",
+        "structural",
+        "landscaping",
         "security",
-        "maintenance",
-        "administration",
-        "billing",
+        "noise",
+        "parking",
+        "general",
         "other"
       ],
-      "default": "maintenance"
+      "default": "general"
     },
     "priority": {
       "type": "string",
@@ -54,9 +69,22 @@
         "in_progress",
         "resolved",
         "closed",
-        "cancelled"
+        "cancelled",
+        "reopened"
       ],
       "default": "open"
+    },
+    "stage": {
+      "type": "string",
+      "description": "Workflow stage (submitted, assigned, reopened, ...)."
+    },
+    "media": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Evidence photo/video references."
     },
     "assigned_to": {
       "type": "string",
@@ -68,6 +96,35 @@
     "assigned_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "contractor_status": {
+      "type": "string",
+      "description": "Vendor workflow status (vendor self-service, gateway-restricted)."
+    },
+    "contractor_notes": {
+      "type": "string"
+    },
+    "contractor_photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "materials_used": {
+      "type": "string"
+    },
+    "outstanding_issues": {
+      "type": "string"
+    },
+    "contractor_signature": {
+      "type": "string"
+    },
+    "resident_rating": {
+      "type": "number"
+    },
+    "resident_feedback": {
+      "type": "string"
     },
     "resolution_notes": {
       "type": "string"
@@ -93,8 +150,7 @@
   },
   "required": [
     "resident_id",
-    "subject",
-    "description",
+    "title",
     "category"
   ],
   "rls": {
