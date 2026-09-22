@@ -1,7 +1,7 @@
 {
   "name": "MedicalReport",
   "type": "object",
-  "description": "Medical module: Generated professional report. Distinguishes internal clinical report from employer-approved (released) report. Sharing is an explicit, audited, practice-admin-only decision through the medicalAccess gateway (share_report); employer portal users see ONLY released reports for their own employer. Reception has ZERO report access; therapists act on their own sessions' reports. GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. Deletion is not offered through the gateway (clinical preservation).",
+  "description": "Medical module: Generated professional report. STRICT STATE MACHINE (enforced server-side by the medicalAccess gateway, compare-and-swap on the previous state): draft \u2192 pending_approval (clinical author) \u2192 approved (practice admin, NEVER the author \u2014 independent approval) \u2192 released (practice-admin-only share_report with recipient audit); pending_approval \u2192 draft (returned for changes, reason REQUIRED). Released/archived reports are IMMUTABLE. Every transition is recorded in transition_history (actor, timestamp, previous state, new state, reason) and in the platform audit log. Sharing is an explicit, audited, practice-admin-only decision; employer portal users see ONLY released reports for their own employer. Reception has ZERO report access; therapists act on their own sessions' reports. GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. Deletion is not offered through the gateway (clinical preservation).",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -84,6 +84,35 @@
     "file_url": {
       "type": "string",
       "description": "Generated PDF file URL"
+    },
+    "transition_history": {
+      "type": "array",
+      "default": [],
+      "description": "Server-appended audit trail of every status transition (CAS-protected): actor id/name, timestamp, previous state, new state and reason.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_id": {
+            "type": "string"
+          },
+          "actor_name": {
+            "type": "string"
+          },
+          "from_status": {
+            "type": "string"
+          },
+          "to_status": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
     },
     "status": {
       "type": "string",
