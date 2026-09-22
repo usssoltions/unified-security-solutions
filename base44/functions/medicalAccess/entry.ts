@@ -390,6 +390,9 @@ export default async function main(req: Request): Promise<Response> {
       const changes = (p.changes && typeof p.changes === 'object') ? { ...p.changes } : {};
       delete changes.customer_id; delete changes.reseller_id; delete changes.patient_id;
       delete changes.employer_id; delete changes.service_id; delete changes.calendar_event_id;
+      // The session link is written ONLY by create_session's atomic claim —
+      // a client can never point an appointment at an arbitrary session.
+      delete changes.session_id;
       if (!Object.keys(changes).length) return Response.json({ success: true, record: rec, unchanged: true });
       const updated = await svc.entities.Appointment.update(rec.id, changes);
       await audit('medical.appointment.updated', 'Appointment', rec.id, 'updated appointment (status ' + (changes.status || rec.status) + ')', updated);
@@ -414,6 +417,7 @@ export default async function main(req: Request): Promise<Response> {
       const d = p.data || {};
       const appointment = await find('Appointment', d.appointment_id);
       if (!appointment || !inScope(appointment)) return err('Appointment not found in your practice.', 404);
+      if (appointment.status === 'cancelled') return err('A cancelled appointment cannot start a session.', 409);
       // IDEMPOTENCY — exactly ONE session per appointment: duplicate taps,
       // retries and concurrent calls resume instead of duplicating.
       if (appointment.session_id) {
@@ -432,8 +436,24 @@ export default async function main(req: Request): Promise<Response> {
       }
       const patient = await find('Patient', d.patient_id || appointment.patient_id);
       if (!patient || !inScope(patient)) return err('Patient not found in your practice.', 404);
+      // The appointment must belong to the same patient — server-verified.
+      if (String(patient.id) !== String(appointment.patient_id)) {
+        return err('The appointment does not belong to this patient.', 409);
+      }
       const therapistId = isTherapist ? caller.id : (d.therapist_id || appointment.therapist_id || caller.id);
       if (isTherapist && therapistId !== caller.id) return err('Therapists may only open their own sessions.', 403);
+      if (therapistId && !isTherapist) {
+        // A practice admin assigning a therapist must pick one from THIS practice.
+        const tRows = await svc.entities.User.filter({ id: String(therapistId) }).catch(() => []);
+        const t = (tRows && tRows[0]) || null;
+        if (!t) return err('Therapist not found.', 404);
+        if (t.customer_id && scope.customer_id && t.customer_id !== scope.customer_id) {
+          return err('Therapist does not belong to this practice.', 403);
+        }
+      }
+      // A patient cannot have conflicting ACTIVE sessions in the practice.
+      const active = await svc.entities.Session.filter({ customer_id: scope.customer_id, patient_id: patient.id, status: 'in_progress' }).catch(() => []);
+      if ((active || []).length > 0) return err('This patient already has an active session.', 409);
       const service = await find('MedicalService', d.service_id || appointment.service_id);
       const created = await svc.entities.Session.create({
         customer_id: scope.customer_id, reseller_id: patient.reseller_id || await resellerIdOf(),
@@ -447,8 +467,23 @@ export default async function main(req: Request): Promise<Response> {
         actual_start_time: d.actual_start_time || new Date().toISOString(),
         status: 'in_progress',
       });
-      // Link the appointment atomically with creation (idempotent on resume).
-      await svc.entities.Appointment.update(appointment.id, { status: 'in_session', session_id: created.id });
+      // ATOMIC CLAIM of the appointment (compare-and-swap on session_id):
+      // exactly ONE concurrent creator can win — the loser's duplicate
+      // session is removed and the winner returned, so double-clicks,
+      // retries and truly concurrent requests converge on one session.
+      await svc.entities.Appointment.updateMany(
+        { id: appointment.id, session_id: null, status: { $ne: 'cancelled' } },
+        { $set: { status: 'in_session', session_id: created.id } }
+      );
+      const claimed = await find('Appointment', appointment.id);
+      if (claimed && claimed.session_id && claimed.session_id !== created.id) {
+        await svc.entities.Session.delete(created.id).catch(() => {});
+        const winner = await find('Session', claimed.session_id);
+        if (winner && inScope(winner) && therapistOwns(winner)) {
+          return Response.json({ success: true, record: winner, created: false });
+        }
+        return err('A session was already started for this appointment.', 409);
+      }
       await audit('medical.session.created', 'Session', created.id, 'started clinical session', created);
       return Response.json({ success: true, record: created, created: true });
     }
@@ -459,9 +494,34 @@ export default async function main(req: Request): Promise<Response> {
       const changes = (p.changes && typeof p.changes === 'object') ? { ...p.changes } : {};
       delete changes.customer_id; delete changes.reseller_id; delete changes.patient_id;
       delete changes.therapist_id; delete changes.appointment_id;
+      // Completion identity is stamped server-side, never client-supplied.
+      delete changes.completion_user_id; delete changes.completion_user_name; delete changes.completed_at;
       if (!Object.keys(changes).length) return Response.json({ success: true, record: rec, unchanged: true });
+      const prevStatus = rec.status || 'in_progress';
+      if (changes.status !== undefined && changes.status !== prevStatus) {
+        const SESSION_TRANSITIONS = {
+          in_progress: ['completed', 'cancelled'],
+          completed: ['in_progress'], // reopen — owner therapist or practice admin only
+          cancelled: [],              // cancelled is final
+        };
+        if (!(SESSION_TRANSITIONS[prevStatus] || []).includes(changes.status)) {
+          return err('Invalid session transition: ' + prevStatus + ' → ' + changes.status + '.', 409);
+        }
+        if (changes.status === 'completed') {
+          changes.actual_end_time = changes.actual_end_time || new Date().toISOString();
+          changes.completed_at = new Date().toISOString();
+          changes.completion_user_id = caller.id;
+          changes.completion_user_name = callerName;
+          if (rec.actual_start_time) {
+            changes.duration_minutes = changes.duration_minutes
+              ?? Math.max(0, Math.round((new Date(changes.actual_end_time).getTime() - new Date(rec.actual_start_time).getTime()) / 60000));
+          }
+        }
+      }
       const updated = await svc.entities.Session.update(rec.id, changes);
-      await audit('medical.session.updated', 'Session', rec.id, 'updated session (' + (changes.status || rec.status) + ')', updated);
+      await audit('medical.session.updated', 'Session', rec.id,
+        'updated session (' + prevStatus + (changes.status && changes.status !== prevStatus ? ' → ' + changes.status : '') + ')'
+        + (p.reason ? ' (reason: ' + p.reason + ')' : ''), updated);
       return Response.json({ success: true, record: updated });
     }
 
@@ -684,12 +744,66 @@ export default async function main(req: Request): Promise<Response> {
       if (!isClinical && !isAdmin) return err('Forbidden', 403);
       const rec = await find('MedicalReport', p.id);
       if (!rec || !inScope(rec) || !therapistOwns(rec)) return err('Report not found in your scope.', 404);
+      // RELEASED / ARCHIVED reports are IMMUTABLE — released content changes
+      // only through a separately authorized, audit-logged new version.
+      if (rec.shared_with_employer === true || rec.status === 'released' || rec.status === 'archived') {
+        return err('This report is finalized and cannot be edited.', 409);
+      }
+      // WHITELIST: clinical content + status only. Patient, employer, session,
+      // therapist identity, tenant, report type, report number and share fields
+      // are authoritative server-side and can NEVER be client-supplied.
+      const ALLOWED_CONTENT = ['findings', 'recommendations', 'work_capacity', 'restrictions',
+        'return_to_work_recommendations', 'accommodation_recommendations', 'follow_up'];
       const changes = (p.changes && typeof p.changes === 'object') ? { ...p.changes } : {};
-      delete changes.customer_id; delete changes.reseller_id; delete changes.shared_with_employer;
-      delete changes.shared_at; delete changes.shared_by_id; delete changes.shared_recipient_name;
-      if (!Object.keys(changes).length) return Response.json({ success: true, record: rec, unchanged: true });
-      const updated = await svc.entities.MedicalReport.update(rec.id, changes);
-      await audit('medical.report.updated', 'MedicalReport', rec.id, 'updated report (' + (changes.status || rec.status) + ')', updated);
+      const content = {};
+      for (const k of Object.keys(changes)) if (ALLOWED_CONTENT.includes(k)) content[k] = changes[k];
+      const prev = rec.status || 'draft';
+      const next = changes.status;
+      if (next !== undefined && next !== prev) {
+        const TRANSITIONS = {
+          draft: ['pending_approval'],
+          pending_approval: ['approved', 'draft'], // 'draft' = returned for changes (reason required)
+          approved: [],   // release happens ONLY via share_report
+          released: [],
+          archived: [],
+        };
+        if (!(TRANSITIONS[prev] || []).includes(next)) {
+          return err('Invalid report transition: ' + prev + ' → ' + next + '.', 409);
+        }
+        if (next === 'approved') {
+          // Independent approval: an authorized approver who is NOT the author.
+          if (!isPracticeAdmin && !isAdmin) return err('Only a practice administrator may approve reports.', 403);
+          if (caller.id === rec.generated_by_id || caller.id === rec.therapist_id) {
+            return err('The report author may not approve their own report.', 403);
+          }
+        }
+        if (next === 'draft') {
+          if (!String(p.reason || '').trim()) return err('A reason is required to return a report.', 400);
+        }
+        content.status = next;
+      }
+      if (!Object.keys(content).length) return Response.json({ success: true, record: rec, unchanged: true });
+      if (content.status !== undefined && content.status !== prev) {
+        // Compare-and-swap on the previous state: concurrent approvals/returns/
+        // releases can never produce inconsistent states — exactly one wins.
+        const entry = {
+          timestamp: new Date().toISOString(), actor_id: caller.id, actor_name: callerName,
+          from_status: prev, to_status: content.status, reason: String(p.reason || '').trim() || null,
+        };
+        await svc.entities.MedicalReport.updateMany(
+          { id: rec.id, status: prev },
+          { $set: content, $push: { transition_history: entry } }
+        );
+        const after = await find('MedicalReport', rec.id);
+        if (!after || (after.status || 'draft') !== content.status) {
+          return err('The report was changed by another user. Reload and retry.', 409);
+        }
+        await audit('medical.report.transition', 'MedicalReport', rec.id,
+          prev + ' → ' + content.status + (entry.reason ? ' (reason: ' + entry.reason + ')' : ''), after);
+        return Response.json({ success: true, record: after });
+      }
+      const updated = await svc.entities.MedicalReport.update(rec.id, content);
+      await audit('medical.report.updated', 'MedicalReport', rec.id, 'updated report content', updated);
       return Response.json({ success: true, record: updated });
     }
     /* Employer release — explicit, audited, practice-admin-only decision. */
@@ -698,17 +812,35 @@ export default async function main(req: Request): Promise<Response> {
       const rec = await find('MedicalReport', p.id);
       if (!rec || !inScope(rec)) return err('Report not found in your scope.', 404);
       if (!rec.employer_id) return err('This report has no employer to share with.', 400);
-      if (rec.status !== 'approved') return err('Only approved reports may be shared.', 409);
+      if (rec.shared_with_employer === true) {
+        // Idempotent — concurrent/repeat releases never duplicate the audit.
+        return Response.json({ success: true, record: rec, idempotent: true });
+      }
+      if (rec.status !== 'approved') return err('Only approved reports may be released to an employer.', 409);
       const recipientName = String(p.recipient_name || '').trim();
-      if (!recipientName) return err('A recipient name is required for the share audit.', 400);
-      const updated = await svc.entities.MedicalReport.update(rec.id, {
-        report_type: rec.report_type === 'internal_clinical' ? 'employer_release' : rec.report_type,
-        shared_with_employer: true, shared_at: new Date().toISOString(),
-        shared_by_id: caller.id, shared_by_name: callerName,
-        shared_recipient_name: recipientName,
-      });
-      await audit('medical.report.shared', 'MedicalReport', rec.id, 'released report to employer (recipient: ' + recipientName + ')', updated);
-      return Response.json({ success: true, record: updated });
+      if (!recipientName) return err('A recipient name is required for the release audit.', 400);
+      // Compare-and-swap: exactly one concurrent release can win.
+      const entry = {
+        timestamp: new Date().toISOString(), actor_id: caller.id, actor_name: callerName,
+        from_status: 'approved', to_status: 'released', reason: 'released to employer: ' + recipientName,
+      };
+      await svc.entities.MedicalReport.updateMany(
+        { id: rec.id, status: 'approved', shared_with_employer: { $ne: true } },
+        { $set: {
+            report_type: rec.report_type === 'internal_clinical' ? 'employer_release' : rec.report_type,
+            status: 'released',
+            shared_with_employer: true, shared_at: new Date().toISOString(),
+            shared_by_id: caller.id, shared_by_name: callerName,
+            shared_recipient_name: recipientName,
+          },
+          $push: { transition_history: entry } }
+      );
+      const after = await find('MedicalReport', rec.id);
+      if (!after || after.shared_with_employer !== true) {
+        return err('The report was changed by another user. Reload and retry.', 409);
+      }
+      await audit('medical.report.shared', 'MedicalReport', rec.id, 'released report to employer (recipient: ' + recipientName + ')', after);
+      return Response.json({ success: true, record: after });
     }
 
     /* ── Consent records (staff capture; employer none) ───────────────────── */

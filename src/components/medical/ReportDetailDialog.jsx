@@ -20,6 +20,7 @@ export default function ReportDetailDialog({ report, isAdmin, isClinical, onClos
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [shareName, setShareName] = useState("");
+  const [returnReason, setReturnReason] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function ReportDetailDialog({ report, isAdmin, isClinical, onClos
       follow_up: report?.follow_up || "",
     });
     setShareName("");
+    setReturnReason("");
     setError("");
   }, [report?.id]);
 
@@ -54,7 +56,7 @@ export default function ReportDetailDialog({ report, isAdmin, isClinical, onClos
     }
   };
 
-  const saveFields = (extra = {}) => run(() => medicalApi.updateReport(report.id, { ...form, ...extra }));
+  const saveFields = (extra = {}, reason) => run(() => medicalApi.updateReport(report.id, { ...form, ...extra }, reason));
 
   const release = () => {
     if (!shareName.trim()) {
@@ -62,6 +64,14 @@ export default function ReportDetailDialog({ report, isAdmin, isClinical, onClos
       return;
     }
     run(() => medicalApi.shareReport(report.id, shareName.trim()));
+  };
+
+  const returnForChanges = () => {
+    if (!returnReason.trim()) {
+      setError("A reason is required to return a report.");
+      return;
+    }
+    run(() => medicalApi.updateReport(report.id, { status: "draft" }, returnReason.trim()));
   };
 
   return (
@@ -135,6 +145,24 @@ export default function ReportDetailDialog({ report, isAdmin, isClinical, onClos
               ) : (
                 <p className="text-slate-500 text-xs">This patient has no employer linked — there is no employer to release to.</p>
               )}
+            </div>
+          )}
+
+          {/* Return-for-changes control — practice admin only, reason required */}
+          {report.status === "pending_approval" && isAdmin && (
+            <div className="p-3 bg-slate-800/50 border border-slate-700 rounded-lg space-y-2">
+              <p className="text-slate-300 text-xs font-semibold uppercase tracking-wide">Return for Changes</p>
+              <Input
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                placeholder="Reason (required — recorded in the audit trail)"
+                className="bg-slate-800 border-slate-700 text-white h-9"
+                disabled={saving}
+              />
+              <Button size="sm" variant="outline" onClick={returnForChanges} disabled={saving}
+                className="border-amber-600/50 text-amber-400 hover:bg-amber-500/10">
+                Return to Draft
+              </Button>
             </div>
           )}
 

@@ -79,7 +79,7 @@ export const medicalApi = {
   // Medical reports
   listReports: (filter) => call({ action: "list_reports", filter }),
   createReport: (data) => call({ action: "create_report", data }),
-  updateReport: (id, changes) => call({ action: "update_report", id, changes }),
+  updateReport: (id, changes, reason) => call({ action: "update_report", id, changes, reason }),
   shareReport: (id, recipientName) => call({ action: "share_report", id, recipient_name: recipientName }),
 
   // Consents
