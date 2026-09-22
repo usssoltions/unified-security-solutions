@@ -225,6 +225,8 @@ ${formData.additional_notes}
       try {
         await base44.functions.invoke("sendStartOfShiftNotification", {
           reportData: {
+            shift_id: shift.id,
+            site_id: shift.site_id,
             site_name: site?.name || shift?.site_name || "Unknown",
             client_name: site?.client_name || "",
             shift_post: formData.shift_post,

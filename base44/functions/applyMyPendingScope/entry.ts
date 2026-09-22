@@ -32,7 +32,30 @@ export default async function(req: Request): Promise<Response> {
       email, status: 'pending',
     });
     if (!pending || pending.length === 0) {
-      return Response.json({ applied: false });
+      // ADMIN-SIDE DIAGNOSTIC: an authenticated caller with NO scope, NO role
+      // and no pending invitation scope is exactly the "Account Setup
+      // Incomplete" state. Log an actionable audit entry (WHO is stuck, WHY —
+      // e.g. the invitation scope was consumed by another session, was
+      // cancelled, or was keyed to a different email address) so
+      // administrators can see and fix it, instead of only the end user
+      // seeing a dead-end screen. Scoped users probing this endpoint never
+      // trigger the diagnostic.
+      const callerUnscoped = !caller.reseller_id && !caller.customer_id &&
+        !caller.admin_level && !caller.role_type;
+      if (callerUnscoped) {
+        try {
+          await base44.asServiceRole.entities.PlatformAuditLog.create({
+            event_type: 'onboarding.failed',
+            user_id: caller.id,
+            user_name: caller.display_name || caller.full_name || caller.email,
+            entity_name: 'User',
+            entity_id: caller.id,
+            action: 'apply_pending_tenant_scope',
+            notes: `Login blocked: no pending tenant scope exists for ${email}. Invite the user (or resend their invitation) so a scope is queued for this exact email address.`,
+          });
+        } catch (_) { /* diagnostics must never break the response */ }
+      }
+      return Response.json({ applied: false, reason: 'no_pending_scope' });
     }
     const scope = pending[0];
 
@@ -98,6 +121,6 @@ export default async function(req: Request): Promise<Response> {
     return Response.json({ applied: true, role_type: scope.role_type, reseller_id: scope.reseller_id });
   } catch (error) {
     console.log('[applyMyPendingScope] fatal', String(error?.message || error));
-    return Response.json({ applied: false });
+    return Response.json({ applied: false, reason: 'error', error: String(error?.message || error) });
   }
 }

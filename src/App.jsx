@@ -60,7 +60,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   : <>{children}</>;
 
 const AuthenticatedApp = () => {
-  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin } = useAuth();
+  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin, checkAppState } = useAuth();
 
   // PUBLIC ROUTE — external account-removal request resource (Google Play
   // Data Safety → Account Deletion URL). Rendered OUTSIDE the authenticated
@@ -86,7 +86,7 @@ const AuthenticatedApp = () => {
     } else if (authError.type === 'onboarding_failed') {
       // Fail-closed: a non-platform user whose tenant scope could not be
       // resolved. No unscoped app access, no platform/customer fallback.
-      return <OnboardingFailed message={authError.message} />;
+      return <OnboardingFailed message={authError.message} onRetry={checkAppState} />;
     } else if (authError.type === 'auth_required') {
       // Customer-branded route (?brand=<pwa_slug>): STAY on the branded
       // document — show the public-safe branded pre-login shell instead of

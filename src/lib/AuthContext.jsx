@@ -120,6 +120,22 @@ export const AuthProvider = ({ children }) => {
               currentUser = await base44.auth.me();
             }
           } catch (_) { /* swallow; fail-closed check below */ }
+          // ONE automatic retry — the server-side apply is idempotent, so a
+          // retry can never duplicate a user, scope or profile. This covers a
+          // TRANSIENT first-login failure (e.g. the client timing out while
+          // the server was still completing the apply) that previously left
+          // the user on the fail-closed screen even though their account was
+          // fully provisioned seconds later.
+          if (!applied) {
+            try {
+              const retry = await base44.functions.invoke('applyMyPendingScope', {});
+              const d2 = retry?.data || retry;
+              if (d2?.applied) {
+                applied = true;
+                currentUser = await base44.auth.me();
+              }
+            } catch (_) { /* swallow; fail-closed check below */ }
+          }
 
           // Fail closed: a non-platform user whose tenant scope could not be
           // applied/resolved gets NO unscoped app access — no platform/default
