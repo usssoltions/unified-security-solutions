@@ -17,6 +17,7 @@ import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import {
   evaluateAck, classifyAckStale, ackCas, missedCas,
   isEscalationRecipient, missedEmailIdemKey,
+  classifyChallenge, challengeDeepLink,
 } from '../../shared/stayAwakeCore.ts';
 
 const TEST_CUSTOMER = '6aaa5f585d81b1548379a19f'; // USS Access Control Test (dedicated test tenant)
@@ -381,6 +382,79 @@ Deno.serve(async (req) => {
     record('S16.logout_local_state', true, {
       verified_at_code_level: true,
       note: 'Logout wipes all local/session storage and hard-reloads, destroying the alert overlay and releasing the operation-scoped wake lock; the server-side StayAwakeLog record is never written by the client, so it cannot be corrupted by logout.',
+    });
+
+    // ═══ Challenge deep-link routing — resolve_challenge classification ═══
+    // A tapped push carries ONLY the opaque challenge id; the classification
+    // below is the exact rule the resolve_challenge gateway action runs.
+    const S_G = await mkShift();
+    const nowR = new Date();
+    const PH_ack = await mkPrompt(S_G, {
+      alert_time: isoAgo(20), expires_at: isoAgo(19), status: 'acknowledged',
+      response_time: isoAgo(19.5), response_time_seconds: 5,
+    });
+    const PH_missed = await mkPrompt(S_G, {
+      alert_time: isoAgo(12), expires_at: isoAgo(11), status: 'missed', missed_at: isoAgo(11),
+    });
+    const PA_active = await mkPrompt(S_G, { alert_time: new Date().toISOString(), expires_at: isoIn(1), status: 'sent' });
+
+    // S21 — two historical prompts + one active: each id resolves to ITS OWN state
+    const c21 = [
+      classifyChallenge({ log: PH_ack, callerId: GUARD_A, now: nowR }),
+      classifyChallenge({ log: PH_missed, callerId: GUARD_A, now: nowR }),
+      classifyChallenge({ log: PA_active, callerId: GUARD_A, now: nowR }),
+    ];
+    record('S21.routing_by_challenge_id', c21.map((c) => c.state).join(',') === 'acknowledged,missed,active', {
+      resolved_states: c21.map((c) => c.state),
+      active_challenge_id: PA_active.challenge_id,
+    });
+
+    // S22 — OLD notification tapped AFTER a newer challenge exists: the old
+    // id resolves to its own final state, never the newer active challenge
+    record('S22.old_notification_own_state', classifyChallenge({ log: PH_ack, callerId: GUARD_A, now: nowR }).state === 'acknowledged', {
+      tapped_challenge_id: PH_ack.challenge_id, newer_active_challenge_id: PA_active.challenge_id,
+      resolved_state: 'acknowledged',
+    });
+
+    // S23 — expired notification tapped
+    const PE_exp = await mkPrompt(S_G, { alert_time: isoAgo(3), expires_at: isoAgo(2), status: 'sent' });
+    record('S23.expired_notification_safe_state', classifyChallenge({ log: PE_exp, callerId: GUARD_A, now: nowR }).state === 'expired', {
+      tapped_challenge_id: PE_exp.challenge_id, resolved_state: 'expired',
+      rule: 'An expired prompt cannot be acknowledged as current; the sweep records the missed outcome.',
+    });
+
+    // S24 — cancelled notification tapped
+    const PC_cxl = await mkPrompt(S_G, { status: 'cancelled' });
+    record('S24.cancelled_notification_safe_state', classifyChallenge({ log: PC_cxl, callerId: GUARD_A, now: nowR }).state === 'cancelled', {
+      tapped_challenge_id: PC_cxl.challenge_id, resolved_state: 'cancelled',
+    });
+
+    // S25 — Guard A tapping Guard B's challenge id: indistinguishable from fabricated
+    record('S25.foreign_challenge_not_found', classifyChallenge({ log: PA_active, callerId: USER_B, now: nowR }).state === 'not_found', {
+      tapped_challenge_id: PA_active.challenge_id, attempted_as: USER_B,
+      resolved_state: 'not_found', rule: 'No existence oracle for another guard\'s challenge.',
+    });
+
+    // S26 — fabricated challenge id
+    record('S26.fabricated_challenge_not_found', classifyChallenge({ log: null, callerId: GUARD_A, now: nowR }).state === 'not_found', {
+      tapped_challenge_id: 'forged-' + crypto.randomUUID(), resolved_state: 'not_found',
+    });
+
+    // S25b — LIVE gateway: the harness identity (platform admin) resolving
+    // GUARD_A's fixture challenge must receive NOT_FOUND with no projection
+    const liveForeign = await base44.functions.invoke('stayAwakeService', {
+      action: 'resolve_challenge', challenge_id: PA_active.challenge_id,
+    }).then((r) => (r?.data !== undefined ? r.data : r)).catch((e) => ({ error: String(e?.message || e).slice(0, 200) }));
+    record('S25b.gateway_foreign_resolve_live', Boolean(liveForeign?.state === 'not_found' && !liveForeign?.challenge), {
+      tapped_challenge_id: PA_active.challenge_id,
+      resolved: liveForeign?.state || liveForeign?.error || null,
+    });
+
+    // S27 — the deep link carries ONLY the opaque challenge id
+    const dl = challengeDeepLink(PA_active.challenge_id);
+    record('S27.deeplink_minimal_routing_data', dl === '/GuardShift?challenge=' + PA_active.challenge_id, {
+      deep_link: dl, contains_sensitive_data: /guard|shift_id|site_id|customer|deadline/.test(dl),
+      rule: 'No guard, customer, site, shift or deadline data in the push routing payload.',
     });
 
     // ── Cleanup: fixtures, fixture notifications/alerts, temp audit rows; restore config ──

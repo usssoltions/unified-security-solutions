@@ -35,6 +35,9 @@
  *  • sweep       — platform/monitor only: cancel voided prompts, mark missed
  *                  (+ escalate), issue due prompts (+ critical push).
  *  • acknowledge — the guard: idempotent own-prompt acknowledgement.
+ *  • resolve_challenge — the guard: authoritative projection for a deep-
+ *                  linked challenge id (ownership/status/deadline validated
+ *                  server-side; foreign/missing/stale → safe final state).
  *  • configure   — management roles: per-guard enable/interval.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
@@ -50,6 +53,7 @@ import {
   MANAGEMENT_ROLES, isPlatformUser, evaluateAck, classifyAckStale,
   ackCas, missedCas, isEscalationRecipient,
   promptPushEventKey, missedEventKey, missedEmailIdemKey,
+  classifyChallenge, challengeDeepLink,
 } from '../../shared/stayAwakeCore.ts';
 
 Deno.serve(async (req) => {
@@ -210,12 +214,19 @@ Deno.serve(async (req) => {
         // subscription to their own StayAwakeLog records. Test fixtures
         // NEVER wake a real device.
         if (!isTestFixture) {
+          // PUSH ROUTING DATA — Base44's native push API cannot carry custom
+          // payload data, so the push carries ONLY title/body plus a deep link
+          // holding the OPAQUE server-generated challenge id (no guard,
+          // customer, site, shift or deadline data). On open, the app submits
+          // the challenge id to this gateway (resolve_challenge); the server
+          // reloads and validates the challenge and returns the authoritative
+          // projection — the push itself is never trusted.
           await sendNativePush(svc, {
             user_id: shift.guard_id,
             title: '⚡ Stay Awake Check',
             body: 'Confirm you are alert now — open the app and acknowledge.',
             priority: 'critical',
-            action_label: 'Open My Shift', action_url: '/GuardShift',
+            action_label: 'Open My Shift', action_url: challengeDeepLink(challengeId),
             event_key: promptPushEventKey(prompt.id),
             customer_id: shift.customer_id || undefined,
             reseller_id: shift.reseller_id || undefined,
@@ -322,6 +333,39 @@ Deno.serve(async (req) => {
         stay_awake_interval_minutes: interval,
       });
       return Response.json({ success: true, guard_id: guard.id, stay_awake_enabled: enabled, stay_awake_interval_minutes: interval });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // RESOLVE_CHALLENGE — authoritative projection for a deep-linked
+    // challenge id (tapped push/notification). The client supplies ONLY the
+    // opaque challenge_id; everything else is resolved server-side from the
+    // authoritative record. Only the challenge's OWN guard, still 'sent' and
+    // inside the server deadline receives the active projection; foreign,
+    // missing, expired, cancelled, acknowledged and missed challenges return
+    // a SAFE FINAL STATE (a foreign challenge is indistinguishable from a
+    // fabricated one — no existence oracle for other guards' prompts).
+    // ─────────────────────────────────────────────────────────────────────
+    if (action === 'resolve_challenge') {
+      const caller = await resolveTenantCaller(base44);
+      if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      const challengeId = String(body?.challenge_id || '').trim();
+      if (!challengeId) return Response.json({ error: 'Missing challenge_id' }, { status: 400 });
+      const rows = await svc.entities.StayAwakeLog.filter({ challenge_id: challengeId }).catch(() => []);
+      const log = rows?.[0];
+      const cls = classifyChallenge({ log, callerId: caller.id, now: new Date() });
+      if (cls.state !== 'active') return Response.json({ state: cls.state });
+      // Minimal non-sensitive projection: timing, site label and record refs
+      // only — no tenant, reseller, guard or shift identifiers.
+      return Response.json({
+        state: 'active',
+        challenge: {
+          id: log.id,
+          challenge_id: log.challenge_id,
+          alert_time: log.alert_time,
+          expires_at: log.expires_at,
+          site_name: log.site_name || null,
+        },
+      });
     }
 
     return Response.json({ error: 'Unknown action' }, { status: 400 });

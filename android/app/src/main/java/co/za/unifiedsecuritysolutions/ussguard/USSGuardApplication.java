@@ -31,15 +31,51 @@ public class USSGuardApplication extends Application {
     private static final String TAG = "USSGuard";
     private static final String ONESIGNAL_APP_ID = "526d4393-9f50-4f8e-8379-05ec176dc62d";
     private static final String APP_URL = "https://guard-track-pro-26cedab8.base44.app";
+    /** Dedicated Stay Awake channel — created ONCE per install (idempotent by
+     *  channel id). Android keeps the user-controlled importance afterwards;
+     *  the channel is never recreated or renamed at launch. */
+    private static final String STAY_AWAKE_CHANNEL_ID = "stay_awake_alerts";
 
     /** Set by the notification click handler; consumed by MainActivity.onResume() */
     public static String pendingCallUrl = null;
+
+    /** Set by the Stay Awake display handler; consumed by MainActivity.onResume() */
+    public static String pendingStayAwakeUrl = null;
 
     @Override
     public void onCreate() {
         super.onCreate();
         createCallNotificationChannel();
+        createStayAwakeNotificationChannel();
         initOneSignal();
+    }
+
+    /**
+     * Dedicated Stay Awake channel: high importance, vibration, notification
+     * sound, lock-screen public visibility. LIMITATION: Base44's native push
+     * API (SendPushNotification) cannot select an Android channel, so this
+     * channel plus the foreground display interception in initOneSignal() is
+     * the supported mapping; background pushes display on the provider's
+     * default channel (verified in the physical device test).
+     */
+    private void createStayAwakeNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                STAY_AWAKE_CHANNEL_ID,
+                "Stay Awake Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Urgent on-duty fatigue-check prompts from the control room");
+            channel.enableVibration(true);
+            channel.setVibrationPattern(new long[]{0, 500, 200, 500});
+            channel.setSound(android.media.RingtoneManager.getDefaultUri(
+                android.media.RingtoneManager.TYPE_NOTIFICATION), null);
+            channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+            channel.enableLights(true);
+            channel.setLightColor(0xFFF43F5E);
+            getSystemService(NotificationManager.class).createNotificationChannel(channel);
+            Log.d(TAG, "Stay Awake notification channel created (IMPORTANCE_HIGH)");
+        }
     }
 
     /**
@@ -95,6 +131,15 @@ public class USSGuardApplication extends Application {
 
                                 // Prevent OneSignal from showing its default notification
                                 event.preventDefault();
+                            } else if (isStayAwakeNotification(notification)) {
+                                // Stay Awake prompt — Base44 native push cannot select an
+                                // Android channel, so display it manually on the dedicated
+                                // stay_awake_alerts channel. The deep link carries ONLY the
+                                // opaque challenge id; the app resolves it through the
+                                // authorized gateway after opening.
+                                String deepLink = extractStayAwakeDeepLink(notification);
+                                postStayAwakeNotification(deepLink);
+                                event.preventDefault();
                             } else {
                                 // Non-call notification — display normally via v5 API
                                 notification.display();
@@ -135,6 +180,70 @@ public class USSGuardApplication extends Application {
             Log.d(TAG, "OneSignal v5 initialized — native push ready");
         } catch (Exception e) {
             Log.e(TAG, "Failed to initialize OneSignal", e);
+        }
+    }
+
+    /** A Stay Awake prompt is detected by its deep link (challenge=) or its title. */
+    private boolean isStayAwakeNotification(IDisplayableNotification notification) {
+        try {
+            JSONObject data = notification.getAdditionalData();
+            if (data != null) {
+                String url = data.optString("action_url",
+                    data.optString("actionUrl", data.optString("url", "")));
+                if (url.contains("challenge=")) return true;
+            }
+            String title = notification.getTitle();
+            return title != null && title.contains("Stay Awake");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** The deep link from the push data, if present (challenge id only). */
+    private String extractStayAwakeDeepLink(IDisplayableNotification notification) {
+        try {
+            JSONObject data = notification.getAdditionalData();
+            if (data != null) {
+                String url = data.optString("action_url",
+                    data.optString("actionUrl", data.optString("url", "")));
+                if (url.startsWith("/") && url.contains("challenge=")) return url;
+            }
+        } catch (Exception ignored) {}
+        return "/GuardShift";
+    }
+
+    /**
+     * Posts the Stay Awake prompt on the dedicated stay_awake_alerts channel
+     * and stages the deep link for MainActivity.onResume() so the WebView
+     * opens the challenge route. Call notifications keep their own separate
+     * channel ("calls") — this path never touches it.
+     */
+    private void postStayAwakeNotification(String deepLink) {
+        try {
+            Intent open = new Intent(this, MainActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent contentIntent = PendingIntent.getActivity(
+                this, "stayawake".hashCode(), open, piFlags);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, STAY_AWAKE_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("⚡ Stay Awake Check")
+                .setContentText("Confirm you are alert now — tap to respond.")
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setVibrate(new long[]{0, 500, 200, 500})
+                .setContentIntent(contentIntent);
+
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            nm.notify("stayawake".hashCode(), builder.build());
+
+            pendingStayAwakeUrl = APP_URL + deepLink;
+            Log.d(TAG, "Stay Awake notification posted on " + STAY_AWAKE_CHANNEL_ID);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to post Stay Awake notification", e);
         }
     }
 

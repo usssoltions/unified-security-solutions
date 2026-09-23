@@ -123,3 +123,32 @@ export function nextChallengeReference({ latest, clockInTimestamp }: any): Date 
   if (latest) return new Date(latest.response_time || latest.alert_time);
   return new Date(clockInTimestamp);
 }
+
+/**
+ * classifyChallenge — PURE deep-link routing classification for a tapped
+ * Stay Awake push/notification. The client submits ONLY the opaque
+ * challenge_id to the gateway; the gateway reloads the record and runs this
+ * classification: only the challenge's OWN guard, still 'sent' and inside
+ * the server deadline, resolves to 'active'. Foreign, missing, expired,
+ * cancelled, acknowledged and missed challenges all resolve to a SAFE FINAL
+ * STATE — a foreign challenge is indistinguishable from a fabricated one
+ * (no existence oracle for another guard's prompts).
+ */
+export function classifyChallenge({ log, callerId, now }: any): { state: string } {
+  if (!log || log.guard_id !== callerId) return { state: 'not_found' };
+  if (log.status === 'sent') {
+    if (log.expires_at && new Date(log.expires_at) < now) return { state: 'expired' };
+    return { state: 'active' };
+  }
+  return { state: log.status };
+}
+
+/**
+ * challengeDeepLink — the ONLY routing data a Stay Awake push carries.
+ * Base44's native push API (SendPushNotification) cannot carry custom
+ * payload data, so the opaque server-generated challenge id rides in the
+ * deep link: the destination route plus the challenge id, nothing else —
+ * no guard, customer, site, shift or deadline data.
+ */
+export const challengeDeepLink = (challengeId: string): string =>
+  '/GuardShift?challenge=' + String(challengeId);

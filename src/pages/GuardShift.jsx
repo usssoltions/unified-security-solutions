@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import ClockInOut from "../components/guard/ClockInOut";
 import ActiveShiftCard from "../components/guard/ActiveShiftCard";
 import StayAwakeAlert from "../components/guard/StayAwakeAlert";
+import StayAwakeChallengeState from "@/components/guard/StayAwakeChallengeState";
 import QuickActions from "../components/guard/QuickActions";
 import AlarmNotification from "../components/guard/AlarmNotification";
 import CompleteAlarmResponse from "../components/guard/CompleteAlarmResponse";
@@ -270,6 +271,56 @@ export default function GuardShift() {
     return () => { unsub(); clearInterval(tick); };
   }, [user?.id, activeShift?.id]);
 
+  // DEEP-LINK CHALLENGE ROUTING — a tapped Stay Awake push/notification deep
+  // link (?challenge=<opaque id>) is resolved through the authorized gateway:
+  // the client submits ONLY the challenge id, the server reloads the
+  // challenge and validates authenticated guard ownership, status and
+  // deadline, and the app renders ONLY the returned authoritative projection.
+  // Foreign, missing, expired, cancelled and already-acknowledged challenges
+  // show a safe final state and can never open another guard's prompt. The
+  // ?challenge param is stripped after handling so the normal subscription
+  // flow resumes — there is no "latest prompt" guessing.
+  const [challengeResolution, setChallengeResolution] = useState(null);
+  const challengeParam = new URLSearchParams(window.location.search).get("challenge");
+
+  useEffect(() => {
+    if (!user || user.role_type !== "guard" || !challengeParam) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await base44.functions.invoke("stayAwakeService", {
+          action: "resolve_challenge",
+          challenge_id: challengeParam,
+        });
+        const data = res?.data ?? res;
+        if (cancelled) return;
+        if (data?.state === "active" && data.challenge) {
+          setStayAwakePrompt({
+            id: data.challenge.id,
+            challenge_id: data.challenge.challenge_id,
+            alert_time: data.challenge.alert_time,
+            expires_at: data.challenge.expires_at,
+            site_name: data.challenge.site_name,
+          });
+        } else {
+          setChallengeResolution({ state: data?.state || "not_found" });
+        }
+      } catch (e) {
+        if (!cancelled) setChallengeResolution({ state: "connection_error" });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, challengeParam]);
+
+  const clearDeepLinkChallenge = () => {
+    setChallengeResolution(null);
+    // Strip ?challenge so subsequent loads resume the normal flow
+    const url = new URL(window.location.href);
+    url.searchParams.delete("challenge");
+    const qs = url.searchParams.toString();
+    window.history.replaceState({}, "", url.pathname + (qs ? "?" + qs : ""));
+  };
+
   // Patrol reminder system
   useEffect(() => {
     if (!user || !activeShift || !user.patrol_reminder_enabled) return;
@@ -481,6 +532,9 @@ export default function GuardShift() {
 
           {/* Alerts & Modals */}
           <AnimatePresence>
+            {challengeResolution && !stayAwakePrompt && (
+              <StayAwakeChallengeState resolution={challengeResolution} onClose={clearDeepLinkChallenge} />
+            )}
             {stayAwakePrompt && (
               <StayAwakeAlert prompt={stayAwakePrompt} user={user} onDone={loadStayAwakePrompt} location={location} />
             )}

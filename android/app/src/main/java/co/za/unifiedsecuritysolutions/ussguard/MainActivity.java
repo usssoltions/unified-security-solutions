@@ -344,6 +344,16 @@ public class MainActivity extends AppCompatActivity {
                     webView.loadUrl(url);
                 });
             }
+
+            // Check for pending Stay Awake deep link (opaque challenge id only)
+            if (USSGuardApplication.pendingStayAwakeUrl != null) {
+                final String saUrl = USSGuardApplication.pendingStayAwakeUrl;
+                USSGuardApplication.pendingStayAwakeUrl = null;
+                webView.post(() -> {
+                    Log.d(TAG, "Loading pending Stay Awake deep link: " + saUrl);
+                    webView.loadUrl(saUrl);
+                });
+            }
         }
     }
 
