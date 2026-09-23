@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
       record('S8.forged_challenge_rejected', dec8?.error === 'NOT_FOUND', { decision: dec8?.error });
 
       // ═══ S9/S17 — acknowledgement after the server deadline follows the documented late rule ═══
-      const P3 = P2; // reuse the still-sent prompt; expire it
+      const P3 = await mkPrompt(S_A); // dedicated prompt — P2 must stay 'sent' for S12
       await svc.entities.StayAwakeLog.update(P3.id, { expires_at: isoAgo(1) }).catch(() => {});
       const p3Exp = (await svc.entities.StayAwakeLog.filter({ id: P3.id }).catch(() => []))?.[0];
       const dec9 = evaluateAck({ log: p3Exp, callerId: GUARD_A, shift: S_A, now: new Date() });
@@ -261,10 +261,12 @@ Deno.serve(async (req) => {
     const S_E = await mkShift();
     const P9 = await mkPrompt(S_E);
     await svc.entities.Shift.update(S_E.id, { guard_id: USER_B, guard_name: 'Reassigned Guard' });
-    await sweep();
     const sEFresh = (await svc.entities.Shift.filter({ id: S_E.id }).catch(() => []))?.[0];
+    // Core decision while the prompt is still 'sent': the OLD guard is blocked
+    // by the live-shift rule (shift reassigned away from them).
+    const dec15 = evaluateAck({ log: P9, callerId: GUARD_A, shift: sEFresh, now: new Date() });
+    await sweep();
     const p9After = (await svc.entities.StayAwakeLog.filter({ id: P9.id }).catch(() => []))?.[0];
-    const dec15 = evaluateAck({ log: p9After, callerId: GUARD_A, shift: sEFresh, now: new Date() });
     record('S15.reassignment_prevents_old_guard', Boolean(p9After?.status === 'cancelled' && dec15?.error === 'SHIFT_NO_LONGER_ACTIVE'), {
       ...promptEvidence(p9After), initial_status: 'sent',
       old_guard_ack_decision: dec15?.error, shift_now_assigned_to: USER_B,

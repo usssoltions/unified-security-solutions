@@ -442,6 +442,7 @@ async function escalateMissed(svc, { log, shift, allUsers, results }) {
         // Escalation idempotency: exactly ONE missed-check email per
         // recipient per challenge, even across concurrent sweep retries.
         idempotency_key: missedEmailIdemKey(log.id, r.id || r.email),
+        template_name: 'missed_stay_awake_check',
       }).catch(() => {});
     }
     results.escalated++;
