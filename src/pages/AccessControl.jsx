@@ -286,14 +286,25 @@ export default function AccessControl() {
         const p = resolveOrCreateVisitor({ mapped, photoUrl: scan.photoUrl, scan });
         visitorResolveRef.current = p;
         perfMark("C_licence_accept");
+        // DATA-INTEGRITY: every background .then is guarded by promise
+        // IDENTITY. If this entry was cancelled/replaced (resetWorkflow or a
+        // newer accept overwrote visitorResolveRef), the orphaned resolution
+        // must NOT write its visitor/meta into the (possibly different)
+        // workflow — otherwise Visitor A's profile could clobber Visitor B's
+        // in-flight state. Later steps read the promise itself, not these
+        // side effects, so a stale resolution loses nothing that matters.
         p.then(({ visitor, created }) => {
+          if (visitorResolveRef.current !== p) return;
           setPendingVisitor(visitor);
           setPendingMeta((prev) => ({ ...(prev || {}), created }));
         }).catch(() => {});
         // Previous-visit count: display/history information ONLY — runs in the
         // background after resolution completes; never blocks the disc scanner.
         p.then(({ visitor }) => countPreviousVisits(visitor?.id))
-          .then((previous) => setPendingMeta((prev) => ({ ...(prev || {}), previous })))
+          .then((previous) => {
+            if (visitorResolveRef.current !== p) return;
+            setPendingMeta((prev) => ({ ...(prev || {}), previous }));
+          })
           .catch(() => {});
         if (mode === "vehicle") {
           // Same scanner session — profile switch, not a teardown/rebuild.
@@ -320,10 +331,16 @@ export default function AccessControl() {
         if (!gpsPrefetchRef.current) gpsPrefetchRef.current = getGPS();
         if (disc.registration_number) {
           (async () => {
+            // DATA-INTEGRITY: capture the ACTIVE resolution promise now; if a
+            // reset/new entry has replaced it by write time, this disc scan
+            // belongs to an abandoned workflow and must not be persisted with
+            // another visitor's related_visitor_id.
+            const resolvePromise = visitorResolveRef.current;
             let visitorId = pendingVisitor?.id || "";
-            if (!visitorId && visitorResolveRef.current) {
-              try { visitorId = (await visitorResolveRef.current)?.visitor?.id || ""; } catch (_) {}
+            if (!visitorId && resolvePromise) {
+              try { visitorId = (await resolvePromise)?.visitor?.id || ""; } catch (_) {}
             }
+            if (visitorResolveRef.current !== resolvePromise) return;
             try {
               await base44.entities.VehicleLicenceDisc.create({
                 customer_id: user?.customer_id || undefined,
