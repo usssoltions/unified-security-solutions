@@ -125,6 +125,9 @@ export async function sendAuditedEmail(
     idempotency_key?: string | null;
     template_name?: string | null;
     is_test_record?: boolean;
+    /** Optional PDF/CSV report attachments — base64 content form only
+     * ({filename, content}); the provider allowlist constrains types. */
+    attachments?: { filename: string; content: string }[];
     /** Opt-in idempotency: dedupe only when an explicit key or this flag is
      *  provided — call sites without either keep their exact pre-migration
      *  send-every-time semantics (never collapsed by a coarse event type). */
@@ -224,6 +227,7 @@ export async function sendAuditedEmail(
       ...(p.html ? { html: p.html } : {}),
       ...(p.text ? { text: p.text } : {}),
       ...(p.body ? { body: p.body } : {}),
+      ...(p.attachments && p.attachments.length ? { attachments: p.attachments } : {}),
     });
   } catch (e: any) {
     ok = false;

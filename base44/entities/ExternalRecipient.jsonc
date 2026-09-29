@@ -1,7 +1,7 @@
 {
   "name": "ExternalRecipient",
   "type": "object",
-  "description": "A notification recipient who is NOT an application user. Used for distributing reports and notifications to client representatives, trustees, HR contacts, contractors, etc. They do not require login credentials. TENANT ISOLATION: reads are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's external contact list (names, emails, phone numbers) to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21).",
+  "description": "A notification/report recipient who is NOT required to have an application login. Used for distributing reports (Daily Access Control Report, weekly/monthly analysis) and notifications to client representatives, trustees, HR contacts, contractors, etc. THE ONE authoritative tenant-scoped report-recipient system: external addresses never receive fake system user accounts; authorised INTERNAL users may also be selected as recipients via the optional user_id link (the record still carries the email and remains deduplicated by normalized email at send time). TENANT ISOLATION: reads are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's external contact list (names, emails, phone numbers) to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21). All tenant-level management flows through the reportRecipientAccess gateway, which resolves the caller's customer scope server-side and never trusts a client-supplied customer_id.",
   "properties": {
     "reseller_id": {
       "type": "string"
@@ -10,7 +10,12 @@
       "type": "string"
     },
     "site_id": {
-      "type": "string"
+      "type": "string",
+      "description": "Optional site scoping: when set, the recipient receives reports for THIS site only; null/empty = all explicitly authorised sites of the customer."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Optional link to an INTERNAL app user selected as a report recipient (e.g. Customer Administrator, Control Room Operator, Estate Manager). When set, the recipient mirrors that user's email; delivery is deduplicated by normalized email so an internal user + external record for the same address receives ONE copy. The user is never auto-subscribed \u2014 only explicitly configured recipients receive reports."
     },
     "name": {
       "type": "string"
@@ -22,7 +27,8 @@
       "type": "string"
     },
     "email": {
-      "type": "string"
+      "type": "string",
+      "description": "Delivery email address \u2014 ALWAYS normalized (trim + lowercase) by the reportRecipientAccess gateway; duplicates within the same customer are rejected/merged so the same address can never receive two copies."
     },
     "telegram_chat_id": {
       "type": "string"
@@ -100,7 +106,8 @@
           "maintenance_summary"
         ]
       },
-      "default": []
+      "default": [],
+      "description": "Which reports this recipient receives. Empty array = all reports the recipient is otherwise authorised for (backwards-compatible default); 'daily_access' opts in/out of the 17:00 Daily Access Control Report independently."
     },
     "notification_preferences": {
       "type": "array",

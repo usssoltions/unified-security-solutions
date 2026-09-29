@@ -3,6 +3,9 @@ import { getAllowedRolesForModules } from '../../shared/tenantRoles.ts';
 import { buildInvitationEmail } from '../../shared/tenantBranding.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import {
+  enforceOperationalUserLimit, USER_LIMIT_REACHED_MESSAGE,
+} from '../../shared/userLicensing.ts';
 
 /**
  * inviteTenantUser — securely invite a tenant-scoped user and queue the
@@ -380,7 +383,31 @@ export default async function(req: Request): Promise<Response> {
       scopeUpdates.user_status = userStatus || 'active';
       if (phone) scopeUpdates.phone = phone;
       try {
-        await base44.asServiceRole.entities.User.update(existing.id, scopeUpdates);
+        // OPERATIONAL USER LICENSING — the entitlement check and the rescope
+        // mutation run atomically under the per-customer slot mutex; a blocked
+        // invitation is rejected BEFORE any user mutation occurs.
+        const rescopeSlot = await enforceOperationalUserLimit(base44.asServiceRole, {
+          customer, roleType: role_type, email, existingUser: existing,
+          mutate: async () => { await base44.asServiceRole.entities.User.update(existing.id, scopeUpdates); },
+        });
+        if (rescopeSlot.lock_error) {
+          return Response.json({ error: 'The system is busy processing another user change. Please try again.', code: 'slot_lock_timeout' }, { status: 503 });
+        }
+        if (rescopeSlot.blocked) {
+          await base44.asServiceRole.entities.PlatformAuditLog.create({
+            event_type: 'tenant_user.invite_blocked_user_limit',
+            customer_id: customer_id || undefined, reseller_id: effectiveReseller || undefined,
+            user_id: caller.id, user_name: callerName,
+            entity_name: 'User', entity_id: existing.id, action: 'invite_blocked_user_limit',
+            new_values: JSON.stringify({ email, role_type, used: rescopeSlot.used, limit: rescopeSlot.limit }),
+            notes: `Operational-user limit reached — re-invite of ${email} as ${role_type} blocked`,
+          }).catch(() => {});
+          return Response.json({
+            error: USER_LIMIT_REACHED_MESSAGE,
+            code: 'operational_user_limit_reached',
+            used: rescopeSlot.used, limit: rescopeSlot.limit,
+          }, { status: 409 });
+        }
       } catch (e) {
         console.log('[inviteTenantUser] existing rescope failed', String(e?.message || e));
         return Response.json({ error: 'That user already exists but could not be re-scoped. Contact support.', code: 'scope_failed' }, { status: 202 });
@@ -425,8 +452,17 @@ export default async function(req: Request): Promise<Response> {
 
     if (pending) {
       // A pending scope already exists for this email — update it and do NOT
-      // send another invitation (idempotent: no duplicate invite).
-      await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, scopeFields);
+      // send another invitation (idempotent: no duplicate invite, and no
+      // additional operational-user slot: this identity already holds one).
+      try {
+        await enforceOperationalUserLimit(base44.asServiceRole, {
+          customer, roleType: role_type, email,
+          mutate: async () => { await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, scopeFields); },
+        });
+      } catch (e) {
+        console.log('[inviteTenantUser] pending scope update failed', String(e?.message || e));
+        return Response.json({ error: 'The invitation could not be updated. Please try again.', code: 'scope_failed' }, { status: 500 });
+      }
       console.log('[inviteTenantUser] updated existing pending scope', pending.id);
       return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id });
     }
@@ -435,10 +471,46 @@ export default async function(req: Request): Promise<Response> {
     // record exists, then updated to 'sent' once the platform invitation is
     // dispatched (or 'failed' on delivery failure) — the Users tab never
     // shows a stale "Not sent yet" for a successfully dispatched invitation.
-    pending = await base44.asServiceRole.entities.PendingTenantScope.create({
-      ...scopeFields,
-      delivery_status: 'queued',
-    });
+    // OPERATIONAL USER LICENSING — entitlement check + scope creation are
+    // atomic (one mutex hold): two simultaneous invitations can never both
+    // take the final operational-user slot, and a blocked invitation creates
+    // NO user, NO invitation and NO PendingTenantScope.
+    let blockedSlot: any = null;
+    try {
+      const createSlot = await enforceOperationalUserLimit(base44.asServiceRole, {
+        customer, roleType: role_type, email,
+        mutate: async () => base44.asServiceRole.entities.PendingTenantScope.create({
+          ...scopeFields,
+          delivery_status: 'queued',
+        }),
+      });
+      if (createSlot.lock_error) {
+        return Response.json({ error: 'The system is busy processing another user change. Please try again.', code: 'slot_lock_timeout' }, { status: 503 });
+      }
+      if (createSlot.blocked) {
+        blockedSlot = createSlot;
+      } else {
+        pending = createSlot.result;
+      }
+    } catch (e) {
+      console.log('[inviteTenantUser] pending scope create failed', String(e?.message || e));
+      return Response.json({ error: 'The invitation could not be created. Please try again.', code: 'scope_failed' }, { status: 500 });
+    }
+    if (blockedSlot) {
+      await base44.asServiceRole.entities.PlatformAuditLog.create({
+        event_type: 'tenant_user.invite_blocked_user_limit',
+        customer_id: customer_id || undefined, reseller_id: effectiveReseller || undefined,
+        user_id: caller.id, user_name: callerName,
+        entity_name: 'PendingTenantScope', action: 'invite_blocked_user_limit',
+        new_values: JSON.stringify({ email, role_type, used: blockedSlot.used, limit: blockedSlot.limit }),
+        notes: `Operational-user limit reached — invitation of ${email} as ${role_type} blocked`,
+      }).catch(() => {});
+      return Response.json({
+        error: USER_LIMIT_REACHED_MESSAGE,
+        code: 'operational_user_limit_reached',
+        used: blockedSlot.used, limit: blockedSlot.limit,
+      }, { status: 409 });
+    }
     console.log('[inviteTenantUser] created pending scope', pending.id);
 
     // ── Send the invitation with platform role "user" (NEVER "admin"). ──
