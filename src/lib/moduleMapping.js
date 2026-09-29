@@ -41,6 +41,14 @@ export const PAGE_MODULE_MAP = {
   // the OPERATIONS or COMPLETE_SECURITY suites keep it for continuity.
   ScheduledTasks: ["TASK_SCHEDULING", "OPERATIONS", "COMPLETE_SECURITY"],
 
+  // ── GUARD SHIFT lifecycle — security-operations commercial surface ──
+  // Guard Shift (My Shift / clock-in) and the Start of Shift flow belong to
+  // the security operations suites, NOT to TASK_SCHEDULING: a guard of a
+  // customer with only TASK_SCHEDULING never sees or opens them (sidebar,
+  // bottom tabs, deep link). COMPLETE_SECURITY customers keep both.
+  GuardShift: ["OPERATIONS", "COMPLETE_SECURITY"],
+  StartOfShift: ["OPERATIONS", "COMPLETE_SECURITY"],
+
   // ── PATROL module ───────────────────────────────────────────────
   GuardPatrol: "PATROL",
   PatrolDashboard: "PATROL",
@@ -119,7 +127,7 @@ export const PAGE_MODULE_MAP = {
   PlatformDiagnostics: "PLATFORM_ADMIN_ONLY",
 
   // ── CORE / SHARED (not mapped — always visible per role) ───────
-  // GuardShift, GuardMyShifts, StartOfShift, ShiftHandover,
+  // GuardMyShifts, ShiftHandover,
   // Profile, Configuration, UserManagement, Home, AndroidDownload,
   // NotificationPreferences, ResellerPortal
 };

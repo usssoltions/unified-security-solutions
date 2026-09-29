@@ -399,12 +399,17 @@ export default function Layout({ children, currentPageName }) {
   const bypassEntitlements = isPlatformAdmin;
 
   const allNavItems = getNavigationItems();
+  // TASK-ONLY GUARD focused shell — sidebar/drawer match the focused bottom
+  // tab: only My Tasks plus core Profile. Guard Shift (and its schedule) belong
+  // to commercial modules a TASK_SCHEDULING-only customer does not own.
   const navigationItems = bypassEntitlements
     ? allNavItems
-    : allNavItems.filter(item => {
-        const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
-        return isPageModuleEnabled(entitlements, pageName, isPlatformAdmin);
-      });
+    : guardTaskOnly
+      ? allNavItems.filter(item => ["ScheduledTasks", "Profile"].includes(item.pageKey))
+      : allNavItems.filter(item => {
+          const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
+          return isPageModuleEnabled(entitlements, pageName, isPlatformAdmin);
+        });
   // Module-aware home: when the role's marked root page is filtered out by a
   // module entitlement (attendance-only customer_admin has no REPORTING_CORE),
   // the first VISIBLE navigation item is the home — Attendance Register.
