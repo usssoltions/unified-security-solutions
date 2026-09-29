@@ -100,6 +100,7 @@
         "type": "string",
         "enum": [
           "daily_access",
+          "daily_access_opt_out",
           "weekly_analysis",
           "monthly_comparison",
           "incident_summary",
@@ -107,7 +108,7 @@
         ]
       },
       "default": [],
-      "description": "Which reports this recipient receives. Empty array = all reports the recipient is otherwise authorised for (backwards-compatible default); 'daily_access' opts in/out of the 17:00 Daily Access Control Report independently."
+      "description": "Which reports this recipient receives. Empty array = all reports the recipient is otherwise authorised for (backwards-compatible default); 'daily_access' opts in to the 17:00 Daily Access Control Report; 'daily_access_opt_out' is the EXPLICIT opt-out marker for it \u2014 without this marker an opt-out would collapse to the empty array and the recipient would keep receiving the report under the legacy all-reports default. The opt-out marker takes precedence in the daily report resolver and is stripped whenever the recipient is re-enabled."
     },
     "notification_preferences": {
       "type": "array",

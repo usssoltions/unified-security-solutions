@@ -146,9 +146,13 @@ export default async function(req: Request): Promise<Response> {
       const existing = id ? ((all || []).find((r: any) => r.id === id) || null) : null;
       if (id && !existing) return Response.json({ error: 'Recipient not found', code: 'recipient_not_found' }, { status: 404 });
       const prevPrefs: string[] = Array.isArray(existing?.report_preferences) ? existing.report_preferences : [];
+      // 'daily_access_opt_out' is the EXPLICIT opt-out marker — without it an
+      // opt-out would collapse to an empty array, which the resolvers treat
+      // as the legacy "all reports" default (a disabled recipient would keep
+      // receiving the daily report).
       const prefs = Array.from(new Set([
-        ...prevPrefs.filter((k: string) => k !== 'daily_access'),
-        ...(dailyAccess ? ['daily_access'] : []),
+        ...prevPrefs.filter((k: string) => k !== 'daily_access' && k !== 'daily_access_opt_out'),
+        ...(dailyAccess ? ['daily_access'] : ['daily_access_opt_out']),
       ]));
 
       const fields: any = {
