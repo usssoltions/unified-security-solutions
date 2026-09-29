@@ -654,16 +654,18 @@ export function buildDailyAccessPdf(model: any, brand: any): Uint8Array {
     [
       // Column widths sum to 483pt — within the 523pt content width, matching
       // every other report table (the previous 559pt total pushed the Status
-      // column past the right page margin).
+      // column past the right page margin). DURATION (37pt) and DESTINATION
+      // (50.2pt) are measured 7pt Helvetica-Bold header widths — the columns
+      // must exceed them or the header wraps mid-word.
       { label: 'Visitor', width: 76, get: (r: any) => r.visitor },
       { label: 'Vehicle', width: 44, get: (r: any) => r.vehicle || '—' },
       { label: 'Entered', width: 72, get: (r: any) => r.enteredAt },
-      { label: 'Duration', width: 34, get: (r: any) => r.duration },
-      { label: 'Destination', width: 50, get: (r: any) => r.destination || '—' },
+      { label: 'Duration', width: 42, get: (r: any) => r.duration },
+      { label: 'Destination', width: 55, get: (r: any) => r.destination || '—' },
       { label: 'Gate', width: 32, get: (r: any) => r.entryGate },
       { label: 'Operator', width: 48, get: (r: any) => r.entryUser },
       { label: 'Device', width: 42, get: (r: any) => r.entryDevice },
-      { label: 'Status', width: 85, get: (r: any) => `${r.status} (${r.stayLabel})` },
+      { label: 'Status', width: 72, get: (r: any) => `${r.status} (${r.stayLabel})` },
     ],
     m.stillOnSite
   );
@@ -685,23 +687,26 @@ export function buildDailyAccessPdf(model: any, brand: any): Uint8Array {
   section('Complete Entry / Exit Register');
   table(
     [
-      // 14 columns sum to 483pt (within the 523pt content width). The previous
-      // 755pt total rendered the Exit-attribution, Duration and Status columns
-      // beyond the physical page edge — completely invisible in the report.
-      { label: 'Visitor', width: 54, get: (r: any) => r.visitor },
-      { label: 'Vehicle', width: 30, get: (r: any) => r.vehicle || '—' },
-      { label: 'Destination', width: 38, get: (r: any) => r.destination || '—' },
-      { label: 'Purpose', width: 24, get: (r: any) => [r.visitType, r.workType].filter(Boolean).join(' / ') || '—' },
-      { label: 'Entry', width: 62, get: (r: any) => r.entryTime },
-      { label: 'E-Gate', width: 20, get: (r: any) => r.entryGate },
-      { label: 'E-User', width: 30, get: (r: any) => r.entryUser },
-      { label: 'E-Device', width: 26, get: (r: any) => r.entryDevice },
-      { label: 'Exit', width: 62, get: (r: any) => r.exitTime },
-      { label: 'X-Gate', width: 20, get: (r: any) => r.exitGate },
-      { label: 'X-User', width: 30, get: (r: any) => r.exitUser },
-      { label: 'X-Device', width: 26, get: (r: any) => r.exitDevice },
-      { label: 'Duration', width: 24, get: (r: any) => r.duration },
-      { label: 'Status', width: 37, get: (r: any) => r.status },
+      // 14 columns sum to 523pt — the FULL A4 content width (595.28 − 2×36pt
+      // margins). The original 755pt total rendered the Exit-attribution,
+      // Duration and Status columns beyond the physical page edge (invisible);
+      // the interim 483pt fit forced mid-word header wraps (DESTINATIO/N,
+      // DURATI/ON). Labels are compact so every header fits its column on one
+      // line at the measured ~3.9pt-per-character header font.
+      { label: 'Visitor', width: 46, get: (r: any) => r.visitor },
+      { label: 'Vehicle', width: 35, get: (r: any) => r.vehicle || '—' },
+      { label: 'Dest.', width: 31, get: (r: any) => r.destination || '—' },
+      { label: 'Purpose', width: 39, get: (r: any) => [r.visitType, r.workType].filter(Boolean).join(' / ') || '—' },
+      { label: 'Entry', width: 55, get: (r: any) => r.entryTime },
+      { label: 'E-Gate', width: 31, get: (r: any) => r.entryGate },
+      { label: 'E-User', width: 31, get: (r: any) => r.entryUser },
+      { label: 'E-Device', width: 38, get: (r: any) => r.entryDevice },
+      { label: 'Exit', width: 55, get: (r: any) => r.exitTime },
+      { label: 'X-Gate', width: 31, get: (r: any) => r.exitGate },
+      { label: 'X-User', width: 31, get: (r: any) => r.exitUser },
+      { label: 'X-Device', width: 38, get: (r: any) => r.exitDevice },
+      { label: 'Dur.', width: 23, get: (r: any) => r.duration },
+      { label: 'Status', width: 39, get: (r: any) => r.status },
     ],
     m.register
   );
