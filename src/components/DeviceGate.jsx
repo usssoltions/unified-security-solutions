@@ -20,13 +20,24 @@ import { registerThisDevice } from "@/lib/deviceRegistration";
  * registration persists server-side.
  *
  * Platform-level users are exempt (oversight, no customer device licence).
+ *
+ * Customer Administrators are ALSO exempt from the login-time registration:
+ * the device limit licenses OPERATIONAL SCANNER installations, not admin/
+ * management logins, so a Customer Admin must reach the management portal
+ * without consuming or requiring a slot. This is NOT a scanning bypass —
+ * live Access Control operations remain server-side fail-closed in
+ * finalizeAccessEntry (resolveCallerDevice), which requires THIS installation
+ * to hold an ACTIVE DeviceRegistration for the customer: an admin on a
+ * licensed installation can still process gates; an admin on an unlicensed
+ * extra device is blocked at every entry/exit exactly like anyone else.
  */
 export default function DeviceGate({ user, children }) {
   const [phase, setPhase] = useState("checking"); // checking | ok | blocked | inactive | error
   const [info, setInfo] = useState(null);
 
   const isPlatform = isPlatformAdminUser(user) || user?.role_type === "admin" || user?.role_type === "platform_admin";
-  const applies = !!user && !isPlatform && !!user.customer_id;
+  const isCustomerAdmin = user?.role_type === "customer_admin";
+  const applies = !!user && !isPlatform && !isCustomerAdmin && !!user.customer_id;
 
   const verify = useCallback(async () => {
     setPhase("checking");
