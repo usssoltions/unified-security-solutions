@@ -24,7 +24,10 @@ import { isPlatformAdminUser } from "@/lib/platformAdmin";
 const ROLE_FALLBACK_PAGES = {
   guard: ["GuardShift", "Profile"],
   dispatcher: ["Profile"],
-  admin: ["Profile"],
+  // Legacy tenant "admin" (Customer Admin operations): when the role home
+  // (ControlRoom, OPERATIONS) is unlicensed, the licensed standalone Task
+  // Scheduling module is the legitimate commercial landing before Profile.
+  admin: ["ScheduledTasks", "Profile"],
   resident: ["ResidentDashboard", "Profile"],
   estate_manager: ["Profile"],
   vendor: ["VendorPortal", "Profile"],

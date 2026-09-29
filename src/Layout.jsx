@@ -389,12 +389,14 @@ export default function Layout({ children, currentPageName }) {
 
   const getNavigationItems = () => getNavItems(user.role_type);
 
-  // The built-in role "admin" is the USS Platform Admin — it bypasses module
-  // entitlement filtering exactly like an explicit platform_admin, so the
-  // Panic Queue (and every platform tool) is always visible to it. This does
+  // Commercial module entitlement bypass is EXPLICIT Platform Admin ONLY
+  // (role_type "platform_admin" OR admin_level "platform" — isPlatformAdminUser).
+  // A legacy tenant user with role_type "admin" is a CUSTOMER administrator,
+  // NOT a Platform Admin: their navigation is filtered by the customer's
+  // active module entitlements exactly like every other tenant role. This does
   // NOT change isPlatformAdminUser (used for branding/entitlements elsewhere)
   // and does not affect reseller/customer tenant scoping.
-  const bypassEntitlements = isPlatformAdmin || user?.role_type === "admin";
+  const bypassEntitlements = isPlatformAdmin;
 
   const allNavItems = getNavigationItems();
   const navigationItems = bypassEntitlements
@@ -424,19 +426,24 @@ export default function Layout({ children, currentPageName }) {
       if (guardTaskOnly) {
         return [{ title: "My Tasks", tab: "tasks", icon: ClipboardList, color: "text-sky-400" }];
       }
+      // Each bottom tab is module-gated like the sidebar: Shift is CORE
+      // infrastructure (unmapped); Incidents/Maintenance need OPERATIONS,
+      // QR Scan needs ACCESS. Role alone never exposes an unlicensed tab.
       return [
-        { title: "Shift", tab: "guard", icon: Shield, color: "text-emerald-400" },
-        { title: "Incidents", tab: "incidents", icon: AlertTriangle, color: "text-rose-400" },
-        { title: "Maintenance", tab: "maintenance", icon: Wrench, color: "text-amber-400" },
-        { title: "QR Scan", tab: "qr", icon: QrCode, color: "text-sky-400" }
-      ];
+        { title: "Shift", tab: "guard", pageKey: "GuardShift", icon: Shield, color: "text-emerald-400" },
+        { title: "Incidents", tab: "incidents", pageKey: "GuardIncidents", icon: AlertTriangle, color: "text-rose-400" },
+        { title: "Maintenance", tab: "maintenance", pageKey: "GuardMaintenance", icon: Wrench, color: "text-amber-400" },
+        { title: "QR Scan", tab: "qr", pageKey: "QRScanner", icon: QrCode, color: "text-sky-400" }
+      ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false));
     }
     if (role === "dispatcher" || role === "admin") {
+      // Module-gated like the sidebar: all three tabs belong to the
+      // OPERATIONS module — a customer without OPERATIONS sees none of them.
       return [
-        { title: "Control", tab: "control", icon: Radio, color: "text-sky-400" },
-        { title: "Shifts", tab: "scheduling", icon: Calendar, color: "text-emerald-400" },
-        { title: "Sites", tab: "sites", icon: MapPin, color: "text-amber-400" }
-      ];
+        { title: "Control", tab: "control", pageKey: "ControlRoom", icon: Radio, color: "text-sky-400" },
+        { title: "Shifts", tab: "scheduling", pageKey: "Scheduling", icon: Calendar, color: "text-emerald-400" },
+        { title: "Sites", tab: "sites", pageKey: "SiteManagement", icon: MapPin, color: "text-amber-400" }
+      ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false));
     }
     return [];
   };
