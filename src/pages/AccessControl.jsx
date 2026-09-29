@@ -101,6 +101,25 @@ export default function AccessControl() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
+  // ── Vehicle Entry performance instrumentation (stage chain A→H) ─────────
+  // Each mark logs the ms elapsed since the previous mark ([access][perf] in
+  // the device console). Read-only; affects no behaviour.
+  const perfPrev = useRef(0);
+  const perfMark = (label) => {
+    const t = performance.now();
+    const delta = perfPrev.current ? Math.round(t - perfPrev.current) : 0;
+    console.log(`[access][perf] ${label} +${delta}ms`);
+    perfPrev.current = t;
+  };
+  // SINGLE in-flight visitor resolution for the entry workflow: started ONCE
+  // in the background at licence acceptance, awaited only by whichever later
+  // step genuinely needs the visitor record (Approve Entry / disc-record
+  // stamping). Never invoked twice → no duplicate visitor profiles.
+  const visitorResolveRef = useRef(null);
+  // GPS prefetch for the final entry submit — started when the Visit/Work or
+  // mobile step opens so Approve Entry is not blocked on location acquisition.
+  const gpsPrefetchRef = useRef(null);
+
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
   // Track scanner visibility so background sync never refetches while the
@@ -192,15 +211,18 @@ export default function AccessControl() {
     setActiveRecord(null); setExitCandidates([]);
     setQrVisitor(null); setQrPayload(null);
     setQrStatus(null); setFinalizeArgs(null); setStepError(null);
+    visitorResolveRef.current = null;
+    gpsPrefetchRef.current = null;
   };
 
   const startMode = (m) => {
     resetWorkflow(); setResult(null);
     setMode(m);
     setStep(m === "vehicle" ? "licence" : m === "pedestrian" ? "id" : "qr");
+    if (m === "vehicle") { perfPrev.current = 0; perfMark("A_vehicle_entry_tap"); }
   };
 
-  const openScanner = (profileId) => { setScanProfile(profileId); setScanning(true); };
+  const openScanner = (profileId) => { perfMark(`B_scan_open_${profileId}`); setScanProfile(profileId); setScanning(true); };
 
   // Exit flow: resolve the visitor, then find their active "inside" record(s).
   const beginExitForVisitor = async (visitor, scan) => {
