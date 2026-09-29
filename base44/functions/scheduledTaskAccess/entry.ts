@@ -56,7 +56,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { secrets } from 'base44:runtime';
 import {
-  sastTodayYmd, logTaskAudit, logTaskScopeAudit,
+  sastTodayYmd, sastInstantYmd, logTaskAudit, logTaskScopeAudit,
   resolveTaskRecipients, notifyTaskRecipients, sendTaskEmail, sendTaskTelegram,
   sendTaskTelegramDeduped, resolveTaskBrandContext,
 } from '../../shared/taskNotifications.ts';
@@ -669,9 +669,17 @@ export default async function(req) {
         await logTaskAudit(svc, { event_type: 'task.batch_created', actor: caller, batch: batchRec,
           notes: title + ' → ' + room.name + ' (' + tasks.length + ' task(s), ' + active_start_time + '–' + deadline_time + ')' });
         await notifyNewTaskList(batchRec, tasks.length, room);
-        // The creation notification above IS the activation for a once-off
-        // list — mark it so the sweep never sends a duplicate activation.
-        await svc.entities.TaskBatch.update(batchRec.id, { activation_notified_at: new Date().toISOString() }).catch(() => {});
+        // ACTIVATION TIMING — the creation notification and the window-start
+        // activation are DISTINCT events with distinct event keys
+        // (task_batch_created:<batchId> vs task_occurrence_activated:<batchId>).
+        // The creation notification only counts as the activation when the
+        // active window has ALREADY started at creation time; a FUTURE once-off
+        // list keeps activation_notified_at null so the sweep sends its normal
+        // activation the moment the window actually begins (premature marking
+        // must never suppress a future activation).
+        if (sastInstantYmd(scheduled_date, active_start_time) <= Date.now()) {
+          await svc.entities.TaskBatch.update(batchRec.id, { activation_notified_at: new Date().toISOString() }).catch(() => {});
+        }
         return Response.json({ success: true, batch: batchRec, tasks_created: tasks.length });
       }
 
@@ -705,14 +713,19 @@ export default async function(req) {
       const existingFirst = await svc.entities.TaskBatch.filter(
         { recurrence_key: firstKey, is_series: false }).catch(() => []);
       if (!(existingFirst || []).length) {
-        const occ = await svc.entities.TaskBatch.create({
-          ...buildOccurrenceBatch(series, scheduled_date, seriesId),
-          // The series-creation notification covers today's first occurrence —
-          // mark it activated so the sweep never double-notifies it. FUTURE
-          // occurrences stay unmarked: the sweep activates each one when its
-          // own window starts (never ~30 days in advance).
-          activation_notified_at: new Date().toISOString(),
-        });
+        const occ = await svc.entities.TaskBatch.create(buildOccurrenceBatch(series, scheduled_date, seriesId));
+        // ACTIVATION TIMING — the series-creation notification (event key
+        // task_batch_created:<seriesId>) only counts as the FIRST occurrence's
+        // activation when that occurrence's window has ALREADY started at
+        // series-creation time. A first occurrence whose window starts later
+        // (tomorrow, or 20–30 days ahead) stays UNMARKED: the sweep sends its
+        // normal activation (task_occurrence_activated:<occurrenceId>) the
+        // moment its window actually begins. Premature marking must never
+        // suppress a future activation; future occurrences were never notified
+        // ~30 days in advance anyway (silent pre-generation).
+        if (sastInstantYmd(scheduled_date, active_start_time) <= Date.now()) {
+          await svc.entities.TaskBatch.update(occ.id, { activation_notified_at: new Date().toISOString() }).catch(() => {});
+        }
         await svc.entities.OperationalTask.bulkCreate(
           buildTasksForOccurrence({ ...common, id: occ.id, deadline_time, task_definitions: cleanDefs }, scheduled_date, caller));
         occurrences++;

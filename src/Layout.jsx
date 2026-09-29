@@ -83,8 +83,17 @@ export default function Layout({ children, currentPageName }) {
   // never sees panic functionality. A guard whose ONLY relevant operational
   // module is TASK_SCHEDULING gets the focused My Tasks shell instead of the
   // generic security tabs (Shift/Incidents/Maintenance/QR).
+  // Platform Admin authority is EXPLICIT (role_type === "platform_admin" OR
+  // admin_level === "platform"), never inferred from a missing tenant
+  // assignment. Legacy unmigrated Base44 admins are NOT platform admins.
+  const isPlatformAdmin = isPlatformAdminUser(user);
   const panicModuleLicensed = ["OPERATIONS", "COMPLETE_SECURITY"].some((k) => isModuleEnabled(entitlements, k));
-  const panicAllowed = isPlatformAdmin || user?.role_type === "admin" || panicModuleLicensed;
+  // PANIC ENTITLEMENT (role AND licence — never role alone): every ordinary
+  // tenant user (customer_admin, dispatcher, supervisor, operator, estate
+  // manager, guard, ...) must hold a panic-owning commercial module to see
+  // ANY panic surface. No admin-type role bypasses the licence; ONLY an
+  // explicit Platform Admin retains legitimate platform-level panic access.
+  const panicAllowed = isPlatformAdmin || panicModuleLicensed;
   const securityLicensed = isModuleEnabled(entitlements, "OPERATIONS") || isModuleEnabled(entitlements, "COMPLETE_SECURITY");
   const guardTaskOnly = user?.role_type === "guard" && isModuleEnabled(entitlements, "TASK_SCHEDULING") && !securityLicensed;
 
@@ -118,10 +127,6 @@ export default function Layout({ children, currentPageName }) {
     ["access_control", "accesscontrol"].includes(
       String(landingConfig?.guard_default_landing || "").toLowerCase().replace(/[\s-]+/g, "_")
     );
-  // Platform Admin authority is EXPLICIT (role_type === "platform_admin" OR
-  // admin_level === "platform"), never inferred from a missing tenant
-  // assignment. Legacy unmigrated Base44 admins are NOT platform admins.
-  const isPlatformAdmin = isPlatformAdminUser(user);
   const brand = resolveBrand(branding);
 
   // Apply white-label branding colors to CSS variables. Hover/pressed and
