@@ -190,7 +190,7 @@ export default async function(req: Request): Promise<Response> {
           user_id: caller.id, user_name: callerName,
           entity_name: 'DeviceRegistration', entity_id: created.id,
           action: 'device_registered',
-          new_values: JSON.stringify({ installation_id: installationId, platform, app_type }),
+          new_values: JSON.stringify({ installation_id: installationId, platform, app_type: appType }),
           notes: `Device registered (${activeCount + 1}${limit != null ? '/' + limit : ' unlicensed'} slots${limit == null ? ' — device allowance requires configuration' : ''})`,
         });
         return { blocked: false, device: created, activeCount: activeCount + 1, limit };

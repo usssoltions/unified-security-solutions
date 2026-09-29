@@ -455,6 +455,15 @@ export default async function(req: Request): Promise<Response> {
       }
       const deviceReg = deviceCheck.reg || null;
 
+      // RECORD TENANT SCOPE for platform-oversight entries: a platform admin
+      // processing a gate at a tenant SITE produces a record scoped to that
+      // site's customer (cid is null for platform callers). Without this the
+      // visit record is unscoped: the tenant cannot see it in Access History
+      // and a later EXIT cannot resolve its device attribution (the exit
+      // resolves the device from the record's own customer scope). Tenant
+      // callers are unaffected — deviceCid already equals their cid.
+      const recordCid = cid || deviceCid || null;
+
       // COMPULSORY VISITOR MOBILE NUMBER — enforced centrally and EXPLICITLY
       // for the application's authoritative visitor-class person types only
       // (AccessLog.person_type enum): visitor (incl. expected/invited,
@@ -475,7 +484,7 @@ export default async function(req: Request): Promise<Response> {
       // matches only records of the caller's own customer: a person on site
       // at Customer A must not make Customer B believe they are on site here.
       if (sa_id_number || driver_licence_number || vehicle_registration) {
-        const dupFilter = cid ? { customer_id: cid, status: 'inside' } : { status: 'inside' };
+        const dupFilter = recordCid ? { customer_id: recordCid, status: 'inside' } : { status: 'inside' };
         if (site_id) dupFilter.site_id = site_id;
         const dups = await base44.asServiceRole.entities.AccessLog.filter(dupFilter, '-created_date', 50);
         const isDup = dups.find(d => {
@@ -497,7 +506,7 @@ export default async function(req: Request): Promise<Response> {
       // records may produce a match (Customer A's bans never block Customer B).
       let blacklistMatch = null;
       if (sa_id_number || driver_licence_number || vehicle_registration) {
-        const blFilter = cid ? { customer_id: cid, active: true } : { active: true };
+        const blFilter = recordCid ? { customer_id: recordCid, active: true } : { active: true };
         const blEntries = await base44.asServiceRole.entities.BlacklistEntry.filter(blFilter, '-created_date', 200);
         blacklistMatch = blEntries.find(b => {
           if (b.identifier_type === 'sa_id' && sa_id_number && b.identifier_value === sa_id_number.toUpperCase().replace(/\s/g, '')) return true;
@@ -530,7 +539,7 @@ export default async function(req: Request): Promise<Response> {
       // Create AccessLog — tenant scope is SERVER-DERIVED (caller record),
       // never client-supplied.
       const log = await base44.asServiceRole.entities.AccessLog.create({
-        customer_id: cid,
+        customer_id: recordCid,
         reseller_id: rid,
         site_id,
         event_type: blacklistMatch ? 'denied' : 'entry',
@@ -582,9 +591,9 @@ export default async function(req: Request): Promise<Response> {
       // pre-check. Each re-checks after commit; deterministic single-survivor
       // rule — the record with the SMALLER id stays, the later one deletes
       // itself and reports the duplicate. Exactly one active visit remains.
-      if (!blacklistMatch && (sa_id_number || driver_licence_number || vehicle_registration) && cid) {
+      if (!blacklistMatch && (sa_id_number || driver_licence_number || vehicle_registration) && recordCid) {
         const dups2 = await base44.asServiceRole.entities.AccessLog
-          .filter({ customer_id: cid, status: 'inside' }, '-created_date', 50).catch(() => []);
+          .filter({ customer_id: recordCid, status: 'inside' }, '-created_date', 50).catch(() => []);
         const twin = (dups2 || []).find((d) => d.id !== log.id &&
           ((sa_id_number && d.sa_id_number === sa_id_number) ||
            (driver_licence_number && d.driver_licence_number === driver_licence_number) ||
@@ -600,7 +609,7 @@ export default async function(req: Request): Promise<Response> {
       }
 
       await auditAccess(base44.asServiceRole, 'access.entry', caller, {
-        customer_id: cid, site_id, gate_name, access_log_id: log.id,
+        customer_id: recordCid, site_id, gate_name, access_log_id: log.id,
         notes: `Entry processed by ${caller.display_name || caller.full_name}${deviceReg ? ' on device ' + (deviceReg.device_name || deviceReg.id) : ''}`,
       });
 
