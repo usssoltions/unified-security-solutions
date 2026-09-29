@@ -78,7 +78,7 @@ export default function MobileStep({ initialPhone = "", onConfirm, onBack, busy 
           className="flex-1 h-12 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold active:scale-95 transition-transform touch-manipulation"
         >
           {busy ? <RefreshCw className="w-5 h-5 mr-2 animate-spin" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
-          Approve Entry
+          {busy ? "Saving entry…" : "Approve Entry"}
         </Button>
       </div>
     </div>

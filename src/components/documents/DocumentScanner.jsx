@@ -98,6 +98,13 @@ export default function DocumentScanner({
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
   const processingRef = useRef(false);
   const viewportRef = useRef(null);
+  // PERFORMANCE: camera enumeration (permissions.query + getCameras) only
+  // needs to happen once per scanner open — it feeds the optional camera
+  // picker only. On an in-session profile switch (licence → vehicle disc) the
+  // device list is already known, so the switch skips re-enumeration entirely
+  // and goes straight to the camera start. The SDK/WASM instance itself was
+  // already retained across opens (initPromise cached in the service).
+  const enumeratedRef = useRef(false);
   // Always invoke the latest onAccept — avoids a stale closure when autoAccept
   // bypasses the review screen and dispatches the scan immediately on decode.
   const onAcceptRef = useRef(onAccept);
@@ -130,19 +137,23 @@ export default function DocumentScanner({
         if (cancelled) return;
         if (!supported) return reportError({ type: "profile_not_active" });
 
-        try {
-          // Match the demo: do NOT set a camera id — the SDK defaults to the
-          // rear (environment) camera. We only enumerate (via the hang-safe
-          // path, since getCameras() calls permissions.query which hangs on
-          // some Android WebViews) to populate our optional camera-picker UI;
-          // a manual pick calls setCameraId.
-          const cams = await scanner.enumerateCamerasSafe();
-          if (cancelled) return;
-          setCameras(cams);
-        } catch (e) {
-          const msg = String(e?.name || e?.message || e).toLowerCase();
-          if (msg.includes("notallowed") || msg.includes("denied")) return reportError({ type: "camera_denied" });
-          if (msg.includes("notfound") || msg.includes("devices")) return reportError({ type: "no_camera" });
+        // Match the demo: do NOT set a camera id — the SDK defaults to the
+        // rear (environment) camera. We only enumerate (via the hang-safe
+        // path, since getCameras() calls permissions.query which hangs on
+        // some Android WebViews) to populate our optional camera-picker UI;
+        // a manual pick calls setCameraId. Skipped on in-session profile
+        // switches when the device list is already known.
+        if (!enumeratedRef.current) {
+          try {
+            const cams = await scanner.enumerateCamerasSafe();
+            if (cancelled) return;
+            setCameras(cams);
+            enumeratedRef.current = true;
+          } catch (e) {
+            const msg = String(e?.name || e?.message || e).toLowerCase();
+            if (msg.includes("notallowed") || msg.includes("denied")) return reportError({ type: "camera_denied" });
+            if (msg.includes("notfound") || msg.includes("devices")) return reportError({ type: "no_camera" });
+          }
         }
         if (cancelled) return;
         beginScanning();

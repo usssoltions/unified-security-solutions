@@ -274,41 +274,74 @@ export default function AccessControl() {
       // ---- ENTRY / DENY ---- (original workflow)
       if (step === "licence" || step === "id") {
         const mapped = scan.mappedFields || {};
-        const { visitor, created } = await resolveOrCreateVisitor({ mapped, photoUrl: scan.photoUrl, scan });
-        const previous = await countPreviousVisits(visitor?.id);
-        setPendingVisitor(visitor);
-        setPendingMeta({ created, previous });
         setLicenceScan(scan);
+        // PERFORMANCE (critical-path removal): visitor resolution (backend
+        // gateway roundtrip + possible profile create) and the previous-visit
+        // count are NOT prerequisites for scanning the vehicle disc — they are
+        // needed only at the final Approve Entry (visitor_id on the AccessLog)
+        // and for the VisitorCard display. Start the resolution ONCE here in
+        // the background and advance to the disc scanner IMMEDIATELY (no await
+        // before the profile switch); later steps await the SAME promise
+        // (never invoked twice → no duplicate visitor profiles).
+        const p = resolveOrCreateVisitor({ mapped, photoUrl: scan.photoUrl, scan });
+        visitorResolveRef.current = p;
+        perfMark("C_licence_accept");
+        p.then(({ visitor, created }) => {
+          setPendingVisitor(visitor);
+          setPendingMeta((prev) => ({ ...(prev || {}), created }));
+        }).catch(() => {});
+        // Previous-visit count: display/history information ONLY — runs in the
+        // background after resolution completes; never blocks the disc scanner.
+        p.then(({ visitor }) => countPreviousVisits(visitor?.id))
+          .then((previous) => setPendingMeta((prev) => ({ ...(prev || {}), previous })))
+          .catch(() => {});
         if (mode === "vehicle") {
           // Same scanner session — profile switch, not a teardown/rebuild.
+          // SYNCHRONOUS — happens before any backend wait.
           setScanProfile("vehicle_disc");
           setStep("disc");
+          perfMark("C1_disc_scan_requested");
         } else {
           setStep("purpose");
+          if (!gpsPrefetchRef.current) gpsPrefetchRef.current = getGPS();
+          perfMark("E1_purpose_shown");
         }
       } else if (step === "disc") {
         const disc = scan.mappedFields || {};
-        if (disc.registration_number) {
-          try {
-            await base44.entities.VehicleLicenceDisc.create({
-              customer_id: user?.customer_id || undefined,
-              reseller_id: user?.reseller_id || undefined,
-              registration_number: disc.registration_number,
-              vin: disc.vin || "", engine_number: disc.engine_number || "",
-              licence_number: disc.licence_number || "", make: disc.make || "",
-              model: disc.model || "", colour: disc.colour || "",
-              expiry_date: disc.expiry_date || "", owner: disc.owner || "",
-              province: disc.province || "",
-              raw_scan_json: scan.result?.formattedJSONRaw || scan.result?.textualData || "",
-              scan_timestamp: new Date().toISOString(),
-              scanned_by_id: user?.id, scanned_by_name: getUserDisplayName(user),
-              related_visitor_id: pendingVisitor?.id || "",
-            });
-          } catch (e) { console.warn("[access] vehicle disc create failed", e?.message || e); }
-        }
+        // PERFORMANCE (critical-path removal): the Visit/Work screen needs only
+        // the locally parsed disc fields — persisting the disc scan record is a
+        // background audit write and never gates the next step. It is chained
+        // on the SAME in-flight visitor resolution (so related_visitor_id is
+        // still stamped) and runs exactly once.
         setScanning(false);
         setDiscFields(disc);
         setStep("purpose");
+        perfMark("E1_purpose_shown");
+        if (!gpsPrefetchRef.current) gpsPrefetchRef.current = getGPS();
+        if (disc.registration_number) {
+          (async () => {
+            let visitorId = pendingVisitor?.id || "";
+            if (!visitorId && visitorResolveRef.current) {
+              try { visitorId = (await visitorResolveRef.current)?.visitor?.id || ""; } catch (_) {}
+            }
+            try {
+              await base44.entities.VehicleLicenceDisc.create({
+                customer_id: user?.customer_id || undefined,
+                reseller_id: user?.reseller_id || undefined,
+                registration_number: disc.registration_number,
+                vin: disc.vin || "", engine_number: disc.engine_number || "",
+                licence_number: disc.licence_number || "", make: disc.make || "",
+                model: disc.model || "", colour: disc.colour || "",
+                expiry_date: disc.expiry_date || "", owner: disc.owner || "",
+                province: disc.province || "",
+                raw_scan_json: scan.result?.formattedJSONRaw || scan.result?.textualData || "",
+                scan_timestamp: new Date().toISOString(),
+                scanned_by_id: user?.id, scanned_by_name: getUserDisplayName(user),
+                related_visitor_id: visitorId,
+              });
+            } catch (e) { console.warn("[access] vehicle disc create failed", e?.message || e); }
+          })();
+        }
       } else if (step === "qr") {
         await handleQR(scan);
       }
@@ -394,8 +427,12 @@ export default function AccessControl() {
   // pre-fills the field; the guard confirms or corrects it before the entry
   // is finalised. Exit flow never asks for it.
   const beginMobileStep = (args) => {
+    perfMark("G_mobile_ready");
     setFinalizeArgs(args);
     setStepError(null);
+    // GPS prefetch: resolution starts while the guard types the number, so the
+    // Approve Entry tap is not blocked on location acquisition.
+    if (!gpsPrefetchRef.current) gpsPrefetchRef.current = getGPS();
     setStep("mobile");
   };
 
@@ -404,6 +441,7 @@ export default function AccessControl() {
   const scanAgain = () => { setQrStatus(null); setQrVisitor(null); setQrPayload(null); setStep("qr"); openScanner("qr"); };
 
   const onApprove = (purpose, { destination, workType }) => {
+    perfMark("F_purpose_continue");
     beginMobileStep({ purpose, destination, workType, visitor: pendingVisitor, scan: licenceScan });
   };
 
@@ -464,33 +502,51 @@ export default function AccessControl() {
   // entry without a valid mobile number. The manual QR DENY keeps its direct
   // audit write — a denial is not an entry completion and needs no number.
   const finalizeEntry = async ({ purpose, destination, workType, visitor, scan, qrPayload, denied, mobile }) => {
+    perfMark("H_approve_entry");
     setBusy(true);
     try {
       const mapped = scan?.mappedFields || licenceScan?.mappedFields || {};
       const disc = discFields || {};
-      const v = visitor || pendingVisitor;
+      let v = visitor || pendingVisitor;
+      // Await the SINGLE background visitor resolution started at licence
+      // acceptance — the same promise, never a second resolveOrCreateVisitor
+      // call. By this step it is virtually always already settled.
+      if (!v?.id && visitorResolveRef.current) {
+        try {
+          const resolved = await visitorResolveRef.current;
+          if (!v && resolved?.visitor) {
+            v = resolved.visitor;
+            if (!pendingVisitor) setPendingVisitor(v);
+          }
+        } catch (_) {}
+      }
       const personType = v ? "visitor" : "unknown";
 
+      // PERFORMANCE: GPS resolution starts NOW (prefetched when the mobile
+      // step opened — usually already settled) and runs concurrently with the
+      // duplicate pre-check — two independent reads; neither depends on the
+      // other and no write is involved.
+      const gpsPromise = gpsPrefetchRef.current || getGPS();
+      gpsPrefetchRef.current = null;
+
       // Duplicate pre-check (fast UX path only; the gateway re-checks).
-      if (v?.id && !denied) {
-        const active = await findActiveInsideRecords(v.id);
-        if (active && active.length > 0) {
-          const rec = active[0];
-          setResult({
-            flagged: true,
-            flag_reason: "Already on site — duplicate entry blocked",
-            person_name: rec.person_name ? dedupePersonName(rec.person_name) : formatVisitorName(v),
-            person_type: "visitor",
-            event_type: "entry",
-            status: "denied",
-            gate_name: gate,
-            timestamp: new Date().toISOString(),
-          });
-          resetWorkflow();
-          qc.invalidateQueries(["access_logs_recent"]);
-          setTimeout(() => setResult(null), 8000);
-          return;
-        }
+      const active = v?.id && !denied ? await findActiveInsideRecords(v.id) : [];
+      if (active && active.length > 0) {
+        const rec = active[0];
+        setResult({
+          flagged: true,
+          flag_reason: "Already on site — duplicate entry blocked",
+          person_name: rec.person_name ? dedupePersonName(rec.person_name) : formatVisitorName(v),
+          person_type: "visitor",
+          event_type: "entry",
+          status: "denied",
+          gate_name: gate,
+          timestamp: new Date().toISOString(),
+        });
+        resetWorkflow();
+        qc.invalidateQueries(["access_logs_recent"]);
+        setTimeout(() => setResult(null), 8000);
+        return;
       }
 
       // Manual QR deny — audit record only, entry NOT completed. Routed
@@ -498,7 +554,7 @@ export default function AccessControl() {
       // derived SERVER-SIDE from the authenticated caller and the site
       // scope is asserted — never a client-supplied customer_id.
       if (denied) {
-        const gps = await getGPS();
+        const gps = await gpsPromise;
         const denyRes = await base44.functions.invoke("finalizeAccessEntry", {
           action: "deny",
           access_data: {
@@ -548,7 +604,7 @@ export default function AccessControl() {
       // final mobile step is supplied as person_phone; the gateway validates,
       // normalises to E.164 and persists it to both the AccessLog entry
       // record (historical snapshot for THIS entry) and the Visitor profile.
-      const gps = await getGPS();
+      const gps = await gpsPromise;
       const access_data = {
         site_id: user?.site_id || "",
         gate_name: gate,
@@ -588,6 +644,7 @@ export default function AccessControl() {
       };
       const res = await base44.functions.invoke("finalizeAccessEntry", { action: "entry", access_data });
       const d = res?.data !== undefined ? res.data : res;
+      perfMark("H1_entry_response");
       if (d?.error) {
         if (d.duplicate) {
           setResult({
