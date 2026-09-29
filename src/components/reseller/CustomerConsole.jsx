@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   Loader2, Building2, Users, MapPin, Package, Settings, Activity,
-  ArrowLeft, Plus, CheckCircle2, UserPlus, ShieldCheck, Mail, Send, X, Smartphone, Palette,
+  ArrowLeft, Plus, CheckCircle2, UserPlus, ShieldCheck, Mail, Send, X, Smartphone, Palette, FileText,
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -20,6 +20,8 @@ import CustomerModulesModal from "@/components/reseller/CustomerModulesModal";
 import ResellerAdminInvite from "@/components/reseller/ResellerAdminInvite";
 import CustomerBrandingTab from "@/components/reseller/CustomerBrandingTab";
 import CustomerDevicesPanel from "@/components/reseller/CustomerDevicesPanel";
+import CustomerOperationalUsersPanel from "@/components/reseller/CustomerOperationalUsersPanel";
+import ReportRecipientsPanel from "@/components/reports/ReportRecipientsPanel";
 import { getModuleDisplayName } from "@/lib/resellerModules";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -29,6 +31,7 @@ const TABS = [
   { id: "modules", label: "Modules", icon: Package },
   { id: "users", label: "Users", icon: Users },
   { id: "devices", label: "Devices", icon: Smartphone },
+  { id: "reports", label: "Reports", icon: FileText },
   { id: "settings", label: "Settings", icon: Settings },
   { id: "branding", label: "Branding", icon: Palette },
   { id: "audit", label: "Audit Log", icon: Activity },
@@ -475,7 +478,14 @@ export default function CustomerConsole({ customerId }) {
       )}
 
       {tab === "devices" && (
-        <CustomerDevicesPanel customerId={customer.id} customer={customer} sites={sites} onChanged={loadCustomer} />
+        <div className="space-y-4">
+          <CustomerOperationalUsersPanel customerId={customer.id} onChanged={loadCustomer} />
+          <CustomerDevicesPanel customerId={customer.id} customer={customer} sites={sites} onChanged={loadCustomer} />
+        </div>
+      )}
+
+      {tab === "reports" && (
+        <ReportRecipientsPanel customerId={customer.id} sites={sites} />
       )}
 
       {tab === "settings" && (

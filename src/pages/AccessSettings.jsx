@@ -8,6 +8,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Building2, Briefcase, Plus, Trash2, Shield, Phone, Mail, Ban } from "lucide-react";
 import AddDestinationModal from "@/components/access/AddDestinationModal";
 import BlacklistManager from "@/components/access/BlacklistManager";
+import ReportRecipientsPanel from "@/components/reports/ReportRecipientsPanel";
+import CustomerOperationalUsersPanel from "@/components/reseller/CustomerOperationalUsersPanel";
 import { useTenantContext } from "@/hooks/useTenantContext";
 
 const DEFAULT_WORK_TYPES = [
@@ -18,7 +20,7 @@ const DEFAULT_WORK_TYPES = [
 export default function AccessSettings() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { withTenant } = useTenantContext();
+  const { withTenant, customer_id: tenantCustomerId } = useTenantContext();
   const [tab, setTab] = useState("general");
   const [newWorkType, setNewWorkType] = useState("");
   const [addingWorkType, setAddingWorkType] = useState(false);
@@ -31,6 +33,10 @@ export default function AccessSettings() {
   const { data: workTypes = [] } = useQuery({
     queryKey: ["work_types"],
     queryFn: () => base44.entities.WorkType.list(),
+  });
+  const { data: tenantSites = [] } = useQuery({
+    queryKey: ["access_settings_sites"],
+    queryFn: () => base44.entities.Site.list().catch(() => []),
   });
 
   const refresh = () => {
@@ -105,6 +111,9 @@ export default function AccessSettings() {
           </button>
           <button onClick={() => setTab("blacklist")} className={`flex-1 h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold ${tab === "blacklist" ? "bg-rose-500 text-white" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
             <Ban className="w-4 h-4" /> Blacklist
+          </button>
+          <button onClick={() => setTab("reports")} className={`flex-1 h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold ${tab === "reports" ? "bg-emerald-500 text-white" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+            <Mail className="w-4 h-4" /> Reports
           </button>
         </div>
 
@@ -184,6 +193,13 @@ export default function AccessSettings() {
         )}
 
         {tab === "blacklist" && <BlacklistManager />}
+
+        {tab === "reports" && tenantCustomerId && (
+          <div className="space-y-4">
+            <CustomerOperationalUsersPanel customerId={tenantCustomerId} />
+            <ReportRecipientsPanel customerId={tenantCustomerId} sites={tenantSites} />
+          </div>
+        )}
       </div>
     </div>
   );

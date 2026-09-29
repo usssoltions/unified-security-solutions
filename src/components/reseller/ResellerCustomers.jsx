@@ -23,7 +23,7 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", legal_name: "", customer_type: "security", status: "active", device_limit: "" });
+  const [form, setForm] = useState({ name: "", legal_name: "", customer_type: "security", status: "active", device_limit: "", operational_user_limit: "" });
   const [modulesFor, setModulesFor] = useState(null);
 
   const create = async () => {
@@ -36,6 +36,13 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
       toast({ title: "Allowed Devices required", description: "Enter a whole number of licensed device installations (minimum 1).", variant: "destructive" });
       return;
     }
+    // COMPULSORY Allowed Operational Users — independent entitlement; the
+    // customerAccess gateway enforces it server-side (UX only here).
+    const oul = Number(form.operational_user_limit);
+    if (!form.operational_user_limit || !Number.isInteger(oul) || oul < 1) {
+      toast({ title: "Allowed Operational Users required", description: "Enter a whole number of licensed operational users (guards/operators, minimum 1).", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const res = await base44.functions.invoke("customerAccess", {
@@ -45,12 +52,13 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
         customer_type: form.customer_type,
         status: form.status,
         device_limit: dl,
+        operational_user_limit: oul,
         reseller_id: resellerId, // auto-scoped — never trust manual entry
       });
       const d = res?.data || res;
       if (!d?.success) throw new Error(d?.error || "Customer creation failed");
-      toast({ title: "Customer created", description: `${form.name} added under this reseller — ${dl} licensed device(s)` });
-      setForm({ name: "", legal_name: "", customer_type: "security", status: "active", device_limit: "" });
+      toast({ title: "Customer created", description: `${form.name} added under this reseller — ${dl} licensed device(s), ${oul} operational user(s)` });
+      setForm({ name: "", legal_name: "", customer_type: "security", status: "active", device_limit: "", operational_user_limit: "" });
       setShowForm(false);
       onRefresh?.();
     } catch (e) {
@@ -109,6 +117,10 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
                 <Input type="number" min="1" step="1" value={form.device_limit} onChange={(e) => setForm({ ...form, device_limit: e.target.value })} className="bg-slate-950 border-slate-700 text-white mt-1" />
                 <p className="text-slate-500 text-xs mt-1">Licensed device installations (whole number, minimum 1). Compulsory — creation is blocked without it.</p>
               </div>
+              <div><Label className="text-slate-300 text-xs">Allowed Operational Users *</Label>
+                <Input type="number" min="1" step="1" value={form.operational_user_limit} onChange={(e) => setForm({ ...form, operational_user_limit: e.target.value })} className="bg-slate-950 border-slate-700 text-white mt-1" />
+                <p className="text-slate-500 text-xs mt-1">Licensed operational users — guards/operators who operate the security/access system (whole number, minimum 1). Compulsory and independent from devices.</p>
+              </div>
             </div>
             <div className="text-xs text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded p-2">
               This customer will be automatically scoped to this reseller — no manual reseller ID required.
@@ -137,7 +149,10 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
               <p className="text-white text-sm font-medium truncate">{c.name}</p>
               <p className="text-slate-500 text-xs truncate">{c.customer_type} • {c.legal_name || "—"} • {c.device_limit == null
                 ? <span className="text-amber-400">Device allowance requires configuration</span>
-                : `Devices: ${c.device_limit}`}</p>
+                : `Devices: ${c.device_limit}`}
+                {c.operational_user_limit == null
+                  ? <span className="text-amber-400"> · Operational user allowance requires configuration</span>
+                  : ` · Operational Users: ${c.operational_user_limit}`}</p>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-600 shrink-0 ml-auto sm:ml-0" />
           </button>

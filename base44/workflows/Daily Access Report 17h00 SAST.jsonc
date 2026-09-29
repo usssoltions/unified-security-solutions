@@ -1,0 +1,45 @@
+{
+  "name": "Daily Access Report 17h00 SAST",
+  "description": "Generates the branded Daily Access Control Report at 17:00 site-local time (Africa/Johannesburg) for each active site: Visitors Still On Site first, executive summary, complete entry/exit register, destinations, visit/work types, gate/device/operator activity and attention items \u2014 delivered as branded HTML email with PDF + CSV attachments to the customer's configured report recipients. Idempotent per customer+site+period.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 17 * * *",
+      "one_time_date": null,
+      "timezone": "Africa/Johannesburg",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "daily_access_report_17h00_sast",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "generateDailyAccessReport",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Generate Daily Access Reports",
+            "description": "17:00 site-local report per active site"
+          }
+        }
+      }
+    ]
+  }
+}

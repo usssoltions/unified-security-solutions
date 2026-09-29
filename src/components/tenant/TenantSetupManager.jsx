@@ -42,7 +42,7 @@ export default function TenantSetupManager({ user }) {
   const [showResellerForm, setShowResellerForm] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [resellerForm, setResellerForm] = useState({ name: "", legal_name: "", support_email: "", status: "active" });
-  const [customerForm, setCustomerForm] = useState({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active", device_limit: "" });
+  const [customerForm, setCustomerForm] = useState({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active", device_limit: "", operational_user_limit: "" });
 
   // Migration
   const [preview, setPreview] = useState(null);
@@ -91,6 +91,13 @@ export default function TenantSetupManager({ user }) {
       toast({ title: "Allowed Devices required", description: "Enter a whole number of licensed device installations (minimum 1).", variant: "destructive" });
       return;
     }
+    // COMPULSORY Allowed Operational Users — independent entitlement; the
+    // customerAccess gateway enforces it server-side (UX only here).
+    const oul = Number(customerForm.operational_user_limit);
+    if (!customerForm.operational_user_limit || !Number.isInteger(oul) || oul < 1) {
+      toast({ title: "Allowed Operational Users required", description: "Enter a whole number of licensed operational users (guards/operators, minimum 1).", variant: "destructive" });
+      return;
+    }
     try {
       const res = await base44.functions.invoke("customerAccess", {
         action: "create",
@@ -99,12 +106,13 @@ export default function TenantSetupManager({ user }) {
         customer_type: customerForm.customer_type,
         status: customerForm.status,
         device_limit: dl,
+        operational_user_limit: oul,
         reseller_id: customerForm.reseller_id === "direct" ? null : customerForm.reseller_id,
       });
       const d = res?.data || res;
       if (!d?.success) throw new Error(d?.error || "Customer creation failed");
-      toast({ title: "Customer created", description: `${customerForm.name} — ${dl} licensed device(s)` });
-      setCustomerForm({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active", device_limit: "" });
+      toast({ title: "Customer created", description: `${customerForm.name} — ${dl} licensed device(s), ${oul} operational user(s)` });
+      setCustomerForm({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active", device_limit: "", operational_user_limit: "" });
       setShowCustomerForm(false);
       loadData();
     } catch (e) {
@@ -271,6 +279,10 @@ export default function TenantSetupManager({ user }) {
                       <Input type="number" min="1" step="1" value={customerForm.device_limit} onChange={e => setCustomerForm({ ...customerForm, device_limit: e.target.value })} className="bg-slate-900 border-slate-700 text-white mt-1" />
                       <p className="text-slate-500 text-xs mt-1">Licensed device installations for this customer (whole number, minimum 1). Compulsory — customer creation is blocked without it.</p>
                     </div>
+                    <div><Label className="text-slate-300 text-xs">Allowed Operational Users *</Label>
+                      <Input type="number" min="1" step="1" value={customerForm.operational_user_limit} onChange={e => setCustomerForm({ ...customerForm, operational_user_limit: e.target.value })} className="bg-slate-900 border-slate-700 text-white mt-1" />
+                      <p className="text-slate-500 text-xs mt-1">Licensed operational users — guards/operators who operate the security/access system (whole number, minimum 1). Compulsory and independent from devices.</p>
+                    </div>
                   </div>
                   <Button onClick={createCustomer} className="bg-emerald-500 hover:bg-emerald-600">Create Customer</Button>
                 </div>
@@ -288,6 +300,9 @@ export default function TenantSetupManager({ user }) {
                           {c.customer_type} • {r ? `via ${r.name}` : "Direct"} • {c.device_limit == null
                             ? <span className="text-amber-400">Device allowance requires configuration</span>
                             : `Devices: ${c.device_limit}`}
+                          {c.operational_user_limit == null
+                            ? <span className="text-amber-400"> · Operational user allowance requires configuration</span>
+                            : ` · Operational Users: ${c.operational_user_limit}`}
                         </p>
                       </div>
                       <Badge className={c.status === "active" ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-500/20 text-slate-400"}>{c.status}</Badge>
