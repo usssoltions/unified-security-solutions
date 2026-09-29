@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,7 @@ import MobileStep from "@/components/access/MobileStep";
 import { can, PERMISSIONS } from "@/lib/permissions";
 import { formatVisitorName, dedupePersonName } from "@/lib/personName";
 import { useToast } from "@/components/ui/use-toast";
+import * as scannerService from "@/lib/documentScannerService";
 
 const MODES = [
   { id: "vehicle", label: "Vehicle Entry", icon: Car, desc: "Licence → Disc → Visit/Work" },
@@ -102,27 +103,49 @@ export default function AccessControl() {
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
+  // Track scanner visibility so background sync never refetches while the
+  // camera overlay covers the live list.
+  const scanningRef = useRef(false);
+  useEffect(() => { scanningRef.current = scanning; }, [scanning]);
+
   // Live Access Log: fetches only recent records (the live log filters to
-  // status "inside" client-side). No polling — the realtime subscription
-  // below invalidates this query on every AccessLog create/update, which is
-  // the only time the live log needs to change. (Previously polled every 10s
-  // = 360 redundant requests/hour, each returning 30 full records with
-  // parsed_json payloads.)
+  // status "inside" client-side). MULTI-DEVICE SYNC (performance pass):
+  //  - PRIMARY: realtime AccessLog subscription — invalidated on every
+  //    create/update, filtered to THIS device's customer scope (another
+  //    tenant's events never trigger work);
+  //  - FALLBACK: a light 3s foreground revalidation interval that catches
+  //    events missed while the Android WebView/PWA paused the socket in the
+  //    background (the observed cause of stale sibling devices). It pauses
+  //    completely when the page is hidden and while the scanner camera is
+  //    open, and an immediate refetch fires on visibility/focus/online.
   const { data: recentLogs = [] } = useQuery({
     queryKey: ["access_logs_recent"],
     queryFn: () => base44.entities.AccessLog.list("-timestamp", 20),
-    staleTime: 30000,
+    staleTime: 15000,
     refetchOnWindowFocus: true,
   });
   useEffect(() => {
-    const unsub = base44.entities.AccessLog.subscribe(() => qc.invalidateQueries(["access_logs_recent"]));
-    // Re-fetch on foreground return so a missed realtime event is caught.
-    const onVisible = () => {
-      if (document.visibilityState === "visible") qc.invalidateQueries(["access_logs_recent"]);
+    const refresh = () => qc.invalidateQueries(["access_logs_recent"]);
+    const unsub = base44.entities.AccessLog.subscribe((event) => {
+      const d = event?.data;
+      if (user?.customer_id && d?.customer_id && d.customer_id !== user.customer_id) return;
+      refresh();
+    });
+    const iv = setInterval(() => {
+      if (document.visibilityState === "visible" && !scanningRef.current) refresh();
+    }, 3000);
+    const onForeground = () => { if (document.visibilityState === "visible") refresh(); };
+    const onOnline = () => refresh();
+    document.addEventListener("visibilitychange", onForeground);
+    window.addEventListener("focus", onForeground);
+    window.addEventListener("online", onOnline);
+    return () => {
+      unsub(); clearInterval(iv);
+      document.removeEventListener("visibilitychange", onForeground);
+      window.removeEventListener("focus", onForeground);
+      window.removeEventListener("online", onOnline);
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { unsub(); document.removeEventListener("visibilitychange", onVisible); };
-  }, [qc]);
+  }, [qc, user]);
 
   // Static configuration — cache for 10 minutes. These rarely change and were
   // previously refetched on every mount/focus with no staleTime.
@@ -138,6 +161,30 @@ export default function AccessControl() {
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+
+  // SCANNER PRELOAD (performance pass): the moment an authorised guard enters
+  // Access Control, warm the heavy scanner dependencies in the background —
+  // licence-key resolution, UMD/WASM compile and the common document profile —
+  // so the first tap on Scan goes straight onto the camera. NO camera is
+  // activated here (device enumeration only; the camera stays off until Scan).
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const t0 = Date.now();
+      try {
+        await scannerService.initializeBarkoder();
+        if (cancelled) return;
+        await scannerService.configureForProfile("drivers_licence");
+        if (cancelled) return;
+        await scannerService.enumerateCamerasSafe();
+        console.log("[access] scanner_preload_ready_ms", Date.now() - t0);
+      } catch (e) {
+        console.warn("[access] scanner_preload_skipped", String(e?.message || e).slice(0, 160));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   const resetWorkflow = () => {
     setMode(null); setStep("idle"); setPendingVisitor(null); setPendingMeta(null);
@@ -174,7 +221,12 @@ export default function AccessControl() {
   };
 
   const onScanAccept = async (scan) => {
-    setScanning(false);
+    // CAMERA SESSION RETENTION (vehicle flow): after the licence scan the
+    // scanner stays open and switches to the vehicle-disc profile in the SAME
+    // scanner session — the engine is already warm, so only the camera
+    // re-opens. Pedestrian/QR/exit flows still close it (single-scan steps).
+    const keepCamera = mode === "vehicle" && step === "licence" && eventType !== "exit";
+    if (!keepCamera) setScanning(false);
     setBusy(true);
     try {
       // ---- EXIT BY RESCAN ---- branch before the entry workflow.
@@ -205,7 +257,13 @@ export default function AccessControl() {
         setPendingVisitor(visitor);
         setPendingMeta({ created, previous });
         setLicenceScan(scan);
-        setStep(mode === "vehicle" ? "disc" : "purpose");
+        if (mode === "vehicle") {
+          // Same scanner session — profile switch, not a teardown/rebuild.
+          setScanProfile("vehicle_disc");
+          setStep("disc");
+        } else {
+          setStep("purpose");
+        }
       } else if (step === "disc") {
         const disc = scan.mappedFields || {};
         if (disc.registration_number) {
@@ -226,6 +284,7 @@ export default function AccessControl() {
             });
           } catch (e) { console.warn("[access] vehicle disc create failed", e?.message || e); }
         }
+        setScanning(false);
         setDiscFields(disc);
         setStep("purpose");
       } else if (step === "qr") {
@@ -233,6 +292,8 @@ export default function AccessControl() {
       }
     } catch (e) {
       console.error("[access] scan accept failed", e);
+      // Never strand the guard on a broken camera session.
+      if (keepCamera) setScanning(false);
     } finally {
       setBusy(false);
     }
@@ -358,7 +419,12 @@ export default function AccessControl() {
         toast({ title: "Exit failed", description: d.error, variant: "destructive" });
         return;
       }
-      setResult({ ...activeLog, ...(d.access_log || {}), person_name: activeLog.person_name });
+      const exitedLog = { ...activeLog, ...(d.access_log || {}) };
+      // IMMEDIATE LOCAL UPDATE (own device): patch the cached live list at
+      // once — the exited record leaves the "inside" list without waiting for
+      // the refetch. Realtime/revalidation keeps the other devices aligned.
+      qc.setQueryData(["access_logs_recent"], (old) => (old || []).map((r) => (r.id === exitedLog.id ? exitedLog : r)));
+      setResult({ ...exitedLog, person_name: activeLog.person_name });
       resetWorkflow();
       qc.invalidateQueries(["access_logs_recent"]);
       setTimeout(() => setResult(null), 8000);
@@ -448,6 +514,7 @@ export default function AccessControl() {
           },
         });
         const created = denyRes?.data?.log || denyRes?.log;
+        if (created) qc.setQueryData(["access_logs_recent"], (old) => [created, ...(old || []).filter((r) => r.id !== created.id)].slice(0, 20));
         setResult(created ? { ...created, event_type: "denied", status: "denied", gate_name: gate } : null);
         resetWorkflow();
         qc.invalidateQueries(["access_logs_recent"]);
@@ -527,6 +594,10 @@ export default function AccessControl() {
         flagged: log.status !== "inside",
         flag_reason: d.blacklist_match ? `Blacklisted: ${d.blacklist_match.reason}` : "",
       });
+      // IMMEDIATE LOCAL UPDATE (own device): the committed entry appears in
+      // the live list instantly from the server-returned record — no waiting
+      // for the refetch to confirm what the server already returned.
+      if (log) qc.setQueryData(["access_logs_recent"], (old) => [log, ...(old || []).filter((r) => r.id !== log.id)].slice(0, 20));
       resetWorkflow();
       qc.invalidateQueries(["access_logs_recent"]);
       setTimeout(() => setResult(null), 8000);

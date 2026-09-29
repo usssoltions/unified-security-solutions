@@ -74,6 +74,10 @@
       "format": "date-time",
       "description": "Expiry of the operational-user-slot mutex token \u2014 a crashed holder's lock is stealable after this instant (stale-lock recovery). Internal only."
     },
+    "guard_default_landing": {
+      "type": "string",
+      "description": "Optional customer-configurable GUARD DEFAULT LANDING MODULE (page key, e.g. 'access_control'). When set, a guard of THIS customer lands directly on that module after login / app reopen / session restore instead of the generic guard role home \u2014 no intermediate dashboard tap. Strictly fail-closed: the override only applies when the guard's role permits the page AND the customer's module entitlements enable it (isPageModuleEnabled); every other customer keeps its existing landing behaviour. Unset/null = unchanged landing. No licensing, scoping or security semantics \u2014 it changes WHICH authorised page is shown first, never WHAT a guard may access."
+    },
     "logo_url": {
       "type": "string",
       "description": "Customer logo file URL. Customer-level white-label branding override \u2014 wins over the reseller logo when set."
