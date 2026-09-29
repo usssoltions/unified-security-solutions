@@ -1,0 +1,158 @@
+{
+  "name": "DeviceRegistration",
+  "type": "object",
+  "description": "Authoritative customer device registration/licensing record \u2014 ONE per PHYSICAL APP INSTALLATION (not per user). Identity is a cryptographically strong installation UUID generated and persisted client-side on first install (never IP, username, email, user-agent or device model \u2014 those are stored as informational only). DEVICE LICENSING is customer-wide: the count of status 'active' registrations is compared against the Customer.device_limit by the deviceAccess gateway under a transaction-safe per-customer mutex (CAS on Customer.device_lock_token), so simultaneous registrations can never exceed the licence. Multiple users logging into the SAME installation consume ONE slot; logging out NEVER frees a slot (the registration persists server-side). GATEWAY-ONLY ACCESS: every read/write goes through the deviceAccess backend gateway (registration client-side post-auth; management by platform/reseller administrators); direct client access is restricted to platform administration (built-in role 'admin' and admin_level 'platform') by RLS. Entry/exit attribution: AccessLog records permanently reference entry_device_registration_id/exit_device_registration_id.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ownership \u2014 the licence this installation consumes is this customer's device_limit."
+    },
+    "reseller_id": {
+      "type": "string"
+    },
+    "installation_id": {
+      "type": "string",
+      "description": "Stable app installation identifier \u2014 client-generated cryptographically strong UUID (crypto.randomUUID), persisted across logins/logouts in local storage. One installation_id = one device slot per customer. NEVER derived from IP, account, user-agent or hardware fingerprinting."
+    },
+    "device_name": {
+      "type": "string",
+      "description": "Meaningful operational name assigned/renamed by an administrator (e.g. 'Gate 1 Scanner'). Defaults to a generated platform label until renamed."
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Optional site assignment (customer's own site, validated server-side). Configurable \u2014 a device is never permanently forced to a site, supporting mobile/roaming devices."
+    },
+    "gate_name": {
+      "type": "string",
+      "description": "Optional operational gate/access-point assignment (free text, matching the gate_name used in access logs). Configurable by administrators; never enforced as an entry/exit restriction on its own."
+    },
+    "device_platform": {
+      "type": "string",
+      "description": "Informational platform summary (android / ios / web). Never used for identity."
+    },
+    "device_model": {
+      "type": "string",
+      "description": "Informational platform/model summary where safely available. Never used for identity."
+    },
+    "app_type": {
+      "type": "string",
+      "enum": [
+        "native",
+        "pwa",
+        "web"
+      ],
+      "description": "Installation type: native Android shell, installed PWA, or browser."
+    },
+    "app_version": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "deactivated",
+        "revoked"
+      ],
+      "default": "active",
+      "description": "active = consumes one licence slot and may process access; deactivated = administratively disabled, frees its slot and blocks access from this installation; revoked = permanently invalidated (security)."
+    },
+    "first_registered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_seen_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Updated on every registration/heartbeat and on every entry/exit processed from this device."
+    },
+    "last_user_id": {
+      "type": "string",
+      "description": "User id that last used this installation \u2014 attribution aid, NEVER identity for licensing."
+    },
+    "last_user_name": {
+      "type": "string"
+    },
+    "activated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Initial activation (and re-activation after deactivate) timestamp."
+    },
+    "deactivated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deactivated_by": {
+      "type": "string",
+      "description": "User id of the administrator who deactivated this device."
+    },
+    "deactivated_by_name": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id",
+    "installation_id",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

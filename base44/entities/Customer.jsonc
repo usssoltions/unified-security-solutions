@@ -36,6 +36,25 @@
       ],
       "default": "security"
     },
+    "device_limit": {
+      "type": "number",
+      "description": "COMPULSORY for every NEW customer \u2014 enforced server-side by the customerAccess gateway (integer, minimum 1; a customer cannot be created without a valid device limit). Authoritative customer-wide licensed-device allowance based on PHYSICAL APP INSTALLATIONS (not users): one installation consumes one slot regardless of how many users log into it, and logging out never frees a slot. Null ONLY for legacy customers created before this field existed \u2014 these are flagged 'Device allowance requires configuration' (never silently limited); once a platform administrator configures it, enforcement is authoritative and transaction-safe (deviceAccess gateway). Only platform-level administrators may change it (audited: customer.device_limit_changed); a customer can never increase its own allowance."
+    },
+    "device_lock_token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL registration-mutex token held by the deviceAccess gateway while counting/registering devices under the licence limit (CAS on this field guarantees two simultaneous registrations can never both take the final slot). Never exposed to any UI; never used for authorization."
+    },
+    "device_lock_expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Expiry of the device registration mutex token \u2014 a crashed holder's lock is stealable after this instant (stale-lock recovery). Internal only."
+    },
     "logo_url": {
       "type": "string",
       "description": "Customer logo file URL. Customer-level white-label branding override \u2014 wins over the reseller logo when set."

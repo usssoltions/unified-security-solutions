@@ -1,7 +1,7 @@
 {
   "name": "AccessLog",
   "type": "object",
-  "description": "Permanent audit record of every access entry, exit and denial. A single record represents the full entry\u2192exit lifecycle. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's access log to every other customer under the same reseller, including the active/on-site Live Access Log and the Exit action (confirmed live cross-customer defect 2026-09-21). Cross-tenant EXIT is additionally enforced server-side by the finalizeAccessEntry gateway before any mutation.",
+  "description": "Permanent audit record of every access entry, exit and denial \u2014 THE authoritative visit record (one record = one full entry\u2192exit lifecycle; its id is the stable visit id). PERMANENT DUAL ATTRIBUTION: the ENTRY side permanently records WHO processed it (guard_id/guard_name), WHICH DEVICE (entry_device_registration_id/entry_device_name \u2014 resolved server-side from the caller's ACTIVE DeviceRegistration, never client-supplied), WHERE (site_id/site_name/gate_name), WHEN (entry_time) and HOW (scan_method); the EXIT side permanently and SEPARATELY records the same (exit_guard_id/exit_guard_name, exit_device_registration_id/exit_device_name, exit_gate, exit_time, exit_scan_method) \u2014 an exit NEVER overwrites the original entry attribution, and entry/exit may legitimately occur on DIFFERENT gates/devices. CONCURRENCY: exits are committed as conditional (CAS) status 'inside'\u2192'exited' updates, so two devices racing to exit the same visit cannot produce two exits (the loser receives 'already exited'). TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's access log to every other customer under the same reseller, including the active/on-site Live Access Log and the Exit action (confirmed live cross-customer defect 2026-09-21). Cross-tenant EXIT and the caller's registered-active-device requirement are additionally enforced server-side by the finalizeAccessEntry gateway before any mutation.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -140,7 +140,8 @@
       "type": "number"
     },
     "device": {
-      "type": "string"
+      "type": "string",
+      "description": "Legacy informational client device descriptor (user-agent snapshot). Attribution uses entry_device_registration_id/entry_device_name instead \u2014 resolved server-side from the active registered device."
     },
     "location": {
       "type": "object",
@@ -174,6 +175,14 @@
     "guard_name": {
       "type": "string"
     },
+    "entry_device_registration_id": {
+      "type": "string",
+      "description": "DeviceRegistration id of the REGISTERED, ACTIVE device this ENTRY was processed from \u2014 resolved SERVER-SIDE from the caller's active device registration (deviceAccess/finalizeAccessEntry gateways), never client-supplied. Permanent attribution: which physical installation processed the entry."
+    },
+    "entry_device_name": {
+      "type": "string",
+      "description": "Operational name of the device that processed the ENTRY (snapshot of the DeviceRegistration's device_name at entry time, e.g. 'Gate 1 Scanner') \u2014 kept permanently even if the device is later renamed, deactivated or revoked."
+    },
     "exit_gate": {
       "type": "string"
     },
@@ -182,6 +191,14 @@
     },
     "exit_guard_name": {
       "type": "string"
+    },
+    "exit_device_registration_id": {
+      "type": "string",
+      "description": "DeviceRegistration id of the REGISTERED, ACTIVE device this EXIT was processed from \u2014 resolved SERVER-SIDE. May legitimately differ from the entry device (cross-gate exit); never overwrites the entry attribution."
+    },
+    "exit_device_name": {
+      "type": "string",
+      "description": "Operational name of the device that processed the EXIT (snapshot at exit time, e.g. 'Gate 3 Scanner'). Permanent and separate from the entry device attribution."
     },
     "exit_scan_method": {
       "type": "string",
