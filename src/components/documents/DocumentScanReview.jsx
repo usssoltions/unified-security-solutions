@@ -7,7 +7,7 @@
  */
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, RefreshCw, X, ChevronDown, ChevronUp, User, FileWarning, IdCard, QrCode } from "lucide-react";
+import { CheckCircle2, RefreshCw, X, ChevronDown, ChevronUp, User, FileWarning, IdCard, QrCode, Loader2 } from "lucide-react";
 
 const HIDDEN_KEYS = new Set(["_raw"]);
 // SADL image fields rendered as the photo (handled separately) — never as text.
@@ -18,6 +18,17 @@ export default function DocumentScanReview({
   onAccept, onScanAgain, onCancel,
 }) {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  // IDEMPOTENT ACCEPT (first-tap fix): the caller's onAccept does async work
+  // (visitor resolve/create + visit count) before the workflow advances, so
+  // the very first tap must instantly show "Continuing…" and lock the panel —
+  // otherwise the button looks dead and a guard taps 2–3 times, each tap
+  // re-entering the handler concurrently. One tap → exactly one dispatch.
+  const [accepting, setAccepting] = useState(false);
+  const handleAcceptClick = () => {
+    if (accepting) return;
+    setAccepting(true);
+    onAccept?.();
+  };
 
   const fields = result?.formattedJSON?.Fields || result?.formattedJSON || [];
   const allParsedEntries = Array.isArray(fields)
@@ -150,14 +161,18 @@ export default function DocumentScanReview({
       </div>
 
       <div className="shrink-0 border-t border-slate-700/50 p-3 grid grid-cols-3 gap-2" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
-        <Button variant="outline" onClick={onCancel} className="border-slate-600 text-slate-300">
+        <Button variant="outline" onClick={onCancel} disabled={accepting} className="border-slate-600 text-slate-300">
           <X className="w-4 h-4 mr-1.5" /> Cancel
         </Button>
-        <Button variant="outline" onClick={onScanAgain} className="border-slate-600 text-sky-300">
+        <Button variant="outline" onClick={onScanAgain} disabled={accepting} className="border-slate-600 text-sky-300">
           <RefreshCw className="w-4 h-4 mr-1.5" /> Scan Again
         </Button>
-        <Button onClick={onAccept} className="bg-emerald-500 hover:bg-emerald-600 text-white">
-          <CheckCircle2 className="w-4 h-4 mr-1.5" /> Accept
+        <Button onClick={handleAcceptClick} disabled={accepting} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+          {accepting ? (
+            <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Continuing…</>
+          ) : (
+            <><CheckCircle2 className="w-4 h-4 mr-1.5" /> Accept</>
+          )}
         </Button>
       </div>
     </div>
