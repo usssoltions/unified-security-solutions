@@ -52,10 +52,19 @@ function tzOffsetMinutes(ms: number, tz: string): number {
   return Math.round((asUtc - ms) / 60000);
 }
 
-/** Site-local wall clock → UTC instant (DST-safe via double iteration). */
+/** Site-local wall clock → UTC instant (DST-safe iteration). The offset is
+ *  always subtracted from the ORIGINAL naive instant — re-subtracting from
+ *  the already-corrected value applied the offset twice and shifted every
+ *  period boundary 2 hours early (17:00 windows actually ran 15:00→15:00,
+ *  a daily reporting gap). */
 export function wallToUtcMs(tz: string, y: number, m: number, d: number, h: number, min = 0, s = 0): number {
-  let ts = Date.UTC(y, m - 1, d, h, min, s);
-  for (let i = 0; i < 2; i++) ts -= tzOffsetMinutes(ts, tz) * 60000;
+  const naive = Date.UTC(y, m - 1, d, h, min, s);
+  let ts = naive;
+  for (let i = 0; i < 2; i++) {
+    const corrected = naive - tzOffsetMinutes(ts, tz) * 60000;
+    if (corrected === ts) return ts;
+    ts = corrected;
+  }
   return ts;
 }
 
