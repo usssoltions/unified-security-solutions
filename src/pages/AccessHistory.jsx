@@ -11,18 +11,25 @@ import { dedupePersonName } from "@/lib/personName";
 const COLUMNS = [
   { key: "timestamp", label: "Date/Time" },
   { key: "person_name", label: "Visitor" },
+  { key: "event_type", label: "Event" },
+  { key: "entry_time", label: "Entry Time" },
+  { key: "gate_name", label: "Entry Gate" },
+  { key: "guard_name", label: "Entry Processed By" },
+  { key: "entry_device_name", label: "Entry Device" },
+  { key: "exit_time", label: "Exit Time" },
+  { key: "exit_gate", label: "Exit Gate" },
+  { key: "exit_guard_name", label: "Exit Processed By" },
+  { key: "exit_device_name", label: "Exit Device" },
+  { key: "status", label: "Status" },
   { key: "person_phone", label: "Contact" },
   { key: "sa_id_number", label: "SA ID" },
   { key: "driver_licence_number", label: "Licence No" },
-  { key: "event_type", label: "Event" },
-  { key: "gate_name", label: "Gate" },
   { key: "scan_method", label: "Scan Type" },
   { key: "vehicle_registration", label: "Reg" },
   { key: "vehicle_make", label: "Vehicle" },
   { key: "destination", label: "Destination" },
   { key: "visit_or_work", label: "Visit/Work" },
   { key: "work_type", label: "Work Type" },
-  { key: "guard_name", label: "Guard" },
 ];
 
 function fmt(v) {
@@ -65,7 +72,8 @@ export default function AccessHistory() {
       if (to && t > to) return false;
       if (q) {
         const hay = [l.person_name, l.person_phone, l.sa_id_number, l.driver_licence_number, l.vehicle_registration,
-          l.vehicle_licence_disc_number, l.destination, l.work_type, l.guard_name, l.qr_code].join(" ").toLowerCase();
+          l.vehicle_licence_disc_number, l.destination, l.work_type, l.guard_name, l.exit_guard_name,
+          l.gate_name, l.exit_gate, l.entry_device_name, l.exit_device_name, l.qr_code].join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -258,7 +266,14 @@ export default function AccessHistory() {
                 {l.vehicle_registration && <span className="text-slate-400">Reg: <span className="text-slate-200">{l.vehicle_registration}</span></span>}
                 {l.destination && <span className="text-slate-400">Dest: <span className="text-slate-200">{l.destination}</span></span>}
                 {l.work_type && <span className="text-slate-400">Work: <span className="text-slate-200">{l.work_type}</span></span>}
-                {l.guard_name && <span className="text-slate-400">Guard: <span className="text-slate-200">{l.guard_name}</span></span>}
+                {l.guard_name && <span className="text-slate-400">Entry By: <span className="text-slate-200">{l.guard_name}</span></span>}
+                {l.entry_device_name && <span className="text-slate-400">Entry Device: <span className="text-slate-200">{l.entry_device_name}</span></span>}
+                {l.entry_time && <span className="text-slate-400">Entry Time: <span className="text-slate-200">{fmt(l.entry_time)}</span></span>}
+                {l.exit_time && <span className="text-slate-400">Exit Time: <span className="text-slate-200">{fmt(l.exit_time)}</span></span>}
+                {l.exit_gate && <span className="text-slate-400">Exit Gate: <span className="text-slate-200">{l.exit_gate}</span></span>}
+                {l.exit_guard_name && <span className="text-slate-400">Exit By: <span className="text-slate-200">{l.exit_guard_name}</span></span>}
+                {l.exit_device_name && <span className="text-slate-400">Exit Device: <span className="text-slate-200">{l.exit_device_name}</span></span>}
+                <span className="text-slate-400">Status: <span className="text-slate-200">{l.status}</span></span>
               </div>
             </div>
           ))}

@@ -42,7 +42,7 @@ export default function TenantSetupManager({ user }) {
   const [showResellerForm, setShowResellerForm] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [resellerForm, setResellerForm] = useState({ name: "", legal_name: "", support_email: "", status: "active" });
-  const [customerForm, setCustomerForm] = useState({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active" });
+  const [customerForm, setCustomerForm] = useState({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active", device_limit: "" });
 
   // Migration
   const [preview, setPreview] = useState(null);
@@ -84,18 +84,32 @@ export default function TenantSetupManager({ user }) {
 
   const createCustomer = async () => {
     if (!customerForm.name) { toast({ title: "Name required", variant: "destructive" }); return; }
+    // COMPULSORY Allowed Devices — client-side validation is UX only; the
+    // customerAccess gateway is the authoritative server-side enforcer.
+    const dl = Number(customerForm.device_limit);
+    if (!customerForm.device_limit || !Number.isInteger(dl) || dl < 1) {
+      toast({ title: "Allowed Devices required", description: "Enter a whole number of licensed device installations (minimum 1).", variant: "destructive" });
+      return;
+    }
     try {
-      const payload = {
-        ...customerForm,
+      const res = await base44.functions.invoke("customerAccess", {
+        action: "create",
+        name: customerForm.name,
+        legal_name: customerForm.legal_name || undefined,
+        customer_type: customerForm.customer_type,
+        status: customerForm.status,
+        device_limit: dl,
         reseller_id: customerForm.reseller_id === "direct" ? null : customerForm.reseller_id,
-      };
-      await base44.entities.Customer.create(payload);
-      toast({ title: "Customer created", description: customerForm.name });
-      setCustomerForm({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active" });
+      });
+      const d = res?.data || res;
+      if (!d?.success) throw new Error(d?.error || "Customer creation failed");
+      toast({ title: "Customer created", description: `${customerForm.name} — ${dl} licensed device(s)` });
+      setCustomerForm({ name: "", legal_name: "", customer_type: "security", reseller_id: "direct", status: "active", device_limit: "" });
       setShowCustomerForm(false);
       loadData();
     } catch (e) {
-      toast({ title: "Failed", description: e.message, variant: "destructive" });
+      const d = e?.response?.data || e?.data;
+      toast({ title: "Failed", description: d?.error || e?.message || "Customer creation failed", variant: "destructive" });
     }
   };
 
@@ -253,6 +267,10 @@ export default function TenantSetupManager({ user }) {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div><Label className="text-slate-300 text-xs">Allowed Devices *</Label>
+                      <Input type="number" min="1" step="1" value={customerForm.device_limit} onChange={e => setCustomerForm({ ...customerForm, device_limit: e.target.value })} className="bg-slate-900 border-slate-700 text-white mt-1" />
+                      <p className="text-slate-500 text-xs mt-1">Licensed device installations for this customer (whole number, minimum 1). Compulsory — customer creation is blocked without it.</p>
+                    </div>
                   </div>
                   <Button onClick={createCustomer} className="bg-emerald-500 hover:bg-emerald-600">Create Customer</Button>
                 </div>
@@ -266,7 +284,11 @@ export default function TenantSetupManager({ user }) {
                     <div key={c.id} className="flex items-center justify-between bg-slate-800/40 p-3 rounded-lg">
                       <div>
                         <p className="text-white text-sm font-medium">{c.name}</p>
-                        <p className="text-slate-500 text-xs">{c.customer_type} • {r ? `via ${r.name}` : "Direct"}</p>
+                        <p className="text-slate-500 text-xs">
+                          {c.customer_type} • {r ? `via ${r.name}` : "Direct"} • {c.device_limit == null
+                            ? <span className="text-amber-400">Device allowance requires configuration</span>
+                            : `Devices: ${c.device_limit}`}
+                        </p>
                       </div>
                       <Badge className={c.status === "active" ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-500/20 text-slate-400"}>{c.status}</Badge>
                     </div>

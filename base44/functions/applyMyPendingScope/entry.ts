@@ -122,7 +122,7 @@ export default async function(req: Request): Promise<Response> {
 
     try {
       await base44.asServiceRole.entities.PlatformAuditLog.create({
-        event_type: 'user.scoped',
+        event_type: 'tenant_user.scope_applied',
         user_id: caller.id,
         user_name: caller.display_name || caller.full_name || caller.email,
         customer_id: scope.customer_id || undefined,

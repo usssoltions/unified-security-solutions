@@ -19,6 +19,7 @@ import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalation
 import RealTimeAlertMonitor from "@/components/alerts/RealTimeAlertMonitor";
 import GlobalPanicButton from "@/components/GlobalPanicButton";
 import PWAInstaller from "@/components/PWAInstaller";
+import DeviceGate from "@/components/DeviceGate";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
@@ -252,8 +253,14 @@ export default function Layout({ children, currentPageName }) {
       const fp = localStorage.getItem("uss_push_device_fingerprint");
       if (fp) await base44.functions.invoke("registerPushDevice", { action: "unregister", reason: "logout", device_fingerprint: fp });
     } catch (_) {}
+    // The device licence is bound to the INSTALLATION, not the session — the
+    // installation id MUST survive logout so the same physical device never
+    // consumes a second licence slot on the next login (the server-side
+    // registration also persists: logging out never frees a licence).
+    const keepInstallationId = localStorage.getItem("uss_installation_id");
     try { localStorage.clear(); } catch (_) {}
     try { sessionStorage.clear(); } catch (_) {}
+    if (keepInstallationId) { try { localStorage.setItem("uss_installation_id", keepInstallationId); } catch (_) {} }
     try { await base44.auth.logout(); } catch (_) {}
     // Hard reload guarantees the previous user's component tree is destroyed.
     window.location.assign("/");
@@ -411,6 +418,7 @@ export default function Layout({ children, currentPageName }) {
           <PushPermissionManager variant="prompt" user={user} />
 
 
+          <DeviceGate user={user}>
           <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 w-full max-w-full overflow-x-hidden">
             {/* Header */}
             <header className="bg-slate-900/90 backdrop-blur-xl border-b border-slate-700/50 sticky top-0 z-50 w-full" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -670,6 +678,7 @@ export default function Layout({ children, currentPageName }) {
               </nav>
             )}
           </div>
+          </DeviceGate>
         </ErrorBoundary>
       </ThemeProvider>
     </TabStateContext.Provider>

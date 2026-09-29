@@ -19,6 +19,7 @@ import { useNavigate } from "react-router-dom";
 import CustomerModulesModal from "@/components/reseller/CustomerModulesModal";
 import ResellerAdminInvite from "@/components/reseller/ResellerAdminInvite";
 import CustomerBrandingTab from "@/components/reseller/CustomerBrandingTab";
+import CustomerDevicesPanel from "@/components/reseller/CustomerDevicesPanel";
 import { getModuleDisplayName } from "@/lib/resellerModules";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -159,8 +160,9 @@ export default function CustomerConsole({ customerId }) {
     .map((e) => e.module_key);
   const activeEntitlements = entitlements.filter((e) => e.enabled && (!e.status || e.status === "active"));
   const activeModuleCount = activeEntitlements.length;
-  const devicesApplicable = activeEntitlements.some((e) => DEVICE_MODULES.includes(e.module_key));
-  const visibleTabs = TABS.filter((t) => t.id !== "devices" || devicesApplicable);
+  // Devices tab: customer-wide device LICENSING applies to every customer
+  // (physical app installations), not only hardware-heavy modules.
+  const visibleTabs = TABS;
 
   const saveSettings = async () => {
     setSaving(true);
@@ -473,33 +475,7 @@ export default function CustomerConsole({ customerId }) {
       )}
 
       {tab === "devices" && (
-        !devicesApplicable ? (
-          <Card className="bg-slate-900 border-slate-800">
-            <CardContent className="text-center py-10 space-y-2">
-              <Smartphone className="w-10 h-10 text-slate-600 mx-auto" />
-              <p className="text-slate-400 text-sm">Devices is not applicable to this customer.</p>
-              <p className="text-slate-500 text-xs max-w-md mx-auto">
-                None of this customer's enabled modules involve managed device registration. The Devices tab becomes available when a module that requires it (e.g. Access Control, Patrol, Operations) is enabled.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader><CardTitle className="text-white text-sm">Devices (per site)</CardTitle></CardHeader>
-            <CardContent>
-              {sites.length === 0 ? <p className="text-slate-500 text-sm text-center py-6">No sites — no allocated devices.</p> : (
-                <div className="space-y-2">
-                  {sites.map((s) => (
-                    <div key={s.id} className="flex items-center justify-between bg-slate-800/40 p-3 rounded-lg">
-                      <div><p className="text-white text-sm">{s.name}</p><p className="text-slate-500 text-xs">{s.address || "—"}</p></div>
-                      <Badge className="bg-slate-700/40 text-slate-300">{s.checkpoints?.length || 0} checkpoints</Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )
+        <CustomerDevicesPanel customerId={customer.id} customer={customer} sites={sites} onChanged={loadCustomer} />
       )}
 
       {tab === "settings" && (

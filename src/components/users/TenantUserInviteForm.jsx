@@ -25,6 +25,7 @@ const FRIENDLY_ERRORS = {
   scope_failed: "The user exists but could not be scoped. Contact support.",
   invite_service_failed: "The invitation email could not be sent right now. Please try again.",
   bad_site: "The selected site is not valid for this customer.",
+  guard_requires_site: "Security Guard requires a site assignment. Select the site this guard will work at.",
   internal_error: "Invitation failed. Please try again.",
 };
 
@@ -183,6 +184,13 @@ export default function TenantUserInviteForm({
     }
     if (!form.role_type) { toast({ title: "Please select a role", variant: "destructive" }); return; }
     if (needsCustomer && !form.customer_id) { toast({ title: "Please select a customer", variant: "destructive" }); return; }
+    // Security Guard REQUIRES a site — an invitation that cannot result in a
+    // valid site-scoped account is never sent (the server enforces the same
+    // rule authoritatively for every inviter class).
+    if (form.role_type === "guard" && !form.site_id) {
+      toast({ title: "Site required", description: "Security Guard requires a site assignment. Select the site this guard will work at.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const res = await base44.functions.invoke("inviteTenantUser", {
@@ -278,21 +286,27 @@ export default function TenantUserInviteForm({
           </div>
           {showSiteField && (
             <div className="sm:col-span-2">
-              <Label className="text-slate-300 text-xs">Site Assignment</Label>
+              <Label className="text-slate-300 text-xs">
+                Site Assignment{form.role_type === "guard" ? " *" : ""}
+              </Label>
               <Select
-                value={form.site_id || "none"}
+                value={form.role_type === "guard" ? form.site_id : (form.site_id || "none")}
                 onValueChange={(v) => setForm((f) => ({ ...f, site_id: v === "none" ? "" : v }))}
               >
-                <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue placeholder={form.role_type === "guard" ? "Select the site this guard works at" : "Select a site"} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">All sites for this customer (no fixed site)</SelectItem>
+                  {form.role_type !== "guard" && (
+                    <SelectItem value="none">All sites for this customer (no fixed site)</SelectItem>
+                  )}
                   {(sites || []).map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-slate-500 mt-1">
-                Only this customer's active sites are offered. The site is applied automatically when the invitee accepts.
+                {form.role_type === "guard"
+                  ? "Security Guards require a site — the invitation cannot be sent without one. The site is applied automatically when the invitee accepts."
+                  : "Only this customer's active sites are offered. The site is applied automatically when the invitee accepts."}
               </p>
             </div>
           )}

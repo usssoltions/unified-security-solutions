@@ -18,6 +18,7 @@ import VisitorCard from "@/components/access/VisitorCard";
 import PurposeStep from "@/components/access/PurposeStep";
 import StepCard from "@/components/access/StepCard";
 import { resolveOrCreateVisitor, getGPS, getDeviceDescriptor, countPreviousVisits, findActiveInsideRecords, checkBlacklist } from "@/lib/accessVisitor";
+import { getInstallationId } from "@/lib/deviceRegistration";
 import ExitConfirmModal from "@/components/access/ExitConfirmModal";
 import OverrideModal from "@/components/access/OverrideModal";
 import MobileStep from "@/components/access/MobileStep";
@@ -347,6 +348,9 @@ export default function AccessControl() {
           scan_method: sm,
           exit_notes: manual ? "Manually exited from live log" : "",
           location: gps,
+          // Server resolves THIS installation's registered active device and
+          // stamps it on the exit attribution (never client-supplied).
+          installation_id: getInstallationId(),
         },
       });
       const d = res?.data !== undefined ? res.data : res;
@@ -489,6 +493,9 @@ export default function AccessControl() {
         device: getDeviceDescriptor(),
         notes: "",
         location: gps,
+        // Server resolves THIS installation's registered active device and
+        // stamps it on the entry attribution (never client-supplied).
+        installation_id: getInstallationId(),
       };
       const res = await base44.functions.invoke("finalizeAccessEntry", { action: "entry", access_data });
       const d = res?.data !== undefined ? res.data : res;
