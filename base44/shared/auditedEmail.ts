@@ -138,7 +138,7 @@ export async function sendAuditedEmail(
      *  mode is null → blocked). No production call site supplies this. */
     config?: { mode?: string | null; testMailboxes?: string[] };
   },
-): Promise<{ ok: boolean; skipped?: boolean; error?: string | null; mode?: string | null }> {
+): Promise<{ ok: boolean; skipped?: boolean; error?: string | null; mode?: string | null; audit_id?: string | null; provider_result?: any }> {
   const intendedTo = String(p.to || '').trim();
   if (!intendedTo) return { ok: false, error: 'NO_EMAIL' };
 
@@ -219,8 +219,10 @@ export async function sendAuditedEmail(
 
   let ok = true;
   let provider: string | undefined;
+  let sendResult: any = null;
+  let auditId: string | null = null;
   try {
-    await svc.integrations.Core.SendEmail({
+    sendResult = await svc.integrations.Core.SendEmail({
       from_name: p.from_name || (brand && brand.brand_name) || undefined,
       to: guard.to, // the GUARDED recipient (rewritten in test mode)
       subject: guard.subject, // '[TEST] ' prefixed in test mode
@@ -237,13 +239,17 @@ export async function sendAuditedEmail(
 
   // Delivery audit — a failed audit write must never break the send path.
   try {
-    await svc.entities.NotificationDelivery.create({
+    const rec = await svc.entities.NotificationDelivery.create({
       ...auditBase,
       status: ok ? 'sent' : 'failed',
       recipient_address: guard.to, // the EFFECTIVE recipient actually sent to
       provider_response: provider || undefined,
     });
+    auditId = rec?.id || null;
   } catch (_) { /* audit write failure is non-fatal */ }
 
-  return ok ? { ok: true, mode: guard.mode } : { ok: false, error: provider || 'SEND_FAILED', mode: guard.mode };
+  // audit_id / provider_result are additive diagnostics (delivery control tests).
+  return ok
+    ? { ok: true, mode: guard.mode, audit_id: auditId, provider_result: sendResult }
+    : { ok: false, error: provider || 'SEND_FAILED', mode: guard.mode, audit_id: auditId };
 }
