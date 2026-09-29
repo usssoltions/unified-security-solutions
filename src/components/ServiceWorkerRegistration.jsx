@@ -65,6 +65,18 @@ export default function ServiceWorkerRegistration() {
         // SW not available — app still works, push via OneSignal SDK
       });
 
+    // Update check on every foreground return: guards keep the standalone
+    // PWA open (or parked) for long stretches, so the 30-min interval alone
+    // could delay a newly published version. A visibility-based check makes
+    // the latest published build active predictably on the next open —
+    // no data is cleared, the swap is SKIP_WAITING + one reload.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && registration) {
+        registration.update().catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     // When a new SW takes over, reload to get the fresh app shell
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -73,6 +85,10 @@ export default function ServiceWorkerRegistration() {
         window.location.reload();
       }
     });
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   return null;

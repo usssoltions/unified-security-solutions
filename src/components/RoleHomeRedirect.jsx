@@ -39,13 +39,21 @@ export default function RoleHomeRedirect() {
   const { user, isLoadingAuth } = useAuth();
   const { data: entitlements = [], isLoading } = useModuleEntitlements(user?.id, user?.customer_id);
 
-  // Landing config is ONE cached customer read (10 min) for guards only.
-  const { data: customer } = useQuery({
+  // Landing config is resolved SERVER-SIDE by getGuardLandingConfig (same
+  // cached key, 10 min, shared with the Layout shell). A direct client read of
+  // the Customer record silently failed on real guard devices: the read is
+  // RLS-gated on {{user.data.customer_id}}, which guard session tokens do not
+  // carry — so the query returned nothing and guards landed on the generic
+  // Guard UI. The gateway derives the caller's scope server-side instead.
+  const { data: landing, isLoading: landingLoading } = useQuery({
     queryKey: ["guard_landing", user?.customer_id],
-    queryFn: () => base44.entities.Customer.get(user.customer_id),
+    queryFn: async () => {
+      const res = await base44.functions.invoke("getGuardLandingConfig", {});
+      return res?.data || res;
+    },
     enabled: !!user && user.role_type === "guard" && !!user.customer_id,
     staleTime: 10 * 60 * 1000,
-    retry: false,
+    retry: 2,
   });
 
   if (isLoadingAuth || !user) {
@@ -64,8 +72,19 @@ export default function RoleHomeRedirect() {
     );
   }
 
+  // Guards: never resolve the home while the landing config is still loading —
+  // an unresolved config must NOT silently fall through to the generic guard
+  // home (My Shift). Wait, then apply the fail-closed override below.
+  if (user.role_type === "guard" && user.customer_id && landingLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
+        <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+      </div>
+    );
+  }
+
   let homePath = resolveAuthorisedHome(user, entitlements);
-  const requested = GUARD_LANDING_KEYS[String(customer?.guard_default_landing || "").toLowerCase().replace(/[\s-]+/g, "_")];
+  const requested = GUARD_LANDING_KEYS[String(landing?.guard_default_landing || "").toLowerCase().replace(/[\s-]+/g, "_")];
   if (
     requested &&
     ROLE_PAGES[user.role_type]?.has(requested) &&

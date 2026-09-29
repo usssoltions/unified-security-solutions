@@ -15,11 +15,25 @@ export function useModuleEntitlements(userId, customerId) {
           customer_id: customerId,
           enabled: true,
         });
-        return entitlements || [];
+        // Non-empty = authoritative — return it untouched (unchanged
+        // behaviour for every tenant whose direct reads already work).
+        if (entitlements && entitlements.length > 0) return entitlements;
       } catch (e) {
         console.error("Failed to load module entitlements:", e);
-        return [];
       }
+      // Server-side fallback: a direct read can return [] when the session
+      // token does not carry custom user fields (RLS {{user.data.customer_id}}
+      // resolves to null → the tenant branch matches nothing) — indistinguishable
+      // client-side from a genuinely unlicensed tenant. getGuardLandingConfig
+      // resolves the CALLER's own entitlements server-side (no broadened access).
+      try {
+        const res = await base44.functions.invoke("getGuardLandingConfig", {});
+        const d = res?.data || res;
+        if (d?.resolved && Array.isArray(d.module_keys) && d.module_keys.length > 0) {
+          return d.module_keys.map((k) => ({ module_key: k, enabled: true, status: "active" }));
+        }
+      } catch (_) { /* fail closed */ }
+      return [];
     },
     enabled: !!customerId,
     staleTime: 60000,

@@ -82,17 +82,27 @@ export default function Layout({ children, currentPageName }) {
   // module, notification, licensing or entitlement infrastructure is removed,
   // and every other customer (no guard_default_landing) is unchanged. Shares
   // the RoleHomeRedirect landing query cache (same key, 10 min staleness).
-  const { data: landingCustomer } = useQuery({
+  // Landing config is resolved SERVER-SIDE by getGuardLandingConfig (same
+  // cached key as RoleHomeRedirect, 10 min staleness). A direct client read of
+  // the Customer record silently failed on real guard devices — the read is
+  // RLS-gated on {{user.data.customer_id}}, which guard session tokens do not
+  // carry — so accessControlOnly stayed false and guards saw the generic Guard
+  // shell (notification prompt + bottom tabs). The gateway derives the caller's
+  // scope server-side and returns ONLY the caller's own landing config.
+  const { data: landingConfig, isLoading: landingConfigLoading } = useQuery({
     queryKey: ["guard_landing", user?.customer_id],
-    queryFn: () => base44.entities.Customer.get(user.customer_id),
+    queryFn: async () => {
+      const res = await base44.functions.invoke("getGuardLandingConfig", {});
+      return res?.data || res;
+    },
     enabled: !!user && user.role_type === "guard" && !!user.customer_id,
     staleTime: 10 * 60 * 1000,
-    retry: false,
+    retry: 2,
   });
   const accessControlOnly =
     user?.role_type === "guard" &&
     ["access_control", "accesscontrol"].includes(
-      String(landingCustomer?.guard_default_landing || "").toLowerCase().replace(/[\s-]+/g, "_")
+      String(landingConfig?.guard_default_landing || "").toLowerCase().replace(/[\s-]+/g, "_")
     );
   // Platform Admin authority is EXPLICIT (role_type === "platform_admin" OR
   // admin_level === "platform"), never inferred from a missing tenant
@@ -427,6 +437,21 @@ export default function Layout({ children, currentPageName }) {
     control_room_operator: "Control Room Operator",
     platform_admin: "Platform Administrator", employer_user: "Employer Portal User",
   }[user.role_type] || user.role_type;
+
+  // Guards: NEVER render the generic Guard shell while the landing config is
+  // still unresolved — an initial false would flash "My Shift", the
+  // notification prompt and the bottom tabs before the config arrives, and a
+  // failed resolution would leave the old shell in place. Wait for the
+  // authoritative server-side config instead (guards of every customer; a
+  // customer without guard_default_landing resolves to null quickly and keeps
+  // its existing shell). Non-guards are unaffected (query disabled).
+  if (user?.role_type === "guard" && user?.customer_id && landingConfigLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        <div className="w-16 h-16 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
 
   return (
     <TabStateContext.Provider value={{ tabStates, updateTabState, navigateToTab }}>
