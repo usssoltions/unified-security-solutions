@@ -370,6 +370,10 @@ export default async function(req: Request): Promise<Response> {
     existing = (existing && existing[0]) ? existing[0] : null;
     if (existing) {
       const scopeUpdates = { role_type, admin_level, reseller_id: effectiveReseller, customer_id: customer_id || null };
+      // Guard scope includes the SITE — a rescope must be equivalent to
+      // accepting a fresh pending scope (a re-invited guard gets the invited
+      // site stamped immediately, never left site-less and blocked).
+      scopeUpdates.site_id = site_id || null;
       if (displayName) scopeUpdates.display_name = displayName;
       if (firstName) scopeUpdates.first_name = firstName;
       if (lastName) scopeUpdates.last_name = lastName;

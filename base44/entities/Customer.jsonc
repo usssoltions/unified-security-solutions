@@ -55,6 +55,25 @@
       "format": "date-time",
       "description": "Expiry of the device registration mutex token \u2014 a crashed holder's lock is stealable after this instant (stale-lock recovery). Internal only."
     },
+    "operational_user_limit": {
+      "type": "number",
+      "description": "COMPULSORY for every NEW customer \u2014 the SECOND, fully INDEPENDENT customer entitlement (enforced server-side by the customerAccess/inviteTenantUser gateways; integer, minimum 1; a customer cannot be created without it). Authoritative customer-wide licensed OPERATIONAL USER allowance: users who actually operate the security/access-control system (operational roles from the authoritative role catalogue \u2014 e.g. Security Guard, Dispatcher, Control Room Operator) each consume one slot, as does every VALID PENDING operational-user invitation (no quota bypass by mass-inviting). Administrative roles (Customer Administrator etc.) do NOT consume a slot. DELIBERATELY SEPARATE from device_limit: one counts people, the other counts physical app installations; neither affects the other. Null ONLY for legacy customers created before this field existed \u2014 these are flagged 'Operational user allowance requires configuration' (never silently limited); once a platform administrator configures it, enforcement is authoritative and transaction-safe (per-customer CAS mutex on user_lock_token). Only platform-level administrators may change it (audited: customer.operational_user_limit_changed); a customer can never increase its own allowance."
+    },
+    "user_lock_token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL operational-user-slot mutex token held while counting/creating operational users and invitations under the licence limit (CAS on this field guarantees two simultaneous invitations can never both take the final slot). Never exposed to any UI; never used for authorization."
+    },
+    "user_lock_expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Expiry of the operational-user-slot mutex token \u2014 a crashed holder's lock is stealable after this instant (stale-lock recovery). Internal only."
+    },
     "logo_url": {
       "type": "string",
       "description": "Customer logo file URL. Customer-level white-label branding override \u2014 wins over the reseller logo when set."
