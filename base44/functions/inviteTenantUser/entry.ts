@@ -324,6 +324,18 @@ export default async function(req: Request): Promise<Response> {
       site_id = site.id;
     }
 
+    // SECURITY GUARD REQUIRES A SITE (2026-09-29, server-side fail closed):
+    // a guard invitation that cannot result in a valid site-scoped account is
+    // never created or sent. Applies to EVERY inviter class (platform, reseller
+    // and customer admin) through this one canonical pipeline; the client-side
+    // required field is UX only.
+    if (role_type === 'guard' && !site_id) {
+      return Response.json({
+        error: 'Security Guard requires a site assignment. Select the site this guard will work at.',
+        code: 'guard_requires_site',
+      }, { status: 400 });
+    }
+
     // ── SERVER-SIDE module-scoped role validation (fail closed). ──
     // The UI derives role options from the same registry (shared/tenantRoles,
     // mirrored in src/lib/roleCatalog.js), but this is the authoritative
@@ -458,7 +470,7 @@ export default async function(req: Request): Promise<Response> {
 
     try {
       await base44.asServiceRole.entities.PlatformAuditLog.create({
-        event_type: 'user.created', user_id: caller.id, user_name: callerName,
+        event_type: 'tenant_user.invited', user_id: caller.id, user_name: callerName,
         reseller_id: effectiveReseller || undefined, customer_id: customer_id || undefined,
         entity_name: 'PendingTenantScope', entity_id: pending.id,
         action: 'invite_tenant_user',

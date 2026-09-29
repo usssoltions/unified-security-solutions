@@ -1,5 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import {
+  isPlatformAdmin, isResellerAdmin,
+  countActiveDevices, loadCustomerById,
+  DEVICE_LIMIT_REACHED_MESSAGE, DEVICE_INACTIVE_MESSAGE,
+} from '../../shared/deviceLicensing.ts';
 
 /**
  * deviceAccess — AUTHORITATIVE customer device licensing gateway.
@@ -42,18 +47,7 @@ import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 const LOCK_TTL_MS = 15000;
 const LOCK_ATTEMPTS = 24;
 
-const isPlatformAdmin = (u: any) =>
-  u?.role_type === 'platform_admin' || u?.admin_level === 'platform' || u?.role === 'admin';
-const isResellerAdmin = (u: any) =>
-  u?.role_type === 'reseller_admin' || u?.admin_level === 'reseller';
-
-const LIMIT_REACHED_MESSAGE = 'This customer has reached the maximum number of registered devices allowed for the account. Please contact your administrator to remove an old device or increase the licensed device limit.';
-const INACTIVE_MESSAGE = 'This device has been deactivated for this customer. Please contact your administrator.';
-
-async function loadCustomer(svc: any, id: string) {
-  const rows = await svc.entities.Customer.filter({ id: String(id) }).catch(() => []);
-  return rows?.[0] || null;
-}
+const loadCustomer = loadCustomerById;
 
 function auditEntry(base: any, fields: any) {
   return base.asServiceRole.entities.PlatformAuditLog.create(fields).catch(() => {});
@@ -154,15 +148,13 @@ export default async function(req: Request): Promise<Response> {
         }
         // Deactivated/revoked installation: blocked. The slot stays free and
         // the block persists regardless of who logs in on this installation.
-        return Response.json({ status: 'inactive', reason: existing.status, message: INACTIVE_MESSAGE });
+        return Response.json({ status: 'inactive', reason: existing.status, message: DEVICE_INACTIVE_MESSAGE });
       }
 
       // NEW installation — licence check + create under the customer mutex.
       const result = await withCustomerLock(svc, customerId, async () => {
         const c2 = await loadCustomer(svc, customerId);
-        const activeRows = await svc.entities.DeviceRegistration
-          .filter({ customer_id: customerId, status: 'active' }).catch(() => []);
-        const activeCount = (activeRows || []).length;
+        const activeCount = await countActiveDevices(svc, customerId);
         const limit = c2?.device_limit ?? null;
         if (limit != null && activeCount >= limit) {
           await auditEntry(base44, {
@@ -208,9 +200,9 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ status: 'busy', message: 'Device registration is busy. Please try again.', code: 'lock_timeout' }, { status: 503 });
       }
       if (result.blocked) {
-        return Response.json({
-          status: 'blocked', reason: 'device_limit_reached', code: 'device_limit_reached',
-          message: LIMIT_REACHED_MESSAGE,
+      return Response.json({
+        status: 'blocked', reason: 'device_limit_reached', code: 'device_limit_reached',
+        message: DEVICE_LIMIT_REACHED_MESSAGE,
           device_limit: result.limit, active_count: result.activeCount,
         });
       }
@@ -358,9 +350,7 @@ export default async function(req: Request): Promise<Response> {
 
       // REACTIVATE consumes a licence slot — enforce the limit under the mutex.
       const result = await withCustomerLock(svc, reg.customer_id, async () => {
-        const activeRows = await svc.entities.DeviceRegistration
-          .filter({ customer_id: reg.customer_id, status: 'active' }).catch(() => []);
-        const activeCount = (activeRows || []).length;
+        const activeCount = await countActiveDevices(svc, reg.customer_id);
         const cust = await loadCustomer(svc, reg.customer_id);
         const limit = cust?.device_limit ?? null;
         if (limit != null && activeCount >= limit) return { blocked: true, activeCount, limit };

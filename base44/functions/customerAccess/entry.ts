@@ -1,5 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import {
+  isPlatformAdmin, isResellerAdmin, parseDeviceLimit,
+  countActiveDevices, loadCustomerById,
+} from '../../shared/deviceLicensing.ts';
 
 /**
  * customerAccess — AUTHORITATIVE customer lifecycle gateway.
@@ -26,26 +30,6 @@ import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
  *
  * AUDIT EVENTS: customer.created, customer.device_limit_changed.
  */
-
-const isPlatformAdmin = (u: any) =>
-  u?.role_type === 'platform_admin' || u?.admin_level === 'platform' || u?.role === 'admin';
-const isResellerAdmin = (u: any) =>
-  u?.role_type === 'reseller_admin' || u?.admin_level === 'reseller';
-
-/** Valid device limit: a true integer >= 1 (no decimals, no strings, no blanks). */
-function parseDeviceLimit(raw: any): { ok: true; value: number } | { ok: false; code: string; error: string } {
-  if (raw === undefined || raw === null || String(raw).trim() === '') {
-    return { ok: false, code: 'missing_device_limit', error: 'Allowed Devices is required. Enter the number of licensed device installations for this customer (minimum 1).' };
-  }
-  const num = typeof raw === 'number' ? raw : Number(String(raw).trim());
-  if (!Number.isFinite(num) || !Number.isInteger(num)) {
-    return { ok: false, code: 'invalid_device_limit', error: 'Allowed Devices must be a whole number (no decimals or text).' };
-  }
-  if (num < 1) {
-    return { ok: false, code: 'invalid_device_limit', error: 'Allowed Devices must be at least 1.' };
-  }
-  return { ok: true, value: num };
-}
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -118,8 +102,7 @@ export default async function(req: Request): Promise<Response> {
       }
       const customerId = String(body?.customer_id || '');
       if (!customerId) return Response.json({ error: 'customer_id required', code: 'missing_customer' }, { status: 400 });
-      const custRows = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);
-      const cust = custRows?.[0];
+      const cust = await loadCustomerById(svc, customerId);
       if (!cust) return Response.json({ error: 'Customer not found', code: 'customer_not_found' }, { status: 404 });
 
       const limitCheck = parseDeviceLimit(body?.device_limit);
@@ -128,9 +111,7 @@ export default async function(req: Request): Promise<Response> {
       // Controlled limit reduction: never silently strand or auto-deactivate
       // devices — a limit below the ACTIVE device count is blocked with an
       // actionable message.
-      const activeRows = await svc.entities.DeviceRegistration
-        .filter({ customer_id: customerId, status: 'active' }).catch(() => []);
-      const activeCount = (activeRows || []).length;
+      const activeCount = await countActiveDevices(svc, customerId);
       if (limitCheck.value < activeCount) {
         return Response.json({
           error: `${activeCount} device${activeCount === 1 ? ' is' : 's are'} currently active. Deactivate ${activeCount - limitCheck.value} device${activeCount - limitCheck.value === 1 ? '' : 's'} first, or choose an allowance of at least ${activeCount}.`,

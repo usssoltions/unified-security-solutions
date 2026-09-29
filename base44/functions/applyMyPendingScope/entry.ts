@@ -45,7 +45,7 @@ export default async function(req: Request): Promise<Response> {
       if (callerUnscoped) {
         try {
           await base44.asServiceRole.entities.PlatformAuditLog.create({
-            event_type: 'onboarding.failed',
+            event_type: 'tenant_user.scope_failed',
             user_id: caller.id,
             user_name: caller.display_name || caller.full_name || caller.email,
             entity_name: 'User',
@@ -58,6 +58,23 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ applied: false, reason: 'no_pending_scope' });
     }
     const scope = pending[0];
+
+    // DEFENSE-IN-DEPTH (2026-09-29): a guard scope without a site assignment
+    // cannot produce a valid scoped account — it is NEVER applied (fail
+    // closed, the user stays unscoped with no app access). inviteTenantUser
+    // blocks this at the source; this guard catches legacy/malformed scopes.
+    if (scope.role_type === 'guard' && !scope.site_id) {
+      try {
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'tenant_user.scope_failed',
+          user_id: caller.id, user_name: caller.display_name || caller.full_name || caller.email,
+          entity_name: 'PendingTenantScope', entity_id: scope.id,
+          action: 'apply_pending_tenant_scope',
+          notes: `Login blocked: guard scope for ${email} has no site assignment. Re-issue the invitation with a site.`,
+        });
+      } catch (_) { /* diagnostics must never break the response */ }
+      return Response.json({ applied: false, reason: 'guard_site_missing' });
+    }
 
     const updates = {};
     if (scope.role_type) updates.role_type = scope.role_type;

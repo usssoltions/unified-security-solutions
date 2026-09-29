@@ -84,6 +84,60 @@ const isPlatformUser = (u) =>
 const isResellerAdmin = (u) =>
   u.admin_level === 'reseller' || u.role_type === 'reseller_admin';
 
+const DEVICE_BLOCK_MESSAGES = {
+  device_required: 'This device is not registered for your organisation. Register the device before processing access.',
+  device_not_registered: 'This device is not registered for your organisation. Register the device before processing access.',
+  device_inactive: 'This device has been deactivated. Contact your administrator.',
+};
+
+/* ── REGISTERED-DEVICE ATTRIBUTION + LICENSING ENFORCEMENT ──────────────
+ * Every entry/exit is permanently attributed to the USER (guard_id /
+ * exit_guard_id) AND the REGISTERED DEVICE that processed it
+ * (entry_device_registration_id / exit_device_registration_id). The device
+ * is resolved SERVER-SIDE from the caller's ACTIVE DeviceRegistration for
+ * the effective customer — the client only offers its installation_id,
+ * which must match an existing registration for that customer (it can
+ * never point at another customer's device). NON-PLATFORM callers FAIL
+ * CLOSED: access cannot be processed from an unregistered or deactivated
+ * device. Platform admins acting on a site resolve the SITE's customer
+ * (legitimate oversight); their device attribution is optional. */
+async function resolveCallerDevice(svc: any, caller: any, installationId: any, effectiveCid: string | null) {
+  const platform = isPlatformUser(caller);
+  if (!installationId || !effectiveCid) {
+    return platform ? { reg: null } : { error: 'device_required' };
+  }
+  const rows = await svc.entities.DeviceRegistration
+    .filter({ customer_id: String(effectiveCid), installation_id: String(installationId) }).catch(() => []);
+  const reg = (rows && rows[0]) ? rows[0] : null;
+  if (!reg) return { error: 'device_not_registered', platform };
+  if (reg.status !== 'active') return { error: 'device_inactive', platform };
+  // Refresh device presence (never a licence effect — the device already holds a slot).
+  await svc.entities.DeviceRegistration.update(reg.id, {
+    last_seen_at: new Date().toISOString(),
+    last_user_id: caller.id,
+    last_user_name: caller.display_name || caller.full_name || '',
+  }).catch(() => {});
+  return { reg };
+}
+
+/* Safe access audit event — references only (customer/site/gate/visit/user/
+ * device ids + timestamps); never tokens, credentials or message bodies. */
+async function auditAccess(svc: any, event_type: string, caller: any, fields: any) {
+  try {
+    await svc.entities.PlatformAuditLog.create({
+      event_type,
+      user_id: caller.id,
+      user_name: caller.display_name || caller.full_name || caller.email,
+      customer_id: fields.customer_id || undefined,
+      reseller_id: caller.reseller_id || undefined,
+      entity_name: 'AccessLog',
+      entity_id: fields.access_log_id || undefined,
+      action: event_type.replace('access.', ''),
+      notes: String(fields.notes || '').slice(0, 400),
+    });
+  } catch (_) { /* best-effort audit */ }
+}
+
 /* ── ACCESS-CONTROL SECURITY ALERTS ──────────────────────────────────────
  * Blacklist hit / manual gate deny (severity 'security'): in-app + email +
  * Telegram + native push to the customer's OWN operational recipients
@@ -366,7 +420,8 @@ export default async function(req: Request): Promise<Response> {
               vehicle_licence_disc_number, vehicle_vin, vehicle_make, vehicle_model,
               vehicle_colour, vehicle_licence_number, visitor_type, scanned_data,
               parsed_json, confidence, device, notes,
-              photo_url, qr_code, location, unit_number, company } = access_data;
+              photo_url, qr_code, location, unit_number, company,
+              installation_id } = access_data;
 
       if (!gate_name || !person_type || !person_name) {
         return Response.json({ error: 'gate_name, person_type, person_name required' }, { status: 400 });
@@ -376,6 +431,29 @@ export default async function(req: Request): Promise<Response> {
       // anything is written (cross-customer/cross-site bypass protection).
       const siteErr = await assertSiteScope(site_id);
       if (siteErr) return siteErr;
+
+      // REGISTERED-DEVICE REQUIREMENT — server-side fail closed for
+      // non-platform callers: entry cannot be processed from an unregistered
+      // or deactivated device (an over-licence installation never reaches
+      // here — it is blocked at registration by the deviceAccess gateway).
+      // The device is resolved from the CALLER's effective customer scope;
+      // a platform admin acting on a site resolves the site's customer.
+      let deviceCid = cid;
+      if (!deviceCid && site_id) {
+        try {
+          const sRows = await base44.asServiceRole.entities.Site.filter({ id: String(site_id) });
+          deviceCid = (sRows && sRows[0]) ? (sRows[0].customer_id || null) : null;
+        } catch (_) { deviceCid = null; }
+      }
+      const deviceCheck = await resolveCallerDevice(base44.asServiceRole, caller, installation_id, deviceCid);
+      if (deviceCheck.error) {
+        await auditAccess(base44.asServiceRole, 'access.permission_denied', caller, {
+          customer_id: cid, site_id, gate_name,
+          notes: `Entry denied — ${deviceCheck.error}`,
+        });
+        return Response.json({ error: DEVICE_BLOCK_MESSAGES[deviceCheck.error], code: deviceCheck.error }, { status: 403 });
+      }
+      const deviceReg = deviceCheck.reg || null;
 
       // COMPULSORY VISITOR MOBILE NUMBER — enforced centrally and EXPLICITLY
       // for the application's authoritative visitor-class person types only
@@ -407,7 +485,11 @@ export default async function(req: Request): Promise<Response> {
           return false;
         });
         if (isDup) {
-          return Response.json({ error: 'Person or vehicle already inside this site', duplicate: true, existing_log_id: isDup.id }, { status: 409 });
+          await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
+            customer_id: cid, site_id, gate_name, access_log_id: isDup.id,
+            notes: `Duplicate entry blocked — person/vehicle already inside (record ${isDup.id})`,
+          });
+          return Response.json({ error: 'An active entry already exists.', duplicate: true, existing_log_id: isDup.id }, { status: 409 });
         }
       }
 
@@ -488,9 +570,38 @@ export default async function(req: Request): Promise<Response> {
         timestamp: now,
         guard_id: caller.id,
         guard_name: caller.display_name || caller.full_name,
+        entry_device_registration_id: deviceReg ? deviceReg.id : null,
+        entry_device_name: deviceReg ? deviceReg.device_name : null,
         flagged: !!blacklistMatch,
         flag_reason: blacklistMatch ? ('Blacklist match: ' + (blacklistMatch.reason || 'banned identifier')) : undefined,
         blacklist_match_id: blacklistMatch?.id
+      });
+
+      // DUPLICATE RACE (post-commit tiebreak, 2026-09-29): two gates
+      // processing the same person within milliseconds can both pass the
+      // pre-check. Each re-checks after commit; deterministic single-survivor
+      // rule — the record with the SMALLER id stays, the later one deletes
+      // itself and reports the duplicate. Exactly one active visit remains.
+      if (!blacklistMatch && (sa_id_number || driver_licence_number || vehicle_registration) && cid) {
+        const dups2 = await base44.asServiceRole.entities.AccessLog
+          .filter({ customer_id: cid, status: 'inside' }, '-created_date', 50).catch(() => []);
+        const twin = (dups2 || []).find((d) => d.id !== log.id &&
+          ((sa_id_number && d.sa_id_number === sa_id_number) ||
+           (driver_licence_number && d.driver_licence_number === driver_licence_number) ||
+           (vehicle_registration && d.vehicle_registration === vehicle_registration)));
+        if (twin && String(twin.id).localeCompare(String(log.id)) < 0) {
+          await base44.asServiceRole.entities.AccessLog.delete(log.id).catch(() => {});
+          await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
+            customer_id: cid, site_id, gate_name, access_log_id: twin.id,
+            notes: 'Concurrent duplicate entry race — the earlier record was kept',
+          });
+          return Response.json({ error: 'An active entry already exists.', duplicate: true, existing_log_id: twin.id }, { status: 409 });
+        }
+      }
+
+      await auditAccess(base44.asServiceRole, 'access.entry', caller, {
+        customer_id: cid, site_id, gate_name, access_log_id: log.id,
+        notes: `Entry processed by ${caller.display_name || caller.full_name}${deviceReg ? ' on device ' + (deviceReg.device_name || deviceReg.id) : ''}`,
       });
 
       // SECURITY ALERT on a blacklist hit (all channels) / IN-APP ONLY for an
@@ -506,7 +617,7 @@ export default async function(req: Request): Promise<Response> {
     }
 
     if (action === 'exit') {
-      const { access_log_id, site_id, gate_name, scan_method, exit_notes, location } = access_data;
+      const { access_log_id, site_id, gate_name, scan_method, exit_notes, location, installation_id } = access_data;
       if (!access_log_id) {
         return Response.json({ error: 'access_log_id required for exit' }, { status: 400 });
       }
@@ -540,31 +651,81 @@ export default async function(req: Request): Promise<Response> {
         }
       }
 
+      // REGISTERED-DEVICE REQUIREMENT — same server-side fail-closed rule as
+      // entry. A device may process the exit of a visit whose ENTRY happened
+      // on a DIFFERENT gate/device (cross-gate exit is legitimate); the only
+      // requirement is that THIS device is registered+active for the same
+      // customer that owns the visit.
+      const deviceCheck = await resolveCallerDevice(base44.asServiceRole, caller, installation_id, existing.customer_id || cid);
+      if (deviceCheck.error) {
+        await auditAccess(base44.asServiceRole, 'access.permission_denied', caller, {
+          customer_id: existing.customer_id || cid, site_id: existing.site_id, gate_name, access_log_id,
+          notes: `Exit denied — ${deviceCheck.error}`,
+        });
+        return Response.json({ error: DEVICE_BLOCK_MESSAGES[deviceCheck.error], code: deviceCheck.error }, { status: 403 });
+      }
+      const deviceReg = deviceCheck.reg || null;
+
       const exitTime = new Date();
       const entryTime = new Date(existing.entry_time || existing.timestamp);
       const minutes = Math.round((exitTime - entryTime) / 60000);
+      const exitIso = exitTime.toISOString();
 
-      const updated = await base44.asServiceRole.entities.AccessLog.update(access_log_id, {
-        event_type: 'exit',
-        status: 'exited',
-        exit_time: exitTime.toISOString(),
-        exit_gate: gate_name,
-        exit_guard_id: caller.id,
-        exit_guard_name: caller.display_name || caller.full_name,
-        exit_scan_method: scan_method,
-        exit_location: location,
-        exit_notes,
-        time_on_site_minutes: minutes
-      });
+      // CONCURRENT EXIT PROTECTION (2026-09-29): the exit is a CONDITIONAL
+      // (CAS) update that only matches status 'inside'. Two devices pressing
+      // Exit for the same visit at nearly the same time: exactly ONE commits
+      // the transition; the loser updates ZERO records and receives a safe
+      // 'already exited' response — never two exit records, never conflicting
+      // timestamps. The exit attribution is written SEPARATELY from the
+      // entry attribution and never overwrites it.
+      await base44.asServiceRole.entities.AccessLog.updateMany(
+        { id: String(access_log_id), status: 'inside' },
+        { $set: {
+          event_type: 'exit',
+          status: 'exited',
+          exit_time: exitIso,
+          exit_gate: gate_name,
+          exit_guard_id: caller.id,
+          exit_guard_name: caller.display_name || caller.full_name,
+          exit_scan_method: scan_method,
+          exit_location: location,
+          exit_notes,
+          exit_device_registration_id: deviceReg ? deviceReg.id : null,
+          exit_device_name: deviceReg ? deviceReg.device_name : null,
+          time_on_site_minutes: minutes,
+        } }
+      ).catch(() => null);
+
+      // Verify the commit — the server response is authoritative.
+      const afterRows = await base44.asServiceRole.entities.AccessLog.filter({ id: String(access_log_id) }).catch(() => []);
+      const after = (afterRows && afterRows[0]) ? afterRows[0] : null;
+      if (!after || after.status !== 'exited') {
+        // Our CAS matched nothing AND no other exit exists → technical commit
+        // failure; report it honestly (never a false 'exited').
+        return Response.json({ error: 'Exit could not be confirmed. Please try again.', code: 'exit_commit_failed' }, { status: 500 });
+      }
+      if (after.exit_time !== exitIso) {
+        // Another device won the race and exited the visit first.
+        await auditAccess(base44.asServiceRole, 'access.exit_duplicate_blocked', caller, {
+          customer_id: existing.customer_id || cid, site_id: existing.site_id, gate_name, access_log_id,
+          notes: 'Concurrent exit — visit already exited by another device',
+        });
+        return Response.json({ error: 'This visit has already been exited.', code: 'already_exited', duplicate: true }, { status: 409 });
+      }
 
       // Update visitor status — only the visitor linked to THIS record.
       if (existing.visitor_id) {
         try {
-          await base44.asServiceRole.entities.Visitor.update(existing.visitor_id, { status: 'exited', exited_at: exitTime.toISOString() });
+          await base44.asServiceRole.entities.Visitor.update(existing.visitor_id, { status: 'exited', exited_at: exitIso });
         } catch (e) {}
       }
 
-      return Response.json({ success: true, access_log: updated });
+      await auditAccess(base44.asServiceRole, 'access.exit', caller, {
+        customer_id: existing.customer_id || cid, site_id: existing.site_id, gate_name, access_log_id,
+        notes: `Exit processed by ${caller.display_name || caller.full_name}${deviceReg ? ' on device ' + (deviceReg.device_name || deviceReg.id) : ''}`,
+      });
+
+      return Response.json({ success: true, access_log: after });
     }
 
     return Response.json({ error: 'Invalid action. Use entry, exit or resolve_visitor' }, { status: 400 });
