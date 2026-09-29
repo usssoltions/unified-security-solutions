@@ -90,8 +90,8 @@ export default async function(req: Request): Promise<Response> {
           user_id: r.user_id || null,
           active: r.active !== false,
           daily_access_enabled: Array.isArray(r.report_preferences)
-            ? r.report_preferences.includes('daily_access')
-            : true, // empty prefs = all authorised reports (legacy default)
+            ? !r.report_preferences.includes('daily_access_opt_out')
+            : true, // no explicit opt-out marker = enabled (legacy default)
         })),
         sites: (sites || []).map((s: any) => ({ id: s.id, name: s.name })),
         internal_users: (users || [])

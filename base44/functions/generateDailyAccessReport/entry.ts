@@ -67,6 +67,7 @@ async function resolveDailyAccessRecipients(svc: any, customerId: string, siteId
     if (!er || er.active === false) continue; // deactivated → no future sends
     if (er.reports_enabled === false) continue;
     const prefs: string[] = Array.isArray(er.report_preferences) ? er.report_preferences : [];
+    if (prefs.includes('daily_access_opt_out')) continue; // explicit opt-out — wins over the legacy empty/all default
     if (prefs.length && !prefs.includes('daily_access')) continue;
     if (er.site_id && String(er.site_id) !== String(siteId)) continue; // site-scoped recipient
     const email = String(er.email || '').trim().toLowerCase();
