@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { queryClientInstance } from "@/lib/query-client";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
@@ -72,6 +73,27 @@ export default function Layout({ children, currentPageName }) {
   // Phase 7: Module entitlement-driven navigation + white-label branding
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
   const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+
+  // ACCESS CONTROL-ONLY GUARD SHELL (customer-configurable): a guard whose
+  // customer sets guard_default_landing = "access_control" (e.g. REDOPS) gets
+  // a dedicated Access Control experience — the operational notification
+  // prompt and the Shift/Incidents/Maintenance/QR bottom tabs are suppressed
+  // and the layout reflows without dead space. Purely a UI/layout mode: no
+  // module, notification, licensing or entitlement infrastructure is removed,
+  // and every other customer (no guard_default_landing) is unchanged. Shares
+  // the RoleHomeRedirect landing query cache (same key, 10 min staleness).
+  const { data: landingCustomer } = useQuery({
+    queryKey: ["guard_landing", user?.customer_id],
+    queryFn: () => base44.entities.Customer.get(user.customer_id),
+    enabled: !!user && user.role_type === "guard" && !!user.customer_id,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  const accessControlOnly =
+    user?.role_type === "guard" &&
+    ["access_control", "accesscontrol"].includes(
+      String(landingCustomer?.guard_default_landing || "").toLowerCase().replace(/[\s-]+/g, "_")
+    );
   // Platform Admin authority is EXPLICIT (role_type === "platform_admin" OR
   // admin_level === "platform"), never inferred from a missing tenant
   // assignment. Legacy unmigrated Base44 admins are NOT platform admins.
@@ -358,6 +380,9 @@ export default function Layout({ children, currentPageName }) {
   const canGoBack = !isRootPage && window.history.length > 1;
 
   const getMobileNavItems = () => {
+    // Access Control-only shell (e.g. REDOPS): no bottom tabs at all — the
+    // page reflows cleanly with the reduced content padding below.
+    if (accessControlOnly) return [];
     const role = user.role_type;
     if (role === "guard") {
       return [
@@ -415,7 +440,7 @@ export default function Layout({ children, currentPageName }) {
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
           <ForegroundAlertBanner user={user} />
-          <PushPermissionManager variant="prompt" user={user} />
+          {!accessControlOnly && <PushPermissionManager variant="prompt" user={user} />}
 
 
           <DeviceGate user={user}>
@@ -566,7 +591,7 @@ export default function Layout({ children, currentPageName }) {
               </aside>
 
               <main className="flex-1 min-h-screen w-full max-w-full overflow-x-hidden">
-                <div className="pb-24 md:pb-6 w-full max-w-full">
+                <div className={accessControlOnly ? "pb-6 w-full max-w-full" : "pb-24 md:pb-6 w-full max-w-full"}>
                   <PageTransition routeKey={location.pathname}>{children}</PageTransition>
                 </div>
               </main>
