@@ -131,6 +131,23 @@ export const PAGE_MODULE_MAP = {
  * OPERATIONS / COMPLETE_SECURITY suites). Unmapped pages are CORE platform
  * infrastructure (always visible per role).
  */
+/* LICENCE WINDOW (client mirror of the server's central entitlementActive
+ * helper): a licence that has not started yet, or has already ended, grants
+ * nothing on the UI either — the same rule the gateways enforce server-side. */
+export function entitlementWindowActive(e) {
+  if (!e) return false;
+  const now = Date.now();
+  if (e.licence_start) {
+    const t = Date.parse(e.licence_start);
+    if (!isNaN(t) && t > now) return false;
+  }
+  if (e.licence_end) {
+    const t = Date.parse(e.licence_end);
+    if (!isNaN(t) && t < now) return false;
+  }
+  return true;
+}
+
 export function isPageModuleEnabled(entitlements, pageName, isPlatformAdmin = false) {
   const key = PAGE_MODULE_MAP[pageName];
   if (!key) return true;
@@ -139,7 +156,7 @@ export function isPageModuleEnabled(entitlements, pageName, isPlatformAdmin = fa
   if (!entitlements || entitlements.length === 0) return false;
   const keys = Array.isArray(key) ? key : [key];
   return entitlements.some(
-    (e) => keys.includes(e.module_key) && e.enabled && (!e.status || e.status === "active")
+    (e) => keys.includes(e.module_key) && e.enabled && (!e.status || e.status === "active") && entitlementWindowActive(e)
   );
 }
 

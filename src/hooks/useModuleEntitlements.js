@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { entitlementWindowActive } from "@/lib/moduleMapping";
 
 /**
  * Fetches active module entitlements for a customer/tenant.
@@ -57,6 +58,6 @@ export function isModuleEnabled(entitlements, moduleKey, isPlatformAdmin = false
   // Fail closed: no entitlements loaded/configured = no commercial module access
   if (!entitlements || entitlements.length === 0) return false;
   return entitlements.some(
-    (e) => e.module_key === moduleKey && e.enabled && (!e.status || e.status === "active")
+    (e) => e.module_key === moduleKey && e.enabled && (!e.status || e.status === "active") && entitlementWindowActive(e)
   );
 }
