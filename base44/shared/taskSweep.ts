@@ -18,7 +18,8 @@ import {
   logTaskAudit, resolveTaskBrandContext,
 } from './taskNotifications.ts';
 import { reminderNotification, deadlineReport, reasonRequiredNotification,
-  verificationOverdueNotification, guardOverdueNotification, fmtSast, MY_TASKS_LINK } from './taskReportContent.ts';
+  verificationOverdueNotification, guardOverdueNotification, fmtSast, MY_TASKS_LINK,
+  newTaskListNotification } from './taskReportContent.ts';
 
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const PRIORITIES = ['low', 'medium', 'high', 'critical'];
@@ -55,13 +56,32 @@ function nextOccurrenceYmd(current, rec) {
     return null;
   }
   if (rec.type === 'monthly') {
+    // EXPLICIT MONTH-END SEMANTICS (JS rollover fix): a series created on the
+    // 29th/30th/31st must never silently roll into the following month via
+    // JavaScript date normalisation (Date.UTC(2026,1,31) → 3 March). The
+    // series' ORIGINAL requested day is preserved; when the target month has
+    // no such day (31 in a 30-day month, day 29/30/31 in February), the LAST
+    // VALID DAY of that month is used — 31 Jan → 28/29 Feb (leap-year aware)
+    // → 31 Mar. Later months that DO contain the requested day resume it.
     const p = current.split('-');
-    const next = new Date(Date.UTC(Number(p[0]), Number(p[1]), Number(p[2]), 12));
-    return next.toISOString().slice(0, 10);
+    const y = Number(p[0]);
+    const m = Number(p[1]); // 1-based month of `current`
+    const requestedDay = Math.min(31, Math.max(1, Number(rec.originalDay) || Number(p[2])));
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); // day 0 of the month AFTER the target = target month's length
+    const day = Math.min(requestedDay, lastDay);
+    const ny = m === 12 ? y + 1 : y;
+    const nm = m === 12 ? 1 : m + 1;
+    return ny + '-' + String(nm).padStart(2, '0') + '-' + String(day).padStart(2, '0');
   }
   return null;
 }
 export function occurrenceDates(startYmd, rec, endYmd, max) {
+  // Monthly series keep their ORIGINAL requested day (set once from the
+  // series start date) so a clamped short-month occurrence (e.g. 28 Feb) is
+  // followed by the requested day again (31 Mar) — never a permanent drift.
+  if (rec && rec.type === 'monthly' && rec.originalDay === undefined) {
+    rec.originalDay = Number(String(startYmd).slice(8, 10));
+  }
   const out = [];
   let cur = startYmd;
   let guard = 0;
@@ -175,16 +195,15 @@ export function buildOccurrenceBatch(series, ymd, seriesId) {
 export async function runTaskSweep(svc, secrets) {
   const today = sastTodayYmd();
   const cutoff = addDaysYmd(today, -SWEEP_CATCHUP_DAYS);
-  const results = { occurrences_generated: 0, reminders_sent: 0, reports_generated: 0, tasks_marked_overdue: 0, reasons_required: 0, overdue_alerts_sent: 0 };
+  const results = { occurrences_generated: 0, occurrences_activated: 0, reminders_sent: 0, reports_generated: 0, tasks_marked_overdue: 0, reasons_required: 0, overdue_alerts_sent: 0 };
 
-  // 1. Early-exit check FIRST: any recent unreported occurrence batches?
-  //    (Series parents are excluded — occurrences drive the workflow.)
-  const recentBatches = await svc.entities.TaskBatch.filter(
-    { is_series: false, status: 'active' }, '-scheduled_date', 100).catch(() => []);
-  const dueBatches = (recentBatches || []).filter((b) =>
-    b.scheduled_date && b.scheduled_date <= today && b.scheduled_date >= cutoff && !b.archived);
-
-  // 2. Top-up recurring series (bounded, dedup by recurrence_key).
+  // 1. SERIES TOP-UP FIRST (SWEEP ORDER FIX): recurring occurrences are
+  //    generated/topped-up BEFORE the sweep evaluates which batches are due —
+  //    a newly due recurrence is processed by THIS run, never delayed to the
+  //    next 30-minute sweep merely because the due-batch query ran first.
+  //    Database pre-generation is deliberately SILENT: user-facing activation
+  //    notifications fire per occurrence when its window STARTS (below) — a
+  //    future occurrence is never notified ~30 days in advance.
   const seriesRows = await svc.entities.TaskBatch.filter(
     { is_series: true, status: 'active' }, '-created_date', 50).catch(() => []);
   for (const series of (seriesRows || [])) {
@@ -207,6 +226,13 @@ export async function runTaskSweep(svc, secrets) {
     }
   }
 
+  // 2. Due-batch evaluation AFTER the top-up (series parents are excluded —
+  //    occurrence batches drive the workflow).
+  const recentBatches = await svc.entities.TaskBatch.filter(
+    { is_series: false, status: 'active' }, '-scheduled_date', 100).catch(() => []);
+  const dueBatches = (recentBatches || []).filter((b) =>
+    b.scheduled_date && b.scheduled_date <= today && b.scheduled_date >= cutoff && !b.archived);
+
   if (!dueBatches.length) return Response.json({ success: true, ...results, active_batches: 0 });
 
   // Tenant brand context (customer → reseller → platform) — cached per
@@ -228,6 +254,53 @@ export async function runTaskSweep(svc, secrets) {
     const allTasks = tasks || [];
     if (!allTasks.length) continue;
     const outstanding = allTasks.filter((t) => !t.archived && t.status !== 'completed' && t.status !== 'cancelled');
+
+    // ── OCCURRENCE ACTIVATION (pre-generated recurring occurrences) ──
+    // The user-facing activation notification fires exactly ONCE per
+    // occurrence, the moment its active window STARTS — separated from the
+    // silent database pre-generation above. Bounded to windows that started
+    // within the last 12 hours so stale catch-up batches (older runs, missed
+    // sweeps) are never blasted long after the fact; the existing 2-hour
+    // reminder cadence continues to cover older windows. Event-key
+    // idempotent — a re-run can never re-notify an activated occurrence.
+    if (!batch.activation_notified_at && (now - startMs) < 12 * 60 * 60 * 1000) {
+      const crRowsA = await svc.entities.ControlRoom.filter({ id: batch.control_room_id }).catch(() => []);
+      const crA = (crRowsA && crRowsA[0]) || null;
+      const recipientsA = await resolveTaskRecipients(svc, batch.customer_id,
+        [batch.primary_supervisor_id].concat((crA && crA.operator_user_ids) || [],
+          (crA && crA.supervisor_user_ids) || [], batch.additional_notification_user_ids || []));
+      const activeA = recipientsA.filter((r) => r.status !== 'suspended' && r.status !== 'inactive');
+      if (activeA.length) {
+        const brandCtx = await getBrandCtx(batch.customer_id);
+        const content = newTaskListNotification(batch, allTasks.length, brandCtx.customerName, brandCtx.brand, brandCtx.brandName);
+        for (const r of activeA) {
+          await svc.entities.Notification.create({
+            customer_id: batch.customer_id, reseller_id: batch.reseller_id || null,
+            recipient_id: r.id, recipient_name: r.name,
+            type: 'status_change', priority: 'high',
+            title: 'TASK LIST ACTIVE — ' + batch.title,
+            message: 'Task list for ' + batch.scheduled_date + ' (' + batch.active_start_time + '–' + batch.deadline_time + ') is now active in ' + (batch.control_room_name || 'your control room') + ' — ' + allTasks.length + ' task(s).',
+            related_entity: 'TaskBatch', related_id: batch.id,
+            action_url: '/ScheduledTasks', sent_via: ['in_app'],
+          }).catch(() => {});
+        }
+        await notifyTaskRecipients(svc, secrets, activeA, { ...content, from_name: brandCtx.brandName,
+          eventKey: 'task_occurrence_activated:' + batch.id,
+          actionUrl: '/ScheduledTasks',
+          pushTitle: 'TASK LIST ACTIVE — ' + batch.title,
+          pushBody: 'Task list for ' + batch.scheduled_date + ' (' + batch.active_start_time + '–' + batch.deadline_time + ') is now active — open the Task Queue.',
+          priority: 'high',
+          customerId: batch.customer_id, resellerId: batch.reseller_id || null });
+        await logTaskAudit(svc, { event_type: 'task.occurrence_activated', actor: null, batch,
+          notes: 'Occurrence activated at window start — ' + activeA.length + ' recipient(s) notified' });
+        results.occurrences_activated++;
+      }
+      // Mark regardless once evaluated (nothing to notify, or notified) so the
+      // sweep never re-evaluates the same activation forever.
+      await svc.entities.TaskBatch.update(batch.id, {
+        activation_notified_at: new Date().toISOString(),
+      }).catch(() => {});
+    }
 
     if (now < deadlineMs) {
       // ── Active window: 2-hour reminder cycle ──

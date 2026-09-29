@@ -31,7 +31,11 @@ export default function CustomerModulesModal({ open, onClose, customer, reseller
   }, [open, customer?.id]);
 
   const isEnabled = (key) => customerEnts.some((e) => e.module_key === key && e.enabled && (!e.status || e.status === "active"));
-  const licensedKeys = resellerLicensedKeys.length > 0 ? resellerLicensedKeys : Object.keys(RESELLER_MODULE_MAP);
+  // NO CATALOGUE FALLBACK: an empty reseller licence set means ZERO modules
+  // may be enabled — never "every module available". The empty state below
+  // tells the administrator to licence the reseller first (the backend
+  // manageCustomerEntitlement gateway enforces the same boundary server-side).
+  const licensedKeys = resellerLicensedKeys.length > 0 ? resellerLicensedKeys : [];
 
   const toggle = async (key) => {
     setBusy(key);

@@ -26,8 +26,12 @@ export const ROLE_PAGES = Object.keys(ROUTE_REGISTRY).reduce((acc, role) => {
   return acc;
 }, {});
 
-/* Pages that are safe for every authenticated user (shared utility pages) */
-const PUBLIC_PAGES = new Set(["AndroidDownload"]);
+/* Pages that are safe for every authenticated user (shared utility pages).
+ * NotificationPreferences edits the CURRENT user's own notification
+ * preferences only — no tenant data — so it is allowed for every
+ * authenticated role (the Notification Center links to it; a link an
+ * authorised user cannot open is a defect). */
+const PUBLIC_PAGES = new Set(["AndroidDownload", "NotificationPreferences"]);
 
 /* ------------------------------------------------------------------ */
 /* Fine-grained permission catalog (Phase 3)                           */

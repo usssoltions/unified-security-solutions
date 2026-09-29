@@ -148,4 +148,8 @@ export function isPageModuleEnabled(entitlements, pageName, isPlatformAdmin = fa
  * settings (e.g. an Attendance Register-only customer does not use Telegram
  * notifications). Telegram support itself is not removed — only the surface
  * is module-gated. */
-export const TELEGRAM_MODULE_KEYS = ["OPERATIONS", "COMPLETE_SECURITY", "ESTATE"];
+/* TASK_SCHEDULING is a Telegram-relevant module: task notifications natively
+ * support Telegram (assignments, reminders, overdue alerts, completion) — a
+ * Task-Scheduling-only customer can configure Telegram without the
+ * Notification Engine. */
+export const TELEGRAM_MODULE_KEYS = ["OPERATIONS", "COMPLETE_SECURITY", "ESTATE", "TASK_SCHEDULING"];

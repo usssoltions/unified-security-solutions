@@ -12,17 +12,10 @@ import {
 } from "@/components/ui/select";
 import { Plus, X, Repeat, ClipboardList } from "lucide-react";
 import { sastToday } from "./taskMeta";
-
-const TASK_TYPES = [
-  ["other", "General / Other"],
-  ["check_guard", "Check Guard"],
-  ["contact_site", "Contact Site"],
-  ["verify_patrol", "Verify Patrol"],
-  ["follow_up_incident", "Follow Up Incident"],
-  ["review_alarm", "Review Alarm"],
-  ["confirm_shift", "Confirm Shift"],
-  ["contact_customer", "Contact Customer"],
-];
+import { useAuth } from "@/lib/AuthContext";
+import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
+import { getTaskTypes } from "@/lib/taskTypes";
 const RECURRENCES = [
   ["none", "Once-off"],
   ["daily", "Daily"],
@@ -68,6 +61,12 @@ export default function TaskBatchForm({ open, onClose, onSubmit, data, saving })
   }, [open]);
 
   const controlRooms = (data?.control_rooms || []).filter((r) => !["inactive", "archived"].includes(r.status));
+  // GENERIC BASE task types + module-conditional additions — the standalone
+  // Task Scheduling catalogue is generic; security types appear only when
+  // their module is licensed.
+  const { user: authUser } = useAuth();
+  const { data: entitlements = [] } = useModuleEntitlements(authUser?.id, authUser?.customer_id);
+  const taskTypeOptions = getTaskTypes(entitlements, isPlatformAdminUser(authUser));
   const sites = data?.sites || [];
   const staff = data?.staff || [];
   const supervisors = staff.filter((u) => SUPERVISOR_ROLES.includes(u.role_type));
@@ -271,7 +270,7 @@ export default function TaskBatchForm({ open, onClose, onSubmit, data, saving })
                     <Select value={t.task_type} onValueChange={(v) => setTask(i, "task_type", v)}>
                       <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent className="bg-slate-900 border-slate-700 z-[60]">
-                        {TASK_TYPES.map(([value, label]) => (
+                        {taskTypeOptions.map(([value, label]) => (
                           <SelectItem key={value} value={value} className="text-white">{label}</SelectItem>
                         ))}
                       </SelectContent>

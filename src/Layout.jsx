@@ -8,7 +8,7 @@ import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
   Menu, X, LogOut, Bell, Package, Sliders, RefreshCw, Sparkles, Zap,
   FileText, Mic, Clock, ArrowLeft, UserCircle, Wrench, QrCode, MessageCircle, ShirtIcon,
-  Stethoscope, Building2, Vote, Activity
+  Stethoscope, Building2, Vote, Activity, ClipboardList
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
 import { useBranding } from "@/hooks/useBranding";
 import { isPageModuleEnabled } from "@/lib/moduleMapping";
+import { isModuleEnabled } from "@/hooks/useModuleEntitlements";
 import { getUserDisplayName, getUserInitial } from "@/lib/userDisplayName";
 import { resolveBrand, hexToRgba, darkenHex, lightenHex, PLATFORM_APP_NAME } from "@/lib/branding";
 import { primeWhatsAppBrand } from "@/lib/whatsapp";
@@ -45,6 +46,7 @@ export const useTabState = () => React.useContext(TabStateContext);
 
 export default function Layout({ children, currentPageName }) {
   const [tabStates, setTabStates] = React.useState({
+    tasks: { url: createPageUrl("ScheduledTasks"), root: createPageUrl("ScheduledTasks") },
     guard: { url: createPageUrl("GuardShift"), root: createPageUrl("GuardShift") },
     incidents: { url: createPageUrl("GuardIncidents"), root: createPageUrl("GuardIncidents") },
     maintenance: { url: createPageUrl("GuardMaintenance"), root: createPageUrl("GuardMaintenance") },
@@ -73,6 +75,18 @@ export default function Layout({ children, currentPageName }) {
   // Phase 7: Module entitlement-driven navigation + white-label branding
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
   const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+
+  // PANIC MODULE GATE + TASK-ONLY GUARD — role does NOT equal commercial
+  // entitlement. Panic surfaces (trigger button, Panic Queue shortcut, panic
+  // counter and its live subscription) require a panic-owning commercial
+  // module (OPERATIONS / COMPLETE_SECURITY); a TASK_SCHEDULING-only customer
+  // never sees panic functionality. A guard whose ONLY relevant operational
+  // module is TASK_SCHEDULING gets the focused My Tasks shell instead of the
+  // generic security tabs (Shift/Incidents/Maintenance/QR).
+  const panicModuleLicensed = ["OPERATIONS", "COMPLETE_SECURITY"].some((k) => isModuleEnabled(entitlements, k));
+  const panicAllowed = isPlatformAdmin || user?.role_type === "admin" || panicModuleLicensed;
+  const securityLicensed = isModuleEnabled(entitlements, "OPERATIONS") || isModuleEnabled(entitlements, "COMPLETE_SECURITY");
+  const guardTaskOnly = user?.role_type === "guard" && isModuleEnabled(entitlements, "TASK_SCHEDULING") && !securityLicensed;
 
   // ACCESS CONTROL-ONLY GUARD SHELL (customer-configurable): a guard whose
   // customer sets guard_default_landing = "access_control" (e.g. REDOPS) gets
@@ -169,6 +183,9 @@ export default function Layout({ children, currentPageName }) {
   // create/update/delete of any PanicAlert and on foreground return.
   useEffect(() => {
     if (!user) return;
+    // Panic subscription requires the panic-owning commercial module — a
+    // task-only customer never subscribes to (or counts) panic events.
+    if (!panicAllowed) { setPanicCount(0); return; }
     loadPanicCount();
     const unsub = base44.entities.PanicAlert.subscribe((event) => {
       if (!event.data) return;
@@ -182,7 +199,7 @@ export default function Layout({ children, currentPageName }) {
       }
     });
     return unsub;
-  }, [user]);
+  }, [user, panicAllowed]);
 
   // Keep session alive for ALL roles — ping every 10 min
   useEffect(() => {
@@ -242,7 +259,7 @@ export default function Layout({ children, currentPageName }) {
   // the platform; tenant operational users see only their own tenant's.
   const PANIC_ACTIVE_STATUSES = ["active", "acknowledged", "assigned", "accepted"];
   const loadPanicCount = async () => {
-    if (!user) return;
+    if (!user || !panicAllowed) { if (user) setPanicCount(0); return; }
     // Only show the indicator to roles that can manage panics (includes the
     // post-split responder roles customer_admin and control_room_operator).
     if (!["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin", "customer_admin", "control_room_operator"].includes(user.role_type)) {
@@ -395,6 +412,13 @@ export default function Layout({ children, currentPageName }) {
     if (accessControlOnly) return [];
     const role = user.role_type;
     if (role === "guard") {
+      // TASK-ONLY GUARD: the customer's only relevant operational module is
+      // TASK_SCHEDULING → a single focused My Tasks tab. Shift, Incidents,
+      // Maintenance and QR belong to commercial modules this customer does
+      // not own — role alone never exposes them.
+      if (guardTaskOnly) {
+        return [{ title: "My Tasks", tab: "tasks", icon: ClipboardList, color: "text-sky-400" }];
+      }
       return [
         { title: "Shift", tab: "guard", icon: Shield, color: "text-emerald-400" },
         { title: "Incidents", tab: "incidents", icon: AlertTriangle, color: "text-rose-400" },
@@ -529,9 +553,9 @@ export default function Layout({ children, currentPageName }) {
                     <Menu className="w-6 h-6" />
                   </button>
 
-                  {!panicTriggerExcluded && <GlobalPanicButton user={user} />}
+                  {!panicTriggerExcluded && panicAllowed && <GlobalPanicButton user={user} />}
 
-                  {["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin", "customer_admin", "control_room_operator"].includes(user?.role_type) && (
+                  {["admin", "platform_admin", "dispatcher", "supervisor", "estate_manager", "management", "practice_admin", "customer_admin", "control_room_operator"].includes(user?.role_type) && panicAllowed && (
                     <button
                       onClick={() => navigate("/PanicManagement")}
                       title={panicCount > 0 ? `${panicCount} active panic alert${panicCount > 1 ? "s" : ""} — open Panic Queue` : "Panic Queue"}

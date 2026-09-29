@@ -61,6 +61,21 @@ export function resolveAuthorisedHome(user, entitlements = []) {
 
   const check = (pageKey) => isPageAccessible(user, pageKey, entitlements, platformAdmin);
 
+  // TASK-ONLY GUARD LANDING — role does not equal commercial entitlement.
+  // A guard whose customer licenses TASK_SCHEDULING but NO security operations
+  // module must NOT land on My Shift: GuardShift is a CORE page, so the module
+  // check alone would never stop it. Their operational home is My Tasks.
+  if (user.role_type === "guard") {
+    const entActive = (e) => e.enabled && (!e.status || e.status === "active");
+    const hasTasks = entitlements.some((e) => e.module_key === "TASK_SCHEDULING" && entActive(e));
+    const hasSecurity = entitlements.some(
+      (e) => ["OPERATIONS", "COMPLETE_SECURITY"].indexOf(e.module_key) !== -1 && entActive(e)
+    );
+    if (hasTasks && !hasSecurity && ROLE_PAGES.guard && ROLE_PAGES.guard.has("ScheduledTasks")) {
+      return createPageUrl("ScheduledTasks");
+    }
+  }
+
   // 1. Role home
   if (roleHome && check(roleHome)) return createPageUrl(roleHome);
 

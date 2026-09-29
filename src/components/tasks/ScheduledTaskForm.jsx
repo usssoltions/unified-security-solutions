@@ -11,17 +11,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Repeat } from "lucide-react";
-
-const TASK_TYPES = [
-  ["other", "General / Other"],
-  ["check_guard", "Check Guard"],
-  ["contact_site", "Contact Site"],
-  ["verify_patrol", "Verify Patrol"],
-  ["follow_up_incident", "Follow Up Incident"],
-  ["review_alarm", "Review Alarm"],
-  ["confirm_shift", "Confirm Shift"],
-  ["contact_customer", "Contact Customer"],
-];
+import { useAuth } from "@/lib/AuthContext";
+import { useModuleEntitlements } from "@/hooks/useModuleEntitlements";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
+import { getTaskTypes } from "@/lib/taskTypes";
 
 const RECURRENCES = [
   ["none", "Does not repeat"],
@@ -51,6 +44,12 @@ const EMPTY = {
 export default function ScheduledTaskForm({ open, onClose, onSubmit, saving, sites = [], users = [], task }) {
   const isEdit = !!task;
   const [form, setForm] = useState(EMPTY);
+  // GENERIC BASE task types + module-conditional additions (PATROL /
+  // OPERATIONS / COMPLETE_SECURITY / ACCESS licensed → their types appear).
+  // A Task-Scheduling-only customer sees the generic catalogue only.
+  const { user: authUser } = useAuth();
+  const { data: entitlements = [] } = useModuleEntitlements(authUser?.id, authUser?.customer_id);
+  const taskTypeOptions = getTaskTypes(entitlements, isPlatformAdminUser(authUser));
 
   useEffect(() => {
     if (!open) return;
@@ -82,7 +81,9 @@ export default function ScheduledTaskForm({ open, onClose, onSubmit, saving, sit
     }));
   };
 
-  const valid = form.title.trim() && form.site_id && form.assigned_to
+  // Site is OPTIONAL — standalone Task Scheduling works without any
+  // security/estate site structure (the gateway already accepts a null site).
+  const valid = form.title.trim() && form.assigned_to
     && form.scheduled_date && form.scheduled_time;
 
   const submit = () => {
@@ -92,7 +93,7 @@ export default function ScheduledTaskForm({ open, onClose, onSubmit, saving, sit
       description: form.description.trim() || null,
       task_type: form.task_type,
       priority: form.priority,
-      site_id: form.site_id,
+      site_id: form.site_id && form.site_id !== "__none__" ? form.site_id : "",
       assigned_to: form.assigned_to,
       scheduled_date: form.scheduled_date,
       scheduled_time: form.scheduled_time,
@@ -129,12 +130,13 @@ export default function ScheduledTaskForm({ open, onClose, onSubmit, saving, sit
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-slate-300">Site *</Label>
-              <Select value={form.site_id} onValueChange={(v) => set("site_id", v)}>
+              <Label className="text-slate-300">Site (optional)</Label>
+              <Select value={form.site_id || "__none__"} onValueChange={(v) => set("site_id", v === "__none__" ? "" : v)}>
                 <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-11">
-                  <SelectValue placeholder="Select site" />
+                  <SelectValue placeholder="No site (standalone task)" />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-700 z-[60]">
+                  <SelectItem value="__none__" className="text-white">No site (standalone task)</SelectItem>
                   {sites.length === 0 && <div className="px-3 py-2 text-xs text-slate-500">No active sites</div>}
                   {sites.map((s) => (
                     <SelectItem key={s.id} value={s.id} className="text-white">{s.name}</SelectItem>
@@ -200,7 +202,7 @@ export default function ScheduledTaskForm({ open, onClose, onSubmit, saving, sit
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-slate-900 border-slate-700 z-[60]">
-                {TASK_TYPES.map(([value, label]) => (
+                {taskTypeOptions.map(([value, label]) => (
                   <SelectItem key={value} value={value} className="text-white">{label}</SelectItem>
                 ))}
               </SelectContent>

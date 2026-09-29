@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { entitlementIsActiveNow } from '../../shared/entitlementActive.ts';
 
 /**
  * getGuardLandingConfig — authoritative, CALLER-SCOPED resolution of the
@@ -49,9 +50,11 @@ export default async function(req: Request): Promise<Response> {
       }
     } catch (_) { /* landing stays null → client keeps existing behaviour */ }
     try {
+      // ONE central entitlement-validity implementation (enabled + active
+      // status + licence_start/licence_end window) — same rule every gateway.
       const ents = await service.entities.ModuleEntitlement.filter({ customer_id: caller.customer_id, enabled: true });
       out.module_keys = (ents || [])
-        .filter((e) => e.enabled && (!e.status || e.status === 'active'))
+        .filter((e) => entitlementIsActiveNow(e))
         .map((e) => e.module_key);
       out.access_control_enabled = out.module_keys.includes('ACCESS');
     } catch (_) { /* entitlements stay empty → client fail-closed */ }

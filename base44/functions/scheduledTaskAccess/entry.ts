@@ -69,6 +69,8 @@ import {
   buildTasksForOccurrence, buildOccurrenceBatch, DATE_RE, PRIORITIES, ALL_OPEN_STATUSES,
 } from '../../shared/taskSweep.ts';
 import { handleTaskLifecycle } from '../../shared/taskLifecycle.ts';
+import { handleUpdateBatch } from '../../shared/taskBatchEdit.ts';
+import { entitlementIsActiveNow, customerModuleLicensed } from '../../shared/entitlementActive.ts';
 
 const EDIT_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 const OPERATOR_ROLE = 'control_room_operator';
@@ -95,6 +97,15 @@ function isResellerAdmin(u) {
 }
 function userName(u) {
   return (u && (u.display_name || u.full_name || u.email)) || '—';
+}
+/* SERVER-SIDE ACTIVE-USER VALIDATION: suspended / inactive / disabled /
+   deleted / archived accounts can never be assigned tasks, never hold
+   supervisory responsibility and never be added as notification recipients —
+   not by dropdown filtering alone, but by this authoritative check applied
+   on every assignment/recipient write in this gateway. */
+const USER_BLOCK_STATUSES = ['suspended', 'inactive', 'disabled', 'deleted', 'archived'];
+function userStatusBlocked(u) {
+  return !!u && !!u.status && USER_BLOCK_STATUSES.indexOf(String(u.status).toLowerCase()) !== -1;
 }
 
 
@@ -143,7 +154,7 @@ export default async function(req) {
        create a signature, verification or reason recorded as a real user's
        own act. Blocked attempts are audit-logged as impersonation rejections. */
     if (caller && isPlatformAdmin(caller) && body.as_user_id) {
-      if (['submitCompletion', 'verify', 'reject', 'captureReason'].indexOf(action) !== -1) {
+      if (['start', 'submitCompletion', 'verify', 'reject', 'captureReason'].indexOf(action) !== -1) {
         await logTaskScopeAudit(svc, { event_type: 'task.impersonation_rejected', actor: caller,
           notes: 'Blocked impersonated ' + action + ' as user ' + String(body.as_user_id)
             + ' — sign-offs can only be created by the authenticated user themselves' });
@@ -193,11 +204,12 @@ export default async function(req) {
     }
 
     /* Module gate — Task Scheduling is a STANDALONE module; OPERATIONS /
-       COMPLETE_SECURITY customers keep access for continuity. Fail closed. */
+       COMPLETE_SECURITY customers keep access for continuity. Fail closed.
+       Uses the ONE central entitlement helper: enabled + active status +
+       licence_start/licence_end window (a future licence grants nothing
+       before its start; an expired/suspended licence grants nothing). */
     if (!platformAdmin && !resellerAdmin && customerId) {
-      const ents = await svc.entities.ModuleEntitlement.filter({ customer_id: customerId }).catch(() => []);
-      const licensed = (ents || []).some((e) =>
-        e.enabled && (!e.status || e.status === 'active') && TASK_MODULE_KEYS.indexOf(e.module_key) !== -1);
+      const licensed = await customerModuleLicensed(svc, customerId, TASK_MODULE_KEYS);
       if (!licensed) {
         return Response.json({ error: 'Task Scheduling requires the Task Scheduling module for your customer', code: 'module_not_enabled' }, { status: 403 });
       }
@@ -351,6 +363,25 @@ export default async function(req) {
       }
       return Response.json({ error: 'Only the assigned user, a Control Room Operator or a supervisor can perform this action', code: 'forbidden_action' }, { status: 403 });
     };
+    /* SIGN-OFF 1 / WORK-ACTION INTEGRITY (server-enforced): for a task WITH an
+       assigned worker, the assignee portion — start, submit completion
+       (Sign-off 1, incl. notes/evidence/signature), and the legacy complete —
+       may ONLY be performed by the assigned worker themselves
+       (caller.id === task.assigned_to). An admin, dispatcher, supervisor or
+       Control Room Operator can NEVER silently perform the worker's sign-off;
+       frontend hiding is not the defence — this gateway rejects manipulated
+       requests. Unassigned legacy tasks (no assignee exists) keep the
+       supervisory path: the actor is then recorded honestly as themselves. */
+    const assertAssigneeAction = (task) => {
+      if (!task) return Response.json({ error: 'Task not found', code: 'not_found' }, { status: 404 });
+      if (task.assigned_to) {
+        if (task.assigned_to !== caller.id) {
+          return Response.json({ error: 'Only the assigned worker can start, sign off or complete their own task', code: 'forbidden_assignee' }, { status: 403 });
+        }
+        return null;
+      }
+      return assertActorOnTask(task);
+    };
 
     /* ── list ─────────────────────────────────────────────────────────────── */
     if (action === 'list') {
@@ -458,6 +489,9 @@ export default async function(req) {
           if (!u || (u.customer_id !== customerId && !isPlatformAdmin(u))) {
             return { err: Response.json({ error: 'A selected ' + label + ' does not belong to your customer', code: 'forbidden_user' }, { status: 400 }) };
           }
+          if (userStatusBlocked(u)) {
+            return { err: Response.json({ error: 'A selected ' + label + ' is not active', code: 'forbidden_user' }, { status: 400 }) };
+          }
           if (allowedRoles.indexOf(u.role_type) === -1) {
             return { err: Response.json({ error: 'A selected ' + label + ' has a role that cannot hold this responsibility', code: 'forbidden_user' }, { status: 400 }) };
           }
@@ -538,13 +572,20 @@ export default async function(req) {
           { id: { $in: linkedIds }, status: 'active' }, 'name', 20).catch(() => []);
         roomSite = (linkedRows || [])[0] || null;
       }
-      // Primary Supervisor — required; same-customer user (platform admin allowed for oversight).
+      // Primary Supervisor — required; same-customer user (platform admin allowed for oversight),
+      // ACTIVE, and restricted to the authorised supervisory roles (server-enforced).
       const supRows = await svc.entities.User.filter({ id: String(body.primary_supervisor_id || '') }).catch(() => []);
       const supervisor = (supRows && supRows[0]) || null;
       if (!supervisor || (supervisor.customer_id !== customerId && !isPlatformAdmin(supervisor))) {
         return Response.json({ error: 'A supervisor belonging to your customer must be selected' }, { status: 400 });
       }
-      // Additional recipients — same customer only (foreign ids rejected).
+      if (SUPERVISOR_ROLES.indexOf(supervisor.role_type) === -1) {
+        return Response.json({ error: 'The primary supervisor must hold an authorised supervisory role (dispatcher, administrator or customer administrator)', code: 'forbidden_user' }, { status: 400 });
+      }
+      if (userStatusBlocked(supervisor)) {
+        return Response.json({ error: 'The selected supervisor is not active', code: 'forbidden_user' }, { status: 400 });
+      }
+      // Additional recipients — same customer only, ACTIVE (foreign/inactive ids rejected).
       const addIds = [...new Set((body.additional_notification_user_ids || []).map(String).filter(Boolean))];
       if (addIds.length) {
         const addRows = await svc.entities.User.filter({ id: { $in: addIds } }).catch(() => []);
@@ -553,6 +594,9 @@ export default async function(req) {
           const u = byId.get(id);
           if (!u || u.customer_id !== customerId) {
             return Response.json({ error: 'An additional notification recipient does not belong to your customer', code: 'forbidden_user' }, { status: 400 });
+          }
+          if (userStatusBlocked(u)) {
+            return Response.json({ error: 'An additional notification recipient is not active', code: 'forbidden_user' }, { status: 400 });
           }
         }
       }
@@ -625,6 +669,9 @@ export default async function(req) {
         await logTaskAudit(svc, { event_type: 'task.batch_created', actor: caller, batch: batchRec,
           notes: title + ' → ' + room.name + ' (' + tasks.length + ' task(s), ' + active_start_time + '–' + deadline_time + ')' });
         await notifyNewTaskList(batchRec, tasks.length, room);
+        // The creation notification above IS the activation for a once-off
+        // list — mark it so the sweep never sends a duplicate activation.
+        await svc.entities.TaskBatch.update(batchRec.id, { activation_notified_at: new Date().toISOString() }).catch(() => {});
         return Response.json({ success: true, batch: batchRec, tasks_created: tasks.length });
       }
 
@@ -658,7 +705,14 @@ export default async function(req) {
       const existingFirst = await svc.entities.TaskBatch.filter(
         { recurrence_key: firstKey, is_series: false }).catch(() => []);
       if (!(existingFirst || []).length) {
-        const occ = await svc.entities.TaskBatch.create(buildOccurrenceBatch(series, scheduled_date, seriesId));
+        const occ = await svc.entities.TaskBatch.create({
+          ...buildOccurrenceBatch(series, scheduled_date, seriesId),
+          // The series-creation notification covers today's first occurrence —
+          // mark it activated so the sweep never double-notifies it. FUTURE
+          // occurrences stay unmarked: the sweep activates each one when its
+          // own window starts (never ~30 days in advance).
+          activation_notified_at: new Date().toISOString(),
+        });
         await svc.entities.OperationalTask.bulkCreate(
           buildTasksForOccurrence({ ...common, id: occ.id, deadline_time, task_definitions: cleanDefs }, scheduled_date, caller));
         occurrences++;
@@ -669,56 +723,15 @@ export default async function(req) {
       return Response.json({ success: true, batch: series, occurrences_generated: occurrences });
     }
 
-    /* ── Batch edit — primary supervisor / additional recipients ─────────── */
+    /* ── Task list edit — COMPLETE pre-execution editing (title, description,
+       date, window, recurrence, task items, supervisor, recipients) with the
+       server-side execution-started lock and audited series propagation.
+       Implemented in shared/taskBatchEdit.ts. ───────────────────────────── */
     if (action === 'updateBatch') {
-      if (!canEdit) return Response.json({ error: 'Your role cannot edit task lists', code: 'forbidden_action' }, { status: 403 });
-      const batch = await findBatch(body.id);
-      if (!batch) return Response.json({ error: 'Task list not found' }, { status: 404 });
-      if (!platformAdmin && batch.customer_id !== customerId) {
-        return Response.json({ error: 'That task list does not belong to your customer', code: 'forbidden_batch' }, { status: 403 });
-      }
-      if (batch.status === 'cancelled' || batch.status === 'reported') {
-        return Response.json({ error: 'A finished or cancelled task list cannot be edited' }, { status: 400 });
-      }
-      const changes = {};
-      if (body.primary_supervisor_id !== undefined) {
-        const supRows = await svc.entities.User.filter({ id: String(body.primary_supervisor_id || '') }).catch(() => []);
-        const supervisor = (supRows && supRows[0]) || null;
-        if (!supervisor || (supervisor.customer_id !== customerId && !isPlatformAdmin(supervisor))) {
-          return Response.json({ error: 'A supervisor belonging to your customer must be selected' }, { status: 400 });
-        }
-        changes.primary_supervisor_id = supervisor.id;
-        changes.primary_supervisor_name = userName(supervisor);
-      }
-      if (body.additional_notification_user_ids !== undefined) {
-        const addIds = [...new Set((body.additional_notification_user_ids || []).map(String).filter(Boolean))];
-        if (addIds.length) {
-          const addRows = await svc.entities.User.filter({ id: { $in: addIds } }).catch(() => []);
-          const byId = new Map((addRows || []).map((u) => [u.id, u]));
-          for (const id of addIds) {
-            const u = byId.get(id);
-            if (!u || u.customer_id !== customerId) {
-              return Response.json({ error: 'An additional notification recipient does not belong to your customer', code: 'forbidden_user' }, { status: 400 });
-            }
-          }
-        }
-        changes.additional_notification_user_ids = addIds;
-        changes.additional_notification_names = addIds.length
-          ? (await svc.entities.User.filter({ id: { $in: addIds } }).catch(() => [])).map((u) => userName(u))
-          : [];
-      }
-      if (!Object.keys(changes).length) return Response.json({ success: true, batch, unchanged: true });
-      const updated = await svc.entities.TaskBatch.update(batch.id, changes);
-      // Series definition: propagate recipient/supervisor changes to the
-      // pending occurrence batches so their reports deliver to the new list.
-      if (batch.is_series) {
-        await svc.entities.TaskBatch.updateMany(
-          { parent_batch_id: batch.id, status: { $in: ['active', 'reason_pending'] } },
-          { $set: changes }).catch(() => {});
-      }
-      await logTaskAudit(svc, { event_type: 'task.batch_updated', actor: caller, batch,
-        notes: 'Fields: ' + Object.keys(changes).join(', ') });
-      return Response.json({ success: true, batch: updated });
+      return await handleUpdateBatch(svc, {
+        caller, platformAdmin, customerId, canEdit, callerName, body,
+        findBatch, logTaskAudit,
+      });
     }
 
     /* ── Task assign / reassign (Control Room Operator or supervisor) ──────── */
@@ -737,6 +750,11 @@ export default async function(req) {
       }
       if (ASSIGNABLE_ROLES.indexOf(assignee.role_type) === -1) {
         return Response.json({ error: 'That user role cannot be assigned tasks' }, { status: 400 });
+      }
+      // ACTIVE-USER VALIDATION: a suspended/inactive/disabled/archived account
+      // can never be (re)assigned a task — even through a manipulated request.
+      if (userStatusBlocked(assignee)) {
+        return Response.json({ error: 'That user is not active and cannot be assigned tasks', code: 'forbidden_user' }, { status: 400 });
       }
       // IDEMPOTENCY: assigning to the user who already holds the task is a
       // no-op — no update, no notification resend. Repeated saves/refreshes
@@ -849,7 +867,7 @@ export default async function(req) {
     /* ── Start ────────────────────────────────────────────────────────────── */
     if (action === 'start') {
       const task = await findTask(body.id);
-      const gate = assertActorOnTask(task);
+      const gate = assertAssigneeAction(task);
       if (gate) return gate;
       if (task.status === 'completed' || task.status === 'cancelled') {
         return Response.json({ error: 'Only open tasks can be started' }, { status: 400 });
@@ -864,7 +882,8 @@ export default async function(req) {
     /* ── SIGN-OFF 1 — Guard/User completion (NOT completed) ──────────────── */
     if (action === 'submitCompletion') {
       const task = await findTask(body.id);
-      const gate = assertActorOnTask(task);
+      // SIGN-OFF 1 = the ACTUAL ASSIGNED WORKER only (server-enforced).
+      const gate = assertAssigneeAction(task);
       if (gate) return gate;
       if (task.status === 'cancelled') return Response.json({ error: 'A cancelled task cannot be completed' }, { status: 400 });
       if (task.status === 'completed') return Response.json({ success: true, task, unchanged: true });
@@ -1227,7 +1246,9 @@ export default async function(req) {
     /* ── Legacy direct-complete — blocked for control-room tasks ──────────── */
     if (action === 'complete') {
       const task = await findTask(body.id);
-      const scopeErr = assertScope(task);
+      // Legacy direct-complete is ALSO an assignee-portion action: when the
+      // task has an assigned worker, only that worker may complete it.
+      const scopeErr = assertAssigneeAction(task);
       if (scopeErr) return scopeErr;
       if (task.control_room_id) {
         return Response.json({ error: 'This task follows the dual sign-off workflow: the assigned user signs off, then the Control Room Operator verifies. Use submit completion.' , code: 'dual_signoff_required' }, { status: 400 });
@@ -1308,6 +1329,9 @@ export default async function(req) {
         }
         if (ASSIGNABLE_ROLES.indexOf(assignee.role_type) === -1) {
           return Response.json({ error: 'That user role cannot be assigned tasks' }, { status: 400 });
+        }
+        if (userStatusBlocked(assignee)) {
+          return Response.json({ error: 'That user is not active and cannot be assigned tasks', code: 'forbidden_user' }, { status: 400 });
         }
       }
       const custRows = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);

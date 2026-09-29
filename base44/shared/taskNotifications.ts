@@ -43,8 +43,22 @@ export function sastInstantYmd(dateYmd, timeHHMM) {
 
 /** ── Delivery channels (module-owned) ─────────────────────────────────── */
 
-export async function sendTaskEmail(svc, { to, subject, body, html, from_name, brand, customer_id, reseller_id, reference_id }) {
+export async function sendTaskEmail(svc, { to, subject, body, html, from_name, brand, customer_id, reseller_id, reference_id, eventKey, recipient_id }) {
   if (!to) return false;
+  // EMAIL IDEMPOTENCY — the same deterministic task-event key that guards
+  // push/Telegram also guards email, per recipient. The same task event can
+  // never send duplicate emails because the sweep ran again, the page was
+  // refreshed, the server function was called twice or the worker restarted.
+  // Only a marker with status 'sent' skips; a failed attempt stays retryable.
+  let idempKey = null;
+  if (eventKey) {
+    idempKey = String(eventKey) + ':email:' + (recipient_id || String(to).trim().toLowerCase());
+    try {
+      const existing = await svc.entities.NotificationDelivery.filter(
+        { idempotency_key: idempKey }, '-created_date', 1).catch(() => []);
+      if (existing && existing.length && existing[0].status === 'sent') return true;
+    } catch (_) { /* idempotency check failure never blocks a first delivery */ }
+  }
   try {
     // GUARDED AUDITED DELIVERY — the delivery-mode guard applies to Task
     // Scheduling emails exactly like every other channel (test-mode rewrite
@@ -58,9 +72,35 @@ export async function sendTaskEmail(svc, { to, subject, body, html, from_name, b
       reference_id: reference_id || null,
       template_name: 'task_scheduling',
     });
-    return !!res.ok;
+    const ok = !!res.ok;
+    if (idempKey) {
+      try {
+        await svc.entities.NotificationDelivery.create({
+          event_key: String(eventKey),
+          channel: 'email',
+          status: ok ? 'sent' : 'failed',
+          recipient_id: recipient_id || to,
+          recipient_address: to,
+          send_time: new Date().toISOString(),
+          idempotency_key: idempKey,
+          retries: 0,
+          template_name: 'task_scheduling',
+        });
+      } catch (_) { /* delivery logging must never break the notification */ }
+    }
+    return ok;
   } catch (e) {
     console.error('task email failed:', e?.message || e);
+    if (idempKey) {
+      try {
+        await svc.entities.NotificationDelivery.create({
+          event_key: String(eventKey), channel: 'email', status: 'failed',
+          recipient_id: recipient_id || to, recipient_address: to,
+          send_time: new Date().toISOString(), idempotency_key: idempKey, retries: 0,
+          provider_response: String(e?.message || e).slice(0, 300),
+        });
+      } catch (_) {}
+    }
     return false;
   }
 }
@@ -146,9 +186,19 @@ export async function sendTaskTelegramDeduped(svc, secrets, eventKey, chatId, te
  * retries can never double-send). */
 export async function notifyTaskRecipients(svc, secrets, recipients, { subject, emailBody, emailHtml, telegramText, from_name,
     eventKey, actionUrl, pushTitle, pushBody, telegramButton, push = true, priority = 'normal', customerId, resellerId }) {
-  const out = { email: 0, telegram: 0, push: 0 };
+  // PER-RECIPIENT OUTCOME TRACKING: successful sends are idempotent (never
+  // duplicated), failed sends are REPORTED and remain retryable — the caller
+  // can distinguish delivered / failed-retryable / not-configured instead of
+  // optimistically treating the whole event as sent.
+  const out = { email: 0, telegram: 0, push: 0, attempted: 0, failed: 0, not_configured: 0 };
   for (const r of recipients) {
-    if (r.email && await sendTaskEmail(svc, { to: r.email, subject, body: emailBody, html: emailHtml, from_name })) out.email++;
+    if (r.email) {
+      out.attempted++;
+      if (await sendTaskEmail(svc, { to: r.email, subject, body: emailBody, html: emailHtml, from_name, eventKey, recipient_id: r.id })) out.email++;
+      else out.failed++;
+    } else {
+      out.not_configured++;
+    }
     if (r.telegram_chat_id) {
       // SAME-CHAT DEDUPLICATION: when several same-tenant users share ONE
       // physical Telegram chat, the same logical event (event_key) reaches
@@ -158,16 +208,22 @@ export async function notifyTaskRecipients(svc, secrets, recipients, { subject, 
       const tgOk = eventKey
         ? await sendTaskTelegramDeduped(svc, secrets, eventKey, r.telegram_chat_id, telegramText, telegramButton)
         : await sendTaskTelegram(secrets, r.telegram_chat_id, telegramText, telegramButton);
-      if (tgOk) out.telegram++;
+      if (tgOk) out.telegram++; else out.failed++;
+      out.attempted++;
+    } else {
+      out.not_configured++;
     }
     if (push && r.id && pushTitle && pushBody) {
+      out.attempted++;
       const pr = await sendNativePush(svc, {
         user_id: r.id, title: pushTitle, body: pushBody,
         priority, action_label: 'Open', action_url: actionUrl,
         event_key: eventKey || null,
         customer_id: customerId || null, reseller_id: resellerId || null,
       }).catch(() => ({ status: 'failed' }));
-      if (pr && pr.status === 'sent') out.push++;
+      if (pr && pr.status === 'sent') out.push++; else out.failed++;
+    } else if (push && pushTitle && pushBody) {
+      out.not_configured++;
     }
   }
   return out;
@@ -188,19 +244,33 @@ export async function notifyTaskRecipientsOnce(svc, secrets, recipients, opts) {
   try {
     const seen = await svc.entities.NotificationDelivery.filter(
       { idempotency_key: markerKey }, '-created_date', 1).catch(() => []);
-    if (seen && seen.length) return { email: 0, telegram: 0, push: 0, skipped: true };
+    // Only a SUCCESSFULLY delivered event is skipped — a marker recorded
+    // 'failed' (one or more channel attempts failed) stays RETRYABLE: the
+    // next sweep re-attempts it, and per-channel idempotency below guarantees
+    // channels that already succeeded are never re-sent (no duplicates, no
+    // endless retry storm — at most one re-attempt per 30-minute sweep run).
+    if (seen && seen.length && seen[0].status === 'sent') {
+      return { email: 0, telegram: 0, push: 0, skipped: true };
+    }
   } catch (_) { /* idempotency check failure never blocks a first delivery */ }
   const sent = await notifyTaskRecipients(svc, secrets, recipients, opts);
+  // The whole event is marked 'sent' ONLY when every attempted channel
+  // delivery succeeded; any failure records 'failed' so the event remains
+  // retryable. Channels with no configured target are NOT_CONFIGURED —
+  // correctly absent from both counters, never silently 'sent'.
+  const allDelivered = !sent.failed || sent.failed === 0;
   try {
     await svc.entities.NotificationDelivery.create({
       event_key: eventKey,
       channel: 'task_event',
-      status: 'sent',
+      status: allDelivered ? 'sent' : 'failed',
       recipient_id: 'event',
       send_time: new Date().toISOString(),
       idempotency_key: markerKey,
       retries: 0,
-      provider_response: 'email:' + sent.email + ' telegram:' + sent.telegram + ' push:' + sent.push,
+      provider_response: 'email:' + sent.email + ' telegram:' + sent.telegram + ' push:' + sent.push +
+        ' attempted:' + sent.attempted + ' failed:' + sent.failed + ' not_configured:' + sent.not_configured +
+        (allDelivered ? '' : ' — failed attempts remain retryable'),
     });
   } catch (_) { /* marker logging must never break the notification */ }
   return sent;
