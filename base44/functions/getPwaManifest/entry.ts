@@ -116,6 +116,16 @@ export default async function(req: Request): Promise<Response> {
     const icon512 = customer.pwa_icon_512_url || customer.logo_url ||
       reseller?.logo_url || PLATFORM_ICON;
 
+    // Public-safe COSMETIC extras consumed by the branded pre-login shell
+    // (Chrome ignores unknown manifest properties — installability is
+    // unaffected). Never internal ids, users, emails, roles or settings.
+    const accent = validHex(customer.accent_color) || validHex(reseller?.accent_color);
+    const secondaryLogo = typeof customer.document_secondary_logo_url === 'string'
+      && /^https?:\/\//i.test(customer.document_secondary_logo_url)
+      ? customer.document_secondary_logo_url : null;
+    const tagline = typeof customer.login_tagline === 'string' && customer.login_tagline.trim()
+      ? customer.login_tagline.trim().slice(0, 120) : null;
+
     const manifest = {
       id: `/?brand=${slug}`,
       name,
@@ -129,6 +139,10 @@ export default async function(req: Request): Promise<Response> {
         { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
         { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any' },
       ],
+      // Cosmetic extensions for the branded pre-login surface:
+      accent_color: accent,
+      secondary_logo_url: secondaryLogo,
+      tagline,
     };
     return new Response(JSON.stringify(manifest), { status: 200, headers: MANIFEST_HEADERS });
   } catch (error: any) {

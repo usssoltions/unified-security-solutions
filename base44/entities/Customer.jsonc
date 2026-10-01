@@ -83,6 +83,13 @@
       "type": "string",
       "description": "Optional guard default landing module page key (e.g. 'access_control'). Fail-closed: applies only when role and entitlements permit the page."
     },
+    "login_tagline": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "OPTIONAL public-safe tagline shown under the app name on the branded pre-login screen (e.g. 'Hospitality Access & Security Management' for GRID GATE). Cosmetic only \u2014 never affects authentication or tenant scope. Null = the generic platform tagline."
+    },
     "logo_url": {
       "type": "string",
       "description": "Customer logo file URL. Customer-level white-label branding override \u2014 wins over the reseller logo when set."
