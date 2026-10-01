@@ -772,13 +772,23 @@ export default async function(req: Request): Promise<Response> {
               driver_licence_number, sa_id_number, vehicle_make, vehicle_model,
               vehicle_colour, vehicle_licence_number, scanned_data, parsed_json,
               confidence, device, photo_url, location, installation_id,
-              hospitality_visit_id, identity_document_type, identity_document_photo_uri } = d;
+              hospitality_visit_id, identity_document_type, identity_document_photo_uri,
+              submit_token } = d;
 
       if (!site_id || !category || !gate_name || !person_name) {
         return Response.json({ error: 'site_id, category, gate_name and person_name are required' }, { status: 400 });
       }
       if (!HOSPITALITY_CATEGORIES.includes(category)) {
         return Response.json({ error: 'Unknown hospitality category', code: 'invalid_category' }, { status: 400 });
+      }
+      // COMPULSORY VISITOR MOBILE NUMBER — the hospitality workflow processes
+      // exactly the visitor-class entries the central rule covers (visitors,
+      // contractors, deliveries, service providers, staff, drivers), so the
+      // SAME central enforcement applies here: no valid mobile number, no
+      // entry. Normalised to E.164 (default +27) before it is persisted.
+      const phoneCheck = validateVisitorPhone(person_phone);
+      if (!phoneCheck.ok) {
+        return Response.json({ error: phoneCheck.error }, { status: 400 });
       }
 
       const siteErr = await assertSiteScope(site_id);
@@ -828,8 +838,27 @@ export default async function(req: Request): Promise<Response> {
           visit = existing;
         }
       }
+      // TOKEN-BASED IDEMPOTENCY — a retried, double-tapped or concurrent
+      // submission whose client lost the pending visit id (or whose success
+      // response was never received) reuses the visit created by the FIRST
+      // attempt with the same token instead of creating a second one. An
+      // already-CONFIRMED token match returns the ORIGINAL result unchanged
+      // (idempotent success — never a second AccessLog, never a second
+      // grant). Cancelled token matches are ignored: a fresh attempt after a
+      // cancellation legitimately creates a new visit.
+      if (!visit && submit_token) {
+        const tokenRows = (await base44.asServiceRole.entities.HospitalityVisit
+          .filter({ customer_id: recordCid, site_id, category, submit_token: String(submit_token) }, '-created_date', 5).catch(() => [])) || [];
+        const confirmedRow = tokenRows.find((r: any) => r.status === 'confirmed');
+        if (confirmedRow) {
+          const prevRows = (await base44.asServiceRole.entities.AccessLog.filter({ id: confirmedRow.access_log_id }).catch(() => [])) || [];
+          return Response.json({ success: true, idempotent: true, access_log: prevRows[0] || null, hospitality_visit: confirmedRow });
+        }
+        const reusable = tokenRows.find((r: any) => r.status === 'pending' || r.status === 'confirming');
+        if (reusable) { visit = reusable; }
+      }
       const visitFields = {
-        category, person_name, person_phone: person_phone || null,
+        category, person_name, person_phone: phoneCheck.value || null,
         vehicle_registration: vehicle_registration || null,
         vehicle_licence_disc_number: vehicle_licence_disc_number || null,
         driver_licence_number: driver_licence_number || null,
@@ -837,6 +866,7 @@ export default async function(req: Request): Promise<Response> {
         scan_method: scan_method || null,
         identity_document_type: identity_document_type || null,
         identity_document_photo_uri: identity_document_photo_uri || null,
+        submit_token: submit_token ? String(submit_token) : null,
         ...answers,
       };
       if (visit) {
@@ -867,6 +897,36 @@ export default async function(req: Request): Promise<Response> {
         });
       }
 
+      // EVIDENCE PROBE — every photo reference must be a private-storage uri
+      // of THIS app (never an arbitrary external/other-service reference) and
+      // must actually resolve. Format is checked here; existence is probed by
+      // minting a short-lived signed URL server-side (the same access the
+      // authorised viewer gets). A fabricated, foreign or dead reference
+      // keeps the visit pending — evidence can never satisfy validation by
+      // being a non-empty string alone.
+      const PRIVATE_URI_PREFIX = 'mp/private/';
+      const evidenceUris = [
+        answers.firearm_photo_uri, answers.po_invoice_photo_uri,
+        answers.food_photo_uri, answers.delivery_person_photo_uri,
+        d.identity_document_photo_uri,
+        ...(answers.vehicle_photo_uris || []),
+        ...(answers.staff_declaration_photo_uris || []),
+      ].filter(Boolean);
+      if (evidenceUris.some((u) => !String(u).startsWith(PRIVATE_URI_PREFIX))) {
+        return Response.json({ success: false, pending: true, code: 'evidence_invalid',
+          error: 'A captured photo is not a valid private evidence file. Re-capture the photo.',
+          hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category] });
+      }
+      for (const uri of evidenceUris) {
+        try {
+          await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: uri, expires_in: 60 });
+        } catch (_) {
+          return Response.json({ success: false, pending: true, code: 'evidence_invalid',
+            error: 'A captured photo could not be verified. Re-capture the photo.',
+            hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category] });
+        }
+      }
+
       // Device registration requirement — reused unchanged from the default flow.
       const deviceCheck = await resolveCallerDevice(base44.asServiceRole, caller, installation_id, recordCid);
       if (deviceCheck.error) {
@@ -884,10 +944,18 @@ export default async function(req: Request): Promise<Response> {
         const dupFilter: any = recordCid ? { customer_id: recordCid, status: 'inside' } : { status: 'inside' };
         if (site_id) dupFilter.site_id = site_id;
         const dups = await base44.asServiceRole.entities.AccessLog.filter(dupFilter, '-created_date', 50);
+        const nmNorm = String(person_name || '').trim().toLowerCase();
         const isDup = (dups || []).find((r: any) => {
           if (sa_id_number && r.sa_id_number === sa_id_number) return true;
           if (driver_licence_number && r.driver_licence_number === driver_licence_number) return true;
           if (vehicle_registration && r.vehicle_registration === vehicle_registration) return true;
+          // The hospitality workflow does not require document/vehicle
+          // identifiers, so a retried submission from a restarted flow (new
+          // token) must still never create a second ACTIVE entry for the same
+          // person at this site — exact same-name match among inside records.
+          // Exited records never match, so a legitimate re-entry after an
+          // exit is unaffected.
+          if (nmNorm && r.person_name && String(r.person_name).trim().toLowerCase() === nmNorm) return true;
           return false;
         });
         if (isDup) {
@@ -895,6 +963,12 @@ export default async function(req: Request): Promise<Response> {
             customer_id: recordCid, site_id, gate_name, access_log_id: isDup.id,
             notes: `Hospitality duplicate entry blocked — already inside (record ${isDup.id})`,
           });
+          // The draft visit created for this attempt is auto-cancelled so a
+          // blocked duplicate never lingers as a permanently pending visit.
+          await base44.asServiceRole.entities.HospitalityVisit.updateMany(
+            { id: String(visit.id), status: 'pending' },
+            { $set: { status: 'cancelled', cancel_reason: `Duplicate active entry for the same person (record ${isDup.id})`, cancelled_at: new Date().toISOString(), cancelled_by_id: caller.id } }
+          ).catch(() => null);
           return Response.json({ error: 'An active entry already exists.', duplicate: true, existing_log_id: isDup.id }, { status: 409 });
         }
         const blFilter: any = recordCid ? { customer_id: recordCid, active: true } : { active: true };
@@ -908,6 +982,91 @@ export default async function(req: Request): Promise<Response> {
       }
 
       const nowIso = new Date().toISOString();
+      // TOKEN TIEBREAK — two concurrent FIRST attempts carrying the same
+      // token can both create their own visit (neither saw the other's at
+      // lookup time). Deterministic single-survivor rule (same pattern as the
+      // default entry flow's post-commit duplicate tiebreak): the
+      // EARLIEST-created visit wins; the later one self-cancels and follows
+      // the winner's outcome.
+      if (submit_token) {
+        const same = ((await base44.asServiceRole.entities.HospitalityVisit
+          .filter({ customer_id: recordCid, site_id, category, submit_token: String(submit_token) }, '-created_date', 10).catch(() => [])) || [])
+          .filter((r: any) => ['pending', 'confirming', 'confirmed'].includes(r.status))
+          .sort((a: any, b: any) =>
+            String(a.created_date || '').localeCompare(String(b.created_date || '')) ||
+            String(a.id).localeCompare(String(b.id)));
+        const earliest = same[0];
+        if (earliest && String(earliest.id) !== String(visit.id)) {
+          await base44.asServiceRole.entities.HospitalityVisit.updateMany(
+            { id: String(visit.id), status: 'pending' },
+            { $set: { status: 'cancelled', cancel_reason: 'Duplicate concurrent submission (token tiebreak)', cancelled_at: nowIso, cancelled_by_id: caller.id } }
+          ).catch(() => null);
+          for (let i = 0; i < 6; i++) {
+            await new Promise((r) => setTimeout(r, 400));
+            const w = ((await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(earliest.id) }).catch(() => [])) || [])[0] || null;
+            if (w && w.status === 'confirmed') {
+              const l = ((await base44.asServiceRole.entities.AccessLog.filter({ id: w.access_log_id }).catch(() => [])) || []);
+              return Response.json({ success: true, idempotent: true, access_log: l[0] || null, hospitality_visit: w });
+            }
+            if (w && w.status === 'cancelled') break;
+          }
+          return Response.json({ success: false, pending: true, code: 'confirmation_in_progress',
+            error: 'This visit is being confirmed by another request. Check the live access log in a moment.',
+            hospitality_visit_id: earliest.id, category_label: CATEGORY_LABELS[category] });
+        }
+      }
+
+      // CAS CONFIRMATION CLAIM — being "in the same function call" is not
+      // atomicity: the AccessLog create and the visit confirmation are two
+      // separate writes. Only ONE request may proceed to create the
+      // AccessLog: the claim is a conditional (compare-and-set) update of the
+      // PENDING visit to 'confirming'; a concurrent loser updates ZERO rows,
+      // sees the winner's outcome and returns it (idempotent success) —
+      // never a second visit, never a second AccessLog. A claim older than 2
+      // minutes is STALE (crashed/abandoned claimant): it is recovered — an
+      // orphan AccessLog created by the dead claimant is adopted and the
+      // confirmation completed, otherwise the claim is released back to
+      // 'pending' so the submission can be retried safely.
+      const CLAIM_TTL_MS = 2 * 60 * 1000;
+      let claimTs = nowIso;
+      let claimed = false;
+      for (let attempt = 0; attempt < 2 && !claimed; attempt++) {
+        await base44.asServiceRole.entities.HospitalityVisit.updateMany(
+          { id: String(visit.id), status: 'pending' },
+          { $set: { status: 'confirming', confirm_claimed_at: claimTs } }
+        ).catch(() => null);
+        const cv = ((await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(visit.id) }).catch(() => [])) || [])[0] || null;
+        if (cv && cv.status === 'confirming' && cv.confirm_claimed_at === claimTs) { claimed = true; visit = cv; break; }
+        if (cv && cv.status === 'confirmed') {
+          const l = ((await base44.asServiceRole.entities.AccessLog.filter({ id: cv.access_log_id }).catch(() => [])) || []);
+          return Response.json({ success: true, idempotent: true, access_log: l[0] || null, hospitality_visit: cv });
+        }
+        if (cv && cv.status === 'confirming' && cv.confirm_claimed_at &&
+            (Date.now() - new Date(cv.confirm_claimed_at).getTime()) > CLAIM_TTL_MS) {
+          const orphans = ((await base44.asServiceRole.entities.AccessLog
+            .filter({ customer_id: recordCid, status: 'inside' }, '-created_date', 50).catch(() => [])) || [])
+            .filter((l: any) => String(l.notes || '').includes(`visit ${visit.id}`));
+          if (orphans.length) {
+            const fin = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, {
+              status: 'confirmed', access_log_id: orphans[0].id,
+              confirmed_at: new Date().toISOString(),
+            }).catch(() => null);
+            if (fin) return Response.json({ success: true, recovered: true, access_log: orphans[0], hospitality_visit: fin });
+          }
+          await base44.asServiceRole.entities.HospitalityVisit.updateMany(
+            { id: String(visit.id), status: 'confirming', confirm_claimed_at: cv.confirm_claimed_at },
+            { $set: { status: 'pending', confirm_claimed_at: null } }
+          ).catch(() => null);
+          continue;
+        }
+        break;
+      }
+      if (!claimed) {
+        return Response.json({ success: false, pending: true, code: 'confirmation_in_progress',
+          error: 'This visit is being confirmed by another request. Check the live access log in a moment.',
+          hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category] });
+      }
+
       // uber_eats_mrd is PEDESTRIAN-ONLY by validated construction — exactly
       // one AccessLog row is created for the delivery person; the bike/car
       // itself is never written as a separate "inside" record, so it can
@@ -920,7 +1079,7 @@ export default async function(req: Request): Promise<Response> {
         status: blacklistMatch ? 'blacklisted' : 'inside',
         person_type: CATEGORY_PERSON_TYPE[category] || 'unknown',
         person_name,
-        person_phone: person_phone || '',
+        person_phone: phoneCheck.value || '',
         unit_number: answers.room_number || '',
         gate_name,
         site_name: siteRec.name || '',
@@ -955,7 +1114,7 @@ export default async function(req: Request): Promise<Response> {
       visit = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, {
         status: 'confirmed',
         access_log_id: log.id,
-        confirmed_at: nowIso,
+        confirmed_at: new Date().toISOString(),
       });
 
       await auditAccess(base44.asServiceRole, 'access.entry', caller, {
@@ -1007,7 +1166,49 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ success: true, hospitality_visit: updated });
     }
 
-    return Response.json({ error: 'Invalid action. Use entry, exit, resolve_visitor, hospitality_submit or hospitality_cancel' }, { status: 400 });
+    /* ── hospitality_list — authorised management inspection of custom ────
+     * answers and evidence. TENANT-SCOPED like every other action: tenant
+     * management roles see their own customer's visits; reseller admins their
+     * reseller's; platform admins full oversight. Evidence photos are NEVER
+     * exposed as raw storage uris to the client — short-lived signed URLs
+     * (300 s) are minted server-side only for authorised callers. */
+    if (action === 'hospitality_list') {
+      const INSPECT_ROLES = ['admin', 'customer_admin', 'dispatcher', 'supervisor', 'management', 'control_room_operator'];
+      if (!isPlatformUser(caller) && !isResellerAdmin(caller) && !(cid && INSPECT_ROLES.includes(caller.role_type))) {
+        return Response.json({ error: 'Your role cannot inspect hospitality visits', code: 'forbidden_role' }, { status: 403 });
+      }
+      const qSite = (access_data || {}).site_id ? String((access_data || {}).site_id) : null;
+      const qStatus = (access_data || {}).status || null;
+      const q: any = {};
+      if (isPlatformUser(caller)) { if (qSite) q.site_id = qSite; }
+      else if (isResellerAdmin(caller)) { q.reseller_id = rid; if (qSite) q.site_id = qSite; }
+      else { q.customer_id = cid; if (qSite) q.site_id = qSite; }
+      if (qStatus) q.status = qStatus;
+      const limit = Math.min(50, Math.max(1, Number((access_data || {}).limit) || 20));
+      const visits = (await base44.asServiceRole.entities.HospitalityVisit.filter(q, '-created_date', limit).catch(() => [])) || [];
+      const out = [];
+      for (const v of visits) {
+        const ev: any = {};
+        const sign = async (key: string, uri: any) => {
+          if (!uri) return;
+          try { const s = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: uri, expires_in: 300 }); ev[key] = s.signed_url || null; }
+          catch (_) { ev[key] = null; }
+        };
+        await sign('firearm_photo_url', v.firearm_photo_uri);
+        await sign('po_invoice_photo_url', v.po_invoice_photo_uri);
+        await sign('food_photo_url', v.food_photo_uri);
+        await sign('delivery_person_photo_url', v.delivery_person_photo_uri);
+        await sign('identity_document_photo_url', v.identity_document_photo_uri);
+        ev.vehicle_photo_urls = [];
+        for (const u of v.vehicle_photo_uris || []) { await sign('vehicle_photo_url', u); ev.vehicle_photo_urls.push(ev.vehicle_photo_url); delete ev.vehicle_photo_url; }
+        ev.staff_declaration_photo_urls = [];
+        for (const u of v.staff_declaration_photo_uris || []) { await sign('staff_photo_url', u); ev.staff_declaration_photo_urls.push(ev.staff_photo_url); delete ev.staff_photo_url; }
+        out.push({ ...v, evidence_urls: ev });
+      }
+      return Response.json({ visits: out });
+    }
+
+    return Response.json({ error: 'Invalid action. Use entry, exit, resolve_visitor, hospitality_submit, hospitality_cancel or hospitality_list' }, { status: 400 });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

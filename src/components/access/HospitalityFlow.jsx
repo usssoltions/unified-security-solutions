@@ -70,6 +70,13 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
   const [foodPhoto, setFoodPhoto] = useState([]);
   const [deliveryPersonPhoto, setDeliveryPersonPhoto] = useState([]);
   const [visitId, setVisitId] = useState(null);
+  // Idempotency token for THIS open submission flow — generated once per
+  // flow open and reused for every resubmission of the same visit, so a
+  // retried, double-tapped or interrupted submission can never create a
+  // second confirmed visit / AccessLog (the server deduplicates on it).
+  const [submitToken] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `st_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
   const [serverError, setServerError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -108,6 +115,7 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
         delivery_person_photo_uri: deliveryPersonPhoto[0] || null,
         pedestrian_only: isUberEats,
         hospitality_visit_id: visitId || undefined,
+        submit_token: submitToken,
       };
       const res = await base44.functions.invoke("finalizeAccessEntry", { action: "hospitality_submit", access_data: payload });
       const d = res?.data !== undefined ? res.data : res;
@@ -163,7 +171,7 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
           <p className="text-emerald-300 text-xs font-semibold uppercase tracking-wide">GRID GATE Hospitality</p>
           <p className="text-white font-bold text-lg leading-tight">{CATEGORY_LABELS[category]}</p>
         </div>
-        <button onClick={onClose} className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
+        <button onClick={onClose} disabled={busy} className={`w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 active:scale-95 transition-transform ${busy ? "opacity-40" : ""}`}>
           <X className="w-4 h-4" />
         </button>
       </div>

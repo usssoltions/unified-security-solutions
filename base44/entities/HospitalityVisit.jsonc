@@ -1,7 +1,7 @@
 {
   "name": "HospitalityVisit",
   "type": "object",
-  "description": "GRID GATE Hospitality access-control workflow: ONE custom-category visit (Check Ins, Contractors, Deliveries, Event or Function Visitor, Guests, Service Provider, Staff, Uber Eats / Mr D, Uber, Visitors) at a site whose Site.access_workflow = 'grid_gate_hospitality'. Entirely SEPARATE from the default AccessLog-only flow and from customer branding \u2014 never activated by logo, app name, email domain or PWA slug, only by the site's own access_workflow setting. GATEWAY-ONLY ACCESS: every read/write flows through the finalizeAccessEntry gateway (hospitality_submit / hospitality_cancel actions), which resolves the caller's tenant scope server-side and re-validates every required confirmation/evidence field against the PDF-documented requirements for the category \u2014 a client can never grant access by only sending a 'confirmed' flag. STATE MACHINE: pending (awaiting required confirmations/evidence, access NOT granted) -> confirmed (all requirements met; access_log_id links the AccessLog entry created in the SAME gateway call) | cancelled (explicit cancellation with a recorded reason; access was never granted). workflow_id/workflow_version are stamped at creation and NEVER reinterpreted by later site configuration changes. Direct client access is restricted to platform administration by RLS.",
+  "description": "GRID GATE Hospitality access-control workflow: ONE custom-category visit (Check Ins, Contractors, Deliveries, Event or Function Visitor, Guests, Service Provider, Staff, Uber Eats / Mr D, Uber, Visitors) at a site whose Site.access_workflow = 'grid_gate_hospitality'. Entirely SEPARATE from the default AccessLog-only flow and from customer branding \u2014 never activated by logo, app name, email domain or PWA slug, only by the site's own access_workflow setting. GATEWAY-ONLY ACCESS: every read/write flows through the finalizeAccessEntry gateway (hospitality_submit / hospitality_cancel / hospitality_list actions), which resolves the caller's tenant scope server-side and re-validates every required confirmation/evidence field against the PDF-documented requirements for the category \u2014 a client can never grant access by only sending a 'confirmed' flag, and every evidence photo uri is probed server-side (private app storage + existence) before access is granted. STATE MACHINE: pending (awaiting required confirmations/evidence, access NOT granted) -> confirming (TRANSIENT CAS claim held by the single request that is creating the AccessLog \u2014 a crashed claimant's claim is stealable after 2 minutes, with orphan-log adoption) -> confirmed (all requirements met; access_log_id links the AccessLog entry created in the SAME gateway call) | cancelled (explicit cancellation with a recorded reason; access was never granted). submit_token gives end-to-end idempotency: a retried/double-tapped/concurrent submission with the same token reuses the first visit and can never create a second confirmed visit or second AccessLog. workflow_id/workflow_version are stamped at creation and NEVER reinterpreted by later site configuration changes. Direct client access is restricted to platform administration by RLS.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -53,18 +53,33 @@
       "type": "string",
       "enum": [
         "pending",
+        "confirming",
         "confirmed",
         "cancelled"
       ],
       "default": "pending",
-      "description": "pending = awaiting required confirmations/evidence \u2014 access NOT granted; confirmed = every required confirmation and piece of evidence for the category was present and valid, AccessLog entry created in the same call; cancelled = explicitly cancelled with cancel_reason, access was never granted."
+      "description": "pending = awaiting required confirmations/evidence \u2014 access NOT granted; confirming = TRANSIENT server-side CAS claim (single writer creating the linked AccessLog; stale after 2 minutes); confirmed = every required confirmation and piece of evidence for the category was present and valid, AccessLog entry created in the same call; cancelled = explicitly cancelled with cancel_reason, access was never granted."
+    },
+    "submit_token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Idempotency token generated client-side per submission flow (crypto.randomUUID) and stamped on the visit. A retried, double-tapped or concurrent submission carrying the same token reuses this visit \u2014 an already-confirmed token match returns the ORIGINAL result (never a second AccessLog). Two concurrent first attempts with the same token are resolved deterministically: the earliest-created visit wins, the later self-cancels."
+    },
+    "confirm_claimed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL CAS claim timestamp held while the winning request creates the linked AccessLog and stamps the confirmation. A claim older than 2 minutes is stale: an orphan AccessLog created by the dead claimant is adopted (confirmation completed), otherwise the claim is released back to 'pending' for retry. Never exposed to any UI."
     },
     "access_log_id": {
       "type": [
         "string",
         "null"
       ],
-      "description": "The AccessLog entry record created at confirmation time (null while pending/cancelled)."
+      "description": "The AccessLog entry record created at confirmation time (null while pending/confirming/cancelled)."
     },
     "guest_name": {
       "type": [
@@ -88,7 +103,8 @@
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "COMPULSORY visitor mobile number, normalised to E.164 server-side \u2014 the same central rule as the default entry flow (no valid number, no entry)."
     },
     "reception_confirmed": {
       "type": [
@@ -139,7 +155,7 @@
         "string",
         "null"
       ],
-      "description": "PRIVATE storage uri \u2014 required when firearm_declared is true."
+      "description": "PRIVATE storage uri \u2014 required when firearm_declared is true; probed server-side (private app storage + existence) before access is granted."
     },
     "po_invoice_available": {
       "type": [
