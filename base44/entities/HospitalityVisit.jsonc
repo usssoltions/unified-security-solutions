@@ -1,0 +1,361 @@
+{
+  "name": "HospitalityVisit",
+  "type": "object",
+  "description": "GRID GATE Hospitality access-control workflow: ONE custom-category visit (Check Ins, Contractors, Deliveries, Event or Function Visitor, Guests, Service Provider, Staff, Uber Eats / Mr D, Uber, Visitors) at a site whose Site.access_workflow = 'grid_gate_hospitality'. Entirely SEPARATE from the default AccessLog-only flow and from customer branding \u2014 never activated by logo, app name, email domain or PWA slug, only by the site's own access_workflow setting. GATEWAY-ONLY ACCESS: every read/write flows through the finalizeAccessEntry gateway (hospitality_submit / hospitality_cancel actions), which resolves the caller's tenant scope server-side and re-validates every required confirmation/evidence field against the PDF-documented requirements for the category \u2014 a client can never grant access by only sending a 'confirmed' flag. STATE MACHINE: pending (awaiting required confirmations/evidence, access NOT granted) -> confirmed (all requirements met; access_log_id links the AccessLog entry created in the SAME gateway call) | cancelled (explicit cancellation with a recorded reason; access was never granted). workflow_id/workflow_version are stamped at creation and NEVER reinterpreted by later site configuration changes. Direct client access is restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ownership \u2014 server-resolved from the caller, never client-trusted."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_id": {
+      "type": "string",
+      "description": "Site this visit belongs to \u2014 server-validated to carry access_workflow 'grid_gate_hospitality' and to belong to the resolved customer."
+    },
+    "site_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "check_in",
+        "contractor",
+        "delivery",
+        "event_visitor",
+        "guest",
+        "service_provider",
+        "staff",
+        "uber_eats_mrd",
+        "uber",
+        "visitor"
+      ],
+      "description": "One of the ten PDF-documented hospitality categories."
+    },
+    "workflow_id": {
+      "type": "string",
+      "default": "grid_gate_hospitality",
+      "description": "Stamped at creation \u2014 identifies which custom workflow produced this record."
+    },
+    "workflow_version": {
+      "type": "number",
+      "default": 1,
+      "description": "Snapshot of the site's access_workflow_version at creation time, so a later change to the site's workflow configuration never reinterprets this historical record."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "confirmed",
+        "cancelled"
+      ],
+      "default": "pending",
+      "description": "pending = awaiting required confirmations/evidence \u2014 access NOT granted; confirmed = every required confirmation and piece of evidence for the category was present and valid, AccessLog entry created in the same call; cancelled = explicitly cancelled with cancel_reason, access was never granted."
+    },
+    "access_log_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The AccessLog entry record created at confirmation time (null while pending/cancelled)."
+    },
+    "guest_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "guest_surname": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "person_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "person_phone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reception_confirmed": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "'Did you call the relevant department / check with Reception' confirmation. False or missing must NOT grant access."
+    },
+    "reception_confirmed_note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "occupant_count": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Number of people in the vehicle (not applicable to Uber Eats / Mr D, which is pedestrian-only and always 1)."
+    },
+    "room_number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "room_number_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "provided",
+        "confirmed_by_reception",
+        null
+      ],
+      "description": "For Visitors who did not know the room number: it was obtained by calling reception."
+    },
+    "firearm_declared": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "firearm_photo_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "PRIVATE storage uri \u2014 required when firearm_declared is true."
+    },
+    "po_invoice_available": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "po_invoice_photo_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "PRIVATE storage uri."
+    },
+    "vehicle_photo_uris": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "PRIVATE storage uris of the vehicle photo(s) \u2014 required for Contractors, Deliveries and Service Provider."
+    },
+    "staff_declared": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "staff_declaration_photo_uris": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "PRIVATE storage uris \u2014 multiple photos allowed/required when staff_declared is true."
+    },
+    "food_photo_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "PRIVATE storage uri (Uber Eats / Mr D)."
+    },
+    "delivery_person_photo_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "PRIVATE storage uri (Uber Eats / Mr D)."
+    },
+    "pedestrian_only": {
+      "type": "boolean",
+      "default": false,
+      "description": "True for Uber Eats / Mr D \u2014 the bike/car remains outside; only the delivery person enters on foot. The vehicle is never recorded as being inside the property."
+    },
+    "vehicle_registration": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "vehicle_licence_disc_number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "driver_licence_number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sa_id_number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scan_method": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "identity_document_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "sa_drivers_licence_disc",
+        "passport",
+        "foreign_drivers_licence",
+        null
+      ],
+      "description": "Which identity document was presented for Uber / Uber Eats drivers. Passport and foreign drivers licence are NOT automatically decoded by the installed scanner \u2014 they are captured as an explicit photograph/manual entry (identity_document_photo_uri), never claimed as auto-parsed."
+    },
+    "identity_document_photo_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "PRIVATE storage uri \u2014 explicit photograph/manual-capture route for documents the installed scanner cannot decode (passport, foreign drivers licence)."
+    },
+    "cancel_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cancelled_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "cancelled_by_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cancelled_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confirmed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "created_by_guard_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_by_guard_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_id",
+    "site_id",
+    "category",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}
