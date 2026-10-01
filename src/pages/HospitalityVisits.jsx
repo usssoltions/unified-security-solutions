@@ -24,7 +24,7 @@ export default function HospitalityVisits() {
 
   const { data: sites = [] } = useQuery({
     queryKey: ["hosp_sites"],
-    queryFn: async () => ((await listSites({}))?.sites || []).filter((s) => s.access_workflow === "grid_gate_hospitality"),
+    queryFn: async () => ((await listSites({})) || []).filter((s) => s.access_workflow === "grid_gate_hospitality"),
   });
 
   const queryKey = ["hosp_visits", filters];

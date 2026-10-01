@@ -15,6 +15,7 @@ import IncomingCallHandler from '@/components/IncomingCallHandler';
 import AndroidDownload from '@/pages/AndroidDownload';
 import AccessHistory from '@/pages/AccessHistory';
 import AccessSettings from '@/pages/AccessSettings';
+import HospitalityVisits from '@/pages/HospitalityVisits';
 import StartOfShiftHistory from './pages/StartOfShiftHistory';
 import ResidentLaundry from './pages/ResidentLaundry';
 import ResidentIncidents from './pages/ResidentIncidents';
@@ -160,6 +161,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="AccessSettings">
             <ProtectedPage pageKey="AccessSettings">
               <AccessSettings />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/HospitalityVisits" element={
+          <LayoutWrapper currentPageName="HospitalityVisits">
+            <ProtectedPage pageKey="HospitalityVisits">
+              <HospitalityVisits />
             </ProtectedPage>
           </LayoutWrapper>
         } />

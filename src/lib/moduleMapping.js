@@ -71,6 +71,7 @@ export const PAGE_MODULE_MAP = {
   QRScanner: ["PATROL", "OPERATIONS", "COMPLETE_SECURITY"],
   AccessControl: "ACCESS",
   AccessHistory: "ACCESS",
+  HospitalityVisits: "ACCESS",
   AccessSettings: "ACCESS",
 
   // ── REPORTING_CORE module ───────────────────────────────────────
