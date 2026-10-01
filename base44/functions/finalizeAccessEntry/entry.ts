@@ -824,6 +824,8 @@ export default async function(req: Request): Promise<Response> {
         food_photo_uri: d.food_photo_uri || null,
         delivery_person_photo_uri: d.delivery_person_photo_uri || null,
         pedestrian_only: category === 'uber_eats_mrd' ? (d.pedestrian_only === true) : !!d.pedestrian_only,
+        identity_document_type: d.identity_document_type || null,
+        identity_document_photo_uri: d.identity_document_photo_uri || null,
       };
 
       // Resolve or create the draft HospitalityVisit. A supplied id must
@@ -864,8 +866,6 @@ export default async function(req: Request): Promise<Response> {
         driver_licence_number: driver_licence_number || null,
         sa_id_number: sa_id_number || null,
         scan_method: scan_method || null,
-        identity_document_type: identity_document_type || null,
-        identity_document_photo_uri: identity_document_photo_uri || null,
         submit_token: submit_token ? String(submit_token) : null,
         ...answers,
       };
@@ -1116,6 +1116,40 @@ export default async function(req: Request): Promise<Response> {
         access_log_id: log.id,
         confirmed_at: new Date().toISOString(),
       });
+
+      // POST-COMMIT DUPLICATE TIEBREAK — a retry whose client lost its
+      // idempotency token (e.g. the guard restarted the flow after an app
+      // restart) can carry a DIFFERENT token while the person is already
+      // inside; the best-effort same-name check BEFORE the entry cannot
+      // close every race. After this entry commits it re-checks: if an
+      // EARLIER active entry for the same person at this site exists, THIS
+      // later entry immediately self-exits (deterministically the earliest
+      // entry survives). Only the microseconds between the create and this
+      // check remain as a residual window.
+      const nmTie = String(person_name || '').trim().toLowerCase();
+      if (nmTie) {
+        const activeOthers = ((await base44.asServiceRole.entities.AccessLog
+          .filter({ customer_id: recordCid, status: 'inside', site_id }, '-created_date', 50).catch(() => [])) || [])
+          .filter((l: any) => l.id !== log.id
+            && String(l.person_name || '').trim().toLowerCase() === nmTie
+            && String(l.created_date || '') <= String(log.created_date || ''));
+        if (activeOthers.length) {
+          await base44.asServiceRole.entities.AccessLog.update(log.id, {
+            status: 'exited',
+            exit_time: new Date().toISOString(),
+            exit_gate: gate_name,
+            exit_scan_method: 'manual',
+            exit_notes: `Duplicate concurrent entry for the same person — superseded by record ${activeOthers[0].id}`,
+            time_on_site_minutes: 0,
+          }).catch(() => null);
+          await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
+            customer_id: recordCid, site_id, gate_name, access_log_id: log.id,
+            notes: `Hospitality post-commit duplicate tiebreak — self-exited in favour of ${activeOthers[0].id}`,
+          });
+          return Response.json({ success: false, duplicate: true, superseded_by: activeOthers[0].id,
+            error: 'An active entry already exists for this person.', existing_log_id: activeOthers[0].id }, { status: 409 });
+        }
+      }
 
       await auditAccess(base44.asServiceRole, 'access.entry', caller, {
         customer_id: recordCid, site_id, gate_name, access_log_id: log.id,

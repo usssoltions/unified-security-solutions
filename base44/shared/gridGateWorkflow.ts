@@ -100,8 +100,33 @@ function checkFirearmDeclaration(a: Answers): ValidationResult | null {
 }
 
 function checkOccupantCount(a: Answers): ValidationResult | null {
-  if (!isNonNegInt(a.occupant_count)) {
+  // A MISSING answer (null — the gateway normalises absent/blank input to
+  // null) is NEVER accepted: Number(null) would coerce to 0 and silently
+  // pass as "0 occupants", granting access without the guard recording the
+  // count. The count must be explicitly entered (0 is a valid explicit
+  // answer; blank/missing is not).
+  if (a.occupant_count === null || a.occupant_count === undefined || !isNonNegInt(a.occupant_count)) {
     return PENDING('occupant_count_required', 'Enter how many people are in the vehicle before access can be granted.');
+  }
+  return null;
+}
+
+/**
+ * Uber / Uber Eats identity document — the driver's identity document must
+ * be captured. An SA driver's licence disc is accepted (normally captured by
+ * the installed scanner as the licence-disc scan). A passport or foreign
+ * driver's licence CANNOT be decoded by the installed scanner — it must be
+ * captured as an explicit photograph (identity_document_photo_uri, probed
+ * server-side before access is granted); it is never accepted as a
+ * decoded/auto-parsed value.
+ */
+function checkIdentityDocument(a: Answers): ValidationResult | null {
+  if (!['sa_drivers_licence_disc', 'passport', 'foreign_drivers_licence'].includes(a.identity_document_type)) {
+    return PENDING('identity_document_type_required', "Select or capture the driver's identity document (SA driver's licence disc, passport or foreign driver's licence).");
+  }
+  if ((a.identity_document_type === 'passport' || a.identity_document_type === 'foreign_drivers_licence')
+      && !isNonEmptyString(a.identity_document_photo_uri)) {
+    return PENDING('identity_document_photo_required', "A photograph of the passport / foreign driver's licence is required — the installed scanner cannot decode these documents.");
   }
   return null;
 }
@@ -214,6 +239,8 @@ export function validateHospitalitySubmission(category: string, a: Answers): Val
       if (!isNonEmptyString(a.delivery_person_photo_uri)) {
         return PENDING('delivery_person_photo_required', 'A photograph of the delivery person is required.');
       }
+      const idErr = checkIdentityDocument(a);
+      if (idErr) return idErr;
       return OK;
     }
     case 'uber': {
@@ -223,6 +250,8 @@ export function validateHospitalitySubmission(category: string, a: Answers): Val
       if (occErr) return occErr;
       const fireErr = checkFirearmDeclaration(a);
       if (fireErr) return fireErr;
+      const idErr = checkIdentityDocument(a);
+      if (idErr) return idErr;
       return OK;
     }
     case 'visitor': {
