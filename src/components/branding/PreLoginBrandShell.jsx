@@ -32,6 +32,7 @@ export default function PreLoginBrandShell({ onSignIn }) {
 
   useEffect(() => {
     if (!slug) return undefined;
+    let alive = true;
     fetch(`/functions/getPwaManifest?slug=${encodeURIComponent(slug)}`)
       .then((r) => r.json())
       .then((m) => {
@@ -57,7 +58,12 @@ export default function PreLoginBrandShell({ onSignIn }) {
         // back to the generic platform shell so sign-in still works.
         if (alive) setBrand({ branded: false });
       });
-    return () => { alive = false; };
+    // Safety net: a hung/never-resolving request must never trap the visitor
+    // on the loader — fall back to the generic shell so sign-in still works.
+    const timeout = setTimeout(() => {
+      if (alive) setBrand((b) => b || { branded: false });
+    }, 8000);
+    return () => { alive = false; clearTimeout(timeout); };
   }, [slug]);
 
   // Branded URL still resolving — brief loader so the card doesn't flash
