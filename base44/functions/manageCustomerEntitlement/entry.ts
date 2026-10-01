@@ -49,6 +49,20 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ success: true, module_keys });
     }
 
+    // Customer + effective reseller resolution (used by set_ob, set, remove).
+    // Moved ABOVE the set_ob block — it previously sat below it, so set_ob
+    // referenced `customer`/`effectiveReseller` before initialisation (TDZ 500).
+    const custs = await base44.asServiceRole.entities.Customer.filter({ id: customer_id });
+    const customer = custs[0];
+    if (!customer) return Response.json({ error: 'Customer not found' }, { status: 404 });
+    const effectiveReseller = reseller_id || customer.reseller_id || null;
+
+    if (!isPlatformAdmin) {
+      if (!effectiveReseller || effectiveReseller !== caller.reseller_id) {
+        return Response.json({ error: 'Forbidden: customer does not belong to your reseller' }, { status: 403 });
+      }
+    }
+
     // ── "set_ob": the persisted Digital Occurrence Book customer setting ──
     // Enabled through the SAME module-settings surface the administrator
     // already uses (no user/customer records are created or recreated).
@@ -99,17 +113,6 @@ export default async function(req: Request): Promise<Response> {
     }
     if (!customer_id || !module_key) {
       return Response.json({ error: 'customer_id and module_key are required' }, { status: 400 });
-    }
-
-    const custs = await base44.asServiceRole.entities.Customer.filter({ id: customer_id });
-    const customer = custs[0];
-    if (!customer) return Response.json({ error: 'Customer not found' }, { status: 404 });
-    const effectiveReseller = reseller_id || customer.reseller_id || null;
-
-    if (!isPlatformAdmin) {
-      if (!effectiveReseller || effectiveReseller !== caller.reseller_id) {
-        return Response.json({ error: 'Forbidden: customer does not belong to your reseller' }, { status: 403 });
-      }
     }
 
     // Enforce reseller-licence boundary.

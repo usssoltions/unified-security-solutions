@@ -13,10 +13,13 @@
  *     uniqueness retry loop — NEVER count-based)
  *   - the OB SWEEP: due notification (once), overdue reminder after the
  *     configured grace (once), supervisor escalation after the configured
- *     additional delay (once, email + Telegram + push) — all flagged on the
- *     occurrence with claim-before-send CAS stamps so overlapping sweeps,
- *     retries and catch-up runs can never flood, and completion/cancellation
- *     stops everything.
+ *     additional delay (once, email + Telegram + push). Delivery is
+ *     CRASH-SAFE: each stage claims a short-lived lease (CAS), SENDS, and
+ *     only then stamps the permanent notified marker — a crash or failed
+ *     send can never permanently suppress a notification. A lease left by a
+ *     crashed run is stale-recovered after STALE_CLAIM_MS; persistent send
+ *     failures are retried up to MAX_NOTIFY_ATTEMPTS and then stamped
+ *     failed (bounded) — overlapping sweeps can never duplicate.
  *
  * Reuses the Task module's OWN notification infrastructure
  * (taskNotifications.ts — Core email + Bot API Telegram + native push) and
@@ -264,17 +267,25 @@ function obLine(occ) {
     ' · ' + (occ.control_room_name || '') + ' · due ' + (occ.slot_label || '') + ' (' + (occ.operating_date || '') + ')';
 }
 
+/** Creates one in-app Notification per recipient and returns how many were
+ * actually created — failures are REPORTED, never swallowed, so the caller's
+ * stage recovery can retry. */
 async function inAppNotify(svc, occ, recipients, { title, message, priority }) {
+  let created = 0;
   for (const r of recipients) {
-    await svc.entities.Notification.create({
-      customer_id: occ.customer_id, reseller_id: occ.reseller_id || null,
-      recipient_id: r.id, recipient_name: r.name,
-      type: 'status_change', priority: priority || 'high',
-      title, message,
-      related_entity: 'OBOccurrence', related_id: occ.id,
-      action_url: '/ScheduledTasks', sent_via: ['in_app'],
-    }).catch(() => {});
+    try {
+      await svc.entities.Notification.create({
+        customer_id: occ.customer_id, reseller_id: occ.reseller_id || null,
+        recipient_id: r.id, recipient_name: r.name,
+        type: 'status_change', priority: priority || 'high',
+        title, message,
+        related_entity: 'OBOccurrence', related_id: occ.id,
+        action_url: '/ScheduledTasks', sent_via: ['in_app'],
+      });
+      created++;
+    } catch (_) { /* per-recipient failure counts as not delivered */ }
   }
+  return created;
 }
 
 async function sendObAlert(svc, occ, sch, kind) {
@@ -289,14 +300,20 @@ async function sendObAlert(svc, occ, sch, kind) {
     due: obLine(occ) + ' — the check is now due. Open your Task Queue.',
     overdue: obLine(occ) + ' — outstanding beyond the grace period. Record it or escalate.',
   };
-  await inAppNotify(svc, occ, recipients, { title: titles[kind], message: messages[kind], priority: 'high' });
-  await sendNativePushToUsers(svc, recipients.map((r) => r.id), {
+  const created = await inAppNotify(svc, occ, recipients, { title: titles[kind], message: messages[kind], priority: 'high' });
+  const pr = await sendNativePushToUsers(svc, recipients.map((r) => r.id), {
     title: titles[kind], body: messages[kind],
     priority: 'high', action_label: 'Open', action_url: '/ScheduledTasks',
     event_key: 'ob_' + kind + ':' + occ.id,
     customer_id: occ.customer_id, reseller_id: occ.reseller_id || null,
     brand: brandCtx && brandCtx.brand ? brandCtx.brand : null,
   }).catch(() => null);
+  // Delivered = every in-app record created AND no push send FAILED (a
+  // 'skipped' push means the recipient has no registered device — correctly
+  // not a failure). Anything else is retried by the sweep's stage recovery.
+  const ok = created === recipients.length && (!pr || pr.failed === 0);
+  return { ok, detail: 'in_app:' + created + '/' + recipients.length +
+    ' push:' + (pr ? ('sent:' + pr.sent + ' skipped:' + pr.skipped + ' failed:' + pr.failed) : 'error') };
 }
 
 function escalationEmailHtml(occ, brand, brandName) {
@@ -319,7 +336,7 @@ async function sendEscalation(svc, secrets, occ, sch) {
   if (!recipients.length) return;
   const line = obLine(occ);
   await inAppNotify(svc, occ, recipients, { title: 'OB ESCALATION — ' + occ.title, message: line + ' — still outstanding; escalated to supervisors.', priority: 'high' });
-  await notifyTaskRecipientsOnce(svc, secrets, recipients, {
+  const out = await notifyTaskRecipientsOnce(svc, secrets, recipients, {
     subject: '[OB ESCALATION] ' + occ.title + ' — ' + (occ.operating_date || ''),
     emailBody: line + ' — outstanding beyond the grace period and escalation delay. Opening this alert is not completion; the check must be recorded in the Occurrence Book.',
     emailHtml: escalationEmailHtml(occ, brandCtx && brandCtx.brand, brandCtx && brandCtx.brandName),
@@ -332,6 +349,70 @@ async function sendEscalation(svc, secrets, occ, sch) {
     priority: 'critical',
     customerId: occ.customer_id, resellerId: occ.reseller_id || null,
   });
+  // skipped = a previous attempt already delivered this escalation (the
+  // per-channel dedup markers are intact) — treated as delivered. Otherwise
+  // success requires ZERO failed channel attempts; failed attempts stay
+  // retryable via the sweep's stage recovery (bounded).
+  const ok = out.skipped ? true : out.failed === 0;
+  return { ok, detail: 'email:' + out.email + ' telegram:' + out.telegram + ' push:' + out.push +
+    ' attempted:' + out.attempted + ' failed:' + out.failed + ' not_configured:' + out.not_configured };
+}
+
+/* ── Notification delivery stages — claim → send → stamp ─────────────────
+ * The permanent notified stamp is written ONLY AFTER a successful send, so a
+ * crash or failed send can never permanently suppress a notification.
+ *   claim    — a CAS lease; a concurrent sweep that loses it sends nothing.
+ *   stale    — a lease left by a crashed run is stolen after STALE_CLAIM_MS.
+ *   bounded  — persistent send failures retry up to MAX_NOTIFY_ATTEMPTS,
+ *   then the stage is stamped *_notify_failed_at (audited; the outstanding
+ *   check itself stays actionable in the queue and reports). */
+const STALE_CLAIM_MS = 10 * 60 * 1000;
+const MAX_NOTIFY_ATTEMPTS = 5;
+const STAGES = {
+  due: { stamp: 'due_notified_at', claim: 'due_notify_claimed_at', attempts: 'due_notify_attempts', failed: 'due_notify_failed_at' },
+  overdue: { stamp: 'overdue_notified_at', claim: 'overdue_notify_claimed_at', attempts: 'overdue_notify_attempts', failed: 'overdue_notify_failed_at' },
+  escalation: { stamp: 'escalation_notified_at', claim: 'escalation_notify_claimed_at', attempts: 'escalation_notify_attempts', failed: 'escalation_notify_failed_at' },
+};
+
+/** Attempts to CLAIM a notification stage for this sweep run. Returns
+ * { claimValue, attempts } when this run owns the send, else null. */
+async function claimStage(svc, occ, stage, nowIso, now) {
+  if (occ[stage.stamp] || occ[stage.failed]) return null;
+  const prevAttempts = Number(occ[stage.attempts]) || 0;
+  if (prevAttempts >= MAX_NOTIFY_ATTEMPTS) return null;
+  // Fresh claim
+  let claim = await svc.entities.OBOccurrence.updateMany(
+    { id: occ.id, status: 'pending', [stage.stamp]: null, [stage.claim]: null },
+    { $set: { [stage.claim]: nowIso, [stage.attempts]: prevAttempts + 1 } }).catch(() => null);
+  if (claim && claim.updated) return { claimValue: nowIso, attempts: prevAttempts + 1 };
+  // Stale-claim recovery — the previous holder crashed before delivering
+  const held = occ[stage.claim];
+  if (held && now - Date.parse(held) > STALE_CLAIM_MS) {
+    claim = await svc.entities.OBOccurrence.updateMany(
+      { id: occ.id, status: 'pending', [stage.stamp]: null, [stage.claim]: held },
+      { $set: { [stage.claim]: nowIso, [stage.attempts]: prevAttempts + 1 } }).catch(() => null);
+    if (claim && claim.updated) return { claimValue: nowIso, attempts: prevAttempts + 1 };
+  }
+  return null;
+}
+
+/** Marks a stage DELIVERED (permanent stamp) on success, or releases the
+ * lease for a later retry on failure — stamping the bounded-failure marker
+ * once MAX_NOTIFY_ATTEMPTS have been exhausted. */
+async function finalizeStage(svc, occId, stage, claim, ok, nowIso) {
+  const lease = { id: occId, [stage.claim]: claim.claimValue };
+  if (ok) {
+    const done = await svc.entities.OBOccurrence.updateMany(
+      lease, { $set: { [stage.stamp]: nowIso, [stage.claim]: null } }).catch(() => null);
+    if (done && done.updated) return;
+    // Stamp write failed — release the lease so a later sweep retries the
+    // whole stage (escalation/push event keys deduplicate the channels).
+    await svc.entities.OBOccurrence.updateMany(lease, { $set: { [stage.claim]: null } }).catch(() => {});
+    return;
+  }
+  const patch = { [stage.claim]: null };
+  if (claim.attempts >= MAX_NOTIFY_ATTEMPTS) patch[stage.failed] = nowIso;
+  await svc.entities.OBOccurrence.updateMany(lease, { $set: patch }).catch(() => {});
 }
 
 /* ── THE OB SWEEP ──────────────────────────────────────────────────────── */
@@ -375,35 +456,38 @@ export async function runObSweep(svc, secrets) {
       if (cas && cas.updated) results.cancelled++;
       continue;
     }
-    // DUE — one notification, claim-before-send (a concurrent sweep that lost
-    // the claim updates zero rows and sends nothing).
-    if (!occ.due_notified_at) {
-      const claim = await svc.entities.OBOccurrence.updateMany(
-        { id: occ.id, status: 'pending', due_notified_at: null },
-        { $set: { due_notified_at: nowIso } }).catch(() => null);
-      if (claim && claim.updated) {
-        await sendObAlert(svc, occ, sch, 'due').catch(() => {});
-        results.due_notified++;
+    // DUE — claim → send → stamp-on-success (see STAGES above).
+    if (due <= now && !occ.due_notified_at && !occ.due_notify_failed_at) {
+      const c = await claimStage(svc, occ, STAGES.due, nowIso, now);
+      if (c) {
+        const sent = await sendObAlert(svc, occ, sch, 'due').catch((e) => ({ ok: false, detail: 'send threw: ' + (e && e.message) }));
+        await finalizeStage(svc, occ.id, STAGES.due, c, sent.ok, nowIso);
+        if (sent.ok) results.due_notified++;
       }
     }
     const graceMs = (((sch && Number(sch.overdue_grace_minutes)) || 15)) * 60000;
-    if (!occ.overdue_notified_at && now >= due + graceMs) {
-      const claim = await svc.entities.OBOccurrence.updateMany(
-        { id: occ.id, status: 'pending', overdue_notified_at: null },
-        { $set: { overdue_notified_at: nowIso, overdue_at: nowIso } }).catch(() => null);
-      if (claim && claim.updated) {
-        await sendObAlert(svc, occ, sch, 'overdue').catch(() => {});
-        results.overdue_notified++;
+    if (now >= due + graceMs && !occ.overdue_notified_at && !occ.overdue_notify_failed_at) {
+      const c = await claimStage(svc, occ, STAGES.overdue, nowIso, now);
+      if (c) {
+        const sent = await sendObAlert(svc, occ, sch, 'overdue').catch((e) => ({ ok: false, detail: 'send threw: ' + (e && e.message) }));
+        await finalizeStage(svc, occ.id, STAGES.overdue, c, sent.ok, nowIso);
+        if (sent.ok) {
+          // overdue_at (the grace boundary) is stamped on FIRST delivery so
+          // the queue/report distinguishes overdue from within-grace.
+          await svc.entities.OBOccurrence.updateMany(
+            { id: occ.id, overdue_at: null }, { $set: { overdue_at: nowIso } }).catch(() => {});
+          results.overdue_notified++;
+        }
       }
     }
     const escMs = (((sch && Number(sch.escalation_delay_minutes)) || 30)) * 60000;
-    if (occ.overdue_notified_at && !occ.escalation_notified_at && now >= due + graceMs + escMs) {
-      const claim = await svc.entities.OBOccurrence.updateMany(
-        { id: occ.id, status: 'pending', escalation_notified_at: null },
-        { $set: { escalation_notified_at: nowIso } }).catch(() => null);
-      if (claim && claim.updated) {
-        await sendEscalation(svc, secrets, occ, sch).catch(() => {});
-        results.escalations++;
+    if (now >= due + graceMs + escMs && !occ.escalation_notified_at && !occ.escalation_notify_failed_at &&
+        (occ.overdue_notified_at || occ.overdue_notify_failed_at)) {
+      const c = await claimStage(svc, occ, STAGES.escalation, nowIso, now);
+      if (c) {
+        const sent = await sendEscalation(svc, secrets, occ, sch).catch((e) => ({ ok: false, detail: 'send threw: ' + (e && e.message) }));
+        await finalizeStage(svc, occ.id, STAGES.escalation, c, sent.ok, nowIso);
+        if (sent.ok) results.escalations++;
       }
     }
   }

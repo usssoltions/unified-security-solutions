@@ -309,7 +309,30 @@
         "null"
       ],
       "format": "date-time",
-      "description": "One due notification (in-app + push) \u2014 stamped once; completion/cancellation stops everything."
+      "description": "One due notification (in-app + push) \u2014 stamped ONLY after a successful send; never repeated after stamping."
+    },
+    "due_notify_claimed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL short-lived delivery lease for the due notification (CAS claim-before-send; stale leases are recoverable by later sweeps). Never exposed to any UI."
+    },
+    "due_notify_attempts": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "INTERNAL delivery attempt counter for the due notification (bounded retries). Never exposed to any UI."
+    },
+    "due_notify_failed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL marker stamped when the due notification exhausted its bounded retries without delivery \u2014 the outstanding check itself remains actionable in the queue and reports."
     },
     "overdue_notified_at": {
       "type": [
@@ -317,7 +340,30 @@
         "null"
       ],
       "format": "date-time",
-      "description": "One overdue reminder after the configured grace (in-app + push) \u2014 stamped once, never repeated."
+      "description": "One overdue reminder after the configured grace (in-app + push) \u2014 stamped ONLY after a successful send; never repeated after stamping."
+    },
+    "overdue_notify_claimed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL short-lived delivery lease for the overdue reminder (CAS claim-before-send; stale leases are recoverable by later sweeps). Never exposed to any UI."
+    },
+    "overdue_notify_attempts": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "INTERNAL delivery attempt counter for the overdue reminder (bounded retries). Never exposed to any UI."
+    },
+    "overdue_notify_failed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL marker stamped when the overdue reminder exhausted its bounded retries without delivery \u2014 the outstanding check itself remains actionable in the queue and reports."
     },
     "escalation_notified_at": {
       "type": [
@@ -325,7 +371,30 @@
         "null"
       ],
       "format": "date-time",
-      "description": "One supervisor escalation (email + Telegram + push, module-owned channels) after the configured additional delay \u2014 stamped once, never repeated."
+      "description": "One supervisor escalation (email + Telegram + push, module-owned channels) after the configured additional delay \u2014 stamped ONLY after a successful send; never repeated after stamping."
+    },
+    "escalation_notify_claimed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL short-lived delivery lease for the supervisor escalation (CAS claim-before-send; stale leases are recoverable by later sweeps). Never exposed to any UI."
+    },
+    "escalation_notify_attempts": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "INTERNAL delivery attempt counter for the supervisor escalation (bounded retries). Never exposed to any UI."
+    },
+    "escalation_notify_failed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL marker stamped when the escalation exhausted its bounded retries without delivery \u2014 the outstanding check itself remains actionable in the queue and reports."
     },
     "is_test": {
       "type": "boolean",
