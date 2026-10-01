@@ -4,6 +4,8 @@
  * mobile numbers — evidence is viewed per visit in the app only.
  */
 import jsPDF from "jspdf";
+import nimbusRegularUrl from "@/assets/fonts/NimbusSans-Regular.ttf?url";
+import nimbusBoldUrl from "@/assets/fonts/NimbusSans-Bold.ttf?url";
 import {
   HOSP_CATEGORY_LABELS, PRESENCE_LABELS, ADMISSION_LABELS, presenceOf, fmtDT, parseTs, yesNo,
   maskPhone, confirmationText, evidenceCount, computeTotals,
@@ -116,19 +118,42 @@ function addLogo(doc, dataUrl, x, y, maxW, maxH, alignRight) {
   } catch (_) { /* logo optional */ }
 }
 
+// ── Embedded font: Nimbus Sans (Helvetica-metric, static TTF) ────────────────
+// Standard-14 fonts are never embedded, so PDF viewers substitute them and
+// character spacing can render unevenly. Embedding a static TTF guarantees
+// identical, normal spacing in every viewer. Base64 is cached per session;
+// addFont is registered on each new document.
+const fontB64Cache = {};
+async function fontBase64(url, key) {
+  if (!fontB64Cache[key]) {
+    const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    let bin = ""; const CH = 0x8000;
+    for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+    fontB64Cache[key] = btoa(bin);
+  }
+  return fontB64Cache[key];
+}
+async function embedFonts(doc) {
+  doc.addFileToVFS("NimbusSans-Regular.ttf", await fontBase64(nimbusRegularUrl, "regular"));
+  doc.addFont("NimbusSans-Regular.ttf", "NimbusSans", "normal");
+  doc.addFileToVFS("NimbusSans-Bold.ttf", await fontBase64(nimbusBoldUrl, "bold"));
+  doc.addFont("NimbusSans-Bold.ttf", "NimbusSans", "bold");
+  doc.setFont("NimbusSans", "normal");
+}
+
 // PDF columns: [label, weight, getter]. Weights are scaled to fill the full
 // printable width; long values wrap (never truncated).
 const PDF_COLS = [
-  ["Created", 24, (v) => fmtSastCell(v.created_date)],
-  ["Category", 24, (v) => HOSP_CATEGORY_LABELS[v.category] || v.category],
-  ["Name", 62, (v) => v.person_name || ""],
-  ["Room", 10, (v) => v.room_number || ""],
-  ["Occ.", 7, (v) => String(v.occupant_count ?? "")],
-  ["Admission", 17, (v) => ADMISSION_LABELS[v.status] || v.status],
-  ["Presence", 18, (v) => PRESENCE_LABELS[presenceOf(v)]],
-  ["Entry", 24, (v) => fmtSastCell(v.entry?.entry_time)],
-  ["Exit", 24, (v) => fmtSastCell(v.entry?.exit_time)],
-  ["Processed by", 34, (v) => v.entry?.guard_name || v.created_by_guard_name || ""],
+  ["Created", 20, (v) => fmtSastCell(v.created_date)],
+  ["Category", 38, (v) => HOSP_CATEGORY_LABELS[v.category] || v.category],
+  ["Name", 40, (v) => v.person_name || ""],
+  ["Room", 8, (v) => v.room_number || ""],
+  ["Occ.", 6, (v) => String(v.occupant_count ?? "")],
+  ["Admission", 15, (v) => ADMISSION_LABELS[v.status] || v.status],
+  ["Presence", 19, (v) => PRESENCE_LABELS[presenceOf(v)]],
+  ["Entry", 20, (v) => fmtSastCell(v.entry?.entry_time)],
+  ["Exit", 20, (v) => fmtSastCell(v.entry?.exit_time)],
+  ["Processed by", 29, (v) => v.entry?.guard_name || v.created_by_guard_name || ""],
 ];
 
 export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
@@ -136,9 +161,10 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
   const W = 297, H = 210, M = 8;
   const W2 = W - 2 * M;
   const primary = hexRgb(brand?.primary_color);
+  await embedFonts(doc);
 
   const FONT = 8, LINE = 3.0, PADX = 1.2, ROW_MIN = 4.2, HEAD_H = 4.6, BAND_H = 4.8;
-  const BOTTOM = H - 9; // last baseline a row may occupy; footer sits below
+  const BOTTOM = H - 7.5; // last baseline a row may occupy; footer sits below
 
   // Scale column weights to fill the printable width exactly.
   const weightSum = PDF_COLS.reduce((n, [, w]) => n + w, 0);
