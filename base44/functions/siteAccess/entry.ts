@@ -217,6 +217,12 @@ export default async function(req) {
       if (!name || !address || !client_name) {
         return Response.json({ error: 'Site name, address and customer are required' }, { status: 400 });
       }
+      // ACCESS WORKFLOW — validated against the allowed enum only; never
+      // activated implicitly by branding/app-name/email-domain/PWA-slug.
+      // Unset/invalid input always falls back to 'default' (existing flow).
+      const ALLOWED_WORKFLOWS = ['default', 'grid_gate_hospitality'];
+      const access_workflow = ALLOWED_WORKFLOWS.includes(body.access_workflow) ? body.access_workflow : 'default';
+
       const created = await svc.entities.Site.create({
         name: name,
         address: address,
@@ -229,6 +235,8 @@ export default async function(req) {
         checkpoints: Array.isArray(body.checkpoints) ? body.checkpoints : [],
         patrol_config: body.patrol_config || { enabled: false, schedules: [] },
         checklist_templates: Array.isArray(body.checklist_templates) ? body.checklist_templates : [],
+        access_workflow: access_workflow,
+        access_workflow_version: 1,
       });
       await audit('site.created', created, 'created site "' + name + '"');
       return Response.json({ success: true, site: created });
@@ -274,6 +282,22 @@ export default async function(req) {
       if (!platformAdmin && !resellerAdmin && changes.client_name !== undefined && site.customer_id) {
         // Tenant callers: the display name is derived from the linked customer.
         delete changes.client_name;
+      }
+      // ACCESS WORKFLOW CHANGE — only an allowed enum value is ever written;
+      // this is a pure configuration setting, independent of branding/
+      // demo-data generation. Bumping the version lets historical
+      // HospitalityVisit records keep their own stamped snapshot instead of
+      // being reinterpreted by a later workflow change on this site.
+      if (changes.access_workflow !== undefined) {
+        const ALLOWED_WORKFLOWS = ['default', 'grid_gate_hospitality'];
+        if (!ALLOWED_WORKFLOWS.includes(changes.access_workflow)) {
+          return Response.json({ error: 'Invalid access workflow value', code: 'invalid_workflow' }, { status: 400 });
+        }
+        if (changes.access_workflow !== site.access_workflow) {
+          changes.access_workflow_version = (Number(site.access_workflow_version) || 1) + 1;
+        }
+      } else {
+        delete changes.access_workflow_version;
       }
       const checkpointChanged = changes.checkpoints !== undefined;
       const updated = await svc.entities.Site.update(site.id, changes);

@@ -178,6 +178,20 @@
       "items": {
         "type": "string"
       }
+    },
+    "access_workflow": {
+      "type": "string",
+      "enum": [
+        "default",
+        "grid_gate_hospitality"
+      ],
+      "default": "default",
+      "description": "Site-level access-control workflow selection, SEPARATE from customer branding and demo-data generation \u2014 never activated by a logo, app name, email domain or PWA slug, only by this explicit setting. 'default' = existing scan/vehicle/pedestrian/QR access-control flow (unchanged). 'grid_gate_hospitality' = the GRID GATE Hospitality custom entry workflow (ten documented categories: Check Ins, Contractors, Deliveries, Event or Function Visitor, Guests, Service Provider, Staff, Uber Eats / Mr D, Uber, Visitors), enforced server-side by the finalizeAccessEntry gateway's hospitality_submit action \u2014 a client-supplied workflow selection is never trusted; the gateway always re-resolves this field from the authorised site record. Managed through the siteAccess gateway only."
+    },
+    "access_workflow_version": {
+      "type": "number",
+      "default": 1,
+      "description": "Snapshot number stamped onto every HospitalityVisit created while this workflow is active, so a later change to the site's workflow configuration never reinterprets historical visit records."
     }
   },
   "required": [

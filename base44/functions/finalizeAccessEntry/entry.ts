@@ -6,6 +6,7 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
+import { validateHospitalitySubmission, CATEGORY_PERSON_TYPE, CATEGORY_LABELS, HOSPITALITY_WORKFLOW_ID, HOSPITALITY_CATEGORIES } from '../../shared/gridGateWorkflow.ts';
 
 /**
  * finalizeAccessEntry — Backend access control finalisation.
@@ -432,6 +433,24 @@ export default async function(req: Request): Promise<Response> {
       const siteErr = await assertSiteScope(site_id);
       if (siteErr) return siteErr;
 
+      // GRID GATE HOSPITALITY WORKFLOW GUARD — the site's own access_workflow
+      // (never a client-supplied value) is authoritative. A site configured
+      // for the hospitality workflow must use the hospitality_submit action,
+      // which enforces that workflow's own mandatory fields server-side; the
+      // plain 'entry' action would otherwise let a direct API call bypass
+      // every category requirement (reception confirmation, firearm/vehicle/
+      // evidence photos, occupant counts, room numbers).
+      if (site_id) {
+        const siteRows = await base44.asServiceRole.entities.Site.filter({ id: String(site_id) }).catch(() => []);
+        const siteRec = (siteRows && siteRows[0]) || null;
+        if (siteRec && siteRec.access_workflow === HOSPITALITY_WORKFLOW_ID) {
+          return Response.json({
+            error: 'This site uses the GRID GATE Hospitality workflow. Use the hospitality_submit action with the required category and fields.',
+            code: 'wrong_workflow',
+          }, { status: 400 });
+        }
+      }
+
       // REGISTERED-DEVICE REQUIREMENT — server-side fail closed for
       // non-platform callers: entry cannot be processed from an unregistered
       // or deactivated device (an over-licence installation never reaches
@@ -737,7 +756,258 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ success: true, access_log: after });
     }
 
-    return Response.json({ error: 'Invalid action. Use entry, exit or resolve_visitor' }, { status: 400 });
+    /* ── GRID GATE HOSPITALITY WORKFLOW ──────────────────────────────────
+     * hospitality_submit: the SOLE write path for a site whose Site.
+     * access_workflow is 'grid_gate_hospitality'. Every required
+     * confirmation/evidence field for the submitted category is
+     * RE-VALIDATED here via the shared validator (never trusts a client
+     * "confirmed" flag). An unanswered or negative required confirmation
+     * never grants access — the HospitalityVisit stays 'pending' and no
+     * AccessLog is created; the caller may resubmit (same
+     * hospitality_visit_id) or cancel with a reason. */
+    if (action === 'hospitality_submit') {
+      const d = access_data || {};
+      const { site_id, category, gate_name, person_name, person_phone,
+              scan_method, vehicle_registration, vehicle_licence_disc_number,
+              driver_licence_number, sa_id_number, vehicle_make, vehicle_model,
+              vehicle_colour, vehicle_licence_number, scanned_data, parsed_json,
+              confidence, device, photo_url, location, installation_id,
+              hospitality_visit_id, identity_document_type, identity_document_photo_uri } = d;
+
+      if (!site_id || !category || !gate_name || !person_name) {
+        return Response.json({ error: 'site_id, category, gate_name and person_name are required' }, { status: 400 });
+      }
+      if (!HOSPITALITY_CATEGORIES.includes(category)) {
+        return Response.json({ error: 'Unknown hospitality category', code: 'invalid_category' }, { status: 400 });
+      }
+
+      const siteErr = await assertSiteScope(site_id);
+      if (siteErr) return siteErr;
+
+      const siteRows = await base44.asServiceRole.entities.Site.filter({ id: String(site_id) }).catch(() => []);
+      const siteRec = (siteRows && siteRows[0]) || null;
+      if (!siteRec) return Response.json({ error: 'Site not found' }, { status: 404 });
+      if (siteRec.access_workflow !== HOSPITALITY_WORKFLOW_ID) {
+        return Response.json({ error: 'This site does not use the GRID GATE Hospitality workflow', code: 'wrong_workflow' }, { status: 400 });
+      }
+
+      const recordCid = cid || siteRec.customer_id || null;
+      const recordRid = rid || siteRec.reseller_id || null;
+
+      // Fields captured from the category question set (shared validator
+      // re-checks these — the client's own "confirmed" flags are never trusted).
+      const answers = {
+        guest_name: d.guest_name || null,
+        guest_surname: d.guest_surname || null,
+        reception_confirmed: typeof d.reception_confirmed === 'boolean' ? d.reception_confirmed : null,
+        reception_confirmed_note: d.reception_confirmed_note || null,
+        occupant_count: d.occupant_count !== undefined && d.occupant_count !== null && d.occupant_count !== '' ? Number(d.occupant_count) : null,
+        room_number: d.room_number || null,
+        room_number_source: d.room_number_source || null,
+        firearm_declared: typeof d.firearm_declared === 'boolean' ? d.firearm_declared : null,
+        firearm_photo_uri: d.firearm_photo_uri || null,
+        po_invoice_available: typeof d.po_invoice_available === 'boolean' ? d.po_invoice_available : null,
+        po_invoice_photo_uri: d.po_invoice_photo_uri || null,
+        vehicle_photo_uris: Array.isArray(d.vehicle_photo_uris) ? d.vehicle_photo_uris : [],
+        staff_declared: typeof d.staff_declared === 'boolean' ? d.staff_declared : null,
+        staff_declaration_photo_uris: Array.isArray(d.staff_declaration_photo_uris) ? d.staff_declaration_photo_uris : [],
+        food_photo_uri: d.food_photo_uri || null,
+        delivery_person_photo_uri: d.delivery_person_photo_uri || null,
+        pedestrian_only: category === 'uber_eats_mrd' ? (d.pedestrian_only === true) : !!d.pedestrian_only,
+      };
+
+      // Resolve or create the draft HospitalityVisit. A supplied id must
+      // belong to this exact customer+site and still be 'pending' — it can
+      // never be reused to silently continue/overwrite a DIFFERENT confirmed
+      // or cancelled visit (no cross-visit answer/photo leakage).
+      let visit = null;
+      if (hospitality_visit_id) {
+        const rows = await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(hospitality_visit_id) }).catch(() => []);
+        const existing = (rows && rows[0]) || null;
+        if (existing && existing.customer_id === recordCid && existing.site_id === site_id && existing.status === 'pending') {
+          visit = existing;
+        }
+      }
+      const visitFields = {
+        category, person_name, person_phone: person_phone || null,
+        vehicle_registration: vehicle_registration || null,
+        vehicle_licence_disc_number: vehicle_licence_disc_number || null,
+        driver_licence_number: driver_licence_number || null,
+        sa_id_number: sa_id_number || null,
+        scan_method: scan_method || null,
+        identity_document_type: identity_document_type || null,
+        identity_document_photo_uri: identity_document_photo_uri || null,
+        ...answers,
+      };
+      if (visit) {
+        visit = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, visitFields);
+      } else {
+        visit = await base44.asServiceRole.entities.HospitalityVisit.create({
+          customer_id: recordCid,
+          reseller_id: recordRid,
+          site_id,
+          site_name: siteRec.name || '',
+          workflow_id: HOSPITALITY_WORKFLOW_ID,
+          workflow_version: Number(siteRec.access_workflow_version) || 1,
+          status: 'pending',
+          created_by_guard_id: caller.id,
+          created_by_guard_name: caller.display_name || caller.full_name || '',
+          ...visitFields,
+        });
+      }
+
+      // SERVER-SIDE VALIDATION — the single authoritative decision.
+      const validation = validateHospitalitySubmission(category, answers);
+      if (!validation.ok) {
+        return Response.json({
+          success: false, pending: true,
+          code: validation.code, error: validation.error,
+          hospitality_visit_id: visit.id,
+          category_label: CATEGORY_LABELS[category],
+        });
+      }
+
+      // Device registration requirement — reused unchanged from the default flow.
+      const deviceCheck = await resolveCallerDevice(base44.asServiceRole, caller, installation_id, recordCid);
+      if (deviceCheck.error) {
+        await auditAccess(base44.asServiceRole, 'access.permission_denied', caller, {
+          customer_id: recordCid, site_id, gate_name,
+          notes: `Hospitality entry denied — ${deviceCheck.error}`,
+        });
+        return Response.json({ error: DEVICE_BLOCK_MESSAGES[deviceCheck.error], code: deviceCheck.error }, { status: 403 });
+      }
+      const deviceReg = deviceCheck.reg || null;
+
+      // Duplicate active entry + blacklist — reused unchanged, tenant-scoped.
+      let blacklistMatch = null;
+      if (sa_id_number || driver_licence_number || vehicle_registration) {
+        const dupFilter: any = recordCid ? { customer_id: recordCid, status: 'inside' } : { status: 'inside' };
+        if (site_id) dupFilter.site_id = site_id;
+        const dups = await base44.asServiceRole.entities.AccessLog.filter(dupFilter, '-created_date', 50);
+        const isDup = (dups || []).find((r: any) => {
+          if (sa_id_number && r.sa_id_number === sa_id_number) return true;
+          if (driver_licence_number && r.driver_licence_number === driver_licence_number) return true;
+          if (vehicle_registration && r.vehicle_registration === vehicle_registration) return true;
+          return false;
+        });
+        if (isDup) {
+          await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
+            customer_id: recordCid, site_id, gate_name, access_log_id: isDup.id,
+            notes: `Hospitality duplicate entry blocked — already inside (record ${isDup.id})`,
+          });
+          return Response.json({ error: 'An active entry already exists.', duplicate: true, existing_log_id: isDup.id }, { status: 409 });
+        }
+        const blFilter: any = recordCid ? { customer_id: recordCid, active: true } : { active: true };
+        const blEntries = await base44.asServiceRole.entities.BlacklistEntry.filter(blFilter, '-created_date', 200).catch(() => []);
+        blacklistMatch = (blEntries || []).find((b: any) => {
+          if (b.identifier_type === 'sa_id' && sa_id_number && b.identifier_value === sa_id_number.toUpperCase().replace(/\s/g, '')) return true;
+          if (b.identifier_type === 'driver_licence' && driver_licence_number && b.identifier_value === driver_licence_number.toUpperCase().replace(/\s/g, '')) return true;
+          if (b.identifier_type === 'vehicle_registration' && vehicle_registration && b.identifier_value === vehicle_registration.toUpperCase().replace(/\s/g, '')) return true;
+          return false;
+        }) || null;
+      }
+
+      const nowIso = new Date().toISOString();
+      // uber_eats_mrd is PEDESTRIAN-ONLY by validated construction — exactly
+      // one AccessLog row is created for the delivery person; the bike/car
+      // itself is never written as a separate "inside" record, so it can
+      // never inflate vehicle occupancy or be marked as being inside.
+      const log = await base44.asServiceRole.entities.AccessLog.create({
+        customer_id: recordCid,
+        reseller_id: recordRid,
+        site_id,
+        event_type: blacklistMatch ? 'denied' : 'entry',
+        status: blacklistMatch ? 'blacklisted' : 'inside',
+        person_type: CATEGORY_PERSON_TYPE[category] || 'unknown',
+        person_name,
+        person_phone: person_phone || '',
+        unit_number: answers.room_number || '',
+        gate_name,
+        site_name: siteRec.name || '',
+        scan_method,
+        sa_id_number,
+        driver_licence_number,
+        vehicle_registration,
+        vehicle_licence_disc_number,
+        vehicle_make,
+        vehicle_model,
+        vehicle_colour,
+        vehicle_licence_number,
+        scanned_data,
+        parsed_json,
+        confidence,
+        device,
+        visit_or_work: 'visit',
+        photo_url,
+        location,
+        notes: `GRID GATE Hospitality — ${CATEGORY_LABELS[category]} (visit ${visit.id})`,
+        entry_time: nowIso,
+        timestamp: nowIso,
+        guard_id: caller.id,
+        guard_name: caller.display_name || caller.full_name,
+        entry_device_registration_id: deviceReg ? deviceReg.id : null,
+        entry_device_name: deviceReg ? deviceReg.device_name : null,
+        flagged: !!blacklistMatch,
+        flag_reason: blacklistMatch ? ('Blacklist match: ' + (blacklistMatch.reason || 'banned identifier')) : undefined,
+        blacklist_match_id: blacklistMatch?.id,
+      });
+
+      visit = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, {
+        status: 'confirmed',
+        access_log_id: log.id,
+        confirmed_at: nowIso,
+      });
+
+      await auditAccess(base44.asServiceRole, 'access.entry', caller, {
+        customer_id: recordCid, site_id, gate_name, access_log_id: log.id,
+        notes: `GRID GATE Hospitality entry (${CATEGORY_LABELS[category]}) processed by ${caller.display_name || caller.full_name}`,
+      });
+
+      if (blacklistMatch) {
+        await dispatchAccessAlert(base44, caller, log, 'Blacklisted Person Denied Entry', 'security');
+      }
+
+      return Response.json({ success: true, access_log: log, hospitality_visit: visit, blacklist_match: blacklistMatch ? { id: blacklistMatch.id, reason: blacklistMatch.reason } : null });
+    }
+
+    /* hospitality_cancel: explicit cancellation of a PENDING visit with a
+     * recorded reason. Access was never granted for a cancelled visit — a
+     * confirmed visit (AccessLog already created) cannot be "cancelled"
+     * here; use the normal exit flow for that. */
+    if (action === 'hospitality_cancel') {
+      const d = access_data || {};
+      const { hospitality_visit_id, reason } = d;
+      if (!hospitality_visit_id || !reason) {
+        return Response.json({ error: 'hospitality_visit_id and reason are required' }, { status: 400 });
+      }
+      const rows = await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(hospitality_visit_id) }).catch(() => []);
+      const visit = (rows && rows[0]) || null;
+      if (!visit) return Response.json({ error: 'Visit not found' }, { status: 404 });
+      if (!isPlatformUser(caller)) {
+        if (isResellerAdmin(caller)) {
+          if (!rid || visit.reseller_id !== rid) return Response.json({ error: 'This visit does not belong to your reseller', code: 'forbidden_cross_tenant' }, { status: 403 });
+        } else if (!cid || visit.customer_id !== cid) {
+          return Response.json({ error: 'This visit does not belong to your customer', code: 'forbidden_cross_tenant' }, { status: 403 });
+        }
+      }
+      if (visit.status !== 'pending') {
+        return Response.json({ error: 'Only a pending visit can be cancelled', code: 'not_pending' }, { status: 400 });
+      }
+      const updated = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, {
+        status: 'cancelled',
+        cancel_reason: String(reason).slice(0, 400),
+        cancelled_at: new Date().toISOString(),
+        cancelled_by_id: caller.id,
+        cancelled_by_name: caller.display_name || caller.full_name || '',
+      });
+      await auditAccess(base44.asServiceRole, 'access.hospitality_cancelled', caller, {
+        customer_id: visit.customer_id, site_id: visit.site_id,
+        notes: `Hospitality visit ${visit.id} (${CATEGORY_LABELS[visit.category]}) cancelled: ${reason}`,
+      });
+      return Response.json({ success: true, hospitality_visit: updated });
+    }
+
+    return Response.json({ error: 'Invalid action. Use entry, exit, resolve_visitor, hospitality_submit or hospitality_cancel' }, { status: 400 });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
