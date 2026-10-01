@@ -197,7 +197,7 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
   const startPage = (showTotals) => {
     if (pageIndex > 0) doc.addPage();
     pageIndex++;
-    let hy = 4;
+    let hy = 3;
     addLogo(doc, logoPrimary, M, hy, 40, 9.5, false);
     addLogo(doc, logoSecondary, W - M, hy + 0.5, 36, 8.5, true);
     doc.setFont("NimbusSans", "bold"); doc.setFontSize(11); doc.setTextColor(...primary);
@@ -208,8 +208,12 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
     const subLines = doc.splitTextToSize(`${filterSummary}  ·  ${siteLine}`, W2);
     subLines.forEach((ln, i) => doc.text(ln, W / 2, hy + 6.8 + i * 2.8, { align: "center" }));
     const subExtra = (subLines.length - 1) * 2.8;
-    doc.setDrawColor(...primary); doc.setLineWidth(0.4); doc.line(M, hy + 9.6 + subExtra, W - M, hy + 9.6 + subExtra);
-    let yy = hy + 10.0 + subExtra;
+    // Divider sits BELOW both logos (primary logo bottom = hy + 9.5); the
+    // summary band follows beneath it with clear spacing — the rule never
+    // crosses the Total visits / SAST timezone text.
+    const dividerY = hy + 10.2 + subExtra;
+    doc.setDrawColor(...primary); doc.setLineWidth(0.4); doc.line(M, dividerY, W - M, dividerY);
+    let yy = dividerY + 3.6;
     if (showTotals) {
       const t = computeTotals(visits);
       const presence = Object.entries(t.byPresence).map(([k, n]) => `${PRESENCE_LABELS[k]}: ${n}`).join(" · ");
@@ -218,11 +222,11 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
       doc.text(`Total visits: ${t.total} — ${presence}`, M, yy);
       doc.setTextColor(110);
       doc.text("All times SAST (Africa/Johannesburg, UTC+2)", W - M, yy, { align: "right" });
-      yy += 3.0;
+      yy += 2.6;
       doc.setTextColor(90);
       const catLines = doc.splitTextToSize(`By category: ${categories}`, W2);
       doc.text(catLines, M, yy);
-      yy += 3.0 * catLines.length;
+      yy += 2.6 * (catLines.length - 1) + 2.0;
     }
     y = drawColHead(yy);
   };
