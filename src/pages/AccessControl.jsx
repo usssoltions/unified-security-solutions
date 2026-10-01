@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, Car, User, QrCode, LogIn, LogOut, CheckCircle2, XCircle,
   Search, Fingerprint, CreditCard, X, Settings, ShieldCheck,
-  MapPin, Calendar, Clock, IdCard, AlertCircle, Home,
+  MapPin, Calendar, Clock, IdCard, AlertCircle, Home, Wrench, Package,
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
 import { getUserDisplayName } from "@/lib/userDisplayName";
@@ -22,6 +22,7 @@ import { getInstallationId } from "@/lib/deviceRegistration";
 import ExitConfirmModal from "@/components/access/ExitConfirmModal";
 import OverrideModal from "@/components/access/OverrideModal";
 import MobileStep from "@/components/access/MobileStep";
+import HospitalityFlow from "@/components/access/HospitalityFlow";
 import { can, PERMISSIONS } from "@/lib/permissions";
 import { formatVisitorName, dedupePersonName } from "@/lib/personName";
 import { useToast } from "@/components/ui/use-toast";
@@ -34,6 +35,21 @@ const MODES = [
 ];
 
 const GATES = ["Main Gate", "Secondary Gate", "Pedestrian Gate", "Delivery Gate", "Emergency Gate"];
+// GRID GATE Hospitality categories (Hyatt House Sandton — Demo). Shown
+// instead of the default Vehicle/Pedestrian/QR modes when the assigned
+// site's access_workflow is 'grid_gate_hospitality' (server-resolved).
+const HOSPITALITY_CATEGORIES = [
+  { id: "check_in", label: "Check Ins", icon: User },
+  { id: "contractor", label: "Contractors", icon: Wrench },
+  { id: "delivery", label: "Deliveries", icon: Package },
+  { id: "event_visitor", label: "Event / Function Visitor", icon: Calendar },
+  { id: "guest", label: "Guests", icon: User },
+  { id: "service_provider", label: "Service Provider", icon: Wrench },
+  { id: "staff", label: "Staff", icon: IdCard },
+  { id: "uber_eats_mrd", label: "Uber Eats / Mr D", icon: Package },
+  { id: "uber", label: "Uber", icon: Car },
+  { id: "visitor", label: "Visitors", icon: User },
+];
 const eventBg = { entry: "bg-emerald-500/10 border-emerald-500/30", exit: "bg-amber-500/10 border-amber-500/30", denied: "bg-rose-500/10 border-rose-500/30" };
 const eventBadge = { entry: "bg-emerald-600", exit: "bg-amber-600", denied: "bg-rose-600" };
 
@@ -98,6 +114,7 @@ export default function AccessControl() {
   const [qrStatus, setQrStatus] = useState(null);
   const [finalizeArgs, setFinalizeArgs] = useState(null);
   const [stepError, setStepError] = useState(null);
+  const [hospCategory, setHospCategory] = useState(null);
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -181,6 +198,31 @@ export default function AccessControl() {
     refetchOnWindowFocus: false,
   });
 
+  // SITE ACCESS WORKFLOW — resolved SERVER-SIDE via the siteAccess gateway
+  // (a direct client read of Site is platform-admin-only by RLS and would
+  // silently fail on guard devices). Determines whether this page runs the
+  // default entry workflow or the GRID GATE Hospitality workflow. The
+  // workflow itself is re-enforced server-side on every submission — this
+  // config only drives which UI is shown.
+  const { data: siteConfig = null } = useQuery({
+    queryKey: ["access_site_config", user?.site_id, user?.customer_id],
+    queryFn: async () => {
+      if (user?.site_id) {
+        const res = await base44.functions.invoke("siteAccess", { action: "get", id: user.site_id });
+        const d = res?.data !== undefined ? res.data : res;
+        return d?.site || null;
+      }
+      const res = await base44.functions.invoke("siteAccess", { action: "list", status: "active" });
+      const d = res?.data !== undefined ? res.data : res;
+      const sites = d?.sites || [];
+      return sites.length === 1 ? sites[0] : null;
+    },
+    enabled: !!user,
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const hospitalitySite = siteConfig?.access_workflow === "grid_gate_hospitality";
+
   // SCANNER PRELOAD (performance pass): the moment an authorised guard enters
   // Access Control, warm the heavy scanner dependencies in the background —
   // licence-key resolution, UMD/WASM compile and the common document profile —
@@ -211,6 +253,7 @@ export default function AccessControl() {
     setActiveRecord(null); setExitCandidates([]);
     setQrVisitor(null); setQrPayload(null);
     setQrStatus(null); setFinalizeArgs(null); setStepError(null);
+    setHospCategory(null);
     visitorResolveRef.current = null;
     gpsPrefetchRef.current = null;
   };
@@ -220,6 +263,20 @@ export default function AccessControl() {
     setMode(m);
     setStep(m === "vehicle" ? "licence" : m === "pedestrian" ? "id" : "qr");
     if (m === "vehicle") { perfPrev.current = 0; perfMark("A_vehicle_entry_tap"); }
+  };
+
+  const startHospitality = (cat) => {
+    resetWorkflow(); setResult(null);
+    setHospCategory(cat);
+    setMode("hospitality");
+    setStep("hosp");
+  };
+
+  const handleHospDone = (res) => {
+    setResult(res);
+    resetWorkflow();
+    qc.invalidateQueries(["access_logs_recent"]);
+    setTimeout(() => setResult(null), 8000);
   };
 
   const openScanner = (profileId) => { perfMark(`B_scan_open_${profileId}`); setScanProfile(profileId); setScanning(true); };
@@ -794,8 +851,10 @@ export default function AccessControl() {
           </div>
         </div>
 
-        {/* Mode selection */}
-        {!mode && (
+        {/* Mode selection — GRID GATE Hospitality sites show the ten
+            documented categories instead of the default entry modes.
+            The exit flow (OUT) is unchanged for both workflows. */}
+        {!mode && !hospitalitySite && (
           <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
             {MODES.map((m) => (
               <button
@@ -812,19 +871,53 @@ export default function AccessControl() {
             ))}
           </div>
         )}
+        {!mode && hospitalitySite && (
+          <div className="grid grid-cols-2 gap-3">
+            {HOSPITALITY_CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => startHospitality(c.id)}
+                className="rounded-2xl border-2 border-dashed border-emerald-500/40 bg-emerald-500/5 hover:border-emerald-400/70 hover:bg-emerald-500/10 p-4 flex flex-col items-center gap-2 transition-all active:scale-95"
+              >
+                <div className="w-11 h-11 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <c.icon className="w-6 h-6 text-emerald-400" />
+                </div>
+                <span className="text-white font-semibold text-sm text-center leading-tight">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Workflow panel */}
         {mode && (
           <div className="rounded-2xl border border-slate-700/50 bg-slate-800/40 p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Badge className="bg-slate-700 capitalize">{mode}</Badge>
+                <Badge className="bg-slate-700 capitalize">{mode === "hospitality" ? hospCategory?.replace(/_/g, " ") : mode}</Badge>
                 <span className="text-slate-400 text-xs">Step: <span className="text-slate-200">{step}</span></span>
               </div>
               <button onClick={resetWorkflow} className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* GRID GATE Hospitality entry flow — per-category questions;
+                every required confirmation/evidence is re-validated
+                SERVER-SIDE at hospitality_submit (a "confirmed" flag is
+                never trusted client-side). */}
+            {step === "hosp" && hospCategory && (
+              <HospitalityFlow
+                category={hospCategory}
+                site={siteConfig}
+                gate={gate}
+                onDone={handleHospDone}
+                onCancelled={(msg) => {
+                  resetWorkflow();
+                  toast({ title: "Visit cancelled", description: msg });
+                }}
+                onClose={resetWorkflow}
+              />
+            )}
 
             {mode === "vehicle" && step === "licence" && (
               <StepCard icon={Fingerprint} title="Step 1 — Scan Driver's Licence" subtitle="Back of card, PDF417 barcode" onScan={() => openScanner("drivers_licence")} busy={busy} />
