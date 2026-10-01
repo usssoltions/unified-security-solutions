@@ -1,0 +1,403 @@
+{
+  "name": "OBOccurrence",
+  "type": "object",
+  "description": "Task & OB Scheduling module: ONE Digital Occurrence Book record \u2014 either a SCHEDULED OB CHECK instance generated server-side from an OBSchedule (status 'pending' until its controller records the outcome) or an UNSCHEDULED OB ENTRY captured directly (source 'unscheduled', completed at submission). Submission is a single ATOMIC conditional write (status 'pending' \u2192 'completed' + entry fields in ONE update), so double taps, retries, connection interruptions and two controllers submitting the same check can never create duplicate entries nor leave a check completed without its OB record \u2014 the losing submission receives the already-recorded entry. A missed check remains OUTSTANDING until completed or explicitly cancelled by an authorised user with a recorded reason; late completions keep their ORIGINAL due time and are reported as late (submitted_at > due_at). OB reference numbers are generated server-side from cryptographic randomness (never by counting records). Corrections are APPENDED as dated amendments (author, reason, corrected information) while the original entry values are permanently retained in original_entry \u2014 no silent overwrite, no ordinary-user deletion. GATEWAY-ONLY ACCESS: all tenant read/write flows through the obAccess gateway; direct client access is restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ownership \u2014 server-resolved, never client-trusted."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ob_reference": {
+      "type": "string",
+      "description": "Unique human-readable Occurrence Book reference (e.g. OB-20261001-K3F9Q2) generated server-side with cryptographic randomness and a uniqueness retry loop \u2014 NEVER by counting records."
+    },
+    "schedule_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "OBSchedule this check was generated from (null for unscheduled entries)."
+    },
+    "occurrence_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Dedup key '<scheduleId>:<operatingDate>:<minutesFromWindowStart>' \u2014 generation is idempotent against retries, overlapping scheduler runs and (for completed history) schedule edits."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "unscheduled"
+      ],
+      "default": "scheduled"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "overall",
+        "site"
+      ],
+      "description": "Overall control-room scope (no site) or specific-site scope. An overall entry never auto-completes a site-specific check."
+    },
+    "control_room_id": {
+      "type": "string",
+      "description": "Responsible control room \u2014 server-validated."
+    },
+    "control_room_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Check/entry title (snapshot of the schedule title, or the unscheduled entry's own title)."
+    },
+    "category": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Free OB category label (e.g. 'Security', 'Fire', 'Maintenance observation')."
+    },
+    "instructions": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the schedule's check instructions."
+    },
+    "outcome": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "all_in_order",
+        "issue_noted",
+        "action_taken",
+        "other"
+      ],
+      "description": "Controller outcome \u2014 'all_in_order' must ALWAYS be explicitly selected by the operator after performing the check; it is never pre-selected or auto-submitted."
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "operating_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "description": "SAST operating (window-start) date this check belongs to \u2014 the basis of period-based reporting."
+    },
+    "slot_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Human-readable slot label (HH:MM, suffixed '(+1d)' when the window crosses midnight into the next calendar day)."
+    },
+    "due_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Scheduled due instant (UTC, derived from SAST wall-clock configuration). Preserved on late completion."
+    },
+    "evidence_required": {
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "completed",
+        "cancelled"
+      ],
+      "default": "pending",
+      "description": "pending = outstanding (may be past due \u2014 see overdue_at); completed = OB entry recorded (submission time in submitted_at); cancelled = explicitly cancelled by an authorised user with a recorded reason. Never auto-deleted."
+    },
+    "overdue_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Server-stamped instant the outstanding check passed its due time + grace period (distinguishes overdue-outstanding from within-grace in the queue and reports)."
+    },
+    "submitted_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "SERVER-recorded submission instant (never client-supplied)."
+    },
+    "operator_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Authenticated user who submitted the entry \u2014 server-resolved from the session, never client-supplied and never impersonated."
+    },
+    "operator_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "file_uri": {
+            "type": "string",
+            "description": "PRIVATE storage uri \u2014 signed access only, generated server-side with the same permissions as the UI."
+          },
+          "uploaded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "default": [],
+      "description": "Optional authorised evidence attachments (private storage; signed URLs are minted only for viewers the gateway authorises)."
+    },
+    "incident_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optionally linked existing Incident of the same customer (validated server-side). Never auto-created per entry."
+    },
+    "incident_reference": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the linked incident reference/title for display."
+    },
+    "maintenance_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optionally linked existing MaintenanceRequest of the same customer (validated server-side)."
+    },
+    "maintenance_reference": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the linked maintenance reference/title for display."
+    },
+    "original_entry": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "description": "Permanently retained snapshot of the entry as FIRST submitted \u2014 corrections append amendments, they never overwrite this."
+    },
+    "amendments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "author_id": {
+            "type": "string"
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "corrected": {
+            "type": "object",
+            "description": "The corrected field values applied by this amendment."
+          }
+        }
+      },
+      "default": [],
+      "description": "Dated, attributed correction history \u2014 every amendment records author, reason and the corrected information; the original is retained."
+    },
+    "cancelled_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "cancelled_by_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cancelled_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cancel_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "due_notified_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "One due notification (in-app + push) \u2014 stamped once; completion/cancellation stops everything."
+    },
+    "overdue_notified_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "One overdue reminder after the configured grace (in-app + push) \u2014 stamped once, never repeated."
+    },
+    "escalation_notified_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "One supervisor escalation (email + Telegram + push, module-owned channels) after the configured additional delay \u2014 stamped once, never repeated."
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "FIXTURE MARKER: true only for isolated test-tenant fixtures \u2014 fixture notifications never reach real devices."
+    }
+  },
+  "required": [
+    "customer_id",
+    "ob_reference",
+    "source",
+    "scope",
+    "control_room_id",
+    "title",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

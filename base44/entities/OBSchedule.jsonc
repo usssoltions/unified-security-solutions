@@ -1,0 +1,292 @@
+{
+  "name": "OBSchedule",
+  "type": "object",
+  "description": "Task & OB Scheduling module: a Digital Occurrence Book (OB) check schedule \u2014 a recurring or specified-times series of OB checks owned by ONE control room of ONE customer, either Overall control-room scope (no site) or Specific-site scope. Configured by an authorised administrator/supervisor: title + clear instructions, cadence (every N minutes OR one/more specified times), active days, start/end dates, operating window (incl. overnight and 24-hour), overdue grace period, escalation delay and whether evidence is required. Intervals are anchored to the schedule's window START TIME, never to the previous completion. Occurrence generation is server-side, bounded and deduplicated by occurrence_key ('<scheduleId>:<operatingDate>:<minutesFromWindowStart>') \u2014 scheduler retries, overlapping runs and schedule edits can never duplicate checks; editing a schedule preserves completed/cancelled history and cleanly regenerates only future PENDING occurrences. GATEWAY-ONLY ACCESS: all tenant read/write flows through the obAccess gateway (server-side tenant/control-room/site resolution, server-side Digital OB entitlement gate); direct client access is restricted to platform administration by RLS. No payment functionality.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer ownership \u2014 server-resolved, never client-trusted."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "OB check title (e.g. 'Electric fence patrol check')."
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Clear instructions describing exactly what the controller must perform and observe for this check."
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "overall",
+        "site"
+      ],
+      "description": "'overall' = the check belongs to the control room with NO individual site; 'site' = bound to one authorised site of the customer. Both scopes can coexist for the same customer. An overall check never auto-completes a site-specific check."
+    },
+    "site_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Authorised customer site (scope 'site' only; validated server-side against the customer's own sites)."
+    },
+    "site_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the site name for display/reporting."
+    },
+    "control_room_id": {
+      "type": "string",
+      "description": "Responsible control room \u2014 server-validated as one of the customer's own rooms."
+    },
+    "control_room_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Snapshot of the control room name for display/reporting."
+    },
+    "assigned_operator_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional assigned Control Room Operator (same-customer, room-authorised, validated server-side). When unset, every authorised operator of the room may record the check."
+    },
+    "assigned_operator_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cadence": {
+      "type": "string",
+      "enum": [
+        "interval",
+        "times"
+      ],
+      "description": "'interval' = every N minutes within the operating window (anchored to window_start); 'times' = one or more specified HH:MM times inside the window."
+    },
+    "every_n_minutes": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Interval cadence step in MINUTES (hours are expressed as minutes, e.g. every 2 hours = 120). Anchored to the window start time: 06:00 start with a 120-minute interval produces 06:00, 08:00, 10:00 \u2014 a completion at 08:15 NEVER moves the next check to 10:15."
+    },
+    "specified_times": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Specified cadence: SAST HH:MM times (each inside the operating window, validated server-side)."
+    },
+    "active_days": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "default": [],
+      "description": "Active operating DAYS of the SCHEDULE (0=Sunday\u20266=Saturday), applied to the operating (window-start) date. Empty = every day."
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "First operating date (SAST YYYY-MM-DD) \u2014 also the interval anchor date."
+    },
+    "end_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date",
+      "description": "Optional last operating date (inclusive)."
+    },
+    "window_start": {
+      "type": "string",
+      "description": "Operating window start, SAST HH:MM."
+    },
+    "window_end": {
+      "type": "string",
+      "description": "Operating window end, SAST HH:MM. Earlier than window_start = overnight window (spans midnight, e.g. 18:00\u201306:00). window_start == window_end == '00:00' = 24-hour operation."
+    },
+    "window_end_inclusive": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the operating window's END time itself is included (an interval check may fall exactly on window_end; a specified time equal to window_end is accepted only when this is true). Displayed in the UI."
+    },
+    "overdue_grace_minutes": {
+      "type": "number",
+      "default": 15,
+      "description": "Grace period AFTER the due time before an incomplete check is reminded as overdue (and counted overdue rather than within-grace in reports)."
+    },
+    "escalation_delay_minutes": {
+      "type": "number",
+      "default": 30,
+      "description": "Additional delay after the overdue reminder before SUPERVISOR ESCALATION (email + Telegram + push to the room's operators and the customer's administrators) is sent, if the check is still incomplete."
+    },
+    "evidence_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, a scheduled check cannot be recorded as complete without at least one evidence attachment."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "cancelled"
+      ],
+      "default": "active",
+      "description": "active = generates occurrences; paused = generation and reminders STOP (existing pending occurrences are cancelled with reason 'schedule_paused' at pause time \u2014 resuming NEVER back-fills or floods: generation restarts cleanly from the resume moment); cancelled = stopped permanently, records preserved."
+    },
+    "paused_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "resumed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "cancelled_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "cancelled_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "change_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_id": {
+            "type": "string"
+          },
+          "actor_name": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "description": "created | edited | paused | resumed | cancelled"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "description": "Server-appended audit history of every schedule change, activation, pause/resume and cancellation."
+    },
+    "created_by_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "FIXTURE MARKER: true only for isolated test-tenant fixtures. Never set by the normal creation path."
+    }
+  },
+  "required": [
+    "customer_id",
+    "title",
+    "scope",
+    "control_room_id",
+    "cadence",
+    "start_date",
+    "window_start",
+    "window_end"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}
