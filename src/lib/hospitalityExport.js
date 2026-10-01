@@ -188,7 +188,7 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
   const drawColHead = (yy) => {
     doc.setFillColor(...primary);
     doc.rect(M, yy, W2, HEAD_H, "F");
-    doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(FONT);
+    doc.setTextColor(255); doc.setFont("NimbusSans", "bold"); doc.setFontSize(FONT);
     COLS.forEach(([h], i) => doc.text(h, colX[i] + PADX, yy + 3.2));
     return yy + HEAD_H;
   };
@@ -197,29 +197,34 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
   const startPage = (showTotals) => {
     if (pageIndex > 0) doc.addPage();
     pageIndex++;
-    let hy = 5;
-    addLogo(doc, logoPrimary, M, hy, 40, 11, false);
-    addLogo(doc, logoSecondary, W - M, hy + 0.5, 36, 10, true);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...primary);
-    doc.text(`${brand?.brand_name || ""} — Hospitality Visits`, W / 2, hy + 3.5, { align: "center" });
-    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(90);
-    doc.text(`${filterSummary}  ·  ${siteLine}`, W / 2, hy + 7.5, { align: "center", maxWidth: W2 - 90 });
-    doc.setDrawColor(...primary); doc.setLineWidth(0.4); doc.line(M, hy + 10.5, W - M, hy + 10.5);
-    hy += 12.8;
+    let hy = 4;
+    addLogo(doc, logoPrimary, M, hy, 40, 9.5, false);
+    addLogo(doc, logoSecondary, W - M, hy + 0.5, 36, 8.5, true);
+    doc.setFont("NimbusSans", "bold"); doc.setFontSize(11); doc.setTextColor(...primary);
+    doc.text(`${brand?.brand_name || ""} — Hospitality Visits`, W / 2, hy + 3.4, { align: "center" });
+    doc.setFont("NimbusSans", "normal"); doc.setFontSize(7); doc.setTextColor(90);
+    // No maxWidth option: jsPDF would stretch the line to that width, producing
+    // uneven character spacing. Split manually and centre the natural-width lines.
+    const subLines = doc.splitTextToSize(`${filterSummary}  ·  ${siteLine}`, W2);
+    subLines.forEach((ln, i) => doc.text(ln, W / 2, hy + 6.8 + i * 2.8, { align: "center" }));
+    const subExtra = (subLines.length - 1) * 2.8;
+    doc.setDrawColor(...primary); doc.setLineWidth(0.4); doc.line(M, hy + 9.6 + subExtra, W - M, hy + 9.6 + subExtra);
+    let yy = hy + 10.0 + subExtra;
     if (showTotals) {
       const t = computeTotals(visits);
       const presence = Object.entries(t.byPresence).map(([k, n]) => `${PRESENCE_LABELS[k]}: ${n}`).join(" · ");
       const categories = Object.entries(t.byCategory).map(([k, n]) => `${HOSP_CATEGORY_LABELS[k]} ${n}`).join(" · ");
-      doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(30);
-      doc.text(`Total visits: ${t.total} — ${presence}`, M, hy);
+      doc.setFontSize(7.5); doc.setFont("NimbusSans", "normal"); doc.setTextColor(30);
+      doc.text(`Total visits: ${t.total} — ${presence}`, M, yy);
       doc.setTextColor(110);
-      doc.text("All times SAST (Africa/Johannesburg, UTC+2)", W - M, hy, { align: "right" });
-      hy += 3.3;
+      doc.text("All times SAST (Africa/Johannesburg, UTC+2)", W - M, yy, { align: "right" });
+      yy += 3.0;
       doc.setTextColor(90);
-      doc.text(doc.splitTextToSize(`By category: ${categories}`, W2), M, hy);
-      hy += 3.3 * Math.min(2, doc.splitTextToSize(`By category: ${categories}`, W2).length);
+      const catLines = doc.splitTextToSize(`By category: ${categories}`, W2);
+      doc.text(catLines, M, yy);
+      yy += 3.0 * catLines.length;
     }
-    y = drawColHead(hy);
+    y = drawColHead(yy);
   };
 
   // One data row (or site band). Long values wrap; the row grows as needed.
@@ -229,7 +234,7 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
     const rowH = Math.max(ROW_MIN, lines * LINE + 1.0);
     if (y + rowH > BOTTOM) startPage(false);
     if (fill) { doc.setFillColor(242, 245, 249); doc.rect(M, y, W2, rowH, "F"); }
-    doc.setFont("helvetica", "normal"); doc.setFontSize(FONT); doc.setTextColor(30);
+    doc.setFont("NimbusSans", "normal"); doc.setFontSize(FONT); doc.setTextColor(30);
     wrapped.forEach((ws, i) => ws.forEach((ln, li) => doc.text(ln, colX[i] + PADX, y + 3.0 + li * LINE)));
     y += rowH;
   };
@@ -237,7 +242,7 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
   const drawSiteBand = (name, count) => {
     if (y + BAND_H > BOTTOM) startPage(false);
     doc.setFillColor(...primary); doc.rect(M, y, W2, BAND_H, "F");
-    doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(FONT);
+    doc.setTextColor(255); doc.setFont("NimbusSans", "bold"); doc.setFontSize(FONT);
     doc.text(`Site — ${name} (${count} ${count === 1 ? "visit" : "visits"})`, M + PADX, y + 3.4);
     y += BAND_H;
   };
@@ -263,7 +268,7 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
   const now = fmtSastCell(new Date().toISOString());
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(120);
+    doc.setFont("NimbusSans", "normal"); doc.setFontSize(6.5); doc.setTextColor(120);
     doc.text(
       `Generated ${now} SAST · Evidence and identity numbers are excluded from this report · Page ${p} of ${pages}`,
       W / 2, H - 4, { align: "center" }
