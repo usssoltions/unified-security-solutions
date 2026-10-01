@@ -108,7 +108,7 @@ export default function PreLoginBrandShell({ onSignIn }) {
             <img
               src={brand.secondaryLogo}
               alt="Secondary company logo"
-              className="h-9 w-auto object-contain mx-auto mt-7"
+              className="h-[54px] w-auto object-contain mx-auto mt-6"
             />
           )}
         </div>
