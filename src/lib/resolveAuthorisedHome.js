@@ -22,7 +22,7 @@ import { isPlatformAdminUser } from "@/lib/platformAdmin";
 // Ordered safe fallbacks per role — CORE/utility pages that never require a
 // commercial module. Profile is always last because every role can reach it.
 const ROLE_FALLBACK_PAGES = {
-  guard: ["GuardShift", "Profile"],
+  guard: ["GuardShift", "AccessControl", "Profile"],
   dispatcher: ["Profile"],
   // Legacy tenant "admin" (Customer Admin operations): when the role home
   // (ControlRoom, OPERATIONS) is unlicensed, the licensed standalone Task
@@ -76,6 +76,15 @@ export function resolveAuthorisedHome(user, entitlements = []) {
     );
     if (hasTasks && !hasSecurity && ROLE_PAGES.guard && ROLE_PAGES.guard.has("ScheduledTasks")) {
       return createPageUrl("ScheduledTasks");
+    }
+    // ACCESS-ONLY GUARD LANDING — a guard whose customer licenses ONLY the
+    // ACCESS module (no OPERATIONS / COMPLETE_SECURITY suite, no Task
+    // Scheduling) lands directly on the existing Access Control page: the
+    // page is role-permitted and module-entitled, and it has no shift or
+    // clock-in requirement. Strictly fail-closed.
+    const hasAccess = entitlements.some((e) => e.module_key === "ACCESS" && entActive(e));
+    if (hasAccess && !hasSecurity && ROLE_PAGES.guard && ROLE_PAGES.guard.has("AccessControl")) {
+      return createPageUrl("AccessControl");
     }
   }
 
