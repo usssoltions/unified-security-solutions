@@ -1,7 +1,7 @@
 {
   "name": "Site",
   "type": "object",
-  "description": "Security site with checkpoints and patrol configuration. TENANT ACCESS PATTERN: this entity carries NO {{user.data.*}} RLS rules \u2014 session tokens do not reliably expose custom User fields (customer_id/reseller_id), so the previous tenant-scoping rules could never match and direct client reads leaked every tenant's sites (confirmed cross-tenant defect, fixed 2026-09). ALL tenant reads/writes go through the siteAccess backend function, which resolves the caller's tenant server-side from their User record (the proven attendanceAccess/scheduledTaskAccess pattern), validates site/customer/reseller scope on every operation, and fails closed with 403 for cross-tenant access. Direct client access below is restricted to platform admins only \u2014 Customer A can never retrieve or mutate Customer B's sites, checkpoints or geofences.",
+  "description": "Security site with checkpoints and patrol configuration. TENANT ACCESS PATTERN: this entity carries NO {{user.data.*}} RLS rules \u2014 ALL tenant reads/writes go through the siteAccess backend function, which resolves the caller's tenant server-side, validates site/customer/reseller scope on every operation, and fails closed with 403 for cross-tenant access. Direct client access is restricted to platform admins only.",
   "properties": {
     "name": {
       "type": "string"
@@ -125,16 +125,16 @@
               "random_timing": {
                 "type": "boolean",
                 "default": false,
-                "description": "TRUE RANDOM PATROL TIMING: when true the generator produces unpredictable (but deterministic/idempotent per site+date) patrol times inside this schedule's operational window instead of fixed start_time + frequency_minutes intervals."
+                "description": "TRUE RANDOM PATROL TIMING: unpredictable (deterministic/idempotent per site+date) patrol times inside the window."
               },
               "patrol_count": {
                 "type": "number",
-                "description": "Number of patrols to generate inside the window when random_timing is on. Falls back to the frequency-derived count when unset."
+                "description": "Number of patrols to generate inside the window when random_timing is on."
               },
               "min_spacing_minutes": {
                 "type": "number",
                 "default": 45,
-                "description": "Minimum spacing between randomly-timed patrols (enforced by construction of the generation slots)."
+                "description": "Minimum spacing between randomly-timed patrols."
               }
             }
           },
@@ -186,12 +186,26 @@
         "grid_gate_hospitality"
       ],
       "default": "default",
-      "description": "Site-level access-control workflow selection, SEPARATE from customer branding and demo-data generation \u2014 never activated by a logo, app name, email domain or PWA slug, only by this explicit setting. 'default' = existing scan/vehicle/pedestrian/QR access-control flow (unchanged). 'grid_gate_hospitality' = the GRID GATE Hospitality custom entry workflow (ten documented categories: Check Ins, Contractors, Deliveries, Event or Function Visitor, Guests, Service Provider, Staff, Uber Eats / Mr D, Uber, Visitors), enforced server-side by the finalizeAccessEntry gateway's hospitality_submit action \u2014 a client-supplied workflow selection is never trusted; the gateway always re-resolves this field from the authorised site record. Managed through the siteAccess gateway only."
+      "description": "Site-level access-control workflow selection, never activated by branding. 'default' = existing scan/vehicle/pedestrian/QR flow; 'grid_gate_hospitality' = GRID GATE Hospitality workflow enforced server-side by finalizeAccessEntry hospitality_submit. Managed through the siteAccess gateway only."
     },
     "access_workflow_version": {
       "type": "number",
       "default": 1,
-      "description": "Snapshot number stamped onto every HospitalityVisit created while this workflow is active, so a later change to the site's workflow configuration never reinterprets historical visit records."
+      "description": "Snapshot number stamped onto every HospitalityVisit."
+    },
+    "hospitality_grant_lock_token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL per-site grant mutex token (atomic conditional acquire) serialising hospitality admission decisions so two requests can never both commit a grant for the same person. Never exposed to UI."
+    },
+    "hospitality_grant_lock_expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL expiry of the grant mutex (stale-holder recovery). A holder that lost its lock voids its own uncommitted entry (never a fabricated exit)."
     }
   },
   "required": [

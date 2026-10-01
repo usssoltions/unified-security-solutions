@@ -6,7 +6,8 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
-import { validateHospitalitySubmission, CATEGORY_PERSON_TYPE, CATEGORY_LABELS, HOSPITALITY_WORKFLOW_ID, HOSPITALITY_CATEGORIES } from '../../shared/gridGateWorkflow.ts';
+import { validateHospitalitySubmission, CATEGORY_PERSON_TYPE, CATEGORY_LABELS, HOSPITALITY_WORKFLOW_ID, HOSPITALITY_CATEGORIES, CONFIRMATION_PARTY, hospitalityIdentityKey } from '../../shared/gridGateWorkflow.ts';
+import { verifyEvidenceOwnership, bindEvidence, signOwnedEvidence } from '../../shared/hospitalityEvidence.ts';
 
 /**
  * finalizeAccessEntry — Backend access control finalisation.
@@ -826,7 +827,13 @@ export default async function(req: Request): Promise<Response> {
         pedestrian_only: category === 'uber_eats_mrd' ? (d.pedestrian_only === true) : !!d.pedestrian_only,
         identity_document_type: d.identity_document_type || null,
         identity_document_photo_uri: d.identity_document_photo_uri || null,
+        driver_licence_number: d.driver_licence_number || null,
       };
+      // Visitors who KNEW the room number: reception is not applicable —
+      // stored as null (not applicable), never as a rejected confirmation.
+      if (category === 'visitor' && answers.room_number_source === 'provided') {
+        answers.reception_confirmed = null;
+      }
 
       // Resolve or create the draft HospitalityVisit. A supplied id must
       // belong to this exact customer+site and still be 'pending' — it can
@@ -859,20 +866,27 @@ export default async function(req: Request): Promise<Response> {
         const reusable = tokenRows.find((r: any) => r.status === 'pending' || r.status === 'confirming');
         if (reusable) { visit = reusable; }
       }
+      const svc = base44.asServiceRole.entities;
+      const identityKey = hospitalityIdentityKey(person_name, phoneCheck.value);
       const visitFields = {
         category, person_name, person_phone: phoneCheck.value || null,
         vehicle_registration: vehicle_registration || null,
         vehicle_licence_disc_number: vehicle_licence_disc_number || null,
-        driver_licence_number: driver_licence_number || null,
         sa_id_number: sa_id_number || null,
         scan_method: scan_method || null,
         submit_token: submit_token ? String(submit_token) : null,
+        identity_key: identityKey,
+        confirmation_party: CONFIRMATION_PARTY[category] || null,
         ...answers,
       };
       if (visit) {
-        visit = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, visitFields);
+        // Answers may only change while the visit is still PENDING (atomic
+        // conditional update) — a visit being confirmed is never rewritten
+        // underneath the request that holds its confirmation claim.
+        await svc.HospitalityVisit.updateMany({ id: String(visit.id), status: 'pending' }, { $set: visitFields }).catch(() => null);
+        visit = ((await svc.HospitalityVisit.filter({ id: String(visit.id) }).catch(() => [])) || [])[0] || visit;
       } else {
-        visit = await base44.asServiceRole.entities.HospitalityVisit.create({
+        visit = await svc.HospitalityVisit.create({
           customer_id: recordCid,
           reseller_id: recordRid,
           site_id,
@@ -885,46 +899,30 @@ export default async function(req: Request): Promise<Response> {
           ...visitFields,
         });
       }
+      const pendingResp = (code: string, error: string, extra: any = {}) => Response.json({
+        success: false, pending: true, code, error,
+        hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category], ...extra });
 
       // SERVER-SIDE VALIDATION — the single authoritative decision.
       const validation = validateHospitalitySubmission(category, answers);
-      if (!validation.ok) {
-        return Response.json({
-          success: false, pending: true,
-          code: validation.code, error: validation.error,
-          hospitality_visit_id: visit.id,
-          category_label: CATEGORY_LABELS[category],
-        });
-      }
+      if (!validation.ok) return pendingResp(validation.code, validation.error);
 
-      // EVIDENCE PROBE — every photo reference must be a private-storage uri
-      // of THIS app (never an arbitrary external/other-service reference) and
-      // must actually resolve. Format is checked here; existence is probed by
-      // minting a short-lived signed URL server-side (the same access the
-      // authorised viewer gets). A fabricated, foreign or dead reference
-      // keeps the visit pending — evidence can never satisfy validation by
-      // being a non-empty string alone.
-      const PRIVATE_URI_PREFIX = 'mp/private/';
+      // EVIDENCE OWNERSHIP — existence is not ownership. Every uri must have a
+      // server-created HospitalityEvidence record for THIS customer + site and
+      // THIS upload session (submit_token) or already be bound to this visit.
       const evidenceUris = [
         answers.firearm_photo_uri, answers.po_invoice_photo_uri,
         answers.food_photo_uri, answers.delivery_person_photo_uri,
-        d.identity_document_photo_uri,
+        answers.identity_document_photo_uri,
         ...(answers.vehicle_photo_uris || []),
         ...(answers.staff_declaration_photo_uris || []),
-      ].filter(Boolean);
-      if (evidenceUris.some((u) => !String(u).startsWith(PRIVATE_URI_PREFIX))) {
-        return Response.json({ success: false, pending: true, code: 'evidence_invalid',
-          error: 'A captured photo is not a valid private evidence file. Re-capture the photo.',
-          hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category] });
-      }
-      for (const uri of evidenceUris) {
-        try {
-          await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: uri, expires_in: 60 });
-        } catch (_) {
-          return Response.json({ success: false, pending: true, code: 'evidence_invalid',
-            error: 'A captured photo could not be verified. Re-capture the photo.',
-            hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category] });
-        }
+      ].filter(Boolean).map(String);
+      const own = await verifyEvidenceOwnership(base44.asServiceRole, evidenceUris, {
+        customer_id: recordCid, site_id: String(site_id), submit_token: visit.submit_token || null, visit_id: visit.id });
+      if (!own.ok) {
+        await auditAccess(base44.asServiceRole, 'access.hospitality_evidence_rejected', caller, {
+          customer_id: recordCid, site_id, gate_name, notes: `Evidence rejected for visit ${visit.id}: ${own.reason}` });
+        return pendingResp('evidence_invalid', 'A captured photo could not be verified for this visit. Re-capture the photo.');
       }
 
       // Device registration requirement — reused unchanged from the default flow.
@@ -938,239 +936,201 @@ export default async function(req: Request): Promise<Response> {
       }
       const deviceReg = deviceCheck.reg || null;
 
-      // Duplicate active entry + blacklist — reused unchanged, tenant-scoped.
+      // BLACKLIST — tenant-scoped, unchanged rule (document/vehicle identifiers).
       let blacklistMatch = null;
       if (sa_id_number || driver_licence_number || vehicle_registration) {
-        const dupFilter: any = recordCid ? { customer_id: recordCid, status: 'inside' } : { status: 'inside' };
-        if (site_id) dupFilter.site_id = site_id;
-        const dups = await base44.asServiceRole.entities.AccessLog.filter(dupFilter, '-created_date', 50);
-        const nmNorm = String(person_name || '').trim().toLowerCase();
-        const isDup = (dups || []).find((r: any) => {
-          if (sa_id_number && r.sa_id_number === sa_id_number) return true;
-          if (driver_licence_number && r.driver_licence_number === driver_licence_number) return true;
-          if (vehicle_registration && r.vehicle_registration === vehicle_registration) return true;
-          // The hospitality workflow does not require document/vehicle
-          // identifiers, so a retried submission from a restarted flow (new
-          // token) must still never create a second ACTIVE entry for the same
-          // person at this site — exact same-name match among inside records.
-          // Exited records never match, so a legitimate re-entry after an
-          // exit is unaffected.
-          if (nmNorm && r.person_name && String(r.person_name).trim().toLowerCase() === nmNorm) return true;
-          return false;
-        });
-        if (isDup) {
-          await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
-            customer_id: recordCid, site_id, gate_name, access_log_id: isDup.id,
-            notes: `Hospitality duplicate entry blocked — already inside (record ${isDup.id})`,
-          });
-          // The draft visit created for this attempt is auto-cancelled so a
-          // blocked duplicate never lingers as a permanently pending visit.
-          await base44.asServiceRole.entities.HospitalityVisit.updateMany(
-            { id: String(visit.id), status: 'pending' },
-            { $set: { status: 'cancelled', cancel_reason: `Duplicate active entry for the same person (record ${isDup.id})`, cancelled_at: new Date().toISOString(), cancelled_by_id: caller.id } }
-          ).catch(() => null);
-          return Response.json({ error: 'An active entry already exists.', duplicate: true, existing_log_id: isDup.id }, { status: 409 });
-        }
         const blFilter: any = recordCid ? { customer_id: recordCid, active: true } : { active: true };
-        const blEntries = await base44.asServiceRole.entities.BlacklistEntry.filter(blFilter, '-created_date', 200).catch(() => []);
+        const blEntries = await svc.BlacklistEntry.filter(blFilter, '-created_date', 200).catch(() => []);
         blacklistMatch = (blEntries || []).find((b: any) => {
-          if (b.identifier_type === 'sa_id' && sa_id_number && b.identifier_value === sa_id_number.toUpperCase().replace(/\s/g, '')) return true;
-          if (b.identifier_type === 'driver_licence' && driver_licence_number && b.identifier_value === driver_licence_number.toUpperCase().replace(/\s/g, '')) return true;
-          if (b.identifier_type === 'vehicle_registration' && vehicle_registration && b.identifier_value === vehicle_registration.toUpperCase().replace(/\s/g, '')) return true;
+          if (b.identifier_type === 'sa_id' && sa_id_number && b.identifier_value === String(sa_id_number).toUpperCase().replace(/\s/g, '')) return true;
+          if (b.identifier_type === 'driver_licence' && driver_licence_number && b.identifier_value === String(driver_licence_number).toUpperCase().replace(/\s/g, '')) return true;
+          if (b.identifier_type === 'vehicle_registration' && vehicle_registration && b.identifier_value === String(vehicle_registration).toUpperCase().replace(/\s/g, '')) return true;
           return false;
         }) || null;
       }
 
-      const nowIso = new Date().toISOString();
-      // TOKEN TIEBREAK — two concurrent FIRST attempts carrying the same
-      // token can both create their own visit (neither saw the other's at
-      // lookup time). Deterministic single-survivor rule (same pattern as the
-      // default entry flow's post-commit duplicate tiebreak): the
-      // EARLIEST-created visit wins; the later one self-cancels and follows
-      // the winner's outcome.
-      if (submit_token) {
-        const same = ((await base44.asServiceRole.entities.HospitalityVisit
-          .filter({ customer_id: recordCid, site_id, category, submit_token: String(submit_token) }, '-created_date', 10).catch(() => [])) || [])
-          .filter((r: any) => ['pending', 'confirming', 'confirmed'].includes(r.status))
-          .sort((a: any, b: any) =>
-            String(a.created_date || '').localeCompare(String(b.created_date || '')) ||
-            String(a.id).localeCompare(String(b.id)));
-        const earliest = same[0];
-        if (earliest && String(earliest.id) !== String(visit.id)) {
-          await base44.asServiceRole.entities.HospitalityVisit.updateMany(
-            { id: String(visit.id), status: 'pending' },
-            { $set: { status: 'cancelled', cancel_reason: 'Duplicate concurrent submission (token tiebreak)', cancelled_at: nowIso, cancelled_by_id: caller.id } }
-          ).catch(() => null);
-          for (let i = 0; i < 6; i++) {
-            await new Promise((r) => setTimeout(r, 400));
-            const w = ((await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(earliest.id) }).catch(() => [])) || [])[0] || null;
-            if (w && w.status === 'confirmed') {
-              const l = ((await base44.asServiceRole.entities.AccessLog.filter({ id: w.access_log_id }).catch(() => [])) || []);
-              return Response.json({ success: true, idempotent: true, access_log: l[0] || null, hospitality_visit: w });
-            }
-            if (w && w.status === 'cancelled') break;
-          }
-          return Response.json({ success: false, pending: true, code: 'confirmation_in_progress',
-            error: 'This visit is being confirmed by another request. Check the live access log in a moment.',
-            hospitality_visit_id: earliest.id, category_label: CATEGORY_LABELS[category] });
-        }
-      }
-
-      // CAS CONFIRMATION CLAIM — being "in the same function call" is not
-      // atomicity: the AccessLog create and the visit confirmation are two
-      // separate writes. Only ONE request may proceed to create the
-      // AccessLog: the claim is a conditional (compare-and-set) update of the
-      // PENDING visit to 'confirming'; a concurrent loser updates ZERO rows,
-      // sees the winner's outcome and returns it (idempotent success) —
-      // never a second visit, never a second AccessLog. A claim older than 2
-      // minutes is STALE (crashed/abandoned claimant): it is recovered — an
-      // orphan AccessLog created by the dead claimant is adopted and the
-      // confirmation completed, otherwise the claim is released back to
-      // 'pending' so the submission can be retried safely.
+      /* ── ATOMIC CONFIRMATION CLAIM ───────────────────────────────────────
+       * updateMany is a server-side conditional update returning the number
+       * of records it changed (verified: 12 concurrent claims → exactly one
+       * updated:1). The claim matches a PENDING visit, or a CONFIRMING visit
+       * whose claim is older than 2 minutes (atomic steal from a crashed
+       * claimant). The winner holds a unique confirm_claim_token; every later
+       * write on this visit is conditional on that token, so a stale claimant
+       * can never overwrite a replacement claimant's result. */
       const CLAIM_TTL_MS = 2 * 60 * 1000;
-      let claimTs = nowIso;
-      let claimed = false;
-      for (let attempt = 0; attempt < 2 && !claimed; attempt++) {
-        await base44.asServiceRole.entities.HospitalityVisit.updateMany(
-          { id: String(visit.id), status: 'pending' },
-          { $set: { status: 'confirming', confirm_claimed_at: claimTs } }
+      const myClaim = crypto.randomUUID();
+      const claimRes: any = await svc.HospitalityVisit.updateMany(
+        { id: String(visit.id), $or: [
+          { status: 'pending' },
+          { status: 'confirming', confirm_claimed_at: { $lt: new Date(Date.now() - CLAIM_TTL_MS).toISOString() } },
+        ] },
+        { $set: { status: 'confirming', confirm_claim_token: myClaim, confirm_claimed_at: new Date().toISOString() } },
+      ).catch(() => null);
+      const readVisit = async () => ((await svc.HospitalityVisit.filter({ id: String(visit.id) }).catch(() => [])) || [])[0] || null;
+      const logById = async (id: any) => id ? (((await svc.AccessLog.filter({ id: String(id) }).catch(() => [])) || [])[0] || null) : null;
+      if (!claimRes || !claimRes.updated) {
+        const cur = await readVisit();
+        if (cur && cur.status === 'confirmed') {
+          return Response.json({ success: true, idempotent: true, access_log: await logById(cur.access_log_id), hospitality_visit: cur });
+        }
+        return pendingResp('confirmation_in_progress', 'This visit is being confirmed by another request. Check the live access log in a moment.');
+      }
+      const releaseClaim = () => svc.HospitalityVisit.updateMany(
+        { id: String(visit.id), status: 'confirming', confirm_claim_token: myClaim },
+        { $set: { status: 'pending', confirm_claim_token: null, confirm_claimed_at: null } }).catch(() => null);
+      const cancelOwnDraft = (reason: string, dupOf: string | null) => svc.HospitalityVisit.updateMany(
+        { id: String(visit.id), status: 'confirming', confirm_claim_token: myClaim },
+        { $set: { status: 'cancelled', cancel_reason: reason, duplicate_of_access_log_id: dupOf,
+          cancelled_at: new Date().toISOString(), cancelled_by_id: caller.id,
+          cancelled_by_name: caller.display_name || caller.full_name || '', confirm_claim_token: null } }).catch(() => null);
+      const voidLog = (id: string, reason: string, canonical: string | null) => svc.AccessLog.update(id, {
+        status: 'voided', void_reason: reason, voided_at: new Date().toISOString(), canonical_access_log_id: canonical,
+      }).catch(() => null);
+
+      /* ── PER-SITE GRANT LOCK ─────────────────────────────────────────────
+       * The platform has no unique indexes or multi-record transactions, so
+       * the duplicate-presence decision is serialised per site with an atomic
+       * conditional mutex on the Site record (null/expired → my token). The
+       * duplicate check, AccessLog create and confirmation stamp all happen
+       * inside it. A holder that overran its lease re-checks it (fence) after
+       * creating its entry and VOIDS that entry if the lease was lost — a void
+       * correction, never a fabricated exit. */
+      const LOCK_TTL_MS = 30 * 1000;
+      const lockTok = crypto.randomUUID();
+      let locked = false;
+      for (let i = 0; i < 25 && !locked; i++) {
+        const r: any = await svc.Site.updateMany(
+          { id: String(site_id), $or: [
+            { hospitality_grant_lock_token: null },
+            { hospitality_grant_lock_expires_at: { $lt: new Date().toISOString() } },
+          ] },
+          { $set: { hospitality_grant_lock_token: lockTok, hospitality_grant_lock_expires_at: new Date(Date.now() + LOCK_TTL_MS).toISOString() } },
         ).catch(() => null);
-        const cv = ((await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(visit.id) }).catch(() => [])) || [])[0] || null;
-        if (cv && cv.status === 'confirming' && cv.confirm_claimed_at === claimTs) { claimed = true; visit = cv; break; }
-        if (cv && cv.status === 'confirmed') {
-          const l = ((await base44.asServiceRole.entities.AccessLog.filter({ id: cv.access_log_id }).catch(() => [])) || []);
-          return Response.json({ success: true, idempotent: true, access_log: l[0] || null, hospitality_visit: cv });
-        }
-        if (cv && cv.status === 'confirming' && cv.confirm_claimed_at &&
-            (Date.now() - new Date(cv.confirm_claimed_at).getTime()) > CLAIM_TTL_MS) {
-          const orphans = ((await base44.asServiceRole.entities.AccessLog
-            .filter({ customer_id: recordCid, status: 'inside' }, '-created_date', 50).catch(() => [])) || [])
-            .filter((l: any) => String(l.notes || '').includes(`visit ${visit.id}`));
-          if (orphans.length) {
-            const fin = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, {
-              status: 'confirmed', access_log_id: orphans[0].id,
-              confirmed_at: new Date().toISOString(),
-            }).catch(() => null);
-            if (fin) return Response.json({ success: true, recovered: true, access_log: orphans[0], hospitality_visit: fin });
+        if (r && r.updated) locked = true;
+        else await new Promise((res) => setTimeout(res, 150 + Math.floor(Math.random() * 200)));
+      }
+      if (!locked) {
+        await releaseClaim();
+        return pendingResp('gate_busy', 'Another entry is being processed at this site. Please submit again.');
+      }
+      const releaseLock = () => svc.Site.updateMany(
+        { id: String(site_id), hospitality_grant_lock_token: lockTok },
+        { $set: { hospitality_grant_lock_token: null, hospitality_grant_lock_expires_at: null } }).catch(() => null);
+
+      const nowIso = new Date().toISOString();
+      let log: any = null;
+      let outcome: any = null;
+      try {
+        // (1) Same upload session already confirmed on ANOTHER visit (two
+        // concurrent first attempts with one token) → this draft is cancelled
+        // as a duplicate submission and the ORIGINAL result is returned.
+        if (visit.submit_token) {
+          const twin = (((await svc.HospitalityVisit.filter({ customer_id: recordCid, site_id, submit_token: visit.submit_token, status: 'confirmed' }, '-created_date', 5).catch(() => [])) || [])
+            .find((r: any) => r.id !== visit.id)) || null;
+          if (twin) {
+            await cancelOwnDraft(`Duplicate submission of visit ${twin.id} (same submission token)`, twin.access_log_id || null);
+            outcome = Response.json({ success: true, idempotent: true, access_log: await logById(twin.access_log_id), hospitality_visit: twin });
           }
-          await base44.asServiceRole.entities.HospitalityVisit.updateMany(
-            { id: String(visit.id), status: 'confirming', confirm_claimed_at: cv.confirm_claimed_at },
-            { $set: { status: 'pending', confirm_claimed_at: null } }
-          ).catch(() => null);
-          continue;
         }
-        break;
-      }
-      if (!claimed) {
-        return Response.json({ success: false, pending: true, code: 'confirmation_in_progress',
-          error: 'This visit is being confirmed by another request. Check the live access log in a moment.',
-          hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category] });
-      }
-
-      // uber_eats_mrd is PEDESTRIAN-ONLY by validated construction — exactly
-      // one AccessLog row is created for the delivery person; the bike/car
-      // itself is never written as a separate "inside" record, so it can
-      // never inflate vehicle occupancy or be marked as being inside.
-      const log = await base44.asServiceRole.entities.AccessLog.create({
-        customer_id: recordCid,
-        reseller_id: recordRid,
-        site_id,
-        event_type: blacklistMatch ? 'denied' : 'entry',
-        status: blacklistMatch ? 'blacklisted' : 'inside',
-        person_type: CATEGORY_PERSON_TYPE[category] || 'unknown',
-        person_name,
-        person_phone: phoneCheck.value || '',
-        unit_number: answers.room_number || '',
-        gate_name,
-        site_name: siteRec.name || '',
-        scan_method,
-        sa_id_number,
-        driver_licence_number,
-        vehicle_registration,
-        vehicle_licence_disc_number,
-        vehicle_make,
-        vehicle_model,
-        vehicle_colour,
-        vehicle_licence_number,
-        scanned_data,
-        parsed_json,
-        confidence,
-        device,
-        visit_or_work: 'visit',
-        photo_url,
-        location,
-        notes: `GRID GATE Hospitality — ${CATEGORY_LABELS[category]} (visit ${visit.id})`,
-        entry_time: nowIso,
-        timestamp: nowIso,
-        guard_id: caller.id,
-        guard_name: caller.display_name || caller.full_name,
-        entry_device_registration_id: deviceReg ? deviceReg.id : null,
-        entry_device_name: deviceReg ? deviceReg.device_name : null,
-        flagged: !!blacklistMatch,
-        flag_reason: blacklistMatch ? ('Blacklist match: ' + (blacklistMatch.reason || 'banned identifier')) : undefined,
-        blacklist_match_id: blacklistMatch?.id,
-      });
-
-      visit = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, {
-        status: 'confirmed',
-        access_log_id: log.id,
-        confirmed_at: new Date().toISOString(),
-      });
-
-      // POST-COMMIT DUPLICATE TIEBREAK — a retry whose client lost its
-      // idempotency token (e.g. the guard restarted the flow after an app
-      // restart) can carry a DIFFERENT token while the person is already
-      // inside; the best-effort same-name check BEFORE the entry cannot
-      // close every race. After this entry commits it re-checks: if an
-      // EARLIER active entry for the same person at this site exists, THIS
-      // later entry immediately self-exits (deterministically the earliest
-      // entry survives). Only the microseconds between the create and this
-      // check remain as a residual window.
-      const nmTie = String(person_name || '').trim().toLowerCase();
-      if (nmTie) {
-        const activeOthers = ((await base44.asServiceRole.entities.AccessLog
-          .filter({ customer_id: recordCid, status: 'inside', site_id }, '-created_date', 50).catch(() => [])) || [])
-          .filter((l: any) => l.id !== log.id
-            && String(l.person_name || '').trim().toLowerCase() === nmTie
-            && String(l.created_date || '') <= String(log.created_date || ''));
-        if (activeOthers.length) {
-          await base44.asServiceRole.entities.AccessLog.update(log.id, {
-            status: 'exited',
-            exit_time: new Date().toISOString(),
-            exit_gate: gate_name,
-            exit_scan_method: 'manual',
-            exit_notes: `Duplicate concurrent entry for the same person — superseded by record ${activeOthers[0].id}`,
-            time_on_site_minutes: 0,
-          }).catch(() => null);
-          await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
-            customer_id: recordCid, site_id, gate_name, access_log_id: log.id,
-            notes: `Hospitality post-commit duplicate tiebreak — self-exited in favour of ${activeOthers[0].id}`,
+        const inside = outcome ? [] : ((await svc.AccessLog.filter({ customer_id: recordCid, site_id, status: 'inside' }, '-created_date', 200).catch(() => [])) || []);
+        // (2) Orphan adoption — an entry already created for THIS visit by a
+        // claimant that died before stamping is adopted, never duplicated.
+        const orphan = outcome ? null : inside.find((l: any) => l.hospitality_visit_id === visit.id);
+        if (orphan) log = orphan;
+        // (3) Duplicate presence — same person (identity key = name + mobile,
+        // or the same document/vehicle identifier) already on site. A name
+        // alone never matches.
+        if (!outcome && !log) {
+          const dup = inside.find((l: any) =>
+            (identityKey && l.identity_key === identityKey) ||
+            (sa_id_number && l.sa_id_number === sa_id_number) ||
+            (driver_licence_number && l.driver_licence_number === driver_licence_number) ||
+            (vehicle_registration && l.vehicle_registration === vehicle_registration));
+          if (dup) {
+            await cancelOwnDraft(`Duplicate — this person is already on site (entry ${dup.id})`, dup.id);
+            await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
+              customer_id: recordCid, site_id, gate_name, access_log_id: dup.id,
+              notes: `Hospitality duplicate blocked before grant — already inside (record ${dup.id}); draft visit ${visit.id} cancelled` });
+            outcome = Response.json({ error: 'This person already has an active entry on site.', duplicate: true, existing_log_id: dup.id }, { status: 409 });
+          }
+        }
+        // (4) Create the entry (uber_eats_mrd: exactly one pedestrian record;
+        // the vehicle is never written as inside).
+        if (!outcome && !log) {
+          log = await svc.AccessLog.create({
+            customer_id: recordCid, reseller_id: recordRid, site_id,
+            event_type: blacklistMatch ? 'denied' : 'entry',
+            status: blacklistMatch ? 'blacklisted' : 'inside',
+            person_type: CATEGORY_PERSON_TYPE[category] || 'unknown',
+            person_name, person_phone: phoneCheck.value || '',
+            unit_number: answers.room_number || '',
+            gate_name, site_name: siteRec.name || '',
+            scan_method, sa_id_number, driver_licence_number, vehicle_registration,
+            vehicle_licence_disc_number, vehicle_make, vehicle_model, vehicle_colour, vehicle_licence_number,
+            scanned_data, parsed_json, confidence, device,
+            visit_or_work: 'visit', photo_url, location,
+            notes: `GRID GATE Hospitality — ${CATEGORY_LABELS[category]} (visit ${visit.id})`,
+            hospitality_visit_id: visit.id, identity_key: identityKey,
+            entry_time: nowIso, timestamp: nowIso,
+            guard_id: caller.id, guard_name: caller.display_name || caller.full_name,
+            entry_device_registration_id: deviceReg ? deviceReg.id : null,
+            entry_device_name: deviceReg ? deviceReg.device_name : null,
+            flagged: !!blacklistMatch,
+            flag_reason: blacklistMatch ? ('Blacklist match: ' + (blacklistMatch.reason || 'banned identifier')) : undefined,
+            blacklist_match_id: blacklistMatch?.id,
           });
-          return Response.json({ success: false, duplicate: true, superseded_by: activeOthers[0].id,
-            error: 'An active entry already exists for this person.', existing_log_id: activeOthers[0].id }, { status: 409 });
+          // (5) Fence — still holding the lease? Otherwise void (not exit).
+          const fence: any = await svc.Site.updateMany(
+            { id: String(site_id), hospitality_grant_lock_token: lockTok },
+            { $set: { hospitality_grant_lock_expires_at: new Date(Date.now() + LOCK_TTL_MS).toISOString() } }).catch(() => null);
+          if (!fence || !fence.updated) {
+            await voidLog(log.id, 'Void correction — grant lock lease lost before commit; entry not admitted', null);
+            await releaseClaim();
+            outcome = pendingResp('gate_busy', 'The entry could not be committed safely. Please submit again.');
+          }
         }
+        // (6) Confirmation stamp — conditional on MY claim token.
+        if (!outcome && log) {
+          const st: any = await svc.HospitalityVisit.updateMany(
+            { id: String(visit.id), status: 'confirming', confirm_claim_token: myClaim },
+            { $set: { status: 'confirmed', access_log_id: log.id, confirmed_at: new Date().toISOString(), confirm_claim_token: null } }).catch(() => null);
+          if (!st || !st.updated) {
+            const cur = await readVisit();
+            if (cur && cur.status === 'confirmed' && cur.access_log_id === log.id) {
+              outcome = Response.json({ success: true, recovered: true, access_log: log, hospitality_visit: cur });
+            } else {
+              if (!orphan) await voidLog(log.id, 'Void correction — confirmation claim superseded by a replacement request', cur?.access_log_id || null);
+              outcome = cur && cur.status === 'confirmed'
+                ? Response.json({ success: true, idempotent: true, access_log: await logById(cur.access_log_id), hospitality_visit: cur })
+                : pendingResp('confirmation_in_progress', 'This visit is being confirmed by another request. Check the live access log in a moment.');
+            }
+          }
+        }
+      } finally {
+        await releaseLock();
       }
+      if (outcome) return outcome;
 
+      // Downstream effects run ONLY after the committed confirmation.
+      visit = (await readVisit()) || visit;
+      await bindEvidence(base44.asServiceRole, evidenceUris, visit.id);
       await auditAccess(base44.asServiceRole, 'access.entry', caller, {
         customer_id: recordCid, site_id, gate_name, access_log_id: log.id,
         notes: `GRID GATE Hospitality entry (${CATEGORY_LABELS[category]}) processed by ${caller.display_name || caller.full_name}`,
       });
-
       if (blacklistMatch) {
         await dispatchAccessAlert(base44, caller, log, 'Blacklisted Person Denied Entry', 'security');
       }
-
       return Response.json({ success: true, access_log: log, hospitality_visit: visit, blacklist_match: blacklistMatch ? { id: blacklistMatch.id, reason: blacklistMatch.reason } : null });
     }
 
-    /* hospitality_cancel: explicit cancellation of a PENDING visit with a
-     * recorded reason. Access was never granted for a cancelled visit — a
-     * confirmed visit (AccessLog already created) cannot be "cancelled"
-     * here; use the normal exit flow for that. */
+    /* hospitality_cancel: explicit cancellation of a PENDING visit (or a
+     * STALE abandoned confirmation claim with no entry) with a recorded
+     * reason — atomic conditional update; access was never granted. */
     if (action === 'hospitality_cancel') {
       const d = access_data || {};
       const { hospitality_visit_id, reason } = d;
-      if (!hospitality_visit_id || !reason) {
+      if (!hospitality_visit_id || !String(reason || '').trim()) {
         return Response.json({ error: 'hospitality_visit_id and reason are required' }, { status: 400 });
       }
       const rows = await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(hospitality_visit_id) }).catch(() => []);
@@ -1181,68 +1141,146 @@ export default async function(req: Request): Promise<Response> {
           if (!rid || visit.reseller_id !== rid) return Response.json({ error: 'This visit does not belong to your reseller', code: 'forbidden_cross_tenant' }, { status: 403 });
         } else if (!cid || visit.customer_id !== cid) {
           return Response.json({ error: 'This visit does not belong to your customer', code: 'forbidden_cross_tenant' }, { status: 403 });
+        } else if (caller.site_id && String(caller.site_id) !== String(visit.site_id)) {
+          return Response.json({ error: 'This visit belongs to a site not assigned to you', code: 'forbidden_site' }, { status: 403 });
         }
       }
-      if (visit.status !== 'pending') {
-        return Response.json({ error: 'Only a pending visit can be cancelled', code: 'not_pending' }, { status: 400 });
+      const staleBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const linked = ((await base44.asServiceRole.entities.AccessLog.filter({ hospitality_visit_id: visit.id }).catch(() => [])) || [])
+        .filter((l: any) => l.status !== 'voided');
+      if (linked.length) return Response.json({ error: 'This visit has an entry record — use the exit flow instead', code: 'has_entry' }, { status: 400 });
+      const res: any = await base44.asServiceRole.entities.HospitalityVisit.updateMany(
+        { id: String(visit.id), $or: [ { status: 'pending' }, { status: 'confirming', confirm_claimed_at: { $lt: staleBefore } } ] },
+        { $set: {
+          status: 'cancelled', cancel_reason: String(reason).slice(0, 400),
+          cancelled_at: new Date().toISOString(), cancelled_by_id: caller.id,
+          cancelled_by_name: caller.display_name || caller.full_name || '', confirm_claim_token: null,
+        } }).catch(() => null);
+      if (!res || !res.updated) {
+        return Response.json({ error: 'Only a pending (or abandoned) visit can be cancelled', code: 'not_pending' }, { status: 400 });
       }
-      const updated = await base44.asServiceRole.entities.HospitalityVisit.update(visit.id, {
-        status: 'cancelled',
-        cancel_reason: String(reason).slice(0, 400),
-        cancelled_at: new Date().toISOString(),
-        cancelled_by_id: caller.id,
-        cancelled_by_name: caller.display_name || caller.full_name || '',
-      });
       await auditAccess(base44.asServiceRole, 'access.hospitality_cancelled', caller, {
         customer_id: visit.customer_id, site_id: visit.site_id,
         notes: `Hospitality visit ${visit.id} (${CATEGORY_LABELS[visit.category]}) cancelled: ${reason}`,
       });
+      const updated = ((await base44.asServiceRole.entities.HospitalityVisit.filter({ id: String(visit.id) }).catch(() => [])) || [])[0];
       return Response.json({ success: true, hospitality_visit: updated });
     }
 
-    /* ── hospitality_list — authorised management inspection of custom ────
-     * answers and evidence. TENANT-SCOPED like every other action: tenant
-     * management roles see their own customer's visits; reseller admins their
-     * reseller's; platform admins full oversight. Evidence photos are NEVER
-     * exposed as raw storage uris to the client — short-lived signed URLs
-     * (300 s) are minted server-side only for authorised callers. */
+    /* ── Hospitality MANAGEMENT INSPECTION (list / evidence / report brand) ─
+     * Tenant-scoped exactly like every other action: tenant management roles
+     * see their own customer's visits (a fixed-site user only their site);
+     * reseller admins their reseller's; platform admins full oversight.
+     * Raw storage uris are NEVER returned — evidence is signed on demand,
+     * only for ownership-verified files, and identity/firearm evidence is
+     * limited to senior roles. */
+    const INSPECT_ROLES = ['admin', 'customer_admin', 'dispatcher', 'supervisor', 'management', 'control_room_operator'];
+    const SENSITIVE_ROLES = ['admin', 'customer_admin', 'management'];
+    const canInspect = isPlatformUser(caller) || isResellerAdmin(caller) || !!(cid && INSPECT_ROLES.includes(caller.role_type));
+    const canSensitive = isPlatformUser(caller) || isResellerAdmin(caller) || !!(cid && SENSITIVE_ROLES.includes(caller.role_type));
+    const inScope = (v: any) => {
+      if (isPlatformUser(caller)) return true;
+      if (isResellerAdmin(caller)) return !!rid && v.reseller_id === rid;
+      if (!cid || v.customer_id !== cid) return false;
+      return !caller.site_id || String(caller.site_id) === String(v.site_id);
+    };
+
     if (action === 'hospitality_list') {
-      const INSPECT_ROLES = ['admin', 'customer_admin', 'dispatcher', 'supervisor', 'management', 'control_room_operator'];
-      if (!isPlatformUser(caller) && !isResellerAdmin(caller) && !(cid && INSPECT_ROLES.includes(caller.role_type))) {
-        return Response.json({ error: 'Your role cannot inspect hospitality visits', code: 'forbidden_role' }, { status: 403 });
-      }
-      const qSite = (access_data || {}).site_id ? String((access_data || {}).site_id) : null;
-      const qStatus = (access_data || {}).status || null;
+      if (!canInspect) return Response.json({ error: 'Your role cannot inspect hospitality visits', code: 'forbidden_role' }, { status: 403 });
+      const a = access_data || {};
       const q: any = {};
-      if (isPlatformUser(caller)) { if (qSite) q.site_id = qSite; }
-      else if (isResellerAdmin(caller)) { q.reseller_id = rid; if (qSite) q.site_id = qSite; }
-      else { q.customer_id = cid; if (qSite) q.site_id = qSite; }
-      if (qStatus) q.status = qStatus;
-      const limit = Math.min(50, Math.max(1, Number((access_data || {}).limit) || 20));
-      const visits = (await base44.asServiceRole.entities.HospitalityVisit.filter(q, '-created_date', limit).catch(() => [])) || [];
-      const out = [];
-      for (const v of visits) {
-        const ev: any = {};
-        const sign = async (key: string, uri: any) => {
-          if (!uri) return;
-          try { const s = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: uri, expires_in: 300 }); ev[key] = s.signed_url || null; }
-          catch (_) { ev[key] = null; }
-        };
-        await sign('firearm_photo_url', v.firearm_photo_uri);
-        await sign('po_invoice_photo_url', v.po_invoice_photo_uri);
-        await sign('food_photo_url', v.food_photo_uri);
-        await sign('delivery_person_photo_url', v.delivery_person_photo_uri);
-        await sign('identity_document_photo_url', v.identity_document_photo_uri);
-        ev.vehicle_photo_urls = [];
-        for (const u of v.vehicle_photo_uris || []) { await sign('vehicle_photo_url', u); ev.vehicle_photo_urls.push(ev.vehicle_photo_url); delete ev.vehicle_photo_url; }
-        ev.staff_declaration_photo_urls = [];
-        for (const u of v.staff_declaration_photo_uris || []) { await sign('staff_photo_url', u); ev.staff_declaration_photo_urls.push(ev.staff_photo_url); delete ev.staff_photo_url; }
-        out.push({ ...v, evidence_urls: ev });
+      if (isResellerAdmin(caller) && !isPlatformUser(caller)) q.reseller_id = rid;
+      else if (!isPlatformUser(caller)) q.customer_id = cid;
+      if (!isPlatformUser(caller) && !isResellerAdmin(caller) && caller.site_id) q.site_id = String(caller.site_id);
+      else if (a.site_id) q.site_id = String(a.site_id);
+      if (a.status) q.status = String(a.status);
+      if (a.category) q.category = String(a.category);
+      if (a.date_from || a.date_to) {
+        q.created_date = {};
+        if (a.date_from) q.created_date.$gte = String(a.date_from);
+        if (a.date_to) q.created_date.$lte = String(a.date_to);
       }
-      return Response.json({ visits: out });
+      const limit = Math.min(1000, Math.max(1, Number(a.limit) || 500));
+      const visits = ((await base44.asServiceRole.entities.HospitalityVisit.filter(q, '-created_date', limit).catch(() => [])) || []).filter(inScope);
+      const logIds = visits.map((v: any) => v.access_log_id).filter(Boolean);
+      const logs = logIds.length
+        ? ((await base44.asServiceRole.entities.AccessLog.filter({ id: { $in: logIds } }, '-created_date', 1000).catch(() => [])) || [])
+        : [];
+      const logMap = new Map(logs.map((l: any) => [l.id, l]));
+      const URI_FIELDS = ['firearm_photo_uri', 'po_invoice_photo_uri', 'food_photo_uri', 'delivery_person_photo_uri', 'identity_document_photo_uri'];
+      const out = visits.map((v: any) => {
+        const l: any = v.access_log_id ? logMap.get(v.access_log_id) : null;
+        const clean: any = { ...v };
+        for (const f of URI_FIELDS) { clean[f.replace('_uri', '_present')] = !!v[f]; delete clean[f]; }
+        clean.vehicle_photo_count = (v.vehicle_photo_uris || []).length; delete clean.vehicle_photo_uris;
+        clean.staff_declaration_photo_count = (v.staff_declaration_photo_uris || []).length; delete clean.staff_declaration_photo_uris;
+        delete clean.submit_token; delete clean.confirm_claim_token; delete clean.identity_key;
+        if (!canSensitive) { delete clean.sa_id_number; delete clean.driver_licence_number; }
+        clean.entry = l ? {
+          status: l.status, entry_time: l.entry_time, gate_name: l.gate_name, guard_name: l.guard_name,
+          entry_device_name: l.entry_device_name || null, exit_time: l.exit_time || null, exit_gate: l.exit_gate || null,
+          exit_guard_name: l.exit_guard_name || null, exit_device_name: l.exit_device_name || null,
+          time_on_site_minutes: l.time_on_site_minutes ?? null, flag_reason: l.flag_reason || null,
+        } : null;
+        return clean;
+      });
+      return Response.json({ visits: out, can_view_evidence: true, can_view_sensitive: canSensitive, truncated: visits.length >= limit });
     }
 
-    return Response.json({ error: 'Invalid action. Use entry, exit, resolve_visitor, hospitality_submit, hospitality_cancel or hospitality_list' }, { status: 400 });
+    if (action === 'hospitality_evidence') {
+      if (!canInspect) return Response.json({ error: 'Your role cannot view hospitality evidence', code: 'forbidden_role' }, { status: 403 });
+      const vid = String((access_data || {}).hospitality_visit_id || '');
+      const v = ((await base44.asServiceRole.entities.HospitalityVisit.filter({ id: vid }).catch(() => [])) || [])[0];
+      if (!v) return Response.json({ error: 'Visit not found' }, { status: 404 });
+      if (!inScope(v)) return Response.json({ error: 'This visit is outside your scope', code: 'forbidden_cross_tenant' }, { status: 403 });
+      const items: any[] = [];
+      let unverified = 0;
+      const add = async (label: string, uri: any, sensitive = false) => {
+        if (!uri) return;
+        if (sensitive && !canSensitive) { items.push({ label, restricted: true }); return; }
+        const url = await signOwnedEvidence(base44.asServiceRole, v, uri);
+        if (url) items.push({ label, url }); else { unverified++; items.push({ label, unverified: true }); }
+      };
+      for (const u of v.vehicle_photo_uris || []) await add('Vehicle photo', u);
+      await add('PO / Invoice', v.po_invoice_photo_uri);
+      await add('Food', v.food_photo_uri);
+      await add('Delivery person', v.delivery_person_photo_uri);
+      for (const u of v.staff_declaration_photo_uris || []) await add('Staff declaration', u);
+      await add('Firearm licence card', v.firearm_photo_uri, true);
+      await add('Identity document', v.identity_document_photo_uri, true);
+      await auditAccess(base44.asServiceRole, 'access.hospitality_evidence_viewed', caller, {
+        customer_id: v.customer_id, site_id: v.site_id, notes: `Evidence viewed for visit ${v.id} (${items.length} item(s), ${unverified} unverified)` });
+      return Response.json({ items, unverified, expires_in: 300 });
+    }
+
+    if (action === 'hospitality_report_brand') {
+      if (!canInspect) return Response.json({ error: 'Forbidden', code: 'forbidden_role' }, { status: 403 });
+      let brandCid = cid;
+      if (!brandCid && (access_data || {}).site_id) {
+        const s = ((await base44.asServiceRole.entities.Site.filter({ id: String(access_data.site_id) }).catch(() => [])) || [])[0];
+        if (s && (isPlatformUser(caller) || (isResellerAdmin(caller) && s.reseller_id === rid))) brandCid = s.customer_id || null;
+      }
+      const brand = await resolveCommunicationBrand(base44.asServiceRole, { customer_id: brandCid, reseller_id: rid });
+      const toDataUrl = async (url: any) => {
+        if (!url) return null;
+        try {
+          const r = await fetch(String(url));
+          if (!r.ok) return null;
+          const type = r.headers.get('content-type') || 'image/png';
+          const bytes = new Uint8Array(await r.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          return `data:${type};base64,${btoa(bin)}`;
+        } catch (_) { return null; }
+      };
+      return Response.json({
+        brand_name: brand.brand_name, primary_color: brand.primary_color, customer_name: brand.customer_name,
+        logo_data_url: await toDataUrl(brand.logo_url),
+        secondary_logo_data_url: await toDataUrl(brand.document_secondary_logo_url),
+      });
+    }
+
+    return Response.json({ error: 'Invalid action. Use entry, exit, resolve_visitor, hospitality_submit, hospitality_cancel, hospitality_list, hospitality_evidence or hospitality_report_brand' }, { status: 400 });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

@@ -1,14 +1,14 @@
 {
   "name": "Customer",
   "type": "object",
-  "description": "A customer/tenant organization (security company, estate, medical practice, factory, business park, corporate). May belong to a reseller or be directly platform-managed. TENANT ISOLATION: customer admins read their OWN organisation via the id == user.data.customer_id branch; the reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller') \u2014 previously every user under a reseller matched it and could read/update every sibling customer's organisation record (confirmed cross-customer defect 2026-09-21). Platform admins retain full access via the built-in admin role.",
+  "description": "A customer/tenant organization (security company, estate, medical practice, factory, business park, corporate). May belong to a reseller or be directly platform-managed. TENANT ISOLATION: customer admins read their OWN organisation via the id == user.data.customer_id branch; the reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller'). Platform admins retain full access via the built-in admin role.",
   "properties": {
     "name": {
       "type": "string"
     },
     "app_name": {
       "type": "string",
-      "description": "Customer-facing application / workspace name (white-label override) shown in branded emails and customer-facing screens. Falls back to the reseller's app_name, then the platform default. Distinct from the trading name."
+      "description": "Customer-facing application / workspace name (white-label override). Falls back to the reseller's app_name, then the platform default."
     },
     "legal_name": {
       "type": "string"
@@ -38,14 +38,14 @@
     },
     "device_limit": {
       "type": "number",
-      "description": "COMPULSORY for every NEW customer \u2014 enforced server-side by the customerAccess gateway (integer, minimum 1; a customer cannot be created without a valid device limit). Authoritative customer-wide licensed-device allowance based on PHYSICAL APP INSTALLATIONS (not users): one installation consumes one slot regardless of how many users log into it, and logging out never frees a slot. Null ONLY for legacy customers created before this field existed \u2014 these are flagged 'Device allowance requires configuration' (never silently limited); once a platform administrator configures it, enforcement is authoritative and transaction-safe (deviceAccess gateway). Only platform-level administrators may change it (audited: customer.device_limit_changed); a customer can never increase its own allowance."
+      "description": "COMPULSORY for every NEW customer \u2014 authoritative customer-wide licensed-device allowance (physical installations). Null only for legacy customers. Only platform-level administrators may change it."
     },
     "device_lock_token": {
       "type": [
         "string",
         "null"
       ],
-      "description": "INTERNAL registration-mutex token held by the deviceAccess gateway while counting/registering devices under the licence limit (CAS on this field guarantees two simultaneous registrations can never both take the final slot). Never exposed to any UI; never used for authorization."
+      "description": "INTERNAL device registration mutex token. Never exposed to any UI."
     },
     "device_lock_expires_at": {
       "type": [
@@ -53,18 +53,18 @@
         "null"
       ],
       "format": "date-time",
-      "description": "Expiry of the device registration mutex token \u2014 a crashed holder's lock is stealable after this instant (stale-lock recovery). Internal only."
+      "description": "Expiry of the device registration mutex token. Internal only."
     },
     "operational_user_limit": {
       "type": "number",
-      "description": "COMPULSORY for every NEW customer \u2014 the SECOND, fully INDEPENDENT customer entitlement (enforced server-side by the customerAccess/inviteTenantUser gateways; integer, minimum 1; a customer cannot be created without it). Authoritative customer-wide licensed OPERATIONAL USER allowance: users who actually operate the security/access-control system (operational roles from the authoritative role catalogue \u2014 e.g. Security Guard, Dispatcher, Control Room Operator) each consume one slot, as does every VALID PENDING operational-user invitation (no quota bypass by mass-inviting). Administrative roles (Customer Administrator etc.) do NOT consume a slot. DELIBERATELY SEPARATE from device_limit: one counts people, the other counts physical app installations; neither affects the other. Null ONLY for legacy customers created before this field existed \u2014 these are flagged 'Operational user allowance requires configuration' (never silently limited); once a platform administrator configures it, enforcement is authoritative and transaction-safe (per-customer CAS mutex on user_lock_token). Only platform-level administrators may change it (audited: customer.operational_user_limit_changed); a customer can never increase its own allowance."
+      "description": "COMPULSORY for every NEW customer \u2014 authoritative licensed OPERATIONAL USER allowance, independent of device_limit. Only platform-level administrators may change it."
     },
     "user_lock_token": {
       "type": [
         "string",
         "null"
       ],
-      "description": "INTERNAL operational-user-slot mutex token held while counting/creating operational users and invitations under the licence limit (CAS on this field guarantees two simultaneous invitations can never both take the final slot). Never exposed to any UI; never used for authorization."
+      "description": "INTERNAL operational-user-slot mutex token. Never exposed to any UI."
     },
     "user_lock_expires_at": {
       "type": [
@@ -72,20 +72,27 @@
         "null"
       ],
       "format": "date-time",
-      "description": "Expiry of the operational-user-slot mutex token \u2014 a crashed holder's lock is stealable after this instant (stale-lock recovery). Internal only."
+      "description": "Expiry of the operational-user-slot mutex token. Internal only."
     },
     "digital_ob_enabled": {
       "type": "boolean",
       "default": false,
-      "description": "PERSISTED CUSTOMER SETTING (default OFF for existing and new customers): enables the Digital Occurrence Book (OB) extension inside the Task & OB Scheduling module. Server-enforced: when OFF, OB gateways reject OB creation/changes, OB screens and schedule options are hidden, and OB reminders/occurrence generation never run; ordinary task scheduling is completely unaffected. Requires the Task Scheduling module to be enabled (enforced by manageCustomerEntitlement set_ob with a clear dependency error). Enabling alone creates nothing; disabling preserves all OB history and stops OB automation; re-enabling never back-fills historical checks or sends alert floods (paused schedules require explicit resumption). Only administrators who already manage customer module settings may change it (audited: customer.ob_toggled)."
+      "description": "PERSISTED CUSTOMER SETTING (default OFF): enables the Digital Occurrence Book extension inside Task & OB Scheduling. Server-enforced; requires the Task Scheduling module."
     },
     "guard_default_landing": {
       "type": "string",
-      "description": "Optional customer-configurable GUARD DEFAULT LANDING MODULE (page key, e.g. 'access_control'). When set, a guard of THIS customer lands directly on that module after login / app reopen / session restore instead of the generic guard role home \u2014 no intermediate dashboard tap. Strictly fail-closed: the override only applies when the guard's role permits the page AND the customer's module entitlements enable it (isPageModuleEnabled); every other customer keeps its existing landing behaviour. Unset/null = unchanged landing. No licensing, scoping or security semantics \u2014 it changes WHICH authorised page is shown first, never WHAT a guard may access."
+      "description": "Optional guard default landing module page key (e.g. 'access_control'). Fail-closed: applies only when role and entitlements permit the page."
     },
     "logo_url": {
       "type": "string",
       "description": "Customer logo file URL. Customer-level white-label branding override \u2014 wins over the reseller logo when set."
+    },
+    "document_secondary_logo_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "OPTIONAL secondary logo shown on generated documents (e.g. hospitality visit reports) alongside the primary brand logo \u2014 e.g. GRID GATE primary, Grid Protection secondary. When unset, documents render exactly as before (primary brand only)."
     },
     "logo_background": {
       "type": "string",
@@ -94,39 +101,34 @@
         "white",
         "transparent"
       ],
-      "description": "Container treatment behind the uploaded logo only \u2014 the logo image itself is never modified. Stored as a customer OVERRIDE only \u2014 inherited values are never copied into the customer record."
+      "description": "Container treatment behind the uploaded logo only."
     },
     "primary_color": {
       "type": "string",
-      "description": "Customer primary brand colour (hex). Customer-level override \u2014 wins over the reseller colour when set."
+      "description": "Customer primary brand colour (hex)."
     },
     "accent_color": {
       "type": "string",
-      "description": "Customer accent / action colour (hex). Customer-level override \u2014 wins over the reseller colour when set."
+      "description": "Customer accent / action colour (hex)."
     },
     "pwa_slug": {
       "type": "string",
-      "description": "PUBLIC, unique, immutable-once-assigned install slug for this customer's PWA. COSMETIC ONLY \u2014 the slug never grants tenant access. Uniqueness and immutability are enforced server-side by manageCustomerBranding."
+      "description": "PUBLIC, unique, immutable-once-assigned install slug. COSMETIC ONLY \u2014 never grants tenant access."
     },
     "pwa_app_name": {
-      "type": "string",
-      "description": "Installed PWA app name override (launcher label). Blank falls back to the effective app/business name \u2192 reseller \u2192 platform default."
+      "type": "string"
     },
     "pwa_short_name": {
-      "type": "string",
-      "description": "Installed PWA short name (limited-space launcher label, ~12 characters). Blank is derived from the PWA app name."
+      "type": "string"
     },
     "pwa_icon_192_url": {
-      "type": "string",
-      "description": "Dedicated square 192x192 PWA launcher icon URL. Blank falls back to pwa_icon_512_url, then the customer logo, then the reseller/platform icon."
+      "type": "string"
     },
     "pwa_icon_512_url": {
-      "type": "string",
-      "description": "Dedicated square 512x512 PWA launcher icon URL (PNG, maskable-compatible recommended)."
+      "type": "string"
     },
     "pwa_background_color": {
-      "type": "string",
-      "description": "Installed PWA splash/background colour override (hex). Blank uses the platform neutral dark background."
+      "type": "string"
     },
     "address": {
       "type": "string"
@@ -136,7 +138,7 @@
     },
     "email": {
       "type": "string",
-      "description": "Primary contact email. Also serves as the customer-level support email in branded customer-facing text."
+      "description": "Primary contact email. Also the customer-level support email in branded customer-facing text."
     },
     "website": {
       "type": "string"

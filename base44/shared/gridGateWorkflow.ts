@@ -99,14 +99,34 @@ function checkFirearmDeclaration(a: Answers): ValidationResult | null {
   return null;
 }
 
+/** Who the guard must confirm with, per category — server-derived, stored on
+ * the visit as confirmation_party (never client-supplied). Categories not
+ * listed have no third-party confirmation step. */
+export const CONFIRMATION_PARTY: Record<string, string> = {
+  check_in: 'reception',
+  contractor: 'relevant_department',
+  delivery: 'relevant_department',
+  service_provider: 'relevant_department',
+  uber_eats_mrd: 'reception',
+  uber: 'reception',
+};
+
+/** Duplicate-presence identity: normalised full name + E.164 mobile. A name
+ * alone is NEVER an identity — two different visitors with the same name
+ * (different numbers) remain separate people. */
+export function hospitalityIdentityKey(name: any, e164Phone: any): string | null {
+  const n = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const p = String(e164Phone || '').trim();
+  return n && p ? `${n}|${p}` : null;
+}
+
 function checkOccupantCount(a: Answers): ValidationResult | null {
-  // A MISSING answer (null — the gateway normalises absent/blank input to
-  // null) is NEVER accepted: Number(null) would coerce to 0 and silently
-  // pass as "0 occupants", granting access without the guard recording the
-  // count. The count must be explicitly entered (0 is a valid explicit
-  // answer; blank/missing is not).
-  if (a.occupant_count === null || a.occupant_count === undefined || !isNonNegInt(a.occupant_count)) {
-    return PENDING('occupant_count_required', 'Enter how many people are in the vehicle before access can be granted.');
+  // IMPLEMENTATION ASSUMPTION (pending customer confirmation): these are
+  // person-entry workflows, so the count must be a POSITIVE integer — blank,
+  // missing and 0 are all rejected (Number(null) would otherwise coerce to 0).
+  const n = Number(a.occupant_count);
+  if (a.occupant_count === null || a.occupant_count === undefined || !Number.isInteger(n) || n < 1) {
+    return PENDING('occupant_count_required', 'Enter how many people are entering (at least 1) before access can be granted.');
   }
   return null;
 }
@@ -127,6 +147,9 @@ function checkIdentityDocument(a: Answers): ValidationResult | null {
   if ((a.identity_document_type === 'passport' || a.identity_document_type === 'foreign_drivers_licence')
       && !isNonEmptyString(a.identity_document_photo_uri)) {
     return PENDING('identity_document_photo_required', "A photograph of the passport / foreign driver's licence is required — the installed scanner cannot decode these documents.");
+  }
+  if (a.identity_document_type === 'sa_drivers_licence_disc' && !isNonEmptyString(a.driver_licence_number)) {
+    return PENDING('driver_licence_number_required', "Capture the SA driver's licence number.");
   }
   return null;
 }
@@ -257,6 +280,16 @@ export function validateHospitalitySubmission(category: string, a: Answers): Val
     case 'visitor': {
       if (!isNonEmptyString(a.room_number)) {
         return PENDING('room_number_required', 'Confirm who the visitor is visiting and get the room number (call reception if the visitor does not know it) before access can be granted.');
+      }
+      // Explicit room-number source: 'provided' (visitor knew it — reception
+      // NOT required, stored as not-applicable, never as a rejected
+      // confirmation) vs 'confirmed_by_reception' (reception contacted —
+      // that confirmation must be Yes).
+      if (!['provided', 'confirmed_by_reception'].includes(a.room_number_source)) {
+        return PENDING('room_number_source_required', 'Did the visitor know the room number, or did you call reception to obtain/confirm it?');
+      }
+      if (a.room_number_source === 'confirmed_by_reception' && a.reception_confirmed !== true) {
+        return PENDING('reception_confirmation_required', 'Reception must confirm the room number (Yes) before access can be granted.');
       }
       const occErr = checkOccupantCount(a);
       if (occErr) return occErr;

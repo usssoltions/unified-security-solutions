@@ -1,0 +1,130 @@
+{
+  "name": "HospitalityEvidence",
+  "type": "object",
+  "description": "TRUSTED OWNERSHIP RECORD for one GRID GATE hospitality evidence photo. Created ONLY server-side by the hospitalityEvidenceUpload gateway, which performs the private upload itself, so the file_uri -> customer/site/upload-session association is authoritative (never caller-supplied metadata). finalizeAccessEntry accepts an evidence uri only when a record exists for it with the visit's customer_id + site_id and the submission's submit_token (or the same visit_id once bound), and hospitality inspection only signs uris whose record matches the visit. GATEWAY-ONLY: direct client access restricted to platform administration.",
+  "properties": {
+    "file_uri": {
+      "type": "string",
+      "description": "Private storage uri returned by the server-side upload."
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "submit_token": {
+      "type": "string",
+      "description": "Upload session = the guard flow's idempotency token."
+    },
+    "visit_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Bound (CAS, once) to the HospitalityVisit that used it."
+    },
+    "kind": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "uploaded_by_id": {
+      "type": "string"
+    },
+    "uploaded_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "content_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "size_bytes": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "file_uri",
+    "customer_id",
+    "site_id",
+    "submit_token",
+    "uploaded_by_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -25,10 +25,15 @@ const CATEGORY_QUESTIONS = {
   guest: ["room_number", "occupants", "firearm"],
   service_provider: ["reception", "occupants", "vehicle_photos"],
   staff: ["occupants", "staff_declared"],
-  uber_eats_mrd: ["reception", "food_photo", "delivery_person_photo"],
-  uber: ["reception", "occupants", "firearm"],
-  visitor: ["room_number", "occupants", "firearm"],
+  uber_eats_mrd: ["reception", "food_photo", "delivery_person_photo", "identity_doc"],
+  uber: ["reception", "occupants", "firearm", "identity_doc"],
+  visitor: ["room_number", "room_source", "occupants", "firearm"],
 };
+const ID_DOC_OPTIONS = [
+  { id: "sa_drivers_licence_disc", label: "SA driver's licence" },
+  { id: "passport", label: "Passport" },
+  { id: "foreign_drivers_licence", label: "Foreign licence" },
+];
 const RECEPTION_PROMPTS = {
   check_in: "Did you check the guest name & surname with Reception?",
   contractor: "Did you call the relevant department to confirm the Contractor?",
@@ -62,7 +67,9 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
     person_name: "", person_phone: "", guest_name: "", guest_surname: "",
     room_number: "", occupant_count: "", reception_confirmed: null,
     firearm_declared: null, po_invoice_available: null, staff_declared: null,
+    room_number_source: null, identity_document_type: null, driver_licence_number: "",
   });
+  const [idDocPhoto, setIdDocPhoto] = useState([]);
   const [vehiclePhotos, setVehiclePhotos] = useState([]);
   const [staffPhotos, setStaffPhotos] = useState([]);
   const [firearmPhoto, setFirearmPhoto] = useState([]);
@@ -101,7 +108,12 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
         location: gps,
         guest_name: answers.guest_name || answers.person_name,
         guest_surname: answers.guest_surname || "",
-        reception_confirmed: answers.reception_confirmed,
+        // Visitors who knew the room: reception is not applicable (null).
+        reception_confirmed: category === "visitor" && answers.room_number_source !== "confirmed_by_reception" ? null : answers.reception_confirmed,
+        room_number_source: category === "visitor" ? answers.room_number_source : null,
+        identity_document_type: q("identity_doc") ? answers.identity_document_type : null,
+        identity_document_photo_uri: q("identity_doc") ? (idDocPhoto[0] || null) : null,
+        driver_licence_number: answers.identity_document_type === "sa_drivers_licence_disc" ? answers.driver_licence_number.trim() : "",
         occupant_count: isUberEats ? 1 : (answers.occupant_count === "" ? null : Number(answers.occupant_count)),
         room_number: answers.room_number || "",
         firearm_declared: answers.firearm_declared,
@@ -209,19 +221,32 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
               placeholder="Room number" className="bg-slate-900 border-slate-700 text-white h-11" />
           </div>
         )}
-        {q("reception") && (
-          <YesNo label={RECEPTION_PROMPTS[category]} value={answers.reception_confirmed} onChange={(v) => setA("reception_confirmed", v)} disabled={busy} />
+        {q("room_source") && (
+          <div className="space-y-1.5">
+            <p className="text-slate-300 text-sm font-medium">How was the room number obtained?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[["provided", "Visitor knew it"], ["confirmed_by_reception", "Called reception"]].map(([id, lbl]) => (
+                <button key={id} type="button" disabled={busy} onClick={() => setA("room_number_source", id)}
+                  className={`h-11 rounded-lg text-sm font-semibold transition-all active:scale-95 ${answers.room_number_source === id ? "bg-sky-500 text-white" : "bg-slate-800 text-slate-300 border border-slate-700"}`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
-        {answers.reception_confirmed === false && q("reception") && (
+        {(q("reception") || (category === "visitor" && answers.room_number_source === "confirmed_by_reception")) && (
+          <YesNo label={RECEPTION_PROMPTS[category] || "Did reception confirm the room number?"} value={answers.reception_confirmed} onChange={(v) => setA("reception_confirmed", v)} disabled={busy} />
+        )}
+        {answers.reception_confirmed === false && (q("reception") || category === "visitor") && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 flex gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-amber-200 text-xs">Access cannot be granted until the relevant department / reception confirms. Follow up, then select Yes — or cancel the entry.</p>
+            <p className="text-amber-200 text-xs">Access cannot be granted until {["contractor", "delivery", "service_provider"].includes(category) ? "the relevant department" : "reception"} confirms. Follow up, then select Yes — or cancel the entry.</p>
           </div>
         )}
         {q("occupants") && !isUberEats && (
           <div className="space-y-1.5">
             <p className="text-slate-300 text-sm font-medium">Number of people in the vehicle</p>
-            <Input value={answers.occupant_count} onChange={(e) => setA("occupant_count", e.target.value)} type="number" min="0" inputMode="numeric"
+            <Input value={answers.occupant_count} onChange={(e) => setA("occupant_count", e.target.value)} type="number" min="1" inputMode="numeric"
               placeholder="e.g. 2" className="bg-slate-900 border-slate-700 text-white h-11" />
           </div>
         )}
@@ -235,28 +260,48 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
           <YesNo label="Does the person have any firearms to declare?" value={answers.firearm_declared} onChange={(v) => setA("firearm_declared", v)} disabled={busy} />
         )}
         {answers.firearm_declared === true && q("firearm") && (
-          <HospitalityPhotoCapture label="Firearm licence card photo" photos={firearmPhoto} onChange={setFirearmPhoto} />
+          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Firearm licence card photo" photos={firearmPhoto} onChange={setFirearmPhoto} />
         )}
         {q("po_invoice") && (
           <YesNo label="Is a PO / Invoice available?" value={answers.po_invoice_available} onChange={(v) => setA("po_invoice_available", v)} disabled={busy} />
         )}
         {answers.po_invoice_available === true && q("po_invoice") && (
-          <HospitalityPhotoCapture label="PO / Invoice photo" photos={poPhoto} onChange={setPoPhoto} />
+          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="PO / Invoice photo" photos={poPhoto} onChange={setPoPhoto} />
         )}
         {q("vehicle_photos") && (
-          <HospitalityPhotoCapture label="Vehicle photo(s)" photos={vehiclePhotos} onChange={setVehiclePhotos} multiple />
+          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Vehicle photo(s)" photos={vehiclePhotos} onChange={setVehiclePhotos} multiple />
         )}
         {q("staff_declared") && (
           <YesNo label="Does the staff member have anything to declare?" value={answers.staff_declared} onChange={(v) => setA("staff_declared", v)} disabled={busy} />
         )}
         {answers.staff_declared === true && q("staff_declared") && (
-          <HospitalityPhotoCapture label="Declaration photo(s)" photos={staffPhotos} onChange={setStaffPhotos} multiple />
+          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Declaration photo(s)" photos={staffPhotos} onChange={setStaffPhotos} multiple />
         )}
         {q("food_photo") && (
-          <HospitalityPhotoCapture label="Food photo" photos={foodPhoto} onChange={setFoodPhoto} />
+          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Food photo" photos={foodPhoto} onChange={setFoodPhoto} />
+        )}
+        {q("identity_doc") && (
+          <div className="space-y-1.5">
+            <p className="text-slate-300 text-sm font-medium">Driver's identity document</p>
+            <div className="grid grid-cols-3 gap-2">
+              {ID_DOC_OPTIONS.map((o) => (
+                <button key={o.id} type="button" disabled={busy} onClick={() => setA("identity_document_type", o.id)}
+                  className={`h-11 rounded-lg text-xs font-semibold transition-all active:scale-95 ${answers.identity_document_type === o.id ? "bg-sky-500 text-white" : "bg-slate-800 text-slate-300 border border-slate-700"}`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {q("identity_doc") && answers.identity_document_type === "sa_drivers_licence_disc" && (
+          <Input value={answers.driver_licence_number} onChange={(e) => setA("driver_licence_number", e.target.value)}
+            placeholder="Driver's licence number" className="bg-slate-900 border-slate-700 text-white h-11" />
+        )}
+        {q("identity_doc") && ["passport", "foreign_drivers_licence"].includes(answers.identity_document_type) && (
+          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Identity document photo" photos={idDocPhoto} onChange={setIdDocPhoto} />
         )}
         {q("delivery_person_photo") && (
-          <HospitalityPhotoCapture label="Delivery person photo" photos={deliveryPersonPhoto} onChange={setDeliveryPersonPhoto} />
+          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Delivery person photo" photos={deliveryPersonPhoto} onChange={setDeliveryPersonPhoto} />
         )}
       </div>
 

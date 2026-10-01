@@ -133,6 +133,10 @@ export async function resolveCommunicationBrand(
     support_phone: pick(customer?.phone, reseller?.support_phone),
     website: pick(customer?.website, reseller?.website),
     address: pick(customer?.address, reseller?.address),
+    // Optional secondary DOCUMENT logo (customer-level only, never inherited):
+    // e.g. GRID GATE primary + Grid Protection secondary on generated
+    // reports. Null keeps every existing document unchanged.
+    document_secondary_logo_url: (customer && customer.document_secondary_logo_url) || null,
     customer_name: (customer && customer.name) || null,
     reseller_name: (reseller && reseller.name) || null,
     customer_id: (customer && customer.id) || customerId,
