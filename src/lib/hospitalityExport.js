@@ -119,25 +119,25 @@ function addLogo(doc, dataUrl, x, y, maxW, maxH, alignRight) {
 // PDF columns: [label, weight, getter]. Weights are scaled to fill the full
 // printable width; long values wrap (never truncated).
 const PDF_COLS = [
-  ["Created", 26, (v) => fmtSastCell(v.created_date)],
-  ["Category", 26, (v) => HOSP_CATEGORY_LABELS[v.category] || v.category],
-  ["Name", 44, (v) => v.person_name || ""],
-  ["Room", 11, (v) => v.room_number || ""],
-  ["Occ.", 8, (v) => String(v.occupant_count ?? "")],
-  ["Admission", 18, (v) => ADMISSION_LABELS[v.status] || v.status],
-  ["Presence", 19, (v) => PRESENCE_LABELS[presenceOf(v)]],
-  ["Entry", 26, (v) => fmtSastCell(v.entry?.entry_time)],
-  ["Exit", 26, (v) => fmtSastCell(v.entry?.exit_time)],
-  ["Processed by", 36, (v) => v.entry?.guard_name || v.created_by_guard_name || ""],
+  ["Created", 24, (v) => fmtSastCell(v.created_date)],
+  ["Category", 24, (v) => HOSP_CATEGORY_LABELS[v.category] || v.category],
+  ["Name", 62, (v) => v.person_name || ""],
+  ["Room", 10, (v) => v.room_number || ""],
+  ["Occ.", 7, (v) => String(v.occupant_count ?? "")],
+  ["Admission", 17, (v) => ADMISSION_LABELS[v.status] || v.status],
+  ["Presence", 18, (v) => PRESENCE_LABELS[presenceOf(v)]],
+  ["Entry", 24, (v) => fmtSastCell(v.entry?.entry_time)],
+  ["Exit", 24, (v) => fmtSastCell(v.entry?.exit_time)],
+  ["Processed by", 34, (v) => v.entry?.guard_name || v.created_by_guard_name || ""],
 ];
 
 export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
   const W = 297, H = 210, M = 8;
   const W2 = W - 2 * M;
   const primary = hexRgb(brand?.primary_color);
 
-  const FONT = 8, LINE = 3.1, PADX = 1.2, ROW_MIN = 4.3, HEAD_H = 4.6, BAND_H = 4.8;
+  const FONT = 8, LINE = 3.0, PADX = 1.2, ROW_MIN = 4.2, HEAD_H = 4.6, BAND_H = 4.8;
   const BOTTOM = H - 9; // last baseline a row may occupy; footer sits below
 
   // Scale column weights to fill the printable width exactly.
@@ -200,7 +200,7 @@ export async function exportVisitsPdf(visits, brand, filterSummary, fileBase) {
   const drawRow = (cells, fill) => {
     const wrapped = cells.map((s, i) => doc.splitTextToSize(String(s ?? ""), COLS[i][1] - 2 * PADX));
     const lines = Math.max(1, ...wrapped.map((a) => a.length));
-    const rowH = Math.max(ROW_MIN, lines * LINE + 1.2);
+    const rowH = Math.max(ROW_MIN, lines * LINE + 1.0);
     if (y + rowH > BOTTOM) startPage(false);
     if (fill) { doc.setFillColor(242, 245, 249); doc.rect(M, y, W2, rowH, "F"); }
     doc.setFont("helvetica", "normal"); doc.setFontSize(FONT); doc.setTextColor(30);
