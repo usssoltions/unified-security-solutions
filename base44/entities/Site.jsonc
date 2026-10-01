@@ -193,6 +193,13 @@
       "default": 1,
       "description": "Snapshot number stamped onto every HospitalityVisit."
     },
+    "hospitality_display_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional guest-facing hotel name used in GRID GATE greetings (e.g. 'Hyatt House Sandton' for the site 'Hyatt House Sandton \u2014 Demo'). Falls back to the site name."
+    },
     "hospitality_grant_lock_token": {
       "type": [
         "string",

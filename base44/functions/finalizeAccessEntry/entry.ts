@@ -6,8 +6,10 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
-import { validateHospitalitySubmission, CATEGORY_PERSON_TYPE, CATEGORY_LABELS, HOSPITALITY_WORKFLOW_ID, HOSPITALITY_CATEGORIES, CONFIRMATION_PARTY, hospitalityIdentityKey } from '../../shared/gridGateWorkflow.ts';
+import { validateHospitalitySubmission, CATEGORY_PERSON_TYPE, CATEGORY_LABELS, HOSPITALITY_WORKFLOW_ID, HOSPITALITY_CATEGORIES, CONFIRMATION_PARTY, hospitalityIdentityKey, SCAN_PAIR_CATEGORIES } from '../../shared/gridGateWorkflow.ts';
 import { verifyEvidenceOwnership, bindEvidence, signOwnedEvidence } from '../../shared/hospitalityEvidence.ts';
+import { normaliseVehicleDisc, normaliseDriverLicence } from '../../shared/hospitalityDocCapture.ts';
+import { sanitizeVisitForList, toDataUrl } from '../../shared/hospitalityInspect.ts';
 
 /**
  * finalizeAccessEntry — Backend access control finalisation.
@@ -768,13 +770,39 @@ export default async function(req: Request): Promise<Response> {
      * hospitality_visit_id) or cancel with a reason. */
     if (action === 'hospitality_submit') {
       const d = access_data || {};
-      const { site_id, category, gate_name, person_name, person_phone,
-              scan_method, vehicle_registration, vehicle_licence_disc_number,
-              driver_licence_number, sa_id_number, vehicle_make, vehicle_model,
-              vehicle_colour, vehicle_licence_number, scanned_data, parsed_json,
+      // Document identifiers are derived ONLY from the server-validated
+      // vehicle_disc / driver_licence captures, never loose client fields.
+      const { site_id, category, gate_name, person_phone,
+              scanned_data, parsed_json,
               confidence, device, photo_url, location, installation_id,
-              hospitality_visit_id, identity_document_type, identity_document_photo_uri,
-              submit_token } = d;
+              hospitality_visit_id, submit_token } = d;
+      // Uber / Uber Eats: the SA licence alternative is scanned like the rest.
+      const licenceRequired = SCAN_PAIR_CATEGORIES.includes(category) || d.identity_document_type === 'sa_drivers_licence_disc';
+      const discN: any = await normaliseVehicleDisc(d.vehicle_disc);
+      const licN: any = licenceRequired ? await normaliseDriverLicence(d.driver_licence) : {};
+      const disc = discN.capture || null;
+      const lic = licN.capture || null;
+      const captureState = {
+        vehicle_disc: disc, vehicle_disc_error: discN.error || null,
+        driver_licence: lic, driver_licence_error: licN.error || null,
+      };
+      const vehicle_registration = disc ? disc.identifier : null;
+      const vehicle_licence_disc_number = disc?.fields.licence_number || null;
+      const vehicle_make = disc?.fields.make || null;
+      const vehicle_model = disc?.fields.model || null;
+      const vehicle_colour = disc?.fields.colour || null;
+      const vehicle_licence_number = null;
+      const driver_licence_number = lic ? lic.identifier : null;
+      const sa_id_number = lic?.fields.id_number ? (String(lic.fields.id_number).replace(/\D/g, '') || null) : null;
+      const scan_method = (lic || disc)
+        ? ((lic || disc).method === 'scanned' ? (lic ? 'drivers_licence' : 'vehicle_disc') : 'manual')
+        : 'manual';
+      // Name: typed by the guard, or taken from the decoded licence (never
+      // requires retyping successfully decoded information).
+      const person_name = String(d.person_name || '').trim() || lic?.fields.holder_name || '';
+      // Uber Eats / Mr D: the vehicle REMAINS OUTSIDE — its disc is recorded
+      // on the visit, but never on the AccessLog (no on-site vehicle).
+      const logVehicleReg = category === 'uber_eats_mrd' ? null : vehicle_registration;
 
       if (!site_id || !category || !gate_name || !person_name) {
         return Response.json({ error: 'site_id, category, gate_name and person_name are required' }, { status: 400 });
@@ -826,8 +854,17 @@ export default async function(req: Request): Promise<Response> {
         delivery_person_photo_uri: d.delivery_person_photo_uri || null,
         pedestrian_only: category === 'uber_eats_mrd' ? (d.pedestrian_only === true) : !!d.pedestrian_only,
         identity_document_type: d.identity_document_type || null,
-        identity_document_photo_uri: d.identity_document_photo_uri || null,
-        driver_licence_number: d.driver_licence_number || null,
+        identity_document_photo_uri: ['passport', 'foreign_drivers_licence'].includes(d.identity_document_type) ? (d.identity_document_photo_uri || null) : null,
+        identity_document_number: ['passport', 'foreign_drivers_licence'].includes(d.identity_document_type) ? (String(d.identity_document_number || '').trim().slice(0, 40) || null) : null,
+        driver_licence_number,
+        vehicle_make, vehicle_model, vehicle_colour,
+        vehicle_disc_capture_method: disc ? disc.method : null,
+        vehicle_disc_payload_sha256: disc ? disc.payload_sha256 : null,
+        vehicle_disc_photo_uri: disc ? disc.photo_uri : null,
+        driver_licence_capture_method: lic ? lic.method : null,
+        driver_licence_payload_sha256: lic ? lic.payload_sha256 : null,
+        driver_licence_photo_uri: lic ? lic.photo_uri : null,
+        licence_holder_name: lic?.fields.holder_name || null,
       };
       // Visitors who KNEW the room number: reception is not applicable —
       // stored as null (not applicable), never as a rejected confirmation.
@@ -904,7 +941,7 @@ export default async function(req: Request): Promise<Response> {
         hospitality_visit_id: visit.id, category_label: CATEGORY_LABELS[category], ...extra });
 
       // SERVER-SIDE VALIDATION — the single authoritative decision.
-      const validation = validateHospitalitySubmission(category, answers);
+      const validation = validateHospitalitySubmission(category, { ...answers, ...captureState });
       if (!validation.ok) return pendingResp(validation.code, validation.error);
 
       // EVIDENCE OWNERSHIP — existence is not ownership. Every uri must have a
@@ -914,6 +951,7 @@ export default async function(req: Request): Promise<Response> {
         answers.firearm_photo_uri, answers.po_invoice_photo_uri,
         answers.food_photo_uri, answers.delivery_person_photo_uri,
         answers.identity_document_photo_uri,
+        answers.vehicle_disc_photo_uri, answers.driver_licence_photo_uri,
         ...(answers.vehicle_photo_uris || []),
         ...(answers.staff_declaration_photo_uris || []),
       ].filter(Boolean).map(String);
@@ -1045,7 +1083,7 @@ export default async function(req: Request): Promise<Response> {
             (identityKey && l.identity_key === identityKey) ||
             (sa_id_number && l.sa_id_number === sa_id_number) ||
             (driver_licence_number && l.driver_licence_number === driver_licence_number) ||
-            (vehicle_registration && l.vehicle_registration === vehicle_registration));
+            (logVehicleReg && l.vehicle_registration === logVehicleReg));
           if (dup) {
             await cancelOwnDraft(`Duplicate — this person is already on site (entry ${dup.id})`, dup.id);
             await auditAccess(base44.asServiceRole, 'access.entry_duplicate_blocked', caller, {
@@ -1065,8 +1103,9 @@ export default async function(req: Request): Promise<Response> {
             person_name, person_phone: phoneCheck.value || '',
             unit_number: answers.room_number || '',
             gate_name, site_name: siteRec.name || '',
-            scan_method, sa_id_number, driver_licence_number, vehicle_registration,
-            vehicle_licence_disc_number, vehicle_make, vehicle_model, vehicle_colour, vehicle_licence_number,
+            scan_method, sa_id_number, driver_licence_number,
+            ...(logVehicleReg ? { vehicle_registration: logVehicleReg, vehicle_licence_disc_number, vehicle_make, vehicle_model, vehicle_colour } : {}),
+            vehicle_licence_number,
             scanned_data, parsed_json, confidence, device,
             visit_or_work: 'visit', photo_url, location,
             notes: `GRID GATE Hospitality — ${CATEGORY_LABELS[category]} (visit ${visit.id})`,
@@ -1207,23 +1246,7 @@ export default async function(req: Request): Promise<Response> {
         ? ((await base44.asServiceRole.entities.AccessLog.filter({ id: { $in: logIds } }, '-created_date', 1000).catch(() => [])) || [])
         : [];
       const logMap = new Map(logs.map((l: any) => [l.id, l]));
-      const URI_FIELDS = ['firearm_photo_uri', 'po_invoice_photo_uri', 'food_photo_uri', 'delivery_person_photo_uri', 'identity_document_photo_uri'];
-      const out = visits.map((v: any) => {
-        const l: any = v.access_log_id ? logMap.get(v.access_log_id) : null;
-        const clean: any = { ...v };
-        for (const f of URI_FIELDS) { clean[f.replace('_uri', '_present')] = !!v[f]; delete clean[f]; }
-        clean.vehicle_photo_count = (v.vehicle_photo_uris || []).length; delete clean.vehicle_photo_uris;
-        clean.staff_declaration_photo_count = (v.staff_declaration_photo_uris || []).length; delete clean.staff_declaration_photo_uris;
-        delete clean.submit_token; delete clean.confirm_claim_token; delete clean.identity_key;
-        if (!canSensitive) { delete clean.sa_id_number; delete clean.driver_licence_number; }
-        clean.entry = l ? {
-          status: l.status, entry_time: l.entry_time, gate_name: l.gate_name, guard_name: l.guard_name,
-          entry_device_name: l.entry_device_name || null, exit_time: l.exit_time || null, exit_gate: l.exit_gate || null,
-          exit_guard_name: l.exit_guard_name || null, exit_device_name: l.exit_device_name || null,
-          time_on_site_minutes: l.time_on_site_minutes ?? null, flag_reason: l.flag_reason || null,
-        } : null;
-        return clean;
-      });
+      const out = visits.map((v: any) => sanitizeVisitForList(v, v.access_log_id ? logMap.get(v.access_log_id) : null, canSensitive));
       return Response.json({ visits: out, can_view_evidence: true, can_view_sensitive: canSensitive, truncated: visits.length >= limit });
     }
 
@@ -1248,6 +1271,8 @@ export default async function(req: Request): Promise<Response> {
       for (const u of v.staff_declaration_photo_uris || []) await add('Staff declaration', u);
       await add('Firearm licence card', v.firearm_photo_uri, true);
       await add('Identity document', v.identity_document_photo_uri, true);
+      await add('Vehicle licence disc (manual capture)', v.vehicle_disc_photo_uri);
+      await add("Driver's licence (manual capture)", v.driver_licence_photo_uri, true);
       await auditAccess(base44.asServiceRole, 'access.hospitality_evidence_viewed', caller, {
         customer_id: v.customer_id, site_id: v.site_id, notes: `Evidence viewed for visit ${v.id} (${items.length} item(s), ${unverified} unverified)` });
       return Response.json({ items, unverified, expires_in: 300 });
@@ -1261,18 +1286,6 @@ export default async function(req: Request): Promise<Response> {
         if (s && (isPlatformUser(caller) || (isResellerAdmin(caller) && s.reseller_id === rid))) brandCid = s.customer_id || null;
       }
       const brand = await resolveCommunicationBrand(base44.asServiceRole, { customer_id: brandCid, reseller_id: rid });
-      const toDataUrl = async (url: any) => {
-        if (!url) return null;
-        try {
-          const r = await fetch(String(url));
-          if (!r.ok) return null;
-          const type = r.headers.get('content-type') || 'image/png';
-          const bytes = new Uint8Array(await r.arrayBuffer());
-          let bin = '';
-          for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          return `data:${type};base64,${btoa(bin)}`;
-        } catch (_) { return null; }
-      };
       return Response.json({
         brand_name: brand.brand_name, primary_color: brand.primary_color, customer_name: brand.customer_name,
         logo_data_url: await toDataUrl(brand.logo_url),

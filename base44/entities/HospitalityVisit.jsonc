@@ -1,7 +1,7 @@
 {
   "name": "HospitalityVisit",
   "type": "object",
-  "description": "GRID GATE Hospitality access-control workflow: ONE custom-category visit at a site whose Site.access_workflow = 'grid_gate_hospitality'. Activated only by the site's own access_workflow setting, never by branding. GATEWAY-ONLY ACCESS through finalizeAccessEntry (hospitality_submit / hospitality_cancel / hospitality_list / hospitality_evidence), which resolves tenant scope server-side and re-validates every requirement. STATE MACHINE: pending -> confirming (atomic conditional claim carrying a unique confirm_claim_token; stealable atomically after 2 minutes) -> confirmed (admission decision; current presence is derived from the linked AccessLog: inside = on site, exited = left) | cancelled (reason recorded; access never granted). The confirmation stamp is a conditional update on {status 'confirming', confirm_claim_token}, so a stale claimant can never overwrite a replacement claimant's result. Evidence uris are accepted only when a server-created HospitalityEvidence ownership record matches this visit's customer, site and upload session. Direct client access restricted to platform administration.",
+  "description": "GRID GATE Hospitality access-control workflow: ONE custom-category visit at a site whose Site.access_workflow = 'grid_gate_hospitality'. Activated only by the site's own access_workflow setting, never by branding. GATEWAY-ONLY ACCESS through finalizeAccessEntry (hospitality_submit / hospitality_cancel / hospitality_list / hospitality_evidence), which resolves tenant scope server-side and re-validates every requirement. DOCUMENT CAPTURE: 'Scan Vehicle Disk' then 'Licence Disk' (interpreted as the driver's licence) are captured with the existing scanner services; each capture is 'scanned' (decoded payload submitted, the identifier must be present inside it, SHA-256 fingerprint stored) or 'manual_photo' (ownership-verified document photo + typed identifier). A bare scanned flag is never accepted. STATE MACHINE: pending -> confirming (atomic conditional claim carrying a unique confirm_claim_token; stealable atomically after 2 minutes) -> confirmed (admission decision; current presence is derived from the linked AccessLog) | cancelled (reason recorded; access never granted). Evidence uris are accepted only when a server-created HospitalityEvidence ownership record matches this visit's customer, site and upload session. Direct client access restricted to platform administration.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -131,7 +131,7 @@
         "string",
         "null"
       ],
-      "description": "Mobile number normalised to E.164 (hospitality rule carried over from the default workflow \u2014 pending customer decision)."
+      "description": "Mobile number normalised to E.164. NOT a PDF requirement \u2014 carried over from the default workflow, awaiting customer decision."
     },
     "reception_confirmed": {
       "type": [
@@ -151,7 +151,7 @@
         "number",
         "null"
       ],
-      "description": "Positive integer (implementation assumption pending customer confirmation); Uber Eats / Mr D always exactly 1."
+      "description": "Positive integer (agreed implementation assumption); Uber Eats / Mr D always exactly 1."
     },
     "room_number": {
       "type": [
@@ -169,7 +169,7 @@
         "confirmed_by_reception",
         null
       ],
-      "description": "Visitors: 'provided' = visitor knew the room (reception not required); 'confirmed_by_reception' = reception contacted to obtain/confirm the room."
+      "description": "Visitors: 'provided' = visitor knew the room (reception not required); 'confirmed_by_reception' = reception contacted to confirm the visit and obtain the room."
     },
     "firearm_declared": {
       "type": [
@@ -230,13 +230,14 @@
     "pedestrian_only": {
       "type": "boolean",
       "default": false,
-      "description": "Uber Eats / Mr D: one pedestrian admitted; the scanned/arriving vehicle remains outside and is never recorded as inside."
+      "description": "Uber Eats / Mr D: one pedestrian admitted; the vehicle disc is recorded on the visit but the vehicle remains outside and is never written to the AccessLog."
     },
     "vehicle_registration": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "From the server-validated vehicle disc capture."
     },
     "vehicle_licence_disc_number": {
       "type": [
@@ -244,7 +245,82 @@
         "null"
       ]
     },
+    "vehicle_make": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "vehicle_model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "vehicle_colour": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "vehicle_disc_capture_method": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "scanned",
+        "manual_photo",
+        null
+      ]
+    },
+    "vehicle_disc_payload_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL fingerprint of the decoded disc barcode payload."
+    },
+    "vehicle_disc_photo_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Manual-capture route only: ownership-verified photo of the disc."
+    },
     "driver_licence_number": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "From the server-validated driver's licence capture."
+    },
+    "driver_licence_capture_method": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "scanned",
+        "manual_photo",
+        null
+      ]
+    },
+    "driver_licence_payload_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL fingerprint of the decoded licence barcode payload."
+    },
+    "driver_licence_photo_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Manual-capture route only: ownership-verified photo of the licence."
+    },
+    "licence_holder_name": {
       "type": [
         "string",
         "null"
@@ -279,6 +355,13 @@
         "string",
         "null"
       ]
+    },
+    "identity_document_number": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional typed passport / foreign licence number."
     },
     "cancel_reason": {
       "type": [
