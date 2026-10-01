@@ -51,6 +51,7 @@ export default function Layout({ children, currentPageName }) {
     incidents: { url: createPageUrl("GuardIncidents"), root: createPageUrl("GuardIncidents") },
     maintenance: { url: createPageUrl("GuardMaintenance"), root: createPageUrl("GuardMaintenance") },
     qr: { url: createPageUrl("QRScanner"), root: createPageUrl("QRScanner") },
+    access: { url: createPageUrl("AccessControl"), root: createPageUrl("AccessControl") },
     control: { url: createPageUrl("ControlRoom"), root: createPageUrl("ControlRoom") },
     scheduling: { url: createPageUrl("Scheduling"), root: createPageUrl("Scheduling") },
     sites: { url: createPageUrl("SiteManagement"), root: createPageUrl("SiteManagement") }
@@ -330,6 +331,7 @@ export default function Layout({ children, currentPageName }) {
       [createPageUrl("GuardIncidents")]: "incidents",
       [createPageUrl("GuardMaintenance")]: "maintenance",
       [createPageUrl("QRScanner")]: "qr",
+      [createPageUrl("AccessControl")]: "access",
       [createPageUrl("ControlRoom")]: "control",
       [createPageUrl("Scheduling")]: "scheduling",
       [createPageUrl("SiteManagement")]: "sites"
@@ -431,14 +433,17 @@ export default function Layout({ children, currentPageName }) {
       if (guardTaskOnly) {
         return [{ title: "My Tasks", tab: "tasks", icon: ClipboardList, color: "text-sky-400" }];
       }
-      // Each bottom tab is module-gated like the sidebar: Shift is CORE
-      // infrastructure (unmapped); Incidents/Maintenance need OPERATIONS,
-      // QR Scan needs ACCESS. Role alone never exposes an unlicensed tab.
+      // Each bottom tab is module-gated like the sidebar: Incidents/
+      // Maintenance need OPERATIONS, QR Scan is the PATROL checkpoint
+      // scanner (PATROL / OPERATIONS / COMPLETE_SECURITY — never ACCESS
+      // alone), and the Access Control tab needs ACCESS. Role alone never
+      // exposes an unlicensed tab.
       return [
         { title: "Shift", tab: "guard", pageKey: "GuardShift", icon: Shield, color: "text-emerald-400" },
         { title: "Incidents", tab: "incidents", pageKey: "GuardIncidents", icon: AlertTriangle, color: "text-rose-400" },
         { title: "Maintenance", tab: "maintenance", pageKey: "GuardMaintenance", icon: Wrench, color: "text-amber-400" },
-        { title: "QR Scan", tab: "qr", pageKey: "QRScanner", icon: QrCode, color: "text-sky-400" }
+        { title: "QR Scan", tab: "qr", pageKey: "QRScanner", icon: QrCode, color: "text-sky-400" },
+        { title: "Access Control", tab: "access", pageKey: "AccessControl", icon: QrCode, color: "text-indigo-400" }
       ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false));
     }
     if (role === "dispatcher" || role === "admin") {

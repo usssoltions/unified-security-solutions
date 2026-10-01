@@ -9,7 +9,7 @@
  *   CORE (not mapped)          — shared infrastructure (Profile, Configuration, etc.)
  *   GUARD_SHIFT_CORE (not map) — Guard Shift / Start-of-Shift / Handover (shared)
  *   CALLING                    — Contacts, Call History, Call Recordings
- *   ACCESS                     — Access Control, Access History, Access Settings, QR Scanner
+ *   ACCESS                     — Access Control, Access History, Access Settings
  *   PATROL                     — Patrol Dashboard, Patrol Analytics, Completed Patrols, etc.
  *   OPERATIONS                 — Control Room, Incidents, Maintenance, Panic, Scheduling, etc.
  *   ESTATE                     — Estate Manager, Residents, Venues, Vendors, Properties, Voting
@@ -63,10 +63,15 @@ export const PAGE_MODULE_MAP = {
   GuardPerformanceAnalytics: "PATROL",
 
   // ── ACCESS module ───────────────────────────────────────────────
+  // QRScanner is the PATROL CHECKPOINT scanner (requires an active shift) —
+  // NOT part of Access Control: Access Control does its own visitor/QR
+  // scanning inside AccessControl.jsx. ACCESS alone therefore never enables
+  // the checkpoint scanner; bundles that legitimately include patrols
+  // (PATROL module, OPERATIONS, COMPLETE_SECURITY) do.
+  QRScanner: ["PATROL", "OPERATIONS", "COMPLETE_SECURITY"],
   AccessControl: "ACCESS",
   AccessHistory: "ACCESS",
   AccessSettings: "ACCESS",
-  QRScanner: "ACCESS",
 
   // ── REPORTING_CORE module ───────────────────────────────────────
   PayrollSummary: "REPORTING_CORE",
