@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
 import HospitalityPhotoCapture from "./HospitalityPhotoCapture";
+import HospDocCaptureCard from "./HospDocCaptureCard";
 import { getInstallationId } from "@/lib/deviceRegistration";
 import { getGPS } from "@/lib/accessVisitor";
 
@@ -42,6 +43,9 @@ const RECEPTION_PROMPTS = {
   uber_eats_mrd: "Did you call reception to confirm the delivery (guest name / room number)?",
   uber: "Did you call reception to confirm the pick up (guest name / room number)?",
 };
+// PDF sequence: these categories scan "Vehicle Disk" then "Licence Disk"
+// (the driver's licence card). Uber / Uber Eats scan the disc + identity doc.
+const SCAN_PAIR = ["check_in", "contractor", "delivery", "event_visitor", "guest", "service_provider", "staff", "visitor"];
 
 function YesNo({ label, value, onChange, disabled }) {
   return (
@@ -61,13 +65,13 @@ function YesNo({ label, value, onChange, disabled }) {
   );
 }
 
-export default function HospitalityFlow({ category, site, gate, onDone, onCancelled, onClose }) {
+export default function HospitalityFlow({ category, site, gate, openScanner, hospScan, onDone, onCancelled, onClose }) {
   const questions = CATEGORY_QUESTIONS[category] || [];
   const [answers, setAnswers] = useState({
     person_name: "", person_phone: "", guest_name: "", guest_surname: "",
     room_number: "", occupant_count: "", reception_confirmed: null,
     firearm_declared: null, po_invoice_available: null, staff_declared: null,
-    room_number_source: null, identity_document_type: null, driver_licence_number: "",
+    room_number_source: null, identity_document_type: null, identity_document_number: "",
   });
   const [idDocPhoto, setIdDocPhoto] = useState([]);
   const [vehiclePhotos, setVehiclePhotos] = useState([]);
@@ -76,6 +80,11 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
   const [poPhoto, setPoPhoto] = useState([]);
   const [foodPhoto, setFoodPhoto] = useState([]);
   const [deliveryPersonPhoto, setDeliveryPersonPhoto] = useState([]);
+  // Document captures: { method, identifier, payload, photoUri, fields }
+  const [disc, setDisc] = useState(null);
+  const [lic, setLic] = useState(null);
+  const [discError, setDiscError] = useState(null);
+  const [licError, setLicError] = useState(null);
   const [visitId, setVisitId] = useState(null);
   // Idempotency token for THIS open submission flow — generated once per
   // flow open and reused for every resubmission of the same visit, so a
@@ -91,12 +100,65 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
   const setA = (k, v) => setAnswers((p) => ({ ...p, [k]: v }));
 
   const isUberEats = category === "uber_eats_mrd";
+  const isUberCat = category === "uber" || isUberEats;
+  const needsScanPair = SCAN_PAIR.includes(category);
+  const needsDisc = needsScanPair || isUberCat;
+  const uberSaLicence = isUberCat && answers.identity_document_type === "sa_drivers_licence_disc";
+  const needsLic = needsScanPair || uberSaLicence;
+
+  const processScan = (profileId, scan) => {
+    const mapped = scan?.mappedFields || {};
+    const textual = scan?.result?.textualData || scan?.textualData || "";
+    if (profileId === "vehicle_disc") {
+      if (mapped.registration_number) {
+        setDisc({
+          method: "scanned", identifier: mapped.registration_number, payload: textual,
+          fields: {
+            licence_number: mapped.licence_number || "", make: mapped.make || "",
+            model: mapped.model || "", colour: mapped.colour || "", vin: mapped.vin || "",
+          },
+        });
+        setDiscError(null);
+      } else {
+        setDiscError("The disc was read but no registration number was decoded — use the photo + manual route.");
+      }
+    } else if (profileId === "drivers_licence") {
+      const holder = [mapped.first_names, mapped.surname].filter(Boolean).join(" ");
+      if (mapped.driver_licence_number) {
+        setLic({
+          method: "scanned", identifier: mapped.driver_licence_number, payload: textual,
+          fields: { holder_name: holder, id_number: mapped.visitor_id_number || "" },
+        });
+        setLicError(null);
+        if (holder) setAnswers((p) => (p.person_name.trim() ? p : { ...p, person_name: holder }));
+      } else {
+        setLicError("The licence was read but no licence number was decoded — use the photo + manual route.");
+      }
+    }
+  };
+
+  // Scan results arrive from the shared DocumentScanner (opened by the parent
+  // page, which owns the single scanner session).
+  useEffect(() => {
+    if (!hospScan) return;
+    processScan(hospScan.profileId, hospScan.scan);
+  }, [hospScan]);
+
+  const startDiscScan = () => { setDiscError(null); openScanner?.("vehicle_disc"); };
+  const startLicScan = () => { setLicError(null); openScanner?.("drivers_licence"); };
 
   const submit = async () => {
     setBusy(true);
     setServerError(null);
     try {
       const gps = await getGPS().catch(() => null);
+      const toCapture = (c, idKey, extraFields) => c ? {
+        method: c.method,
+        [idKey]: c.identifier,
+        ...(c.method === "scanned" ? { payload: c.payload || "" } : {}),
+        ...Object.fromEntries(Object.entries(c.fields || extraFields || {}).map(([k, v]) => [k, v || ""])),
+        photo_uri: c.photoUri || null,
+      } : null;
       const payload = {
         site_id: site?.id,
         category,
@@ -112,8 +174,10 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
         reception_confirmed: category === "visitor" && answers.room_number_source !== "confirmed_by_reception" ? null : answers.reception_confirmed,
         room_number_source: category === "visitor" ? answers.room_number_source : null,
         identity_document_type: q("identity_doc") ? answers.identity_document_type : null,
-        identity_document_photo_uri: q("identity_doc") ? (idDocPhoto[0] || null) : null,
-        driver_licence_number: answers.identity_document_type === "sa_drivers_licence_disc" ? answers.driver_licence_number.trim() : "",
+        identity_document_photo_uri: q("identity_doc") && ["passport", "foreign_drivers_licence"].includes(answers.identity_document_type) ? (idDocPhoto[0] || null) : null,
+        identity_document_number: q("identity_doc") && ["passport", "foreign_drivers_licence"].includes(answers.identity_document_type) ? (answers.identity_document_number.trim() || null) : null,
+        vehicle_disc: needsDisc ? toCapture(disc, "registration_number") : null,
+        driver_licence: needsLic ? toCapture(lic, "licence_number") : null,
         occupant_count: isUberEats ? 1 : (answers.occupant_count === "" ? null : Number(answers.occupant_count)),
         room_number: answers.room_number || "",
         firearm_declared: answers.firearm_declared,
@@ -176,10 +240,16 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
 
   const q = (key) => questions.includes(key);
 
+  // Guest-facing greeting — the site's hospitality display name (falls back
+  // to the site name), with the time-of-day welcome from the workflow PDF.
+  const hour = new Date().getHours();
+  const daypart = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+  const displayName = site?.hospitality_display_name || site?.name || "";
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="min-w-0">
           <p className="text-emerald-300 text-xs font-semibold uppercase tracking-wide">GRID GATE Hospitality</p>
           <p className="text-white font-bold text-lg leading-tight">{CATEGORY_LABELS[category]}</p>
         </div>
@@ -187,12 +257,17 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
           <X className="w-4 h-4" />
         </button>
       </div>
+      {displayName && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+          <p className="text-emerald-200 text-sm font-semibold">Good {daypart} — welcome to {displayName}</p>
+        </div>
+      )}
 
       <div className="space-y-3">
         <div className="space-y-1.5">
           <p className="text-slate-300 text-sm font-medium">Person's full name</p>
           <Input value={answers.person_name} onChange={(e) => setA("person_name", e.target.value)}
-            placeholder="Full name" className="bg-slate-900 border-slate-700 text-white h-11" />
+            placeholder="Full name (filled from the licence scan)" className="bg-slate-900 border-slate-700 text-white h-11" />
         </div>
         <div className="space-y-1.5">
           <p className="text-slate-300 text-sm font-medium">Mobile number</p>
@@ -280,6 +355,26 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
         {q("food_photo") && (
           <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Food photo" photos={foodPhoto} onChange={setFoodPhoto} />
         )}
+
+        {/* Document captures — "Scan Vehicle Disk" then "Licence Disk"
+            (driver's licence), validated server-side on submit. */}
+        {needsDisc && (
+          <HospDocCaptureCard
+            label="Scan Vehicle Disk" subtitle="Registration number" capture={disc} error={discError}
+            onScanRequest={startDiscScan} onCapture={(c) => { setDisc(c); setDiscError(null); }}
+            siteId={site?.id} submitToken={submitToken} disabled={busy}
+          />
+        )}
+        {(needsLic || (isUberCat && answers.identity_document_type === "sa_drivers_licence_disc")) && (
+          <HospDocCaptureCard
+            label={isUberCat ? "Driver's identity document" : "Licence Disk (driver's licence)"}
+            subtitle={isUberCat ? "Licence number" : "Back of card, PDF417 barcode"}
+            capture={lic} error={licError}
+            onScanRequest={startLicScan} onCapture={(c) => { setLic(c); setLicError(null); }}
+            siteId={site?.id} submitToken={submitToken} disabled={busy}
+          />
+        )}
+
         {q("identity_doc") && (
           <div className="space-y-1.5">
             <p className="text-slate-300 text-sm font-medium">Driver's identity document</p>
@@ -293,12 +388,15 @@ export default function HospitalityFlow({ category, site, gate, onDone, onCancel
             </div>
           </div>
         )}
-        {q("identity_doc") && answers.identity_document_type === "sa_drivers_licence_disc" && (
-          <Input value={answers.driver_licence_number} onChange={(e) => setA("driver_licence_number", e.target.value)}
-            placeholder="Driver's licence number" className="bg-slate-900 border-slate-700 text-white h-11" />
-        )}
         {q("identity_doc") && ["passport", "foreign_drivers_licence"].includes(answers.identity_document_type) && (
-          <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Identity document photo" photos={idDocPhoto} onChange={setIdDocPhoto} />
+          <>
+            <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Identity document photo" photos={idDocPhoto} onChange={setIdDocPhoto} />
+            <div className="space-y-1.5">
+              <p className="text-slate-300 text-sm font-medium">Identity document number (optional)</p>
+              <Input value={answers.identity_document_number} onChange={(e) => setA("identity_document_number", e.target.value)}
+                placeholder="Passport / foreign licence number" className="bg-slate-900 border-slate-700 text-white h-11" />
+            </div>
+          </>
         )}
         {q("delivery_person_photo") && (
           <HospitalityPhotoCapture siteId={site?.id} submitToken={submitToken} label="Delivery person photo" photos={deliveryPersonPhoto} onChange={setDeliveryPersonPhoto} />

@@ -280,6 +280,9 @@ export default function AccessControl() {
   };
 
   const openScanner = (profileId) => { perfMark(`B_scan_open_${profileId}`); setScanProfile(profileId); setScanning(true); };
+  // Last scan accepted while in a hospitality flow — handed to HospitalityFlow
+  // (the parent owns the single DocumentScanner session; the flow consumes it).
+  const [hospScan, setHospScan] = useState(null);
 
   // Exit flow: resolve the visitor, then find their active "inside" record(s).
   const beginExitForVisitor = async (visitor, scan) => {
@@ -306,6 +309,13 @@ export default function AccessControl() {
     // re-opens. Pedestrian/QR/exit flows still close it (single-scan steps).
     const keepCamera = mode === "vehicle" && step === "licence" && eventType !== "exit";
     if (!keepCamera) setScanning(false);
+    // Hospitality capture: the flow consumes the scan itself (vehicle disc /
+    // driver's licence slots) — no generic visitor resolution here.
+    if (mode === "hospitality" && eventType !== "exit") {
+      setBusy(false);
+      setHospScan({ profileId: scanProfile, scan });
+      return;
+    }
     setBusy(true);
     try {
       // ---- EXIT BY RESCAN ---- branch before the entry workflow.
@@ -910,6 +920,8 @@ export default function AccessControl() {
                 category={hospCategory}
                 site={siteConfig}
                 gate={gate}
+                openScanner={openScanner}
+                hospScan={hospScan}
                 onDone={handleHospDone}
                 onCancelled={(msg) => {
                   resetWorkflow();
