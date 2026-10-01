@@ -36,10 +36,11 @@
  *                        same action, same permissions).
  *   sweep              — scheduled automation (no session; counts only).
  */
+import { isPlatformAdmin, isResellerAdmin, userName } from '../../shared/gatewayRoles.ts';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from 'base44:runtime';
 import {
-  sastTodayYmd, resolveTaskBrandContext, logTaskAudit,
+  sastTodayYmd, resolveTaskBrandContext,
 } from '../../shared/taskNotifications.ts';
 import {
   runObSweep, ensureOccurrences, generateObReference, dedupePending,
@@ -54,15 +55,6 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ATTRIBUTION_ACTIONS = ['entry_submit', 'entry_amend', 'entry_cancel'];
 
-function isPlatformAdmin(u) {
-  return !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
-}
-function isResellerAdmin(u) {
-  return !!u && !isPlatformAdmin(u) && (u.role_type === 'reseller_admin' || u.admin_level === 'reseller');
-}
-function userName(u) {
-  return (u && (u.display_name || u.full_name || u.email)) || '—';
-}
 function bad(message, status = 400, code) {
   return Response.json(code ? { error: message, code } : { error: message }, { status });
 }
@@ -193,7 +185,6 @@ export default async function(req) {
         queue = roomIds.length
           ? ((await svc.entities.OBOccurrence.filter(queueFilter, 'due_at', 200).catch(() => [])) || [])
           : [];
-        if (isOperator && schedules.some((s) => s.assigned_operator_id && operatorRoomIds.indexOf(s.control_room_id) === -1)) { /* no-op guard */ }
       }
       return Response.json({
         ob_enabled: obOn,
@@ -610,21 +601,19 @@ export default async function(req) {
         const siteFilterOk = !f.site_id || o.site_id === String(f.site_id);
         if (o.source === 'scheduled' && inScheduledPeriod) {
           summary.scheduled_due++;
-          const graceMs = 0; // overdue classification stored server-side via overdue_at
-          if (o.status === 'completed' && submittedInPeriod !== false) {
+          if (o.status === 'completed') {
+            // Late = submitted AFTER the original due time (never moved).
             const late = o.submitted_at && o.due_at && o.submitted_at > o.due_at;
             if (late) summary.completed_late++; else summary.completed_on_time++;
             if (siteFilterOk) entries.push(o);
-          } else if (o.status === 'completed') {
-            // completed outside the period window (edge) — still counted as due
-            const late = o.submitted_at && o.due_at && o.submitted_at > o.due_at;
-            if (late) summary.completed_late++; else summary.completed_on_time++;
           } else if (o.status === 'cancelled') {
             summary.cancelled_checks++;
             if (siteFilterOk) missed.push(o);
           } else {
-            // outstanding
-            if (o.overdue_at || now >= Date.parse(o.due_at) + (((graceMs) || 15 * 60000))) { summary.overdue_outstanding++; } else { summary.outstanding_within_grace++; }
+            // OUTSTANDING — classified by the server-stamped overdue_at
+            // (due + grace) so checks still within grace are distinct from
+            // overdue ones, and missed checks can never disappear from a report.
+            if (o.overdue_at) { summary.overdue_outstanding++; } else { summary.outstanding_within_grace++; }
             if (siteFilterOk) missed.push(o);
           }
         } else if (o.source === 'unscheduled' && submittedInPeriod) {

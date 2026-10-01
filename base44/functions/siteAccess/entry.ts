@@ -21,16 +21,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 const TENANT_READ_ROLES = ['guard', 'dispatcher', 'admin', 'customer_admin', 'client', 'estate_manager', 'reception', 'management', 'supervisor'];
 const TENANT_MANAGE_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 
-function isPlatformAdmin(u) {
-  // Mirrors the proven gateways (attendanceAccess / getTenantUsers): the
-  // built-in role 'admin' is the USS Platform Admin alongside explicit
-  // platform_admin role_type / admin_level. Without it, platform oversight
-  // (and the app owner's own access) failed closed with forbidden_role.
-  return !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
-}
-function isResellerAdmin(u) {
-  return !!u && !isPlatformAdmin(u) && (u.role_type === 'reseller_admin' || u.admin_level === 'reseller');
-}
+import { isPlatformAdmin, isResellerAdmin } from '../../shared/gatewayRoles.ts';
 
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 
