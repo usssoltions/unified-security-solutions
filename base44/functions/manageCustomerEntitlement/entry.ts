@@ -49,8 +49,53 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ success: true, module_keys });
     }
 
+    // ── "set_ob": the persisted Digital Occurrence Book customer setting ──
+    // Enabled through the SAME module-settings surface the administrator
+    // already uses (no user/customer records are created or recreated).
+    // DEPENDENCY (server-enforced, clearly explained): the customer must hold
+    // an ACTIVE Task Scheduling module entitlement — Digital OB is an
+    // extension of Task & OB Scheduling, not a standalone module.
+    // Enabling alone creates nothing (no schedules, no records, no
+    // notifications). Disabling preserves all OB history and stops OB
+    // automation; re-enabling never back-fills historical checks.
+    if (action === 'set_ob') {
+      const wanted = body.enabled === true;
+      if (wanted) {
+        const tsEnts = await base44.asServiceRole.entities.ModuleEntitlement.filter({
+          customer_id, module_key: 'TASK_SCHEDULING',
+        });
+        const now = Date.now();
+        const active = (tsEnts || []).some((e) => {
+          if (!e.enabled || (e.status && e.status !== 'active')) return false;
+          if (e.licence_start && Date.parse(e.licence_start) > now) return false;
+          if (e.licence_end && Date.parse(e.licence_end) < now) return false;
+          return true;
+        });
+        if (!active) {
+          return Response.json({
+            error: 'Digital OB requires the Task Scheduling module to be enabled for this customer first — the Occurrence Book is an extension of Task & OB Scheduling.',
+          }, { status: 400 });
+        }
+      }
+      await base44.asServiceRole.entities.Customer.update(customer.id, { digital_ob_enabled: wanted });
+      await base44.asServiceRole.entities.PlatformAuditLog.create({
+        event_type: 'customer.ob_toggled',
+        user_id: caller.id,
+        user_name: caller.display_name || caller.full_name || caller.email,
+        customer_id, reseller_id: effectiveReseller,
+        module_key: 'TASK_SCHEDULING',
+        entity_name: 'Customer',
+        entity_id: customer.id,
+        action: 'ob ' + (wanted ? 'enabled' : 'disabled'),
+        old_values: JSON.stringify({ digital_ob_enabled: !!customer.digital_ob_enabled }),
+        new_values: JSON.stringify({ digital_ob_enabled: wanted }),
+        notes: wanted ? 'Digital Occurrence Book enabled' : 'Digital Occurrence Book disabled (history retained, OB automation stopped)',
+      }).catch(() => null);
+      return Response.json({ success: true, digital_ob_enabled: wanted });
+    }
+
     if (!action || !['set', 'remove'].includes(action)) {
-      return Response.json({ error: 'action must be "set" or "remove"' }, { status: 400 });
+      return Response.json({ error: 'action must be "set", "remove" or "set_ob"' }, { status: 400 });
     }
     if (!customer_id || !module_key) {
       return Response.json({ error: 'customer_id and module_key are required' }, { status: 400 });

@@ -1,0 +1,47 @@
+{
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "Africa/Johannesburg",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "name": "OB Sweep",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "ob_sweep",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_ob_sweep": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "obAccess",
+            "args": {
+              "action": "sweep"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Run OB sweep",
+            "description": "Occurrence top-up, due notifications, overdue reminders, escalations"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Digital Occurrence Book automation (Task & OB Scheduling module), every 5 minutes \u2014 tops up scheduled OB check occurrences for the next 2 days (bounded, deduplicated by occurrence_key), sends each check's ONE due notification at its due time, ONE overdue reminder after the configured grace period, and ONE supervisor escalation (email + Telegram + push) after the configured additional delay if still incomplete. Claim-before-send CAS stamps make retries, overlapping runs and catch-up flood-proof; completion or cancellation stops all further notifications. Early-exits with no work when no OB schedule is active, so it costs nothing when Digital OB is unused. Precision: alerts fire within about 5 minutes of their scheduled moment (the sweep cadence), not exact-to-the-second."
+}
