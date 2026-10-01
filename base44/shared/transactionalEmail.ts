@@ -201,9 +201,26 @@ export function renderTransactionalShell(p: ShellParams): string {
   const primary = contrast.button; // AA-safe brand colour for title/buttons
   const logo = isValidEmailLogo(brand.logo_url) ? String(brand.logo_url) : null;
 
+  // OPTIONAL SECONDARY LOGO (customer-level only): e.g. GRID GATE primary +
+  // Grid Protection secondary. Rendered beside the primary logo, smaller and
+  // vertically centred; absent for every brand without one (unchanged
+  // single-logo behaviour).
+  const secondaryRaw = String(
+    (brand as any).document_secondary_logo_url || (brand as any).secondary_logo_url || ''
+  );
+  const secondaryLogo = isValidEmailLogo(secondaryRaw) ? secondaryRaw : null;
+
   const header = logo
-    ? '<img src="' + escHtml(logo) + '" alt="' + escHtml(brandName) + ' logo" ' +
-      'style="display:block;max-height:48px;max-width:160px;width:auto;height:auto;object-fit:contain"/>'
+    ? '<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto"><tr>' +
+      '<td style="vertical-align:middle;padding:0 ' + (secondaryLogo ? '12px' : '0') + '">' +
+      '<img src="' + escHtml(logo) + '" alt="' + escHtml(brandName) + ' logo" ' +
+      'style="display:block;max-height:48px;max-width:160px;width:auto;height:auto;object-fit:contain"/></td>' +
+      (secondaryLogo
+        ? '<td style="vertical-align:middle;padding:0 12px">' +
+          '<img src="' + escHtml(secondaryLogo) + '" alt="' + escHtml(brandName) + ' secondary logo" ' +
+          'style="display:block;max-height:30px;max-width:96px;width:auto;height:auto;object-fit:contain"/></td>'
+        : '') +
+      '</tr></table>'
     : '<div style="font-size:19px;font-weight:bold;color:' + escHtml(primary) +
       ';letter-spacing:0.5px">' + escHtml(brandName) + '</div>';
 

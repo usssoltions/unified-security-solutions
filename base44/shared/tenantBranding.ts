@@ -35,6 +35,9 @@ export function resolveTenantBrand(customer: any, reseller: any) {
     accent_color: c.accent_color || r.accent_color || '#2563eb',
     support_email: c.email || r.support_email || null,
     website: c.website || r.website || null,
+    // OPTIONAL secondary document logo — customer-level only, never
+    // inherited from the reseller (mirrors resolveCommunicationBrand).
+    document_secondary_logo_url: c.document_secondary_logo_url || null,
   };
 }
 
@@ -170,8 +173,19 @@ export function buildInvitationEmail(p: {
     : `${displayName} has invited you to join.`;
   const greeting = p.inviteeName ? `Hi ${escHtml(String(p.inviteeName).trim().split(/\s+/)[0])},` : 'Hello,';
 
+  // Primary logo prominent; OPTIONAL secondary (Grid Protection) smaller and
+  // vertically centred beside it — single-logo behaviour preserved when unset.
+  const secondaryLogo = (brand.document_secondary_logo_url
+    && /^https?:\/\//i.test(String(brand.document_secondary_logo_url)))
+    ? String(brand.document_secondary_logo_url) : '';
+  const logoCell = (url: string, alt: string, maxH: number, maxW: number, pad: string) =>
+    `<td style="vertical-align:middle;padding:${pad}"><img src="${escHtml(url)}" alt="${escHtml(alt)}" style="display:block;max-height:${maxH}px;max-width:${maxW}px;width:auto;height:auto;object-fit:contain"/></td>`;
+  const logoHeader = brand.logo_url
+    ? `<div style="padding:20px;text-align:center;background:#f8fafc"><table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto"><tr>${logoCell(brand.logo_url, displayName, 56, 180, `0 ${secondaryLogo ? '12px' : '0'}`)}${secondaryLogo ? logoCell(secondaryLogo, `${displayName} secondary logo`, 34, 110, '0 12px') : ''}</tr></table></div>`
+    : '';
+
   const body = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-  ${brand.logo_url ? `<div style="padding:20px;text-align:center;background:#f8fafc"><img src="${escHtml(brand.logo_url)}" alt="${escHtml(displayName)}" style="max-height:56px;max-width:180px;object-fit:contain"/></div>` : ''}
+  ${logoHeader}
   <div style="padding:24px 28px">
     <h2 style="color:${escHtml(brand.primary_color)};margin:0 0 12px">${escHtml(subject)}</h2>
     <p style="color:#334155;margin:0 0 8px">${greeting}</p>
