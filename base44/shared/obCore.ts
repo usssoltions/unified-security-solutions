@@ -267,13 +267,20 @@ function obLine(occ) {
     ' · ' + (occ.control_room_name || '') + ' · due ' + (occ.slot_label || '') + ' (' + (occ.operating_date || '') + ')';
 }
 
-/** Creates one in-app Notification per recipient and returns how many were
- * actually created — failures are REPORTED, never swallowed, so the caller's
- * stage recovery can retry. */
+/** Creates one in-app Notification per recipient and returns how many are
+ * DELIVERED (created now OR already delivered by a previous attempt —
+ * deduplicated per recipient + occurrence + title, so a stage retry after a
+ * push failure never duplicates the in-app copy). Per-recipient send
+ * failures are REPORTED, never swallowed, so the caller's stage recovery
+ * can retry. */
 async function inAppNotify(svc, occ, recipients, { title, message, priority }) {
   let created = 0;
   for (const r of recipients) {
     try {
+      const existing = await svc.entities.Notification.filter({
+        recipient_id: r.id, related_id: occ.id, related_entity: 'OBOccurrence', title,
+      });
+      if (existing && existing.length) { created++; continue; }
       await svc.entities.Notification.create({
         customer_id: occ.customer_id, reseller_id: occ.reseller_id || null,
         recipient_id: r.id, recipient_name: r.name,
@@ -291,7 +298,7 @@ async function inAppNotify(svc, occ, recipients, { title, message, priority }) {
 async function sendObAlert(svc, occ, sch, kind) {
   const brandCtx = await resolveTaskBrandContext(svc, occ.customer_id).catch(() => null);
   const recipients = await obAlertRecipients(svc, occ, sch);
-  if (!recipients.length) return;
+  if (!recipients.length) return { ok: false, detail: 'no_recipients — nothing could be sent (counts as a failed attempt)' };
   const titles = {
     due: 'OB CHECK DUE — ' + occ.title,
     overdue: 'OB CHECK OVERDUE — ' + occ.title,
@@ -308,10 +315,12 @@ async function sendObAlert(svc, occ, sch, kind) {
     customer_id: occ.customer_id, reseller_id: occ.reseller_id || null,
     brand: brandCtx && brandCtx.brand ? brandCtx.brand : null,
   }).catch(() => null);
-  // Delivered = every in-app record created AND no push send FAILED (a
-  // 'skipped' push means the recipient has no registered device — correctly
-  // not a failure). Anything else is retried by the sweep's stage recovery.
-  const ok = created === recipients.length && (!pr || pr.failed === 0);
+  // IN-APP IS AUTHORITATIVE: delivered = every recipient has their in-app
+  // notification (created now or by a previous attempt). Push is
+  // best-effort — its failures never block stamping and never re-spam the
+  // in-app channel; a push that FAILED is retried by the sweep's stage
+  // recovery until stamping. 'skipped' = no registered device, not a failure.
+  const ok = created === recipients.length;
   return { ok, detail: 'in_app:' + created + '/' + recipients.length +
     ' push:' + (pr ? ('sent:' + pr.sent + ' skipped:' + pr.skipped + ' failed:' + pr.failed) : 'error') };
 }
