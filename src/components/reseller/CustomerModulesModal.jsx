@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Package, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Package, CheckCircle2, XCircle, NotebookPen } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { RESELLER_MODULE_MAP } from "@/lib/resellerModules";
 
@@ -36,6 +36,35 @@ export default function CustomerModulesModal({ open, onClose, customer, reseller
   // tells the administrator to licence the reseller first (the backend
   // manageCustomerEntitlement gateway enforces the same boundary server-side).
   const licensedKeys = resellerLicensedKeys.length > 0 ? resellerLicensedKeys : [];
+
+  const [obEnabled, setObEnabled] = useState(!!customer?.digital_ob_enabled);
+  useEffect(() => { setObEnabled(!!customer?.digital_ob_enabled); }, [customer?.id, customer?.digital_ob_enabled]);
+
+  // DIGITAL OCCURRENCE BOOK — extension of Task & OB Scheduling (NOT a
+  // commercial module): toggled via the manageCustomerEntitlement "set_ob"
+  // action, which server-enforces an active TASK_SCHEDULING entitlement.
+  // Enabling creates nothing on its own; disabling preserves OB history and
+  // stops OB automation. Shown only once Task Scheduling itself is enabled.
+  const toggleOb = async () => {
+    setBusy("DIGITAL_OB");
+    const wanted = !obEnabled;
+    try {
+      const res = await base44.functions.invoke("manageCustomerEntitlement", {
+        action: "set_ob",
+        customer_id: customer.id,
+        enabled: wanted,
+      });
+      const d = res?.data || res;
+      if (!d?.success && d?.error) throw new Error(d.error);
+      setObEnabled(!!d.digital_ob_enabled);
+      toast({ title: wanted ? "Digital Occurrence Book enabled" : "Digital Occurrence Book disabled", description: wanted ? "Available in Task & OB Scheduling" : "OB history retained, automation stopped" });
+      onDone?.();
+    } catch (e) {
+      toast({ title: "Failed", description: e.message, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const toggle = async (key) => {
     setBusy(key);
@@ -99,6 +128,19 @@ export default function CustomerModulesModal({ open, onClose, customer, reseller
                 </div>
               );
             })}
+            {isEnabled("TASK_SCHEDULING") && (
+              <div className="flex items-center justify-between bg-sky-500/5 border border-sky-500/20 p-3 rounded-lg">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white flex items-center gap-1.5"><NotebookPen className="w-4 h-4 text-sky-400" />Digital Occurrence Book</p>
+                  <p className="text-xs text-slate-400 truncate">Extension of Task &amp; OB Scheduling — scheduled OB checks and unscheduled OB entries per control room. Disabling retains all OB history.</p>
+                </div>
+                <Button size="sm" variant={obEnabled ? "default" : "outline"} disabled={busy === "DIGITAL_OB"} onClick={toggleOb}
+                  className={obEnabled ? "bg-emerald-500 hover:bg-emerald-600" : "border-slate-600 text-slate-300"}>
+                  {busy === "DIGITAL_OB" ? <Loader2 className="w-4 h-4 animate-spin" /> : obEnabled ? <CheckCircle2 className="w-4 h-4 mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
+                  {obEnabled ? "Enabled" : "Enable"}
+                </Button>
+              </div>
+            )}
           </div>
         )}
         <DialogFooter>
