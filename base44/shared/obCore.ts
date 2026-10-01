@@ -235,9 +235,6 @@ export async function cancelPendingForSchedule(svc, scheduleId, reason) {
 /* ── Recipients (tenant-safe, reuses the Task module resolution) ───────── */
 
 async function obAlertRecipients(svc, occ, sch) {
-  const room = sch
-    ? sch
-    : null;
   let ids = [];
   if (sch && sch.assigned_operator_id) ids.push(sch.assigned_operator_id);
   if (occ && occ.control_room_id) {
