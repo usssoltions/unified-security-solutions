@@ -76,11 +76,21 @@ export async function sendNativePush(svc, opts) {
     await logPushDelivery(svc, event_key, user_id, 'skipped', customer_id, reseller_id, idempKey, 'NO_PUSH_REGISTRATION');
     return { status: 'skipped', reason: 'NO_PUSH_REGISTRATION' };
   }
-  if (regs.every((r) => r.notification_permission === 'denied')) {
+  // Native push (Core.SendPushNotification) reaches ONLY the native mobile
+  // app — a web/browser (PWA) registration is not a valid delivery target,
+  // so attempting it is a guaranteed 'Failed to deliver push notification'
+  // failure. Skip web-only users up front; native (android/ios) devices are
+  // the only pushable targets (web/PWA push is handled by OneSignal setup).
+  const nativeRegs = regs.filter((r) => r.device_platform === 'android' || r.device_platform === 'ios');
+  if (!nativeRegs.length) {
+    await logPushDelivery(svc, event_key, user_id, 'skipped', customer_id, reseller_id, idempKey, 'NO_NATIVE_APP_REGISTRATION');
+    return { status: 'skipped', reason: 'NO_NATIVE_APP_REGISTRATION' };
+  }
+  if (nativeRegs.every((r) => r.notification_permission === 'denied')) {
     await logPushDelivery(svc, event_key, user_id, 'skipped', customer_id, reseller_id, idempKey, 'PERMISSION_DENIED');
     return { status: 'skipped', reason: 'PERMISSION_DENIED' };
   }
-  if (regs.every((r) => r.push_enabled === false)) {
+  if (nativeRegs.every((r) => r.push_enabled === false)) {
     await logPushDelivery(svc, event_key, user_id, 'skipped', customer_id, reseller_id, idempKey, 'PUSH_DISABLED');
     return { status: 'skipped', reason: 'PUSH_DISABLED' };
   }
