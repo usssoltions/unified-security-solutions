@@ -112,29 +112,36 @@ export const AuthProvider = ({ children }) => {
         // the extra call.
         if (!hasScope && !hasRole) {
           let applied = false;
-          try {
-            const res = await base44.functions.invoke('applyMyPendingScope', {});
-            const d = res?.data || res;
-            applied = !!d?.applied;
-            if (applied) {
-              currentUser = await base44.auth.me();
-            }
-          } catch (_) { /* swallow; fail-closed check below */ }
-          // ONE automatic retry — the server-side apply is idempotent, so a
-          // retry can never duplicate a user, scope or profile. This covers a
-          // TRANSIENT first-login failure (e.g. the client timing out while
-          // the server was still completing the apply) that previously left
-          // the user on the fail-closed screen even though their account was
-          // fully provisioned seconds later.
-          if (!applied) {
+          let lastReason = null;
+          // BOUNDED retries (3 attempts): the server-side apply is idempotent
+          // and only consumes the invitation after its write is verified, so
+          // repeated requests can never duplicate a user, scope or profile,
+          // and a transient first-login failure (timeout while the server was
+          // still completing the apply) recovers without administrator help.
+          // PERMANENT reasons stop the loop — retrying cannot conjure an
+          // invitation that was never queued.
+          const PERMANENT_REASONS = ['no_pending_scope', 'guard_site_missing', 'membership_failed', 'empty_scope'];
+          for (let attempt = 0; attempt < 3 && !applied; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 600 * attempt));
             try {
-              const retry = await base44.functions.invoke('applyMyPendingScope', {});
-              const d2 = retry?.data || retry;
-              if (d2?.applied) {
+              const res = await base44.functions.invoke('applyMyPendingScope', {});
+              const d = res?.data || res;
+              if (d?.applied) {
                 applied = true;
+                // Refresh the authenticated user BEFORE any access evaluation
+                // or landing choice — the freshly persisted scope/role must be
+                // what the app routes on.
                 currentUser = await base44.auth.me();
+              } else {
+                lastReason = d?.reason || null;
               }
-            } catch (_) { /* swallow; fail-closed check below */ }
+            } catch (_) { lastReason = 'invoke_failed'; }
+            if (PERMANENT_REASONS.includes(lastReason)) break;
+          }
+          if (!applied) {
+            // One verified re-read before failing closed: the apply may have
+            // completed server-side even though its response was lost.
+            try { currentUser = await base44.auth.me(); } catch (_) {}
           }
 
           // Fail closed: a non-platform user whose tenant scope could not be
@@ -143,9 +150,17 @@ export const AuthProvider = ({ children }) => {
           const stillNoScope = !currentUser?.reseller_id && !currentUser?.customer_id && !currentUser?.admin_level;
           const stillNoRole = !currentUser?.role_type;
           if (stillNoScope && stillNoRole) {
+            // ACTIONABLE DIAGNOSTIC: name the exact email so the administrator
+            // knows precisely which account to repair — the canonical repair
+            // is one invitation to this exact address from the Users page
+            // (the pipeline's existing-user rescope path: no duplicate user,
+            // no re-registration).
+            const stuckEmail = currentUser?.email || '';
             setAuthError({
               type: 'onboarding_failed',
-              message: 'Your account setup could not be completed. Please contact your administrator.'
+              message: lastReason === 'no_pending_scope'
+                ? `No invitation is queued for this exact email address${stuckEmail ? ` (${stuckEmail})` : ''}. Ask your administrator to send you an invitation from the Users page — direct sign-up cannot be linked to an organisation.`
+                : 'Your account setup could not be completed. Please contact your administrator.'
             });
             setIsLoadingAuth(false);
             return;

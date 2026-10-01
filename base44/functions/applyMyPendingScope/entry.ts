@@ -15,6 +15,20 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
  * THEIR email. PendingTenantScope records can only be created by admins
  * (RLS), so a user cannot escalate themselves — they merely consume a scope
  * intended for their email. Idempotent (marks the scope "applied").
+ *
+ * HARDENING (2026-10-01, recurring "Account Setup Incomplete" investigation):
+ *  1. VERIFY-BEFORE-CONSUME: the scope is marked "applied" only AFTER the
+ *     User update is persisted AND read back verified. A failed/unconfirmed
+ *     write leaves the scope "pending" so a bounded client retry re-runs the
+ *     whole apply — an invitation is never consumed by an unverified write.
+ *  2. SELF-HEALING IDEMPOTENCY: if a scope for the caller's email was already
+ *     marked "applied" but the caller's User record STILL carries none of the
+ *     assignments (a lost write after consumption was marked), the same stored
+ *     values are re-applied. Only a fully unscoped caller can hit this path,
+ *     so an administrator's later legitimate rescope is never overwritten.
+ *  3. BOUNDED RETRY SUPPORT: every failure returns a stable `reason` the
+ *     client uses to distinguish transient failures (retry) from permanent
+ *     ones (no invitation queued, invalid invitation — never retry).
  */
 export default async function(req: Request): Promise<Response> {
   try {
@@ -28,41 +42,64 @@ export default async function(req: Request): Promise<Response> {
     const email = (caller.email || '').trim().toLowerCase();
     if (!email) return Response.json({ applied: false });
 
-    const pending = await base44.asServiceRole.entities.PendingTenantScope.filter({
+    // Only a fully unscoped, unroleed account (a fresh signup awaiting its
+    // invitation scope) may consume a scope. Already-onboarded callers — and
+    // any caller an administrator has since rescoped — return immediately, so
+    // repeated requests can never overwrite a legitimate later assignment.
+    const callerUnscoped = !caller.reseller_id && !caller.customer_id &&
+      !caller.admin_level && !caller.role_type;
+    if (!callerUnscoped) {
+      return Response.json({ applied: false, reason: 'already_scoped' });
+    }
+
+    // ── Locate the intended scope for this exact email. ──
+    // Pending scopes win; an "applied" scope whose assignments never actually
+    // landed on the caller's record is re-applied (self-healing idempotency).
+    let scope: any = null;
+    let scopeState: 'pending' | 'applied_unverified' = 'pending';
+    const pendingRows = await base44.asServiceRole.entities.PendingTenantScope.filter({
       email, status: 'pending',
     });
-    if (!pending || pending.length === 0) {
+    if (pendingRows && pendingRows.length > 0) {
+      scope = pendingRows[0];
+    } else {
+      const appliedRows = await base44.asServiceRole.entities.PendingTenantScope.filter({
+        email, status: 'applied',
+      }).catch(() => []);
+      const candidate = (appliedRows || []).find(
+        (s: any) => !s.applied_user_id || s.applied_user_id === caller.id
+      );
+      if (candidate) {
+        scope = candidate;
+        scopeState = 'applied_unverified';
+      }
+    }
+    if (!scope) {
       // ADMIN-SIDE DIAGNOSTIC: an authenticated caller with NO scope, NO role
       // and no pending invitation scope is exactly the "Account Setup
-      // Incomplete" state. Log an actionable audit entry (WHO is stuck, WHY —
-      // e.g. the invitation scope was consumed by another session, was
-      // cancelled, or was keyed to a different email address) so
-      // administrators can see and fix it, instead of only the end user
-      // seeing a dead-end screen. Scoped users probing this endpoint never
-      // trigger the diagnostic.
-      const callerUnscoped = !caller.reseller_id && !caller.customer_id &&
-        !caller.admin_level && !caller.role_type;
-      if (callerUnscoped) {
-        try {
-          await base44.asServiceRole.entities.PlatformAuditLog.create({
-            event_type: 'tenant_user.scope_failed',
-            user_id: caller.id,
-            user_name: caller.display_name || caller.full_name || caller.email,
-            entity_name: 'User',
-            entity_id: caller.id,
-            action: 'apply_pending_tenant_scope',
-            notes: `Login blocked: no pending tenant scope exists for ${email}. Invite the user (or resend their invitation) so a scope is queued for this exact email address.`,
-          });
-        } catch (_) { /* diagnostics must never break the response */ }
-      }
+      // Incomplete" state (proven vector: direct sign-up on the auth page —
+      // the account exists but NO invitation was ever queued for the email).
+      // Log an actionable audit entry (WHO is stuck, WHY) so administrators
+      // can see and repair it (canonical repair: invite that exact email from
+      // the Users page — the existing-user rescope path, no duplicate user).
+      try {
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'tenant_user.scope_failed',
+          user_id: caller.id,
+          user_name: caller.display_name || caller.full_name || caller.email,
+          entity_name: 'User',
+          entity_id: caller.id,
+          action: 'apply_pending_tenant_scope',
+          notes: `Login blocked: no pending tenant scope exists for ${email}. Invite the user (or resend their invitation) so a scope is queued for this exact email address.`,
+        });
+      } catch (_) { /* diagnostics must never break the response */ }
       return Response.json({ applied: false, reason: 'no_pending_scope' });
     }
-    const scope = pending[0];
 
-    // DEFENSE-IN-DEPTH (2026-09-29): a guard scope without a site assignment
-    // cannot produce a valid scoped account — it is NEVER applied (fail
-    // closed, the user stays unscoped with no app access). inviteTenantUser
-    // blocks this at the source; this guard catches legacy/malformed scopes.
+    // DEFENSE-IN-DEPTH: a guard scope without a site assignment cannot
+    // produce a valid scoped account — it is NEVER applied (fail closed, the
+    // user stays unscoped with no app access). inviteTenantUser blocks this
+    // at the source; this guard catches legacy/malformed scopes.
     if (scope.role_type === 'guard' && !scope.site_id) {
       try {
         await base44.asServiceRole.entities.PlatformAuditLog.create({
@@ -76,7 +113,7 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ applied: false, reason: 'guard_site_missing' });
     }
 
-    const updates = {};
+    const updates: any = {};
     if (scope.role_type) updates.role_type = scope.role_type;
     if (scope.admin_level) updates.admin_level = scope.admin_level;
     if (scope.reseller_id) updates.reseller_id = scope.reseller_id;
@@ -89,7 +126,7 @@ export default async function(req: Request): Promise<Response> {
     if (scope.user_status) updates.user_status = scope.user_status;
 
     if (Object.keys(updates).length === 0) {
-      return Response.json({ applied: false });
+      return Response.json({ applied: false, reason: 'empty_scope' });
     }
 
     // Reseller-only membership RLS: add the authenticated caller's own user
@@ -97,7 +134,6 @@ export default async function(req: Request): Promise<Response> {
     // so a membership failure fails closed (user stays unscoped → no app
     // access). The reseller is resolved server-side from the pending scope;
     // the client cannot supply an arbitrary target. Idempotent + deduped.
-    // Customer/Site membership is a later phase — only reseller scoping here.
     if (scope.admin_level === 'reseller' && scope.reseller_id) {
       try {
         const reseller: any = await base44.asServiceRole.entities.Reseller.get(scope.reseller_id);
@@ -114,6 +150,35 @@ export default async function(req: Request): Promise<Response> {
 
     await base44.asServiceRole.entities.User.update(caller.id, updates);
 
+    // ── VERIFY-BEFORE-CONSUME ──
+    // Read the user back and confirm the assignments actually persisted.
+    // Only a VERIFIED write may consume the invitation: if verification fails
+    // the scope stays pending/re-appliable and the client's bounded retry
+    // re-runs the whole apply (idempotent — same values re-written).
+    let verified = false;
+    try {
+      const fresh: any = await base44.asServiceRole.entities.User.get(caller.id);
+      verified = !!fresh &&
+        (!updates.role_type || fresh.role_type === updates.role_type) &&
+        (!updates.admin_level || fresh.admin_level === updates.admin_level) &&
+        (!updates.reseller_id || fresh.reseller_id === updates.reseller_id) &&
+        (!updates.customer_id || fresh.customer_id === updates.customer_id) &&
+        (!updates.site_id || fresh.site_id === updates.site_id);
+    } catch (_) { /* verification read failure = unverified */ }
+    if (!verified) {
+      try {
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'tenant_user.scope_failed',
+          user_id: caller.id, user_name: caller.display_name || caller.full_name || caller.email,
+          entity_name: 'PendingTenantScope', entity_id: scope.id,
+          action: 'apply_pending_tenant_scope',
+          notes: `Scope write for ${email} could not be verified after persisting — invitation NOT consumed; a retry will re-apply it.`,
+        });
+      } catch (_) {}
+      return Response.json({ applied: false, reason: 'verify_failed', recoverable: true });
+    }
+
+    // The assignments are persisted and verified — NOW consume the scope.
     await base44.asServiceRole.entities.PendingTenantScope.update(scope.id, {
       status: 'applied',
       applied_user_id: caller.id,
@@ -131,7 +196,7 @@ export default async function(req: Request): Promise<Response> {
         entity_id: caller.id,
         action: 'apply_pending_tenant_scope',
         new_values: JSON.stringify(updates),
-        notes: `Applied queued tenant scope to ${email} (${scope.role_type})`,
+        notes: `Applied queued tenant scope to ${email} (${scope.role_type})${scopeState === 'applied_unverified' ? ' — re-applied after unverified earlier application' : ''}`,
       });
     } catch (_) { /* best-effort audit */ }
 
