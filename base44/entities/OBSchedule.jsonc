@@ -1,7 +1,7 @@
 {
   "name": "OBSchedule",
   "type": "object",
-  "description": "Task & OB Scheduling module: a Digital Occurrence Book (OB) check schedule \u2014 a recurring or specified-times series of OB checks owned by ONE control room of ONE customer, either Overall control-room scope (no site) or Specific-site scope. Configured by an authorised administrator/supervisor: title + clear instructions, cadence (every N minutes OR one/more specified times), active days, start/end dates, operating window (incl. overnight and 24-hour), overdue grace period, escalation delay and whether evidence is required. Intervals are anchored to the schedule's window START TIME, never to the previous completion. Occurrence generation is server-side, bounded and deduplicated by occurrence_key ('<scheduleId>:<operatingDate>:<minutesFromWindowStart>') \u2014 scheduler retries, overlapping runs and schedule edits can never duplicate checks; editing a schedule preserves completed/cancelled history and cleanly regenerates only future PENDING occurrences. GATEWAY-ONLY ACCESS: all tenant read/write flows through the obAccess gateway (server-side tenant/control-room/site resolution, server-side Digital OB entitlement gate); direct client access is restricted to platform administration by RLS. No payment functionality.",
+  "description": "Task & OB Scheduling module: a Digital Occurrence Book (OB) check schedule \u2014 a recurring or specified-times series of OB checks owned by ONE control room of ONE customer, either Overall control-room scope (no site) or Specific-site scope. Configured by an authorised administrator/supervisor: title + clear instructions, category, cadence (every N minutes OR one/more specified times), active days, start/end dates, operating window (incl. overnight and 24-hour), overdue grace period, escalation delay and whether evidence is required. Intervals are anchored to the schedule's window START TIME, never to the previous completion. Occurrence generation is server-side, bounded and deduplicated by occurrence_key ('<scheduleId>:<operatingDate>:<minutesFromWindowStart>') \u2014 scheduler retries, overlapping runs and schedule edits can never duplicate checks; editing a schedule preserves completed/cancelled history and cleanly regenerates only future PENDING occurrences. GATEWAY-ONLY ACCESS: all tenant read/write flows through the obAccess gateway (server-side tenant/control-room/site resolution, server-side Digital OB entitlement gate); direct client access is restricted to platform administration by RLS. No payment functionality.",
   "properties": {
     "customer_id": {
       "type": "string",
@@ -20,6 +20,13 @@
     "instructions": {
       "type": "string",
       "description": "Clear instructions describing exactly what the controller must perform and observe for this check."
+    },
+    "category": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional OB category label for the checks generated from this schedule (e.g. 'Security', 'Fire')."
     },
     "scope": {
       "type": "string",
@@ -147,7 +154,7 @@
         "cancelled"
       ],
       "default": "active",
-      "description": "active = generates occurrences; paused = generation and reminders STOP (existing pending occurrences are cancelled with reason 'schedule_paused' at pause time \u2014 resuming NEVER back-fills or floods: generation restarts cleanly from the resume moment); cancelled = stopped permanently, records preserved."
+      "description": "active = generates occurrences; paused = generation and reminders STOP (existing pending occurrences are cancelled with reason 'Schedule paused' at pause time \u2014 resuming NEVER back-fills or floods: generation restarts cleanly from the resume moment); cancelled = stopped permanently, records preserved."
     },
     "paused_at": {
       "type": [

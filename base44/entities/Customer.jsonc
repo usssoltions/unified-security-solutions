@@ -74,6 +74,11 @@
       "format": "date-time",
       "description": "Expiry of the operational-user-slot mutex token \u2014 a crashed holder's lock is stealable after this instant (stale-lock recovery). Internal only."
     },
+    "digital_ob_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "PERSISTED CUSTOMER SETTING (default OFF for existing and new customers): enables the Digital Occurrence Book (OB) extension inside the Task & OB Scheduling module. Server-enforced: when OFF, OB gateways reject OB creation/changes, OB screens and schedule options are hidden, and OB reminders/occurrence generation never run; ordinary task scheduling is completely unaffected. Requires the Task Scheduling module to be enabled (enforced by manageCustomerEntitlement set_ob with a clear dependency error). Enabling alone creates nothing; disabling preserves all OB history and stops OB automation; re-enabling never back-fills historical checks or sends alert floods (paused schedules require explicit resumption). Only administrators who already manage customer module settings may change it (audited: customer.ob_toggled)."
+    },
     "guard_default_landing": {
       "type": "string",
       "description": "Optional customer-configurable GUARD DEFAULT LANDING MODULE (page key, e.g. 'access_control'). When set, a guard of THIS customer lands directly on that module after login / app reopen / session restore instead of the generic guard role home \u2014 no intermediate dashboard tap. Strictly fail-closed: the override only applies when the guard's role permits the page AND the customer's module entitlements enable it (isPageModuleEnabled); every other customer keeps its existing landing behaviour. Unset/null = unchanged landing. No licensing, scoping or security semantics \u2014 it changes WHICH authorised page is shown first, never WHAT a guard may access."
