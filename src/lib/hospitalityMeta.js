@@ -38,7 +38,24 @@ export const PRESENCE_STYLES = {
 
 export const ADMISSION_LABELS = { pending: "Pending", confirming: "Confirming", confirmed: "Confirmed", cancelled: "Cancelled" };
 
-export const fmtDT = (iso) => (iso ? new Date(iso).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" }) : "—");
+// Platform built-in stamps (created_date / updated_date) are stored as UTC
+// WITHOUT a timezone designator ("2026-10-01T17:59:43.284"), while most other
+// timestamps carry "Z". A timezone-less ISO string parses as DEVICE-LOCAL
+// time, which rendered "Created" exactly 2 h off on SAST devices. Normalise
+// here — stored records are never altered.
+export function parseTs(iso) {
+  if (!iso) return null;
+  if (iso instanceof Date) return iso;
+  if (typeof iso !== "string") return null;
+  const s = iso.trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s) && !/(?:Z|[+-]\d{2}:?\d{2})$/.test(s)) return new Date(`${s}Z`);
+  return new Date(s);
+}
+
+export const fmtDT = (iso) => {
+  const d = parseTs(iso);
+  return d && !isNaN(d) ? d.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" }) : "—";
+};
 export const yesNo = (b) => (b === true ? "Yes" : b === false ? "No" : "N/A");
 export const maskPhone = (p) => (p ? String(p).replace(/.(?=.{4})/g, "•") : "—");
 
