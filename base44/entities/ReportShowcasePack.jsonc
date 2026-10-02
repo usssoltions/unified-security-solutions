@@ -100,6 +100,14 @@
                   "description": "Server-side generator id that builds the file at send time from the pack's demo records (e.g. daily_access_pdf, daily_access_csv, hospitality_visits_pdf, daily_activity_pdf, monthly_incident_pdf, monthly_maintenance_pdf)."
                 },
                 "record_ids": {
+                  "type": [
+                    "array",
+                    "object",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Demo record ids the generator renders (array, or object of per-entity arrays for multi-source reports)."
                 },
                 "date": {

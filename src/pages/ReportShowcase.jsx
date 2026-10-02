@@ -261,11 +261,18 @@ export default function ReportShowcase() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {(pack.contents || []).map((c) => (
-                    <div key={c.template_id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                  {(pack.contents || []).map((c, ci) => (
+                    <div key={`${c.template_id}-${ci}`} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-white truncate">{c.label}</p>
                         <p className="text-[11px] text-slate-400 truncate">{c.subject}</p>
+                        {(c.attachments || []).length > 0 ? (
+                          <p className="text-[10px] text-emerald-400/80 truncate mt-0.5">
+                            Attached: {(c.attachments || []).map((a) => a.filename).join(", ")}
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-slate-500 truncate mt-0.5">No report attachment for this item</p>
+                        )}
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Badge variant="outline" className="text-[10px] text-slate-300 border-slate-600">{c.channel}</Badge>

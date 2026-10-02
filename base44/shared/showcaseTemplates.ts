@@ -118,6 +118,7 @@ export async function buildTemplateExample(
   const picked = pickExample(t.template_id, ctx.records);
   const p = picked.primary;
   const brand = ctx.brand;
+  const records = ctx.records;
   const ids = p?.id ? [p.id] : [];
 
   switch (t.template_id) {
@@ -355,7 +356,15 @@ export async function buildTemplateExample(
         timezone: 'Africa/Johannesburg',
       });
       const text = `DEMO | Daily Access Control Report — ${siteName}\n${DEMO_FOOTER}`;
-      return { subject: `DEMO | Daily Access Control Report — ${siteName}`, html, text, demo_record_ids: logs.slice(0, 10).map((l: any) => l.id) };
+      const siteSafe = String(siteName).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'Site';
+      const logIds = logs.slice(0, 10).map((l: any) => l.id);
+      // REAL downloadable report files (the same shared generators the live
+      // dispatch path uses) — built at send time from these demo logs.
+      const attachments = [
+        { filename: `DEMO_Daily_Access_Report_${siteSafe}.pdf`, generator: 'daily_access_pdf', record_ids: logIds },
+        { filename: `DEMO_Daily_Access_Report_${siteSafe}.csv`, generator: 'daily_access_csv', record_ids: logIds },
+      ];
+      return { subject: `DEMO | Daily Access Control Report — ${siteName}`, html, text, demo_record_ids: logIds, attachments };
     }
     case 'visitor_registration': {
       if (!p) return null;
@@ -397,6 +406,138 @@ export async function buildTemplateExample(
         footerNote: DEMO_FOOTER,
       });
       return { subject: `DEMO | Laundry request — ${p.resident_name || p.unit_number || ''}`, html: out.html, text: out.text, demo_record_ids: ids };
+    }
+    // ── REAL REPORT EXPORTS — the pack item is the branded email cover for a
+    // downloadable report; the ATTACHMENT itself is built at send time by the
+    // same shared generator the production dispatch path uses (showcaseDelivery).
+    // Items return null when their demo data is missing — never a stub.
+    case 'hospitality_visits_report': {
+      const visits = (records.HospitalityVisit || []).filter((v: any) => v.demo_batch_id && !v.is_test);
+      if (!visits.length) return null;
+      const names = [...new Set(visits.map((v: any) => v.site_name).filter(Boolean))] as string[];
+      const siteBit = names.length === 1 ? names[0] : `${names.length} demo sites`;
+      const out = buildTransactionalEmail({
+        brand,
+        title: 'Hospitality Visits Report (GRID GATE)',
+        severity: 'medium',
+        preheader: DEMO_LABEL,
+        intro: `The branded downloadable Hospitality Visits PDF covering demo visits at ${siteBit} — primary and secondary logos applied, evidence photos and identity numbers deliberately excluded.`,
+        details: [
+          detail('Demo visits', String(visits.length)),
+          detail('Sites', names.length ? names.join(', ') : '—'),
+          detail('Format', 'PDF attachment (landscape A4)'),
+        ],
+        footerNote: DEMO_FOOTER,
+      });
+      const html = out.html;
+      const ids = visits.slice(0, 20).map((v: any) => v.id);
+      return {
+        subject: `DEMO | Hospitality Visits Report — ${siteBit}`,
+        html, text: `DEMO | Hospitality Visits Report — ${siteBit}\n${DEMO_FOOTER}`,
+        demo_record_ids: ids,
+        attachments: [{ filename: 'DEMO_Hospitality_Visits_Report.pdf', generator: 'hospitality_visits_pdf', record_ids: ids }],
+      };
+    }
+    case 'daily_activity_report': {
+      const incidents = (records.Incident || []).filter((i: any) => i.demo_batch_id && !i.is_test);
+      const maintenance = (records.MaintenanceRequest || []).filter((m: any) => m.demo_batch_id && !m.is_test);
+      const patrols = (records.PatrolLog || []).filter((l: any) => l.demo_batch_id && !l.is_test);
+      const shifts = (records.Shift || []).filter((s: any) => s.demo_batch_id && !s.is_test);
+      if (!incidents.length && !maintenance.length && !patrols.length && !shifts.length) return null;
+      // Pick the busiest SAST demo day across all four activity sources.
+      const dayOf = (iso: any) => {
+        const d = new Date(iso); if (isNaN(d.getTime())) return null;
+        return new Date(d.getTime() + 2 * 3600e3).toISOString().slice(0, 10);
+      };
+      const buckets: Record<string, Record<string, any[]>> = {};
+      const put = (list: any[], kind: string, tsField: string) => {
+        for (const r of list) { const d = dayOf(r[tsField] || r.created_date); if (!d) continue; (buckets[d] ||= { Incident: [], MaintenanceRequest: [], PatrolLog: [], Shift: [] })[kind].push(r); }
+      };
+      put(incidents, 'Incident', 'reported_at');
+      put(maintenance, 'MaintenanceRequest', 'reported_at');
+      put(patrols, 'PatrolLog', 'timestamp');
+      for (const s of shifts.filter((s: any) => s.clock_in?.timestamp)) { const d = dayOf(s.clock_in.timestamp); if (d) (buckets[d] ||= { Incident: [], MaintenanceRequest: [], PatrolLog: [], Shift: [] }).Shift.push(s); }
+      const scored = Object.entries(buckets).map(([day, b]) => [day, b, b.Incident.length + b.MaintenanceRequest.length + b.PatrolLog.length + b.Shift.length] as const);
+      if (!scored.length) return null;
+      scored.sort((a, b) => (b[2] as number) - (a[2] as number));
+      const [day, b] = scored[0];
+      const cap = (a: any[]) => a.slice(0, 60).map((r: any) => r.id);
+      const record_ids = { Incident: cap(b.Incident), MaintenanceRequest: cap(b.MaintenanceRequest), PatrolLog: cap(b.PatrolLog), Shift: cap(b.Shift) };
+      const out = buildTransactionalEmail({
+        brand,
+        title: 'Daily Activity Report',
+        severity: 'medium',
+        preheader: DEMO_LABEL,
+        intro: `The downloadable daily activity PDF for the demo operating day ${day} — incidents, maintenance, patrol scans and worked shifts, branded to the tenant.`,
+        details: [
+          detail('Operating day', day),
+          detail('Incidents', String(b.Incident.length)),
+          detail('Maintenance', String(b.MaintenanceRequest.length)),
+          detail('Checkpoint scans', String(b.PatrolLog.length)),
+        ],
+        footerNote: DEMO_FOOTER,
+      });
+      const html = out.html;
+      return {
+        subject: `DEMO | Daily Activity Report — ${day}`,
+        html, text: `DEMO | Daily Activity Report — ${day}\n${DEMO_FOOTER}`,
+        demo_record_ids: [...new Set([...record_ids.Incident, ...record_ids.MaintenanceRequest, ...record_ids.PatrolLog, ...record_ids.Shift])].slice(0, 20),
+        attachments: [{ filename: `DEMO_Daily_Activity_Report_${day}.pdf`, generator: 'daily_activity_pdf', date: day, record_ids }],
+      };
+    }
+    case 'monthly_incident_report': {
+      const incidents = (records.Incident || []).filter((i: any) => i.demo_batch_id && !i.is_test && (i.reported_at || i.created_date));
+      if (!incidents.length) return null;
+      const sastKey = (iso: any) => { const d = new Date(iso); if (isNaN(d.getTime())) return null; const s = new Date(d.getTime() + 2 * 3600e3); return `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, '0')}`; };
+      const keys = [...new Set(incidents.map((i: any) => sastKey(i.reported_at || i.created_date)).filter(Boolean))] as string[];
+      if (!keys.length) return null;
+      const currentKey = keys.sort()[keys.length - 1];
+      const month = incidents.filter((i: any) => sastKey(i.reported_at || i.created_date) === currentKey);
+      const label = new Date(`${currentKey}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const ids = month.slice(0, 60).map((i: any) => i.id);
+      const out = buildTransactionalEmail({
+        brand,
+        title: 'Monthly Incident Analysis Report',
+        severity: 'medium',
+        preheader: DEMO_LABEL,
+        intro: `The downloadable monthly incident analysis PDF for ${label}, built from the seeded demo incidents — comparative metrics, category and priority breakdowns, incident log and recommendations.`,
+        details: [detail('Month', label), detail('Demo incidents', String(month.length))],
+        footerNote: DEMO_FOOTER,
+      });
+      const html = out.html;
+      return {
+        subject: `DEMO | Monthly Incident Analysis — ${label}`,
+        html, text: `DEMO | Monthly Incident Analysis — ${label}\n${DEMO_FOOTER}`,
+        demo_record_ids: ids.slice(0, 20),
+        attachments: [{ filename: `DEMO_Monthly_Incident_Report_${currentKey}.pdf`, generator: 'monthly_incident_pdf', record_ids: ids }],
+      };
+    }
+    case 'monthly_maintenance_report': {
+      const reqs = (records.MaintenanceRequest || []).filter((m: any) => m.demo_batch_id && !m.is_test && (m.reported_at || m.created_date));
+      if (!reqs.length) return null;
+      const sastKey = (iso: any) => { const d = new Date(iso); if (isNaN(d.getTime())) return null; const s = new Date(d.getTime() + 2 * 3600e3); return `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, '0')}`; };
+      const keys = [...new Set(reqs.map((m: any) => sastKey(m.reported_at || m.created_date)).filter(Boolean))] as string[];
+      if (!keys.length) return null;
+      const currentKey = keys.sort()[keys.length - 1];
+      const month = reqs.filter((m: any) => sastKey(m.reported_at || m.created_date) === currentKey);
+      const label = new Date(`${currentKey}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const ids = month.slice(0, 60).map((m: any) => m.id);
+      const out = buildTransactionalEmail({
+        brand,
+        title: 'Monthly Maintenance Analysis Report',
+        severity: 'medium',
+        preheader: DEMO_LABEL,
+        intro: `The downloadable monthly maintenance analysis PDF for ${label}, built from the seeded demo maintenance requests — comparative metrics, category and urgency breakdowns, request log and recommendations.`,
+        details: [detail('Month', label), detail('Demo requests', String(month.length))],
+        footerNote: DEMO_FOOTER,
+      });
+      const html = out.html;
+      return {
+        subject: `DEMO | Monthly Maintenance Analysis — ${label}`,
+        html, text: `DEMO | Monthly Maintenance Analysis — ${label}\n${DEMO_FOOTER}`,
+        demo_record_ids: ids.slice(0, 20),
+        attachments: [{ filename: `DEMO_Monthly_Maintenance_Report_${currentKey}.pdf`, generator: 'monthly_maintenance_pdf', record_ids: ids }],
+      };
     }
     default:
       return null;

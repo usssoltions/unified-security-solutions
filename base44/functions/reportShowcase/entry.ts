@@ -25,6 +25,9 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import {
   SHOWCASE_TEMPLATE_CATALOG, buildTemplateExample, computePackFingerprint, DEMO_FOOTER,
 } from '../../shared/showcaseTemplates.ts';
+import {
+  sendOne as sendPackItem, createSendClaims, buildItemAttachments,
+} from '../../shared/showcaseDelivery.ts';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (s: any) => String(s || '').trim().toLowerCase();
@@ -143,48 +146,18 @@ async function sendOne(
   content: any, to: string, brand: any, customer_id: string, copy_to?: string | null,
   contentIdx?: number,
 ) {
-  // The content index disambiguates per-site variants that share a template_id
-  // (e.g. one Daily Access Report per demo site) in the send ledger.
-  const dedupKey = `${pack.id}:${stage}:${content.template_id}:${contentIdx ?? 0}`;
-  const results = stage === 'preview' ? [...(pack.preview?.results || [])] : [...(pack.customer_delivery?.results || [])];
-  if (results.some((r) => r.dedup_key === dedupKey && r.status === 'sent')) {
-    return { skipped: true, reason: 'already_sent' };
+  // REAL ATTACHMENTS: the item's report files are built at send time from the
+  // pack's own demo records by the SHARED generators (the same builders the
+  // production dispatch path uses) — the pack stores only metadata.
+  const attachments = await buildItemAttachments(svc, content, brand, pack.customer_name || null);
+  let r = await sendPackItem(svc, pack, user, stage, content, to, brand, customer_id, copy_to, contentIdx, { attachments });
+  // Packs generated before the claim ledger existed have no claim rows —
+  // create them for this pack, then claim again (never send unclaimed).
+  if (r.skipped && r.reason === 'claim_missing') {
+    await createSendClaims(svc, pack).catch(() => null);
+    r = await sendPackItem(svc, pack, user, stage, content, to, brand, customer_id, copy_to, contentIdx, { attachments });
   }
-  const attempt = async (addr: string) => {
-    try {
-      await sendAuditedEmail(svc, {
-        to: addr,
-        subject: content.subject,
-        html: content.html,
-        text: content.text,
-        brand,
-        customer_id,
-        from_name: brand?.brand_name || undefined,
-      });
-      return { ok: true };
-    } catch (e: any) {
-      return { ok: false, error: String(e?.message || e) };
-    }
-  };
-  const primary = await attempt(to);
-  let copy: { ok: boolean; error?: string } | null = null;
-  if (stage === 'customer' && copy_to && primary.ok) {
-    await sleep(1200);
-    copy = await attempt(copy_to);
-  }
-  const status = primary.ok ? 'sent' : 'failed';
-  const existing = results.find((r) => r.dedup_key === dedupKey);
-  const result = {
-    template_id: content.template_id,
-    status,
-    attempts: (existing?.attempts || 0) + 1,
-    dedup_key: dedupKey,
-    last_error: primary.ok ? (copy && !copy.ok ? `owner copy failed: ${copy.error}` : null) : primary.error,
-    sent_at: primary.ok ? new Date().toISOString() : (existing?.sent_at || null),
-  };
-  const idx = existing ? results.indexOf(existing) : -1;
-  if (idx >= 0) results[idx] = result; else results.push(result);
-  return { skipped: false, ok: primary.ok, results, copyOk: !copy || copy.ok };
+  return r;
 }
 
 Deno.serve(async (req) => {
@@ -306,7 +279,9 @@ Deno.serve(async (req) => {
         customer_delivery: { to: null, bcc_copy_to: null, started_at: null, completed_at: null, results: [] },
         audit: await auditRow({ audit: [] }, user, 'generate', `Rendered ${contents.length} inert examples from demo batches ${(demo_batch_ids || []).join(', ')}`),
       });
-      return Response.json({ success: true, pack_id: pack.id, pack_number: pack.pack_number, content_fingerprint, contents: contents.map((c) => ({ template_id: c.template_id, label: c.label, channel: c.channel, subject: c.subject })) });
+      // Per-stage duplicate-send claim rows (preview + customer) for every item.
+      await createSendClaims(svc, { ...(pack.data ?? pack), id: pack.id }).catch(() => null);
+      return Response.json({ success: true, pack_id: pack.id, pack_number: pack.pack_number, content_fingerprint, contents: contents.map((c) => ({ template_id: c.template_id, label: c.label, channel: c.channel, subject: c.subject, attachments: (c.attachments || []).map((a: any) => a.filename) })) });
     }
 
     // ── pack fetch helpers ───────────────────────────────────────────────
@@ -512,6 +487,7 @@ Deno.serve(async (req) => {
           html_length: (c.html || '').length,
           text_length: (c.text || '').length,
           demo_record_ids: (c.demo_record_ids || []).length,
+          attachment_names: (c.attachments || []).map((a: any) => a.filename),
         };
       });
       const keys = plan.map((p: any) => p.dedup_key);
