@@ -753,6 +753,24 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
   const rows = [];
   const counts = {};
   const tag = (entity, made) => { for (const m of made) rows.push({ entity, id: m.id }); counts[entity] = (counts[entity] || 0) + made.length; };
+  // PARTIAL-WRITE RECONCILIATION: a screens run that failed mid-build left
+  // records WITHOUT ledger rows (the ledger is written only after the phase
+  // completes) and an unstamped phase key — a plain re-run would duplicate
+  // them. Delete every UNTRACKED demo-marked record of the screens entities
+  // for this customer before building fresh: ledger-tracked records (any
+  // completed batch) and genuine unmarked operational records are untouched.
+  const ledgerRowsAll = await svc.entities.DemoSeedRecord.filter({ customer_id: cid, kind: 'seeded' }, '-created_date', 5000).catch(() => []);
+  const tracked = new Set(ledgerRowsAll.map((r) => r.record_id));
+  const SCREEN_ENTITIES = ['Resident', 'Property', 'Destination', 'Visitor', 'BlacklistEntry', 'VehicleLicenceDisc', 'ChecklistTemplate', 'ChecklistCompletion', 'Asset', 'ShiftHandover', 'GeneratedReport', 'Announcement', 'ServiceTicket', 'VotingQuestion', 'PanicAlert'];
+  for (const e of SCREEN_ENTITIES) {
+    const existing = await svc.entities[e].filter({ customer_id: cid }, '-created_date', 2000).catch(() => []);
+    const partial = existing.filter((r) => !tracked.has(r.id) && (JSON.stringify(r).includes(DEMO_MARKER) || JSON.stringify(r).includes('[SIMULATED]') || JSON.stringify(r).includes('LIC-DEMO-')));
+    if (partial.length) {
+      for (const id of partial.map((p) => p.id)) await svc.entities[e].delete(id).catch(() => {});
+      counts[`swept_${e}`] = partial.length;
+      await sleep(300);
+    }
+  }
   const siteDisplay = site.hospitality_display_name || site.name;
   // Batched writes only: dozens of single-record creates trip the platform
   // rate limiter; a short settle between entity batches keeps runs reliable.
@@ -1018,31 +1036,38 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
 
   // ── Voting (one active, one closed) ──
   const madeVotes = [];
-  madeVotes.push(await svc.entities.VotingQuestion.create({
-    customer_id: cid, reseller_id: rid, site_id: site.id,
-    question: '[SIMULATED] Should the pool area hours extend to 21:00?',
-    description: `[${DEMO_MARKER}] Demo community vote.`,
-    category: 'community', options: [{ id: 'o1', text: 'Yes' }, { id: 'o2', text: 'No' }, { id: 'o3', text: 'Abstain' }],
-    status: 'active', opens_at: at(5, 8, 0), closes_at: at(-10, 20, 0),
-    votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
-  }));
-  madeVotes.push(await svc.entities.VotingQuestion.create({
-    customer_id: cid, reseller_id: rid, site_id: site.id,
-    question: '[SIMULATED] Approval for additional CCTV camera at the restaurant entrance',
-    description: `[${DEMO_MARKER}] Demo security vote (closed).`,
-    category: 'security', options: [{ id: 'o1', text: 'Approve' }, { id: 'o2', text: 'Reject' }],
-    status: 'closed', opens_at: at(40, 8, 0), closes_at: at(30, 20, 0),
-    votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
-  }));
+  const voteRows = [
+    {
+      customer_id: cid, reseller_id: rid, site_id: site.id,
+      question: '[SIMULATED] Should the pool area hours extend to 21:00?',
+      description: `[${DEMO_MARKER}] Demo community vote.`,
+      category: 'community', options: [{ id: 'o1', text: 'Yes' }, { id: 'o2', text: 'No' }, { id: 'o3', text: 'Abstain' }],
+      status: 'active', opens_at: at(5, 8, 0), closes_at: at(-10, 20, 0),
+      votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
+    },
+    {
+      customer_id: cid, reseller_id: rid, site_id: site.id,
+      question: '[SIMULATED] Approval for additional CCTV camera at the restaurant entrance',
+      description: `[${DEMO_MARKER}] Demo security vote (closed).`,
+      category: 'security', options: [{ id: 'o1', text: 'Approve' }, { id: 'o2', text: 'Reject' }],
+      status: 'closed', opens_at: at(40, 8, 0), closes_at: at(30, 20, 0),
+      votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
+    },
+  ];
+  for (const c of chunk(voteRows, 2)) {
+    madeVotes.push(...(await svc.entities.VotingQuestion.bulkCreate(c)));
+    await sleep(400);
+  }
   tag('VotingQuestion', madeVotes);
 
   // ── Panic drills — RESOLVED historical only (never active, never paged) ──
   const madePanic = [];
+  const panicRows = [];
   for (let i = 0; i < 4; i++) {
     const off = 5 + i * 9;
     const g = ROSTER[i % ROSTER.length];
     const started = at(off, 12 + i, 15);
-    madePanic.push(await svc.entities.PanicAlert.create({
+    panicRows.push({
       customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
       panic_number: `PNC-DEMO-${batch.slice(5)}-${String(i + 1).padStart(4, '0')}`,
       user_id: g[0], user_name: `[SIMULATED] ${g[1]}`, user_role: 'guard', badge_number: g[2],
@@ -1053,7 +1078,11 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       acknowledged_by: 'demo-op1', acknowledged_by_name: 'Control Room (Demo)', acknowledged_at: iso(new Date(Date.parse(started) + 30000)),
       resolved_by: 'demo-op1', resolved_by_name: 'Control Room (Demo)', resolved_at: iso(new Date(Date.parse(started) + 4 * 60000)),
       resolution_notes: `[${DEMO_MARKER}] Drilled response completed.`,
-    }));
+    });
+  }
+  for (const c of chunk(panicRows, 4)) {
+    madePanic.push(...(await svc.entities.PanicAlert.bulkCreate(c)));
+    await sleep(400);
   }
   tag('PanicAlert', madePanic);
 
