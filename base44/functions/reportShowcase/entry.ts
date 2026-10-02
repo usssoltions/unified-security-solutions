@@ -232,15 +232,26 @@ Deno.serve(async (req) => {
       const contents: any[] = [];
       for (const t of SHOWCASE_TEMPLATE_CATALOG) {
         if (!selections.find((s) => s.template_id === t.template_id && s.include)) continue;
-        // Daily Access Report is a SINGLE-SITE report — render ONE item per demo
-        // site so all seeded sites are represented accurately (each item contains
-        // only that site's demo logs and names only that site).
-        const demoLogSites = t.template_id === 'daily_access_report'
-          ? [...new Set((records.AccessLog || []).map((l: any) => l.site_name || l.site_id).filter(Boolean))]
+        // SITE-SCOPED templates render ONE item per demo site so all seeded
+        // sites are represented accurately (each item contains only that
+        // site's demo records and names only that site).
+        const siteSourceEntity: Record<string, string> = {
+          daily_access_report: 'AccessLog',
+          incident_reported: 'Incident',
+          incident_critical_escalation: 'Incident',
+          maintenance_reported: 'MaintenanceRequest',
+          maintenance_completed: 'MaintenanceRequest',
+          panic_alert: 'PanicAlert',
+          start_of_shift_report: 'ShiftHandover',
+          shift_handover: 'ShiftHandover',
+        };
+        const srcEntity = siteSourceEntity[t.template_id] || null;
+        const demoLogSites = srcEntity
+          ? [...new Set((records[srcEntity] || []).filter((r: any) => r.demo_batch_id && !r.is_test).map((r: any) => r.site_name || r.site_id).filter(Boolean))]
           : [null];
         for (const site of demoLogSites) {
-          const scopedRecords = site
-            ? { ...records, AccessLog: (records.AccessLog || []).filter((l: any) => (l.site_name || l.site_id) === site && l.demo_batch_id) }
+          const scopedRecords = site && srcEntity
+            ? { ...records, [srcEntity]: (records[srcEntity] || []).filter((r: any) => (r.site_name || r.site_id) === site && r.demo_batch_id && !r.is_test) }
             : records;
           const example = await buildTemplateExample(svc, t, {
             customer_id, customerName, brand, records: scopedRecords,

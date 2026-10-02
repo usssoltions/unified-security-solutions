@@ -12,7 +12,7 @@
  * Every example carries the DEMONSTRATION — NO ACTION REQUIRED label and a
  * 'DEMO |' subject prefix.
  */
-import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from './brandedCommunication.ts';
+import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram, formatSastDate, formatSastTime, escHtml } from './brandedCommunication.ts';
 import { buildTransactionalEmail, renderTransactionalShell } from './transactionalEmail.ts';
 import { buildPanicEmailAsyncFull } from './panicEmailTemplate.ts';
 import {
@@ -23,6 +23,8 @@ import {
   deadlineReport, newTaskListNotification,
 } from './taskReportContent.ts';
 import { DEFAULT_DEPLOYMENT_URL, appUrlFor } from './appUrl.ts';
+import { buildStartOfShiftReportEmail, haversineMetres } from './startOfShiftReport.ts';
+import { escalationEmailHtml } from './obCore.ts';
 
 const CTA = (path: string) => appUrlFor(DEFAULT_DEPLOYMENT_URL, path);
 
@@ -45,14 +47,15 @@ export const SHOWCASE_TEMPLATE_CATALOG: ShowcaseTemplateSpec[] = [
   { template_id: 'maintenance_reported', label: 'Maintenance Reported — Administrator Alert', module: 'OPERATIONS', channel: 'email', scenario: 'A guard logs a maintenance fault; administrators are alerted.', needs: ['MaintenanceRequest'] },
   { template_id: 'maintenance_completed', label: 'Maintenance Completed — Closure Notice', module: 'OPERATIONS', channel: 'email', scenario: 'An assigned maintenance request is completed and closed out.', needs: ['MaintenanceRequest'] },
   { template_id: 'panic_alert', label: 'Panic Alert — Emergency Email', module: 'COMPLETE_SECURITY', channel: 'email', scenario: 'A panic activation and its full lifecycle (resolved drill).', needs: ['PanicAlert'] },
-  { template_id: 'alarm_dispatch', label: 'Alarm Dispatch — Response Instruction', module: 'OPERATIONS', channel: 'email', scenario: 'A control-room alarm dispatch with response instructions.', needs: ['Alert'] },
+  { template_id: 'alarm_dispatch', label: 'Alarm Dispatch — Response Instruction', module: 'OPERATIONS', channel: 'email', scenario: 'A control-room alarm dispatch with response instructions.', needs: ['AlarmResponse'] },
   { template_id: 'shift_schedule_summary', label: 'Shift Schedule Summary', module: 'OPERATIONS', channel: 'email', scenario: 'Scheduled shifts for the coming days, sent to guards.', needs: ['Shift'] },
-  { template_id: 'shift_handover', label: 'Shift Handover Notice', module: 'OPERATIONS', channel: 'email', scenario: 'End-of-shift handover summary delivered to the incoming guard.', needs: ['ShiftHandover'] },
+  { template_id: 'shift_handover', label: 'Shift Handover Notice', module: 'OPERATIONS', channel: 'email', scenario: 'End-of-shift handover summary delivered to the incoming guard.', needs: ['ShiftHandover', 'Shift'] },
+  { template_id: 'start_of_shift_report', label: 'Start of Shift Report', module: 'OPERATIONS', channel: 'email', scenario: 'The Start of Shift report for the officer: shift & clock-in, post details, observations, geofence, evidence and signature.', needs: ['ShiftHandover', 'Shift', 'Site'] },
   { template_id: 'task_deadline_report', label: 'Task Completion (Deadline) Report', module: 'TASK_SCHEDULING', channel: 'email', scenario: 'The authoritative deadline report for a scheduled task batch.', needs: ['TaskBatch', 'OperationalTask'] },
   { template_id: 'task_list_telegram', label: 'New Task List — Telegram', module: 'TASK_SCHEDULING', channel: 'telegram', scenario: 'The Telegram message announcing a new task list.', needs: ['TaskBatch'] },
   { template_id: 'ob_overdue_escalation', label: 'OB Check Overdue Escalation', module: 'TASK_SCHEDULING', channel: 'email', scenario: 'A Digital Occurrence Book check past due, escalated to supervisors.', needs: ['OBOccurrence'] },
   { template_id: 'daily_access_report', label: 'Daily Access Control Report', module: 'ACCESS', channel: 'email', scenario: 'The branded daily access report (entries, exits, denials) for one site.', needs: ['AccessLog', 'Site'] },
-  { template_id: 'visitor_registration', label: 'Visitor Registration Notice', module: 'ESTATE', channel: 'email', scenario: 'A resident-linked visitor registration notification.', needs: ['AccessLog'] },
+  { template_id: 'visitor_registration', label: 'Visitor Registration Notice', module: 'ESTATE', channel: 'email', scenario: 'A resident-linked visitor registration notification.', needs: ['Visitor'] },
   { template_id: 'laundry_request', label: 'Laundry Request — Administrator Alert', module: 'ESTATE', channel: 'email', scenario: 'A resident laundry request is submitted to administrators.', needs: ['LaundryRequest'] },
   // ── REAL REPORT EXPORTS (actual downloadable attachments) ────────────────
   { template_id: 'hospitality_visits_report', label: 'Hospitality Visits Report (GRID GATE) — PDF', module: 'ACCESS', channel: 'email', scenario: 'The branded downloadable Hospitality Visits PDF (primary + secondary logos, GRID GATE branding) built from demo visits.', needs: ['HospitalityVisit', 'AccessLog'] },
@@ -87,11 +90,15 @@ function pickExample(template_id: string, records: Record<string, any[]>) {
     case 'panic_alert':
       return { primary: first(records.PanicAlert || []) };
     case 'alarm_dispatch':
-      return { primary: first(records.Alert || []) };
+      return { primary: first(records.AlarmResponse || []) };
     case 'shift_schedule_summary':
       return { primary: first(records.Shift || []) };
     case 'shift_handover':
-      return { primary: first(records.ShiftHandover || []) };
+      return { primary: first(records.ShiftHandover || [], (r: any) => r.outgoing_guard_signature && r.special_instructions) || first(records.ShiftHandover || []) };
+    case 'start_of_shift_report':
+      return { primary: first(records.ShiftHandover || [], (r: any) => r.outgoing_guard_signature && r.special_instructions) || null };
+    case 'visitor_registration':
+      return { primary: first(records.Visitor || []) };
     case 'task_deadline_report':
       return { primary: first(records.TaskBatch || []), tasks: records.OperationalTask || [] };
     case 'task_list_telegram':
@@ -100,8 +107,6 @@ function pickExample(template_id: string, records: Record<string, any[]>) {
       return { primary: first(records.OBOccurrence || []) };
     case 'daily_access_report':
       return { primary: first(records.Site || []), logs: records.AccessLog || [] };
-    case 'visitor_registration':
-      return { primary: first(records.AccessLog || [], (l) => l.person_type === 'visitor') || first(records.AccessLog || []) };
     case 'laundry_request':
       return { primary: first(records.LaundryRequest || []) };
     default:
@@ -124,44 +129,50 @@ export async function buildTemplateExample(
   switch (t.template_id) {
     case 'incident_reported': {
       if (!p) return null;
+      const loc = p.location && Number.isFinite(Number(p.location.lat)) && Number.isFinite(Number(p.location.lng)) ? p.location : null;
+      const googleMapsUrl = loc ? `https://www.google.com/maps?q=${loc.lat},${loc.lng}` : null;
       const out = buildTransactionalEmail({
         brand,
-        title: `Incident Reported: ${p.title || 'Security Incident'}`,
+        title: `New Incident — ${String(p.category || 'Incident').toUpperCase()}`,
         severity: p.priority || 'medium',
         preheader: DEMO_LABEL,
-        intro: `An incident has been reported at ${p.site_name || 'site'} and requires administrative attention.`,
+        intro: 'A new incident has been reported and requires review. Immediate attention is required.',
         details: [
-          detail('Incident', p.incident_number || p.id),
-          detail('Site', p.site_name),
-          detail('Category', p.category),
-          detail('Priority', p.priority),
-          detail('Reported by', p.guard_name),
-          detail('Reported at', p.reported_at || p.created_date),
-          detail('Location', p.location ? `${p.location.lat?.toFixed?.(5)}, ${p.location.lng?.toFixed?.(5)}` : null),
-        ],
-        bodyLines: [p.description].filter(Boolean),
-        cta: { label: 'Open Incident', url: CTA('/AdminIncidents') },
+          detail('Reference', p.incident_number || p.id),
+          detail('Category', String(p.category || 'N/A').toUpperCase()),
+          detail('Priority', String(p.priority || 'medium').toUpperCase()),
+          detail('Site', p.site_name || 'N/A'),
+          detail('Guard', [p.guard_name || 'Unknown Guard', p.badge_number ? 'Badge: ' + p.badge_number : null].filter(Boolean).join(' — ')),
+          detail('Reported', new Date(p.reported_at || p.created_date).toLocaleString('en-ZA')),
+          googleMapsUrl ? detail('Location', googleMapsUrl) : null,
+          (p.media || []).length ? detail('Attachments', String(p.media.length) + ' media attachment(s)') : null,
+        ].filter(Boolean),
+        bodyLines: ['Description: ' + (p.description || 'No description provided.')],
+        cta: googleMapsUrl ? { label: 'View on Google Maps', url: googleMapsUrl } : null,
         footerNote: DEMO_FOOTER,
       });
-      return { subject: `DEMO | Incident reported — ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
+      return { subject: `DEMO | 🚨 New Incident — ${String(p.category || 'N/A').toUpperCase()} at ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
     }
     case 'incident_critical_escalation': {
       if (!p) return null;
+      const escReason = p.escalation_reason === 'priority' ? 'High/Critical Priority Incident' : 'Incident unresolved for 30+ minutes';
       const out = buildTransactionalEmail({
         brand,
         title: `CRITICAL INCIDENT ESCALATION: ${p.title || 'Security Incident'}`,
         severity: 'critical',
         preheader: DEMO_LABEL,
-        intro: `This critical incident has been escalated after exceeding its response window.`,
+        intro: 'This critical incident has been escalated after exceeding its response window.',
         details: [
           detail('Incident', p.incident_number || p.id),
-          detail('Site', p.site_name),
-          detail('Priority', p.priority),
-          detail('Reported by', p.guard_name),
-          detail('Reported at', p.reported_at || p.created_date),
-          detail('Escalation reason', p.escalation_reason || 'priority'),
+          detail('Title', p.title),
+          detail('Priority', String(p.priority || 'high').toUpperCase()),
+          detail('Status', p.status || 'N/A'),
+          detail('Site', p.site_name || 'N/A'),
+          detail('Assigned Guard', p.assigned_to_name || p.guard_name || '—'),
+          detail('Escalation reason', escReason),
+          detail('Reported', new Date(p.reported_at || p.created_date).toLocaleString('en-ZA')),
         ],
-        bodyLines: [p.description].filter(Boolean),
+        bodyLines: ['Description: ' + String(p.description || 'No description provided.').slice(0, 500)],
         cta: { label: 'Open Incident', url: CTA('/AdminIncidents') },
         footerNote: DEMO_FOOTER,
       });
@@ -169,44 +180,55 @@ export async function buildTemplateExample(
     }
     case 'maintenance_reported': {
       if (!p) return null;
+      const loc = p.location && Number.isFinite(Number(p.location.lat)) && Number.isFinite(Number(p.location.lng)) ? p.location : null;
+      const googleMapsUrl = loc ? `https://www.google.com/maps?q=${loc.lat},${loc.lng}` : null;
       const out = buildTransactionalEmail({
         brand,
-        title: `Maintenance Request: ${p.title || 'Fault Reported'}`,
+        title: 'Maintenance Request',
         severity: p.urgency || 'medium',
         preheader: DEMO_LABEL,
-        intro: `A maintenance request has been logged at ${p.site_name || 'site'}.`,
+        intro: 'A new maintenance request has been submitted. Review & action required.',
         details: [
-          detail('Request', p.request_number || p.id),
-          detail('Site', p.site_name),
-          detail('Category', p.category),
-          detail('Urgency', p.urgency),
-          detail('Reported by', p.guard_name),
-          detail('Reported at', p.reported_at || p.created_date),
-        ],
-        bodyLines: [p.description].filter(Boolean),
+          detail('Type', String(p.category || 'maintenance').replace(/_/g, ' ')),
+          detail('Site', p.site_name || 'N/A'),
+          detail('Guard', p.guard_name || 'N/A'),
+          detail('Reported', new Date(p.reported_at || p.created_date).toLocaleString('en-ZA')),
+          googleMapsUrl ? detail('Location', googleMapsUrl) : null,
+        ].filter(Boolean),
+        bodyLines: ['Details: ' + (p.description || p.title || 'No details provided.')],
+        cta: googleMapsUrl ? { label: 'View on Google Maps', url: googleMapsUrl } : null,
         footerNote: DEMO_FOOTER,
       });
-      return { subject: `DEMO | Maintenance reported — ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
+      return { subject: `DEMO | Maintenance Request — ${String(p.category || 'maintenance').replace(/_/g, ' ')} at ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
     }
     case 'maintenance_completed': {
       if (!p) return null;
+      const loc = p.location && Number.isFinite(Number(p.location.lat)) && Number.isFinite(Number(p.location.lng)) ? p.location : null;
+      const googleMapsUrl = loc ? `https://www.google.com/maps?q=${loc.lat},${loc.lng}` : null;
       const out = buildTransactionalEmail({
         brand,
-        title: `Maintenance Completed: ${p.title || 'Request'}`,
+        title: `✅ MAINTENANCE TASK COMPLETED — ${p.title || String(p.category || 'Maintenance').replace(/_/g, ' ')}`,
         severity: 'low',
         preheader: DEMO_LABEL,
-        intro: `A previously reported maintenance request has been completed and closed.`,
+        intro: `Maintenance workflow update at ${p.site_name || 'site'}.`,
         details: [
-          detail('Request', p.request_number || p.id),
-          detail('Site', p.site_name),
-          detail('Category', p.category),
-          detail('Completed by', p.completed_by_name || p.assigned_to_name),
-          detail('Completed at', p.completed_at),
-        ],
-        bodyLines: [p.completion_notes].filter(Boolean),
+          detail('Reference', p.request_number || p.id),
+          detail('Category', String(p.category || 'N/A').replace(/_/g, ' ').toUpperCase()),
+          detail('Urgency', String(p.urgency || 'medium').toUpperCase()),
+          detail('Site', p.site_name || 'N/A'),
+          detail('Completed by', p.completed_by_name || p.assigned_to_name || 'N/A'),
+          detail('Completed at', p.completed_at ? new Date(p.completed_at).toLocaleString('en-ZA') : null),
+          p.follow_up_required ? detail('Follow-up', 'Required') : null,
+          googleMapsUrl ? detail('Location', googleMapsUrl) : null,
+        ].filter(Boolean),
+        bodyLines: [
+          p.completion_notes ? 'Completion notes: ' + p.completion_notes : null,
+          p.recommendations ? 'Recommendations: ' + p.recommendations : null,
+          'Please review this maintenance request in the app.',
+        ].filter(Boolean),
         footerNote: DEMO_FOOTER,
       });
-      return { subject: `DEMO | Maintenance completed — ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
+      return { subject: `DEMO | ✅ MAINTENANCE TASK COMPLETED — ${String(p.category || 'Maintenance').replace(/_/g, ' ')} at ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
     }
     case 'panic_alert': {
       if (!p) return null;
@@ -229,54 +251,97 @@ export async function buildTemplateExample(
     }
     case 'alarm_dispatch': {
       if (!p) return null;
+      const alarmTypeLabel = String(p.alarm_type || p.type || 'alarm').replace(/_/g, ' ').toUpperCase();
       const out = buildBrandedEmail({
         brand,
-        heading: `Alarm Dispatch: ${p.title || p.alarm_type || 'Alarm Activation'}`,
-        greeting: 'Response instruction for the on-duty guard.',
+        heading: `Alarm Response Assigned — ${alarmTypeLabel}`,
+        greeting: `Dear ${p.assigned_to_name || 'Guard'},`,
+        intro: 'You have been dispatched to respond to an alarm. Open the app to acknowledge the dispatch and get directions.',
         details: [
-          detail('Alarm', p.id),
-          detail('Site', p.site_name || p.site_id),
-          detail('Type', p.alarm_type || p.type),
-          detail('Priority', p.priority),
-          detail('Dispatched at', p.dispatched_at || p.created_date),
+          detail('Alarm Type', String(p.alarm_type || p.type || '—').replace(/_/g, ' ')),
+          detail('Address', p.address || '—'),
+          detail('Client', p.client_name || '—'),
+          detail('Priority', p.priority || 'high'),
+          detail('Dispatched By', p.dispatched_by_name || '—'),
+          detail('Dispatched at', p.dispatched_at ? new Date(p.dispatched_at).toLocaleString('en-ZA') : null),
         ],
         closing: DEMO_FOOTER,
       });
-      return { subject: `DEMO | Alarm dispatch — ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
+      return { subject: `DEMO | 🚨 ALARM RESPONSE ASSIGNED — ${alarmTypeLabel}`, html: out.html, text: out.text, demo_record_ids: ids };
     }
     case 'shift_schedule_summary': {
-      if (!p) return null;
-      const out = buildBrandedEmail({
+      const all = (records.Shift || []).filter((s: any) => s.demo_batch_id && !s.is_test && s.guard_name);
+      if (!all.length) return null;
+      // Production groups the shared shifts per guard and emails one table per
+      // guard — render the schedule of the guard with the most demo shifts.
+      const byGuard: Record<string, any[]> = {};
+      for (const s of all) (byGuard[s.guard_name] ||= []).push(s);
+      const guardName = Object.keys(byGuard).sort((a: string, b: string) => byGuard[b].length - byGuard[a].length)[0];
+      const guardShifts = byGuard[guardName].slice(0, 5);
+      const out = buildTransactionalEmail({
         brand,
-        heading: 'Your Upcoming Shift Schedule',
-        greeting: 'Here is a summary of scheduled shifts for the coming days.',
-        details: [
-          detail('Site', p.site_name),
-          detail('Guard', p.guard_name),
-          detail('Start', p.start_time),
-          detail('End', p.end_time),
-          detail('Status', p.status),
-        ],
-        closing: DEMO_FOOTER,
+        title: `Your Shift Schedule — ${guardShifts.length} Shift${guardShifts.length > 1 ? 's' : ''}`,
+        severity: 'medium',
+        preheader: DEMO_LABEL,
+        intro: `Dear ${guardName}, you have been scheduled for the shifts below. Please review the details and arrive on time.`,
+        details: guardShifts.map((s: any) => ({
+          label: formatSastDate(s.start_time) + ' — ' + (s.site_name || 'Site'),
+          value: formatSastTime(s.start_time) + ' to ' + formatSastTime(s.end_time),
+        })),
+        bodyLines: ['Please acknowledge these shifts in the app. Contact your supervisor for any changes.'],
+        footerNote: DEMO_FOOTER,
       });
-      return { subject: `DEMO | Shift schedule summary — ${ctx.customerName}`, html: out.html, text: out.text, demo_record_ids: ids };
+      return { subject: `DEMO | Your Shift Schedule — ${guardShifts.length} Shifts`, html: out.html, text: out.text, demo_record_ids: guardShifts.map((s: any) => s.id) };
     }
     case 'shift_handover': {
       if (!p) return null;
-      const out = buildBrandedEmail({
+      // Mirrors the real End of Shift handover email (sendShiftHandoverNotification).
+      const submittedAt = p.handover_at || p.signed_at || p.created_date;
+      const ss = p.site_status || {};
+      const check = (k: string, label: string) => (ss[k] ? '✅' : '⬜') + ' ' + label;
+      const media = p.media_attachments || [];
+      const photos = media.filter((m: any) => m && m.type === 'photo' && m.url);
+      const videos = media.filter((m: any) => m && m.type === 'video' && m.url);
+      const incidents = p.incidents_during_shift || [];
+      const maintenance = p.maintenance_issues || [];
+      const outstanding = p.outstanding_tasks || [];
+      const block = (bg: string, border: string, color: string, title: string, itemsHtml: string) =>
+        `<div style="background: ${bg}; border: 2px solid ${border}; border-radius: 12px; padding: 20px; margin-bottom: 15px;"><h3 style="color: ${color}; margin: 0 0 10px 0; font-size: 16px;">${title}</h3>${itemsHtml}</div>`;
+      const incidentBlock = incidents.length ? block('#fff5f5', '#fecaca', '#b91c1c', `🚨 Incidents During Shift (${incidents.length})`,
+        incidents.map((inc: any, i: number) => `<p style="color:#7f1d1d;margin:4px 0;font-size:14px;">${i + 1}. <strong>${escHtml(String(inc.summary || 'Incident').slice(0, 200))}</strong> — Status: ${escHtml(inc.status || 'Unknown')}</p>`).join('')) : '';
+      const maintenanceBlock = maintenance.length ? block('#fffbeb', '#fde68a', '#b45309', `🔧 Maintenance Issues (${maintenance.length})`,
+        maintenance.map((m: any, i: number) => `<p style="color:#92400e;margin:4px 0;font-size:14px;">${i + 1}. ${escHtml(String(m.issue || 'Issue').slice(0, 200))}${m.location ? ' — Location: ' + escHtml(m.location) : ''}${m.urgency ? ' (' + escHtml(m.urgency) + ')' : ''}</p>`).join('')) : '';
+      const outstandingBlock = outstanding.length ? block('#eff6ff', '#bfdbfe', '#1d4ed8', `📌 Outstanding Tasks (${outstanding.length})`,
+        outstanding.map((t: any, i: number) => `<p style="color:#1e40af;margin:4px 0;font-size:14px;">${i + 1}. ${escHtml(String(t.task || 'Task').slice(0, 200))}${t.priority ? ' (Priority: ' + escHtml(t.priority) + ')' : ''}</p>`).join('')) : '';
+      const photosBlock = photos.length ? block('#ffffff', '#e2e8f0', '#0c4a6e', `📷 Handover Evidence (${photos.length})`,
+        photos.map((ph: any) => `<img src="${escHtml(ph.url)}" alt="Evidence" style="max-width:100%;height:auto;border-radius:8px;margin:8px 0;" />`).join('')) : '';
+      const videosBlock = videos.length ? block('#ffffff', '#e2e8f0', '#0c4a6e', `🎬 Video Evidence (${videos.length})`,
+        videos.map((v: any) => `<p style="margin:4px 0;"><a href="${escHtml(v.url)}" target="_blank" style="color:#0ea5e9;">▶️ Open Video</a></p>`).join('')) : '';
+      const row = (label: string, value: string) =>
+        `<tr><td style="padding:6px 0;color:#64748b;font-weight:bold;width:190px;font-size:13px;">${escHtml(label)}</td><td style="padding:6px 0;color:#1e293b;font-size:14px;">${escHtml(value)}</td></tr>`;
+      const summaryTable = `<table style="width:100%;border-collapse:collapse;">${[
+        row('Outgoing Guard', p.outgoing_guard_name || 'Guard'),
+        row('Incoming Guard', p.incoming_guard_name || 'Not yet assigned'),
+        row('Site', p.site_name || 'Unknown'),
+        row('Submitted', new Date(submittedAt).toLocaleString('en-ZA')),
+        row('Site Status', [check('all_secure', 'All Secure'), check('gates_locked', 'Gates Locked'), check('alarms_armed', 'Alarms Armed'), check('lights_functional', 'Lights Functional'), check('cameras_operational', 'Cameras Operational'), check('perimeter_secure', 'Perimeter Secure')].join(' | ')),
+      ].join('')}</table>`;
+      const bodyHtml = [
+        `<div style="background:#ffffff;border:2px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:15px;">${summaryTable}</div>`,
+        incidentBlock, maintenanceBlock, outstandingBlock,
+        p.special_instructions ? block('#f0fdf4', '#bbf7d0', '#15803d', '📝 Special Instructions', `<p style="color:#166534;margin:0;font-size:14px;white-space:pre-wrap;">${escHtml(p.special_instructions)}</p>`) : '',
+        p.notes ? block('#f8fafc', '#e2e8f0', '#0c4a6e', 'ℹ️ Notes', `<p style="color:#334155;margin:0;font-size:14px;white-space:pre-wrap;">${escHtml(p.notes)}</p>`) : '',
+        photosBlock, videosBlock,
+      ].filter(Boolean).join('');
+      const html = renderTransactionalShell({
         brand,
-        heading: 'Shift Handover',
-        greeting: `Handover from ${p.outgoing_guard_name || 'outgoing guard'} to ${p.incoming_guard_name || 'incoming guard'}.`,
-        details: [
-          detail('Site', p.site_name || p.site_id),
-          detail('Outgoing guard', p.outgoing_guard_name),
-          detail('Incoming guard', p.incoming_guard_name),
-          detail('Handover at', p.handover_at || p.created_date),
-        ],
-        bodyLines: [p.summary, p.notes].filter(Boolean),
-        closing: DEMO_FOOTER,
+        title: `🤝 Shift Handover — ${p.site_name || 'Site'}`,
+        preheader: DEMO_LABEL,
+        bodyHtml,
+        footerNote: DEMO_FOOTER,
       });
-      return { subject: `DEMO | Shift handover — ${p.site_name || 'site'}`, html: out.html, text: out.text, demo_record_ids: ids };
+      const text = `DEMO | 🤝 Shift Handover — ${p.site_name || 'Site'}\n\nOutgoing Guard: ${p.outgoing_guard_name || 'Guard'}\nIncoming Guard: ${p.incoming_guard_name || 'Not yet assigned'}\nSite: ${p.site_name || 'Unknown'}\nSubmitted: ${new Date(submittedAt).toLocaleString('en-ZA')}\n\n${DEMO_FOOTER}`;
+      return { subject: `DEMO | 🤝 Shift Handover — ${p.site_name || 'Site'}`, html, text, demo_record_ids: ids };
     }
     case 'task_deadline_report': {
       if (!p) return null;
@@ -288,39 +353,77 @@ export async function buildTemplateExample(
     }
     case 'task_list_telegram': {
       if (!p) return null;
-      const text = buildBrandedTelegram({
-        brand,
-        heading: `New Task List: ${p.title}`,
-        greeting: `${(p.task_definitions || []).length} tasks scheduled for ${p.scheduled_date || 'today'}.`,
-        details: [
-          detail('Control room', p.control_room_name),
-          detail('Window', [p.active_start_time, p.deadline_time].filter(Boolean).join(' – ')),
-          detail('Supervisor', p.primary_supervisor_name),
-        ],
-        closing: DEMO_LABEL,
-      });
-      return { subject: `DEMO | New task list (Telegram) — ${p.title}`, html: `<pre style="white-space:pre-wrap;font-family:monospace;font-size:13px">${text.replace(/[<>&]/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' } as any)[c])}</pre>`, text, demo_record_ids: ids };
+      // EXACT production Telegram rendering (newTaskListNotification).
+      const taskCount = (records.OperationalTask || []).filter((tk: any) => tk.batch_id === p.id).length || (p.task_definitions || []).length;
+      const raw: any = newTaskListNotification(p, taskCount, ctx.customerName, brand, brand?.brand_name);
+      const text = `${raw.telegramText}\n\n${DEMO_LABEL}`;
+      return { subject: `DEMO | ${raw.subject}`, html: `<pre style="white-space:pre-wrap;font-family:monospace;font-size:13px">${text.replace(/[<>&]/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' } as any)[c])}</pre>`, text, demo_record_ids: ids };
     }
     case 'ob_overdue_escalation': {
       if (!p) return null;
-      const out = buildTransactionalEmail({
-        brand,
-        title: `OB Check Overdue: ${p.title}`,
-        severity: 'high',
-        preheader: DEMO_LABEL,
-        intro: `A scheduled Digital Occurrence Book check passed its due time and was not completed. Supervisors have been escalated.`,
-        details: [
-          detail('OB reference', p.ob_reference),
-          detail('Site', p.site_name || 'Overall'),
-          detail('Control room', p.control_room_name),
-          detail('Due at', p.due_at),
-          detail('Slot', p.slot_label),
-          detail('Status', p.status),
-        ],
-        bodyLines: [p.instructions].filter(Boolean),
-        footerNote: DEMO_FOOTER,
+      // EXACT production escalation rendering (obCore.escalationEmailHtml —
+      // the same builder the OB sweep's supervisor escalation uses).
+      const raw = escalationEmailHtml(p, brand, brand?.brand_name);
+      const html = raw + `<p style="font-family:Arial,sans-serif;max-width:640px;margin:8px auto 0;font-size:12px;color:#64748b">${escHtml(DEMO_FOOTER)}</p>`;
+      const subject = `DEMO | [OB ESCALATION] ${p.title || 'OB check'} — ${p.operating_date || ''}`;
+      return { subject, html, text: `${subject}\n${DEMO_FOOTER}`, demo_record_ids: ids };
+    }
+    case 'start_of_shift_report': {
+      if (!p) return null;
+      const shift = (records.Shift || []).find((s: any) => s.id === p.shift_id) || null;
+      let site = (records.Site || []).find((s: any) => s.id === p.site_id) || null;
+      // Sites are shared platform records (never demo-flagged) — resolve the
+      // site directly when the demo loader did not include it.
+      if (!site && p.site_id && svc) {
+        try { const g = await svc.entities.Site.get(p.site_id); site = g?.data ?? g; } catch (_) { site = null; }
+      }
+      // The demo record stores the Start of Shift instructions in the same
+      // combined text the production form composes — parse the structured
+      // reportData back out for the REAL shared builder.
+      const si = String(p.special_instructions || '');
+      const grab = (key: string, stop: string[]) => {
+        const idx = si.indexOf(key + ':');
+        if (idx < 0) return '';
+        const rest = si.slice(idx + key.length + 1);
+        let end = rest.length;
+        for (const nk of stop) { const i = rest.indexOf(nk); if (i >= 0 && i < end) end = i; }
+        return rest.slice(0, end).trim();
+      };
+      const observations = (p.key_activities || []).map((ka: any) => {
+        const m = /^(.*?) at (\d{1,2}:\d{2}): (.*)$/.exec(String(ka || ''));
+        return m ? { type: m[1].trim(), time: m[2], comments: m[3].trim() } : { type: 'Observation', time: '', comments: String(ka || '') };
       });
-      return { subject: `DEMO | OB check overdue — ${p.ob_reference || p.title}`, html: out.html, text: out.text, demo_record_ids: ids };
+      // Sample geofence evidence — coordinates near the demo site, never
+      // presented as a live capture (labelled in the report's own notes).
+      const siteLoc = site && site.location && Number.isFinite(Number(site.location.lat)) && !(Number(site.location.lat) === 0 && Number(site.location.lng) === 0) ? site.location : null;
+      const sampleGps = siteLoc ? { lat: Number(siteLoc.lat) + 0.0003, lng: Number(siteLoc.lng) + 0.0002 } : null;
+      const distanceMetres = siteLoc && sampleGps ? haversineMetres(siteLoc, sampleGps) : null;
+      const geofenceRadius = site && Number.isFinite(Number(site.geofence_radius)) ? Number(site.geofence_radius) : null;
+      const submittedAt = p.signed_at || p.handover_at || p.created_date;
+      const out = buildStartOfShiftReportEmail({
+        brand, site, siteName: p.site_name || 'Unknown',
+        guardName: p.outgoing_guard_name || 'Demo Guard',
+        badgeNumber: 'DP-4401 (sample)',
+        clientName: ctx.customerName,
+        shift,
+        reportData: {
+          shift_post: grab('SHIFT/POST', ['\nSPECIAL INSTRUCTIONS']),
+          special_instructions: grab('SPECIAL INSTRUCTIONS', ['\nPOST ITEMS RECEIVED']),
+          post_items_received: grab('POST ITEMS RECEIVED', ['\nRELIEVING OFFICER']),
+          relieving_officer: grab('RELIEVING OFFICER', ['\nADDITIONAL NOTES']),
+          additional_notes: si.indexOf('ADDITIONAL NOTES:') >= 0 ? si.slice(si.indexOf('ADDITIONAL NOTES:') + 'ADDITIONAL NOTES:'.length).trim() : '',
+          observations,
+          signature: p.outgoing_guard_signature || null,
+        },
+        media: p.media_attachments || [],
+        submittedAt,
+        location: sampleGps, distanceMetres,
+        withinFence: distanceMetres != null && geofenceRadius ? distanceMetres <= geofenceRadius : null,
+        geofenceRadius, siteGpsValid: !!siteLoc,
+        reportLink: CTA('/StartOfShiftHistory'),
+        preheader: DEMO_LABEL, footerNote: DEMO_FOOTER,
+      });
+      return { subject: `DEMO | ${out.subject}`, html: out.emailHtml, text: `${out.text}\n\n${DEMO_LABEL}`, demo_record_ids: ids };
     }
     case 'daily_access_report': {
       let logs = picked.logs || [];
@@ -368,23 +471,31 @@ export async function buildTemplateExample(
     }
     case 'visitor_registration': {
       if (!p) return null;
+      // Mirrors the real visitor pre-registration email
+      // (sendVisitorRegistrationNotification), rendered from the demo Visitor.
+      const dateRange = p.valid_from && p.valid_until
+        ? `${new Date(p.valid_from).toLocaleDateString('en-ZA')} – ${new Date(p.valid_until).toLocaleDateString('en-ZA')}`
+        : 'Open';
       const out = buildTransactionalEmail({
         brand,
-        title: 'Visitor Registration',
+        title: `Visitor Pre-Registered — ${p.visitor_name || 'Unknown'}`,
         severity: 'low',
         preheader: DEMO_LABEL,
-        intro: `A visitor entry has been registered at ${p.site_name || 'site'}.`,
+        intro: `${p.visitor_name || 'A visitor'} has been pre-registered${p.unit_number ? ` for Unit ${p.unit_number}` : ''}.`,
         details: [
-          detail('Visitor', p.person_name),
-          detail('Mobile', p.person_phone),
-          detail('Site', p.site_name),
-          detail('Unit / destination', p.unit_number || p.destination),
-          detail('Entry time', p.entry_time || p.timestamp),
-          detail('Scan method', p.scan_method),
+          detail('Visitor', p.visitor_name),
+          detail('ID / Licence', p.visitor_id_number),
+          detail('Vehicle', p.vehicle_registration),
+          detail('Phone', p.phone || p.visitor_phone),
+          detail('Host', p.resident_name || 'Simulated Resident (sample)'),
+          detail('Valid', dateRange),
+          detail('QR pass', p.qr_code),
+          detail('OTP', p.otp_code),
         ],
+        bodyLines: ['The visitor will present their QR code at the gate for scanning.'],
         footerNote: DEMO_FOOTER,
-      } as any);
-      return { subject: `DEMO | Visitor registration — ${p.person_name || 'visitor'}`, html: out.html, text: out.text, demo_record_ids: ids };
+      });
+      return { subject: `DEMO | Visitor Pre-Registered — ${p.visitor_name || 'visitor'}`, html: out.html, text: out.text, demo_record_ids: ids };
     }
     case 'laundry_request': {
       if (!p) return null;
