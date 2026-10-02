@@ -857,9 +857,8 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       scanned_by_id: g[0], scanned_by_name: `[SIMULATED] ${g[1]}`,
     });
   }
-  for (const c of chunk(madeDiscs, 8)) madeDiscs.push(...[]) /* placeholder */;
   const madeDiscs2 = [];
-  for (const c of chunk(madeDiscs.map(d => d), 8)) {
+  for (const c of chunk(madeDiscs, 8)) {
     madeDiscs2.push(...(await svc.entities.VehicleLicenceDisc.bulkCreate(c)));
     await sleep(400);
   }
@@ -874,20 +873,23 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
     ['Pool & Leisure Area Check', ['Confirm pool gate locked after hours', 'Check gym door access reader', 'Report any wet-floor hazards']],
   ];
   const madeTemplates = [];
-  for (const [name, texts] of TEMPLATE_DEFS) {
-    madeTemplates.push(await svc.entities.ChecklistTemplate.create({
-      customer_id: cid, reseller_id: rid, site_id: site.id,
-      name: `[SIMULATED] ${name}`,
-      items: texts.map((t, j) => ({ id: `${batch}-it-${name.length}-${j}`, text: t, type: 'checkbox', required: true })),
-      requires_signature: false, status: 'active',
-    }));
+  const templateRows = TEMPLATE_DEFS.map(([name, texts]) => ({
+    customer_id: cid, reseller_id: rid, site_id: site.id,
+    name: `[SIMULATED] ${name}`,
+    items: texts.map((t, j) => ({ id: `${batch}-it-${name.length}-${j}`, text: t, type: 'checkbox', required: true })),
+    requires_signature: false, status: 'active',
+  }));
+  for (const c of chunk(templateRows, 3)) {
+    madeTemplates.push(...(await svc.entities.ChecklistTemplate.bulkCreate(c)));
+    await sleep(400);
   }
   tag('ChecklistTemplate', madeTemplates);
   const madeCompletions = [];
+  const completionRows = [];
   for (let i = 0; i < 12; i++) {
     const tpl = madeTemplates[i % madeTemplates.length];
     const g = ROSTER[i % ROSTER.length];
-    madeCompletions.push(await svc.entities.ChecklistCompletion.create({
+    completionRows.push({
       customer_id: cid, reseller_id: rid, template_id: tpl.id, template_name: tpl.name,
       guard_id: g[0], guard_name: g[1], shift_id: `${batch}-shift-${i}`,
       site_id: site.id, checkpoint_id: CHECKPOINTS[i % CHECKPOINTS.length].id,
@@ -895,30 +897,37 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       completed_at: at(1 + Math.floor(i / 2), 7 + (i % 10), (i * 9) % 60),
       status: i === 11 ? 'incomplete' : 'completed',
       notes: `[${DEMO_MARKER}] Demo checklist completion.`,
-    }));
+    });
+  }
+  for (const c of chunk(completionRows, 12)) {
+    madeCompletions.push(...(await svc.entities.ChecklistCompletion.bulkCreate(c)));
+    await sleep(400);
   }
   tag('ChecklistCompletion', madeCompletions);
 
   // ── Assets ──
   const madeAssets = [];
   const ASSET_DEFS = [['Patrol vehicle — Hilux', 'vehicle', 'DHS-001'], ['Two-way radio set', 'electronics', 'RAD-014'], ['Riot shield kit', 'safety_gear', 'SG-003'], ['Boom gate remote units', 'tools', 'TL-021'], ['CCTV NVR (back-of-house)', 'electronics', 'NVR-002'], ['Guard sign-on tablet', 'electronics', 'TAB-005']];
-  for (const [name, category, num] of ASSET_DEFS) {
-    madeAssets.push(await svc.entities.Asset.create({
-      customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
-      asset_name: `[SIMULATED] ${name}`, asset_number: `${num}-${batch.slice(5)}`, category,
-      status: 'active', purchase_date: dateOff(300), current_value: 1000 + Math.floor(rnd() * 9000),
-      next_service_date: dateOff(-(30 + Math.floor(rnd() * 60))),
-      notes: `[${DEMO_MARKER}] Demo asset record.`,
-    }));
+  const assetRows = ASSET_DEFS.map(([name, category, num]) => ({
+    customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
+    asset_name: `[SIMULATED] ${name}`, asset_number: `${num}-${batch.slice(5)}`, category,
+    status: 'active', purchase_date: dateOff(300), current_value: 1000 + Math.floor(rnd() * 9000),
+    next_service_date: dateOff(-(30 + Math.floor(rnd() * 60))),
+    notes: `[${DEMO_MARKER}] Demo asset record.`,
+  }));
+  for (const c of chunk(assetRows, 6)) {
+    madeAssets.push(...(await svc.entities.Asset.bulkCreate(c)));
+    await sleep(400);
   }
   tag('Asset', madeAssets);
 
   // ── Shift handovers (historical) ──
   const madeHandovers = [];
+  const handoverRows = [];
   for (let i = 0; i < 6; i++) {
     const off = 1 + i;
     const gOut = ROSTER[i % ROSTER.length], gIn = ROSTER[(i + 1) % ROSTER.length];
-    madeHandovers.push(await svc.entities.ShiftHandover.create({
+    handoverRows.push({
       customer_id: cid, reseller_id: rid, shift_id: `${batch}-handover-${i}`,
       site_id: site.id, site_name: site.name,
       outgoing_guard_id: gOut[0], outgoing_guard_name: `[SIMULATED] ${gOut[1]}`,
@@ -931,18 +940,23 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       maintenance_issues: i % 3 === 1 ? [{ issue: `[${DEMO_MARKER}] Gate motor slow closing`, location: 'Main gate', urgency: 'medium' }] : [],
       visitors_log: [{ name: `[SIMULATED] ${pickName(rnd, FIRST, LAST)}`, time: '14:30', purpose: 'Guest visit' }],
       weather_conditions: 'Clear', special_instructions: `[${DEMO_MARKER}] Simulated handover record.`,
-    }));
+    });
+  }
+  for (const c of chunk(handoverRows, 6)) {
+    madeHandovers.push(...(await svc.entities.ShiftHandover.bulkCreate(c)));
+    await sleep(400);
   }
   tag('ShiftHandover', madeHandovers);
 
   // ── Report history ──
   const madeReports = [];
   const REPORT_DEFS = [['daily', 'Daily Access Control Report'], ['weekly', 'Weekly Operations Summary'], ['incident_summary', 'Incident Summary Report'], ['shift_end', 'Shift End Report']];
+  const reportRows = [];
   for (let i = 0; i < 8; i++) {
     const [rtype, label] = REPORT_DEFS[i % REPORT_DEFS.length];
     const off = 1 + i * 7;
     const g = ROSTER[i % ROSTER.length];
-    madeReports.push(await svc.entities.GeneratedReport.create({
+    reportRows.push({
       customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
       title: `[SIMULATED] ${label} — ${siteDisplay} — ${dateOff(off)}`,
       report_type: rtype, guard_id: g[0], guard_name: g[1],
@@ -951,32 +965,39 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       summary: `[${DEMO_MARKER}] ${label} (simulated demo record).`,
       statistics: { entries: 8 + Math.floor(rnd() * 20), exits: 8 + Math.floor(rnd() * 20), patrols: 2 + Math.floor(rnd() * 3), incidents: Math.floor(rnd() * 2), maintenance: Math.floor(rnd() * 2) },
       generated_at: at(off, 17, 5),
-    }));
+    });
+  }
+  for (const c of chunk(reportRows, 8)) {
+    madeReports.push(...(await svc.entities.GeneratedReport.bulkCreate(c)));
+    await sleep(400);
   }
   tag('GeneratedReport', madeReports);
 
   // ── Announcements (published, NO email/push) ──
   const madeAnn = [];
   const ANN_DEFS = [['Evening storm warning', 'security', 'Pool deck furniture to be secured before 18:00.'], ['Scheduled water supply maintenance', 'maintenance', 'Municipal maintenance on Thursday 09:00–11:00.'], ['Fire drill — Wednesday 10:00', 'security', 'Full evacuation drill; assembly point at the main gate.']];
-  for (const [title, category, body] of ANN_DEFS) {
-    madeAnn.push(await svc.entities.Announcement.create({
-      customer_id: cid, reseller_id: rid,
-      title: `[SIMULATED] ${title}`, body: `[${DEMO_MARKER}] ${body}`,
-      category, priority: 'normal', target_audience: 'all',
-      send_email: false, send_push: false, published: true,
-      published_at: at(2 + Math.floor(rnd() * 20), 8, 30),
-      created_by: 'demo-admin', created_by_name: 'Demo Administrator',
-    }));
+  const annRows = ANN_DEFS.map(([title, category, body]) => ({
+    customer_id: cid, reseller_id: rid,
+    title: `[SIMULATED] ${title}`, body: `[${DEMO_MARKER}] ${body}`,
+    category, priority: 'normal', target_audience: 'all',
+    send_email: false, send_push: false, published: true,
+    published_at: at(2 + Math.floor(rnd() * 20), 8, 30),
+    created_by: 'demo-admin', created_by_name: 'Demo Administrator',
+  }));
+  for (const c of chunk(annRows, 3)) {
+    madeAnn.push(...(await svc.entities.Announcement.bulkCreate(c)));
+    await sleep(400);
   }
   tag('Announcement', madeAnn);
 
   // ── Service tickets ──
   const madeTickets = [];
   const TICKET_DEFS = [['Leaking tap in room bathroom', 'plumbing', 'resolved', 'medium'], ['Flickering corridor light', 'electrical', 'in_progress', 'low'], ['Noise complaint — late night function', 'noise', 'closed', 'medium'], ['Gate remote not responding', 'security', 'open', 'high'], ['Garden service cleared clippings into walkway', 'landscaping', 'resolved', 'low']];
+  const ticketRows = [];
   for (let i = 0; i < TICKET_DEFS.length; i++) {
     const [title, category, status, priority] = TICKET_DEFS[i];
     const r = resRef(i);
-    madeTickets.push(await svc.entities.ServiceTicket.create({
+    ticketRows.push({
       customer_id: cid, reseller_id: rid, site_id: site.id,
       ticket_number: `TCK-DEMO-${batch.slice(5)}-${String(i + 1).padStart(4, '0')}`,
       resident_id: r.id, resident_name: r.full_name, unit_number: r.unit_number,
@@ -987,7 +1008,11 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       resolution_notes: status === 'resolved' || status === 'closed' ? `[${DEMO_MARKER}] Attended and resolved (simulated).` : null,
       resolved_at: status === 'resolved' || status === 'closed' ? at(1 + i, 15, 40) : null,
       closed_at: status === 'closed' ? at(1 + i, 16, 0) : null,
-    }));
+    });
+  }
+  for (const c of chunk(ticketRows, 5)) {
+    madeTickets.push(...(await svc.entities.ServiceTicket.bulkCreate(c)));
+    await sleep(400);
   }
   tag('ServiceTicket', madeTickets);
 
