@@ -915,8 +915,10 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       handover_time: at(off, 18, 5),
       site_status: { status: 'All normal', notes: `[${DEMO_MARKER}] Simulated handover summary.` },
       key_activities: [`[${DEMO_MARKER}] ${3 + i} patrol scans completed`, `[${DEMO_MARKER}] ${2 + i} visitor entries processed`],
-      outstanding_tasks: i % 3 === 0 ? [`[${DEMO_MARKER}] Follow up P1 boom gate sensor`] : [],
-      incidents_during_shift: [], maintenance_issues: [], visitors_log: [],
+      outstanding_tasks: i % 3 === 0 ? [{ task: `[${DEMO_MARKER}] Follow up P1 boom gate sensor`, priority: 'medium', status: 'open' }] : [],
+      incidents_during_shift: [],
+      maintenance_issues: i % 3 === 1 ? [{ issue: `[${DEMO_MARKER}] Gate motor slow closing`, location: 'Main gate', urgency: 'medium' }] : [],
+      visitors_log: [{ name: `[SIMULATED] ${pickName(rnd, FIRST, LAST)}`, time: '14:30', purpose: 'Guest visit' }],
       weather_conditions: 'Clear', special_instructions: `[${DEMO_MARKER}] Simulated handover record.`,
     }));
   }
