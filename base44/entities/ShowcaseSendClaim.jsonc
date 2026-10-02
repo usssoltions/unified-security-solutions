@@ -1,0 +1,111 @@
+{
+  "name": "ShowcaseSendClaim",
+  "type": "object",
+  "description": "Report & Notification Showcase: INTERNAL concurrency-safety ledger for pack item delivery. ONE row per (pack, stage, content item); the dedup_key carries pack id, stage, template id and content index. A send CLAIMS its row with an atomic conditional update (status 'unclaimed' -> 'claiming' + unique claim token) BEFORE any delivery \u2014 a concurrent attempt's claim fails and it returns 'claimed_by_concurrent_send' without sending. The claim commits to 'sent' only after the transport accepts, stamped conditionally on the claim token, so a stale-claim takeover can never let two attempts both commit. A failed send releases the claim (status back to 'unclaimed' with last_error) so the item stays retryable, while a SENT item can never be claimed again \u2014 a repeated or concurrent send attempt can never produce a second delivery. Rows are created by pack generation for BOTH stages. GATEWAY-ONLY: written exclusively by the reportShowcase gateway and its isolated self-test under the service role; direct client access is restricted to platform administration by RLS.",
+  "properties": {
+    "pack_id": {
+      "type": "string",
+      "description": "The ReportShowcasePack this claim belongs to."
+    },
+    "pack_number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "preview",
+        "customer"
+      ],
+      "description": "Delivery stage the claim serialises (one claim per stage per item)."
+    },
+    "template_id": {
+      "type": "string"
+    },
+    "content_index": {
+      "type": "number",
+      "description": "Index of the content item in the pack's contents array (disambiguates per-site variants sharing a template_id)."
+    },
+    "label": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dedup_key": {
+      "type": "string",
+      "description": "Stable dedup key '<pack_id>:<stage>:<template_id>:<content_index>' \u2014 the CAS claim target."
+    },
+    "claim_token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL unique token of the attempt currently holding the claim \u2014 the commit stamp is conditional on it. Never exposed to any UI."
+    },
+    "claimed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL claim timestamp (a held claim older than 2 minutes is stale and recoverable by a later attempt)."
+    },
+    "attempts": {
+      "type": "number",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unclaimed",
+        "claiming",
+        "sent"
+      ],
+      "default": "unclaimed"
+    },
+    "last_error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "SAFE failure reason of the last released (failed) attempt."
+    },
+    "is_selftest": {
+      "type": "boolean",
+      "default": false,
+      "description": "True only for rows created by the isolated duplicate-send self-test (always deleted afterwards)."
+    }
+  },
+  "required": [
+    "pack_id",
+    "stage",
+    "template_id",
+    "dedup_key",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    }
+  }
+}
