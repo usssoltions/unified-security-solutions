@@ -14,7 +14,7 @@ import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
   Clock, Mic, QrCode, Wrench, Zap, FileText, Sliders, Package, Sparkles,
   UserCircle, ShirtIcon, Bell, Building2, Vote, Stethoscope, Activity, Gauge,
-  ClipboardList, Eraser,
+  ClipboardList, Eraser, Mail,
 } from "lucide-react";
 
 export const ROUTE_REGISTRY = {
@@ -276,6 +276,7 @@ export const ROUTE_REGISTRY = {
     { title: "Configuration", pageKey: "Configuration", icon: Sliders },
     { title: "Reports", pageKey: "Reports", icon: FileText },
     { title: "Diagnostics", pageKey: "PlatformDiagnostics", icon: Gauge },
+    { title: "Report Showcase", pageKey: "ReportShowcase", icon: Mail },
     { title: "Test Data Cleanup", pageKey: "TestDataCleanup", icon: Eraser },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],

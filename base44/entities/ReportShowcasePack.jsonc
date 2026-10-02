@@ -1,0 +1,368 @@
+{
+  "name": "ReportShowcasePack",
+  "type": "object",
+  "description": "Report & Notification Showcase: ONE generated showcase pack for one customer. Contents are INERT rendered examples built from that customer's DEMO-seeded records using the platform's real notification/report templates \u2014 generating or previewing never alters incidents/tasks/schedules, never triggers gate actions and never invokes escalation workflows. STATE MACHINE: generated -> preview_sent -> approved -> sending -> sent (cancelled at any pre-send stage). APPROVAL GATE: customer delivery is only possible after an explicit approval recording the pack's content fingerprint and a typed acknowledgment; any regeneration changes the fingerprint and invalidates a prior approval. DELIVERY LEDGER: per-template results with status/attempts/dedup_key \u2014 a sent item is never re-sent, failed items are retryable. Every send is an EXPLICIT platform-admin action through the reportShowcase gateway with recipients validated against the customer's ShowcaseConfig (demo-suppression of AUTOMATED dispatch is untouched: this is a manually authorised showcase exception). GATEWAY-ONLY access; direct client access restricted to platform administration by RLS.",
+  "properties": {
+    "pack_number": {
+      "type": "string",
+      "description": "Human-readable pack reference (e.g. SHOW-20261002-K4F9)."
+    },
+    "customer_id": {
+      "type": "string"
+    },
+    "customer_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "demo_batch_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "The demo seed batches whose records this pack draws from \u2014 provenance cross-reference."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "generated",
+        "preview_sent",
+        "approved",
+        "sending",
+        "sent",
+        "cancelled"
+      ],
+      "default": "generated"
+    },
+    "selections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "include": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "default": []
+    },
+    "contents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "demo_record_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "default": [],
+      "description": "Rendered, inert example content per template."
+    },
+    "branding_snapshot": {
+      "type": "object",
+      "properties": {
+        "brand_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "primary_color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "accent_color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "logo_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "missing_overrides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Branding-dependent overrides still outstanding (e.g. site secondary logo)."
+        }
+      },
+      "description": "Customer branding used for the pack render."
+    },
+    "content_fingerprint": {
+      "type": "string",
+      "description": "SHA-256 of the pack's selections + contents + branding. Approval and customer delivery are bound to it."
+    },
+    "preview": {
+      "type": "object",
+      "properties": {
+        "sent_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "recipient": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "template_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "sent",
+                  "failed",
+                  "skipped"
+                ]
+              },
+              "attempts": {
+                "type": "number",
+                "default": 0
+              },
+              "dedup_key": {
+                "type": "string"
+              },
+              "last_error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sent_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
+          "default": []
+        }
+      },
+      "description": "Owner preview delivery ledger (sales mailbox only)."
+    },
+    "approval": {
+      "type": "object",
+      "properties": {
+        "approved_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "approved_by_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approved_by_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Content fingerprint the approval was granted against."
+        },
+        "acknowledgment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "customer_delivery": {
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bcc_copy_to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "template_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "sent",
+                  "failed",
+                  "skipped",
+                  "cancelled"
+                ]
+              },
+              "attempts": {
+                "type": "number",
+                "default": 0
+              },
+              "dedup_key": {
+                "type": "string"
+              },
+              "last_error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sent_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
+          "default": []
+        }
+      },
+      "description": "Customer delivery ledger (customer address + identical owner copy)."
+    },
+    "audit": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "pack_number",
+    "customer_id",
+    "status",
+    "content_fingerprint"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    }
+  }
+}

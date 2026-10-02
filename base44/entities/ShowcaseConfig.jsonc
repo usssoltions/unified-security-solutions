@@ -1,0 +1,65 @@
+{
+  "name": "ShowcaseConfig",
+  "type": "object",
+  "description": "Report & Notification Showcase: per-customer delivery configuration, saved by a Platform Administrator. Holds the owner preview address (platform-side, e.g. the sales mailbox) and the customer delivery address. Recipients are VALIDATED server-side on every send: preview can go ONLY to owner_preview_email and customer delivery ONLY to customer_email (+ owner_copy_bcc_email as the identical copy) \u2014 arbitrary addresses are refused, never hardcoded in shared behaviour. GATEWAY-ONLY access through the reportShowcase gateway; direct client access is restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer this configuration belongs to (one config per customer)."
+    },
+    "customer_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "owner_preview_email": {
+      "type": "string",
+      "description": "Owner preview recipient \u2014 the ONLY address 'Send Preview to Me' may target (e.g. the platform sales mailbox)."
+    },
+    "customer_email": {
+      "type": "string",
+      "description": "Customer delivery recipient \u2014 the ONLY address 'Send Approved Pack to Customer' may target."
+    },
+    "owner_copy_bcc_email": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Identical copy of the customer delivery sent to the owner (delivered as a separate identical email)."
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "customer_id",
+    "owner_preview_email",
+    "customer_email"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    }
+  }
+}

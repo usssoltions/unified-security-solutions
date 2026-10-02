@@ -51,6 +51,7 @@ import AttendanceReports from './pages/AttendanceReports';
 import AttendanceSettings from './pages/AttendanceSettings';
 import ScheduledTasks from './pages/ScheduledTasks';
 import TestDataCleanup from './pages/TestDataCleanup';
+import ReportShowcase from './pages/ReportShowcase';
 import BrandingPreview from './pages/BrandingPreview';
 import ProtectedPage from '@/components/ProtectedPage';
 import RoleHomeRedirect from '@/components/RoleHomeRedirect';
@@ -406,6 +407,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="ScheduledTasks">
             <ProtectedPage pageKey="ScheduledTasks">
               <ScheduledTasks />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/ReportShowcase" element={
+          <LayoutWrapper currentPageName="ReportShowcase">
+            <ProtectedPage pageKey="ReportShowcase">
+              <ReportShowcase />
             </ProtectedPage>
           </LayoutWrapper>
         } />
