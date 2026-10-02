@@ -6,6 +6,7 @@ import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 
 /**
  * notifyAdminsMaintenance
@@ -48,12 +49,19 @@ Deno.serve(async (req) => {
     // when assigned to an ACTIVE Control Room covering the request's site.
     // The site is resolved from the MaintenanceRequest record itself.
     let maintenanceSiteId = null;
+    let maintRecord: any = null;
     try {
       if (maintenanceId) {
         const mRows = await base44.asServiceRole.entities.MaintenanceRequest.filter({ id: String(maintenanceId) });
         maintenanceSiteId = (mRows && mRows[0] && mRows[0].site_id) || null;
+        maintRecord = (mRows && mRows[0]) || null;
       }
     } catch (_) { /* narrowing failure never blocks the alert */ }
+    // SIMULATED-RECORD SUPPRESSION — demo/technical-test maintenance records
+    // never generate admin alerts.
+    if (maintRecord && await isSimulatedRecord(base44.asServiceRole, maintRecord)) {
+      return Response.json({ success: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
+    }
     // RECIPIENT PREFERENCES — a user who disabled maintenance notifications
     // is dropped from the routine automatic recipient list (opt-OUT system:
     // recipients without a preference record are always kept).

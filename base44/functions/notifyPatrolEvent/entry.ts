@@ -21,6 +21,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
@@ -44,6 +45,12 @@ export default async function(req) {
 
     const patrol = await base44.asServiceRole.entities.ScheduledPatrol.get(patrolId).catch(() => null);
     if (!patrol) return Response.json({ error: 'Patrol not found' }, { status: 404 });
+
+    // SIMULATED-RECORD SUPPRESSION — demo/technical-test patrols never
+    // generate completion/exception correspondence.
+    if (await isSimulatedRecord(base44.asServiceRole, patrol)) {
+      return Response.json({ success: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
+    }
 
     // AUTHORITY — only the assigned guard (or platform oversight) may report
     // this patrol's events. Tenant scope is taken from the patrol record.

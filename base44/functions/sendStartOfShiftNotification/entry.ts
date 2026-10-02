@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveShiftReportRecipients } from '../../shared/shiftReportRecipients.ts';
 import {
@@ -63,6 +64,12 @@ Deno.serve(async (req) => {
         const rows = await base44.asServiceRole.entities.Shift.filter({ id: String(reportData.shift_id) });
         shift = (rows && rows[0]) || null;
       } catch (e) { diag.failures.push('shift_resolve:' + String(e?.message || e)); }
+    }
+    // SIMULATED-RECORD SUPPRESSION — demo/technical-test shifts never
+    // generate Start of Shift correspondence.
+    if (shift && await isSimulatedRecord(base44.asServiceRole, shift)) {
+      diag.failures.push('SIMULATED_RECORD_SUPPRESSED');
+      return Response.json({ ok: false, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED', diag });
     }
     const tenantCustomerId = (shift && shift.customer_id) || user.customer_id || null;
     const tenantResellerId = (shift && shift.reseller_id) || user.reseller_id || null;

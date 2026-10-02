@@ -1,7 +1,7 @@
 {
   "name": "DemoSeedRecord",
   "type": "object",
-  "description": "PLATFORM-INTERNAL demo provenance ledger. One row per record created by the demoSeed gateway (plus one per classified technical-test record), enabling batch-scoped idempotency (a seed phase already recorded for a batch is never re-run), batch-scoped reset (reset deletes exactly the referenced record ids) and audit of demo/technical-test provenance. Rows for small-count entities (control rooms, comms, estate) carry the record id + idempotency key because those entities are not batch-tagged by schema. GATEWAY-ONLY: written exclusively by the demoSeed gateway under the service role; direct client access is restricted to platform administration by RLS.",
+  "description": "PLATFORM-INTERNAL demo provenance ledger. One row per record created by the demoSeed gateway (plus one per classified technical-test record), enabling batch-scoped idempotency (a seed phase already recorded for a batch is never re-run), batch-scoped reset (reset deletes exactly the referenced record ids) and audit of demo/technical-test provenance. Rows for small-count entities (control rooms, comms, estate) carry the record id + idempotency key because those entities are not batch-tagged by schema. The ledger is ALSO the anti-abuse authority for simulated-record suppression: dispatch paths suppress correspondence about a record only when its demo_batch_id is registered here for the record's own tenant. GATEWAY-ONLY: written exclusively by the demoSeed gateway under the service role; ALL direct client access (create/update/delete AND read) is restricted to platform administration by RLS \u2014 an ordinary user can never register a batch, so copying demo flags can never suppress a genuine alert.",
   "properties": {
     "batch_id": {
       "type": "string",
@@ -56,60 +56,24 @@
   ],
   "rls": {
     "create": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "admin_level": "platform"
-          }
-        }
-      ]
+      "user_condition": {
+        "admin_level": "platform"
+      }
     },
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "admin_level": "platform"
-          }
-        }
-      ]
+      "user_condition": {
+        "admin_level": "platform"
+      }
     },
     "update": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "admin_level": "platform"
-          }
-        }
-      ]
+      "user_condition": {
+        "admin_level": "platform"
+      }
     },
     "delete": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "admin_level": "platform"
-          }
-        }
-      ]
+      "user_condition": {
+        "admin_level": "platform"
+      }
     }
   }
 }

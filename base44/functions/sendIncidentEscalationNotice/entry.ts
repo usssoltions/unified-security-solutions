@@ -25,6 +25,7 @@ import { buildBrandedEmail, resolveCommunicationBrand } from '../../shared/brand
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
+import { isSimulatedRecord, suppressionAuditRow } from '../../shared/simulatedRecords.ts';
 
 const MANAGEMENT_ROLES = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
 // The monitor itself only runs for these roles (plus the platform sender
@@ -64,6 +65,18 @@ Deno.serve(async (req) => {
       // Legacy unscoped incidents are platform-admin-only (same visibility
       // class as every other pre-tenant-scoping record).
       return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // ── SIMULATED-RECORD SUPPRESSION ── demo-seed and technical-test records
+    // never generate escalation/reassignment correspondence. Validated against
+    // the DemoSeedRecord ledger (platform-admin-only writes), so client-set
+    // flags alone can never silence a genuine alert. Audited as skipped.
+    if (await isSimulatedRecord(base44.asServiceRole, incident)) {
+      try {
+        await base44.asServiceRole.entities.NotificationDelivery.create(
+          suppressionAuditRow(incident, kind === 'escalation' ? 'incident_escalation' : 'incident_reassignment'));
+      } catch (_) { /* audit write failure is non-fatal */ }
+      return Response.json({ ok: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED', recipients: 0, sent: 0 });
     }
 
     // RECIPIENT RESOLUTION — always scoped to the INCIDENT's tenant. A

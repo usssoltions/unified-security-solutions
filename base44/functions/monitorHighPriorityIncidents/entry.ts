@@ -14,6 +14,7 @@ import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -47,6 +48,11 @@ Deno.serve(async (req) => {
     }
     if (!incident) {
       return Response.json({ skipped: true, reason: 'No incident data' });
+    }
+    // SIMULATED-RECORD SUPPRESSION — demo/technical-test incidents never
+    // raise critical alerts (in-app, email, push) on any tenant.
+    if (await isSimulatedRecord(base44.asServiceRole, incident)) {
+      return Response.json({ skipped: true, reason: 'Simulated (demo/technical-test) record — suppressed' });
     }
     if (incident.priority !== 'critical') {
       return Response.json({ skipped: true, reason: 'Not critical priority' });

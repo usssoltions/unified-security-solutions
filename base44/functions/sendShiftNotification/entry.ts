@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { isSimulatedRecord, hasDemoFlags } from '../../shared/simulatedRecords.ts';
 import { resolveAppUrl, appUrlFor } from '../../shared/appUrl.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import {
@@ -160,6 +161,11 @@ Deno.serve(async (req) => {
         } catch (_) { /* fall back to the caller-supplied facts */ }
       }
       if (storedShift) {
+        // SIMULATED-RECORD SUPPRESSION — demo/technical-test shifts never
+        // generate acknowledgement correspondence.
+        if (await isSimulatedRecord(base44.asServiceRole, storedShift)) {
+          return Response.json({ ok: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
+        }
         if (storedShift.customer_id) tenantCustomerId = storedShift.customer_id;
         if (storedShift.reseller_id) tenantResellerId = storedShift.reseller_id;
         siteName = siteName || storedShift.site_name;
@@ -232,7 +238,9 @@ Deno.serve(async (req) => {
       for (const sid of shiftIds) {
         try {
           const rows = await base44.asServiceRole.entities.Shift.filter({ id: sid });
-          if (rows && rows[0]) resolvedShifts.push(rows[0]);
+          // SIMULATED-RECORD SKIP — demo/technical-test shifts are never
+          // batch-acknowledged or notified about.
+          if (rows && rows[0] && !hasDemoFlags(rows[0])) resolvedShifts.push(rows[0]);
         } catch (_) { /* skip unresolvable id */ }
       }
       if (!resolvedShifts.length) return Response.json({ error: 'No shifts could be resolved' }, { status: 404 });
@@ -303,6 +311,11 @@ Deno.serve(async (req) => {
         try {
           const rows = await base44.asServiceRole.entities.Shift.filter({ id: String(shiftId) });
           const stored = rows && rows[0];
+          // SIMULATED-RECORD SUPPRESSION — demo/technical-test shifts never
+          // generate shift correspondence.
+          if (stored && await isSimulatedRecord(base44.asServiceRole, stored)) {
+            return Response.json({ ok: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
+          }
           if (stored) {
             if (!startTime) startTime = stored.start_time;
             if (!endTime) endTime = stored.end_time;

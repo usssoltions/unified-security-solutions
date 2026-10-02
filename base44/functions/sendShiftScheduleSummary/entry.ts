@@ -17,6 +17,7 @@ import {
   formatSastDate, formatSastTime, formatSastDateTime,
 } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { hasDemoFlags } from '../../shared/simulatedRecords.ts';
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -48,6 +49,8 @@ export default async function(req: Request): Promise<Response> {
           && String(s.customer_id) !== String(callerCid)) { excluded++; continue; }
       if (caller.role_type === 'guard' && s.guard_id
           && String(s.guard_id) !== String(caller.id)) { excluded++; continue; }
+      // SIMULATED-RECORD SKIP — demo/technical-test shifts are never shared.
+      if (hasDemoFlags(s)) { excluded++; continue; }
       shifts.push(s);
     }
     if (!shifts.length) return Response.json({ error: 'No authorised shifts to share' }, { status: 403 });

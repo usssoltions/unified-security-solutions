@@ -34,6 +34,13 @@ export default function IncidentEscalationMonitor({ user }) {
             continue;
           }
 
+          // SIMULATED-RECORD SKIP — demo/technical-test records never
+          // escalate from this monitor (the dispatch function independently
+          // suppresses them server-side against the DemoSeedRecord ledger).
+          if (incident.is_test === true || (incident.demo_batch_id && String(incident.demo_batch_id).trim())) {
+            continue;
+          }
+
           const reportedAt = new Date(incident.reported_at);
           const minutesSinceReport = (now - reportedAt) / (1000 * 60);
           // Require at least 5 minutes before escalating even critical/high incidents

@@ -25,6 +25,7 @@ import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
 Deno.serve(async (req) => {
@@ -50,6 +51,12 @@ Deno.serve(async (req) => {
     const incident = (incRows && incRows[0]) || null;
     if (!incident) {
       return Response.json({ error: 'Incident not found' }, { status: 404 });
+    }
+
+    // SIMULATED-RECORD SUPPRESSION — demo/technical-test incidents never
+    // notify (in-app, email, push, Telegram) on any tenant.
+    if (await isSimulatedRecord(svc, incident)) {
+      return Response.json({ success: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
     }
 
     const priority = incident.priority || 'medium';

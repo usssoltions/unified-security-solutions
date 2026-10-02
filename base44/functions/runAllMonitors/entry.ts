@@ -563,6 +563,9 @@ Deno.serve(async (req) => {
           };
 
           for (const patrol of todayPatrols) {
+            // SIMULATED-RECORD SKIP — demo/technical-test patrols are never
+            // marked missed/overdue and never dispatch exceptions.
+            if (patrol.is_test === true || (patrol.demo_batch_id && String(patrol.demo_batch_id).trim())) continue;
             if (patrol.status !== 'upcoming' && patrol.status !== 'due') continue;
             const minsLate = (now - new Date(patrol.scheduled_start)) / 60000;
 

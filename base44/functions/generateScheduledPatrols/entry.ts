@@ -28,6 +28,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
+import { hasDemoFlags } from '../../shared/simulatedRecords.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
@@ -161,6 +162,10 @@ export default async function(req: Request): Promise<Response> {
 
     if (record && evt.entity_name === 'Shift') {
       eventShift = record;
+      // SIMULATED-RECORD SKIP — demo-seed shifts never generate patrols.
+      if (hasDemoFlags(record)) {
+        return Response.json({ success: true, skipped: true, reason: 'Simulated (demo) shift — patrol generation suppressed', ...audit });
+      }
       if (!ELIGIBLE_SHIFT_STATUSES.includes(record.status)) {
         return Response.json({ success: true, skipped: true, reason: `Shift status '${record.status}' not eligible`, ...audit });
       }
@@ -256,7 +261,7 @@ export default async function(req: Request): Promise<Response> {
       } else {
         const siteShifts = await base44.asServiceRole.entities.Shift.filter({ site_id: site.id });
         for (const s of siteShifts) {
-          if (!ELIGIBLE_SHIFT_STATUSES.includes(s.status)) continue;
+          if (!ELIGIBLE_SHIFT_STATUSES.includes(s.status) || hasDemoFlags(s)) continue;
           const st = new Date(s.start_time);
           if (st < todayStart) continue;
           const key = dayKey(st);

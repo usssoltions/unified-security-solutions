@@ -31,10 +31,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
  * incidents, comms, estate, finalize) | reset
  */
 
-const DEFAULT_CUSTOMER_ID = '6abe850a9967add57b574dc6';
-const DEFAULT_SITE_ID = '6abe893dc076261ddaff9a9e';
-const SITE_NAME = 'Hyatt House Sandton — Demo';
-const SITE_DISPLAY = 'Hyatt House Sandton';
+/* NO hardcoded default customer/site: every deployment is explicitly
+   authorised against a target customer + site supplied by the platform
+   administrator. All display names are resolved from the TARGET customer's
+   site configuration — Grid Protection / Hyatt House Sandton details are
+   never copied into another customer's demo. */
 const GATE = 'Main Gate';
 const DEMO_MARKER = 'SIMULATED demo record';
 
@@ -150,7 +151,7 @@ function buildShifts(rnd, batch, cid, rid, site, now) {
         start_time: iso(start), end_time: iso(endDT), is_test: false,
         reminder_sent: true, ended_notified: true,
         ended_notified_at: future ? null : iso(new Date(endDT.getTime() + 5 * 60000)),
-        notes: `[${DEMO_MARKER}] ${slot.label} shift — ${SITE_DISPLAY}`,
+        notes: `[${DEMO_MARKER}] ${slot.label} shift — ${site.hospitality_display_name || site.name}`,
       };
       if (!future) {
         const missed = rnd() < 0.05 && slot.label !== 'Day';
@@ -350,7 +351,7 @@ function buildHospitality(rnd, batch, cid, rid, site, shifts, now) {
           exit_device_name: exited ? 'Demo — Gate 1 Tablet' : null,
           exit_scan_method: exited ? (pedestrianOnly ? 'manual' : 'qr_code') : null,
           exit_notes: exited ? `[${DEMO_MARKER}] Exit processed` : null,
-          notes: `[${DEMO_MARKER}] ${category === 'check_in' ? 'Hotel check-in' : category.replace(/_/g, ' ')} — ${SITE_DISPLAY}`,
+          notes: `[${DEMO_MARKER}] ${category === 'check_in' ? 'Hotel check-in' : category.replace(/_/g, ' ')} — ${site.hospitality_display_name || site.name}`,
           hospitality_visit_id: null, identity_key, flagged: false,
         };
         if (!pedestrianOnly && vehicle) { log.vehicle_registration = vehicle.vehicle_registration; log.vehicle_licence_disc_number = vehicle.vehicle_licence_disc_number; log.vehicle_make = vehicle.vehicle_make; log.vehicle_model = vehicle.vehicle_model; log.vehicle_colour = vehicle.vehicle_colour; }
@@ -753,14 +754,20 @@ export default async function(req) {
     const svc = base44.asServiceRole;
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || 'status');
-    const cid = String(body.customer_id || DEFAULT_CUSTOMER_ID);
-    const siteId = String(body.site_id || DEFAULT_SITE_ID);
+    const cid = String(body.customer_id || '');
+    const siteId = String(body.site_id || '');
+    if (!cid || !siteId) {
+      return Response.json({ error: 'customer_id and site_id are required — the demo gateway never infers its target' }, { status: 400 });
+    }
 
     const site = await svc.entities.Site.get(siteId).catch(() => null);
     if (!site || String(site.customer_id) !== cid) return Response.json({ error: 'Site not found for this customer' }, { status: 404 });
     const customer = await svc.entities.Customer.get(cid).catch(() => null);
     if (!customer) return Response.json({ error: 'Customer not found' }, { status: 404 });
     const rid = site.reseller_id || customer.reseller_id || null;
+    // Guest-facing display name resolved from the TARGET site's configuration
+    // (falls back to the site's own name; never a hardcoded brand).
+    const siteDisplay = site.hospitality_display_name || site.name;
 
     // ── batch resolution ──
     const batchRows = await svc.entities.DemoSeedRecord.filter({ kind: 'batch', customer_id: cid }, '-created_date', 5).catch(() => []);
@@ -856,13 +863,19 @@ export default async function(req) {
           siteUpdate.checkpoints = [...(site.checkpoints || []), ...CHECKPOINTS.map(c => ({ id: c.id, name: c.name, qr_code: `USS-DEMO-${c.id.replace('demo-ck-0', 'CK')}`, zone: c.zone, risk_level: c.risk_level, description: `[${DEMO_MARKER}] ${c.name}`, required: true, location: { lat: c.lat, lng: c.lng } }))];
         }
         siteUpdate.patrol_config = { ...(site.patrol_config || {}), enabled: true, schedules: [{ start_time: '06:00', end_time: '18:00', frequency_minutes: 240, days: [0,1,2,3,4,5,6], random_timing: false }, { start_time: '18:00', end_time: '06:00', frequency_minutes: 300, days: [0,1,2,3,4,5,6], random_timing: false }], duration_target_minutes: 35, alert_before_minutes: 10, escalation_after_minutes: 15, supervisor_escalation: false, random_route: true, ai_route_optimization: false, required_checkpoints: [] };
-        if (!site.hospitality_display_name) siteUpdate.hospitality_display_name = SITE_DISPLAY;
+        // Preserve the target site's own access workflow and guest-facing
+        // display name: the hospitality display name is only derived (from
+        // the site itself) for sites already running the hospitality
+        // workflow — never applied to other customers' sites.
+        if (!site.hospitality_display_name && site.access_workflow === 'grid_gate_hospitality') {
+          siteUpdate.hospitality_display_name = siteDisplay;
+        }
         await svc.entities.Site.update(siteId, siteUpdate);
         // 3) Control room
         const crExisting = await svc.entities.ControlRoom.filter({ demo_batch_id: batchId }).catch(() => []);
         let crId = crExisting[0]?.id || null;
         if (!crId) {
-          const cr = await svc.entities.ControlRoom.create({ demo_batch_id: batchId, customer_id: cid, reseller_id: rid, name: 'Hyatt House Sandton Control Room', physical_address: site.address || null, status: 'active', linked_site_ids: [siteId], supervisor_user_ids: [], operator_user_ids: [], notes: `[${DEMO_MARKER}] Demo control room.` });
+          const cr = await svc.entities.ControlRoom.create({ demo_batch_id: batchId, customer_id: cid, reseller_id: rid, name: `${site.name} Control Room`, physical_address: site.address || null, status: 'active', linked_site_ids: [siteId], supervisor_user_ids: [], operator_user_ids: [], notes: `[${DEMO_MARKER}] Demo control room.` });
           crId = cr.id;
         }
         await markPhase(batchId, `${batchId}:setup`, JSON.stringify({ control_room_id: crId, classified: { visits: testVisitIds.length, logs: testLogs.length, evidence: testEv.length } }));

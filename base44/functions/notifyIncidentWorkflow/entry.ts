@@ -33,6 +33,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
@@ -88,6 +89,12 @@ Deno.serve(async (req) => {
       if (!sameCustomer && !resellerAdmin) {
         return Response.json({ error: 'Forbidden — incident belongs to another tenant' }, { status: 403 });
       }
+    }
+
+    // ── SIMULATED-RECORD SUPPRESSION — demo/technical-test incidents never
+    // generate workflow correspondence (in-app, email, push, Telegram).
+    if (await isSimulatedRecord(svc, incident)) {
+      return Response.json({ success: true, action, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED', notificationsSent: 0 });
     }
 
     // ── STATE MACHINE: destination status must match the action ──

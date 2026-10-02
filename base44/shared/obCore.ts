@@ -31,6 +31,7 @@ import {
   resolveTaskBrandContext, logTaskAudit,
 } from './taskNotifications.ts';
 import { sendNativePushToUsers } from './nativePush.ts';
+import { hasDemoFlags } from './simulatedRecords.ts';
 
 const SAST_MS = 2 * 60 * 60 * 1000;
 const MAX_SLOTS_PER_SCHEDULE = 300;
@@ -444,6 +445,8 @@ export async function runObSweep(svc, secrets) {
   const scheduleById = {};
   for (const sch of schedules) {
     scheduleById[sch.id] = sch;
+    // SIMULATED-RECORD SKIP — demo-seed schedules generate nothing.
+    if (hasDemoFlags(sch)) continue;
     if (!(await obOn(sch.customer_id))) {
       results.cancelled += await cancelPendingForSchedule(svc, sch.id, 'Digital OB disabled for this customer');
       continue;
@@ -453,6 +456,8 @@ export async function runObSweep(svc, secrets) {
   }
   const pending = await svc.entities.OBOccurrence.filter({ status: 'pending' }, 'due_at', 300).catch(() => []);
   for (const occ of pending || []) {
+    // SIMULATED-RECORD SKIP — demo-seed occurrences are never swept/notified.
+    if (hasDemoFlags(occ)) continue;
     if (!occ.due_at) continue;
     const due = Date.parse(occ.due_at);
     if (isNaN(due) || due > now) continue;

@@ -5,6 +5,7 @@ import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -45,6 +46,12 @@ export default async function(req) {
     let shift = null;
     try { shift = await base44.asServiceRole.entities.Shift.get(shiftId); } catch (_) { shift = null; }
     if (!shift) return Response.json({ error: 'Shift not found' }, { status: 404 });
+
+    // SIMULATED-RECORD SUPPRESSION — demo/technical-test shifts never
+    // generate shift-end correspondence.
+    if (await isSimulatedRecord(base44.asServiceRole, shift)) {
+      return Response.json({ skipped: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
+    }
 
     if (shift.status !== 'active') {
       return Response.json({ skipped: true, reason: 'shift is not active' });

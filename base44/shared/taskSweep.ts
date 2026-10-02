@@ -17,6 +17,7 @@ import {
   sastTodayYmd, sastInstantYmd, resolveTaskRecipients, notifyTaskRecipients, notifyTaskRecipientsOnce,
   logTaskAudit, resolveTaskBrandContext,
 } from './taskNotifications.ts';
+import { hasDemoFlags } from './simulatedRecords.ts';
 import { reminderNotification, deadlineReport, reasonRequiredNotification,
   verificationOverdueNotification, guardOverdueNotification, fmtSast, MY_TASKS_LINK,
   newTaskListNotification } from './taskReportContent.ts';
@@ -208,7 +209,7 @@ export async function runTaskSweep(svc, secrets) {
     { is_series: true, status: 'active' }, '-created_date', 50).catch(() => []);
   for (const series of (seriesRows || [])) {
     const rec = { type: series.recurrence_type, weekdays: series.recurrence_weekdays || [], interval: series.recurrence_interval_days || 1 };
-    if (rec.type === 'none' || series.archived) continue;
+    if (rec.type === 'none' || series.archived || hasDemoFlags(series)) continue;
     const endYmd = (series.recurrence_end_date && DATE_RE.test(series.recurrence_end_date))
       ? series.recurrence_end_date : addDaysYmd(today, 30);
     const dates = occurrenceDates(series.scheduled_date, rec, endYmd, 62);
@@ -231,7 +232,9 @@ export async function runTaskSweep(svc, secrets) {
   const recentBatches = await svc.entities.TaskBatch.filter(
     { is_series: false, status: 'active' }, '-scheduled_date', 100).catch(() => []);
   const dueBatches = (recentBatches || []).filter((b) =>
-    b.scheduled_date && b.scheduled_date <= today && b.scheduled_date >= cutoff && !b.archived);
+    b.scheduled_date && b.scheduled_date <= today && b.scheduled_date >= cutoff && !b.archived &&
+    // SIMULATED-RECORD SKIP — demo-seed batches are never swept/reminded.
+    !hasDemoFlags(b));
 
   if (!dueBatches.length) return Response.json({ success: true, ...results, active_batches: 0 });
 

@@ -1239,10 +1239,21 @@ export default async function(req: Request): Promise<Response> {
       else if (a.site_id) q.site_id = String(a.site_id);
       if (a.status) q.status = String(a.status);
       if (a.category) q.category = String(a.category);
+      // PERIOD FILTER — matches the visit's OPERATIONAL instant, not the
+      // database import instant: confirmed visits by confirmed_at
+      // (admission decision), cancelled visits by cancelled_at, pending
+      // drafts by created_date. A seeded/backdated history therefore reports
+      // under its event dates, while genuine records behave exactly as
+      // before (their confirmed_at ≈ created_date, minutes apart).
       if (a.date_from || a.date_to) {
-        q.created_date = {};
-        if (a.date_from) q.created_date.$gte = String(a.date_from);
-        if (a.date_to) q.created_date.$lte = String(a.date_to);
+        const range: any = {};
+        if (a.date_from) range.$gte = String(a.date_from);
+        if (a.date_to) range.$lte = String(a.date_to);
+        q.$or = [
+          { confirmed_at: range },
+          { cancelled_at: range },
+          { created_date: range },
+        ];
       }
       const limit = Math.min(1000, Math.max(1, Number(a.limit) || 500));
       const visits = ((await base44.asServiceRole.entities.HospitalityVisit.filter(q, '-created_date', limit).catch(() => [])) || []).filter(inScope);

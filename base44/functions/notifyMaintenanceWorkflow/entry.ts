@@ -13,6 +13,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
@@ -54,12 +55,19 @@ Deno.serve(async (req) => {
     // CONTROL ROOM narrowing — an operator receives a workflow update only
     // when assigned to an ACTIVE Control Room covering the request's site.
     let maintenanceSiteId = null;
+    let maintRecord: any = null;
     try {
       if (maintenanceId) {
         const mRows = await base44.asServiceRole.entities.MaintenanceRequest.filter({ id: String(maintenanceId) });
         maintenanceSiteId = (mRows && mRows[0] && mRows[0].site_id) || null;
+        maintRecord = (mRows && mRows[0]) || null;
       }
     } catch (_) { /* narrowing failure never blocks the alert */ }
+    // SIMULATED-RECORD SUPPRESSION — demo/technical-test maintenance records
+    // never generate workflow correspondence.
+    if (maintRecord && await isSimulatedRecord(base44.asServiceRole, maintRecord)) {
+      return Response.json({ success: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
+    }
     // RECIPIENT PREFERENCES — workflow status updates respect the
     // status_change opt-out; direct assignee notifications are separate.
     const management = await applyNotificationPreferences(base44.asServiceRole,
