@@ -34,7 +34,7 @@ export default function EstateProperties() {
       const u = await base44.auth.me();
       setUser(u);
       const [props, sts] = await Promise.all([
-        listProperties().catch(() => []),
+        listProperties().then(r => (Array.isArray(r?.properties) ? r.properties : [])).catch(() => []),
         listSites().catch(() => []),
       ]);
       setProperties(props);
