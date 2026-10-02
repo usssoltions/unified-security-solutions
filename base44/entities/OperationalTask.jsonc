@@ -3,6 +3,13 @@
   "type": "object",
   "description": "CONTROL ROOM TASK SCHEDULING module: One record = one scheduled operational task \u2014 a DISTINCT workflow from guard shift scheduling (Shift records). WORKFLOW: Supervisor creates a TaskBatch allocated to a Control Room \u2192 tasks enter the Control Room queue (status 'queue') \u2192 Control Room Operator assigns \u2192 assigned user starts and performs SIGN-OFF 1 (status 'awaiting_verification' \u2014 NOT completed) \u2192 operator performs SIGN-OFF 2 verification (status 'completed' \u2014 requires BOTH sign-offs by DIFFERENT people) \u2192 immediate supervisor notification \u2192 deadline Task Completion Report. OVERDUE IS NOT TERMINAL: a task carrying Sign-off 1 remains verifiable past its deadline (the sweep flattens awaiting_verification \u2192 overdue); such verification requires a late reason and permanently records completed_late. Recurring standalone tasks store a shared series id (recurrence_key) and parent_task_id; occurrences are generated server-side (bounded rolling window, deduplicated by recurrence_key). NULLABLE FIELDS: the gateway legitimately writes explicit nulls (unassigned tasks, optional site/times/notes, cleared fields) \u2014 plain string fields reject nulls on this platform, so these MUST declare type [\"string\",\"null\"]. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record, enforces the TASK_SCHEDULING / OPERATIONS / COMPLETE_SECURITY module licence, validates control-room/site/assignee tenant membership, and fails closed with 403 for cross-tenant access. Direct client access below is platform-admin only.",
   "properties": {
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ID for multi-tenant isolation"
@@ -34,7 +41,7 @@
       ],
       "description": "TaskBatch (task list) this task belongs to. Null for legacy standalone tasks."
     },
-    "task_batch_title": {
+    "ta******": {
       "type": [
         "string",
         "null"
@@ -191,8 +198,7 @@
         "monthly",
         "custom"
       ],
-      "default": "none",
-      "description": "Legacy standalone-task recurrence (TaskBatch-based scheduling is preferred)."
+      "default": "none"
     },
     "recurrence_weekdays": {
       "type": "array",

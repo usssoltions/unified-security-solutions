@@ -3,6 +3,13 @@
   "type": "object",
   "description": "Maintenance request report. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's maintenance requests to every other customer under the same reseller (confirmed cross-customer defect class 2026-09-21). Guards always see requests they reported or are assigned to; platform admins retain oversight.",
   "properties": {
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ID for multi-tenant isolation"
