@@ -26,7 +26,7 @@ import {
   SHOWCASE_TEMPLATE_CATALOG, buildTemplateExample, computePackFingerprint, DEMO_FOOTER,
 } from '../../shared/showcaseTemplates.ts';
 import {
-  sendOne as sendPackItem, createSendClaims, buildItemAttachments,
+  sendOne as sendPackItem, createSendClaims, buildItemAttachments, freezeItemAttachments,
 } from '../../shared/showcaseDelivery.ts';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -261,6 +261,16 @@ Deno.serve(async (req) => {
       }
       if (!contents.length) {
         return Response.json({ error: 'No template could be rendered — no suitable demo records found for the selected templates.' }, { status: 422 });
+      }
+      // FREEZE the attachments: each item's real report files are built ONCE
+      // here and stored privately — the preview and the customer delivery
+      // reuse the EXACT files reviewed, so later demo-data changes can never
+      // alter an approved pack.
+      for (const c of contents) {
+        if ((c.attachments || []).length) {
+          c.attachments = await freezeItemAttachments(svc, c, brand, customerName);
+          await sleep(200);
+        }
       }
       const content_fingerprint = await computePackFingerprint({ selections, contents, branding_snapshot: snapshot });
       const rand = Math.random().toString(36).slice(2, 6).toUpperCase();

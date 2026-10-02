@@ -35,6 +35,17 @@ Deno.serve(async (req) => {
     if (!isPlatformAdmin(user)) return Response.json({ error: 'Forbidden — platform administration only' }, { status: 403 });
 
     const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+    // Frozen-attachment verification file — a tiny text file uploaded to
+    // PRIVATE storage, carried as a frozen attachment (file_uri) exactly like
+    // a generation-frozen report attachment. The recorder proves it reaches
+    // the transport payload; nothing external is ever sent.
+    let checkFileUri: string | null = null;
+    try {
+      const up = await svc.integrations.Core.UploadPrivateFile({
+        file: new File([new TextEncoder().encode('Self-test frozen attachment payload')], 'selftest-frozen-check.txt', { type: 'text/plain' }),
+      });
+      checkFileUri = up?.file_uri || up?.data?.file_uri || null;
+    } catch (_) {}
     const pack = await svc.entities.ReportShowcasePack.create({
       pack_number: `SHOW-SELFTEST-${rand}`,
       customer_id: 'SELFTEST',
@@ -52,7 +63,9 @@ Deno.serve(async (req) => {
         html: '<p>Isolated self-test body — intercepted transport, never delivered externally. This body exists so the content-validity path runs exactly as a real item would.</p>',
         text: 'DEMO | Duplicate-send verification item — isolated self-test, never delivered externally.',
         demo_record_ids: [],
-        attachments: [],
+        attachments: checkFileUri
+          ? [{ filename: 'selftest-frozen-check.txt', generator: 'frozen_selftest', file_uri: checkFileUri }]
+          : [],
       }],
       branding_snapshot: { brand_name: null, primary_color: null, accent_color: null, logo_url: null, missing_overrides: [] },
       content_fingerprint: 'selftest',
@@ -74,7 +87,9 @@ Deno.serve(async (req) => {
     const brand = { brand_name: 'Self-Test' };
     // INTERCEPTED transport — counts deliveries, delivers nothing.
     const sent: any[] = [];
-    const transport = async (p: any) => { sent.push({ to: p?.to || null, subject: p?.subject || null }); };
+    const transport = async (p: any) => {
+      sent.push({ to: p?.to || null, subject: p?.subject || null, attachments: (p?.attachments || []).map((a: any) => a.filename || a.file_url || null) });
+    };
     // ISOLATED injected config — same fail-closed normalisation as secrets.
     const config = { mode: 'test', testMailboxes: ['intercepted@selftest.invalid'] };
     const to = 'intercepted@selftest.invalid';
@@ -92,6 +107,9 @@ Deno.serve(async (req) => {
       second_skipped: !!r2.skipped,
       second_reason: r2.reason || null,
       total_deliveries: sent.length,
+      attachment_passthrough: checkFileUri
+        ? sent.filter((d) => (d.attachments || []).includes('selftest-frozen-check.txt')).length
+        : null,
     };
     await sleep(300);
 
@@ -138,7 +156,8 @@ Deno.serve(async (req) => {
       results.sequential.second_skipped === true &&
       results.concurrent.deliveries_during_test === 1 &&
       results.concurrent.sent_attempts === 1 &&
-      results.audit_store.sent_rows === 1
+      results.audit_store.sent_rows === 1 &&
+      (checkFileUri === null || results.sequential.attachment_passthrough === 1)
     );
     return Response.json({ success: true, selftest: results });
   } catch (e: any) {

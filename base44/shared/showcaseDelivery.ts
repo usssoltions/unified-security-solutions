@@ -36,6 +36,13 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+function bytesFromBase64(b64: string): Uint8Array {
+  const bin = atob(String(b64 || ''));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 async function fetchByIds(svc: any, entityName: string, ids: string[]): Promise<any[]> {
   const out: any[] = [];
   for (let i = 0; i < (ids || []).length; i += 10) {
@@ -189,10 +196,40 @@ async function buildMonthlyAttachment(svc: any, meta: any, brand: any, kind: 'in
 }
 
 /** Builds the REAL attachments for one content item at send time. */
-export async function buildItemAttachments(svc: any, content: any, brand: any, customerName: string) {
-  const out: { filename: string; content: string }[] = [];
+// ── Attachment FREEZING (generation time) ────────────────────────────────────
+// Builds each item's real report attachments ONCE at pack generation and
+// uploads the bytes to PRIVATE storage; the frozen file_uri is stored in the
+// pack's attachment metadata. Preview and customer delivery then REUSE the
+// exact files the owner reviewed — later demo-data changes can never alter an
+// approved pack's attachments (regeneration creates a new pack + fingerprint).
+export async function freezeItemAttachments(svc: any, content: any, brand: any, customerName: string) {
+  const out: any[] = [];
   for (const meta of content.attachments || []) {
     try {
+      if (meta.file_uri) { out.push(meta); continue; }
+      const built = await buildItemAttachments(svc, { ...content, attachments: [meta] }, brand, customerName);
+      const first = built[0];
+      if (!first?.content) { out.push(meta); continue; }
+      const type = /\.csv$/i.test(meta.filename) ? 'text/csv' : 'application/pdf';
+      const file = new File([bytesFromBase64(first.content)], meta.filename, { type });
+      const up = await svc.integrations.Core.UploadPrivateFile({ file });
+      const uri = up?.file_uri || up?.data?.file_uri || null;
+      out.push(uri ? { ...meta, file_uri: uri } : meta);
+    } catch (_) { out.push(meta); }
+  }
+  return out;
+}
+
+/** Builds the attachments for one content item at send time — FROZEN
+ *  attachments (file_uri set at generation) are reused verbatim. */
+export async function buildItemAttachments(svc: any, content: any, brand: any, customerName: string) {
+  const out: { filename: string; content?: string; file_url?: string }[] = [];
+  for (const meta of content.attachments || []) {
+    try {
+      if (meta.file_uri) {
+        out.push({ filename: meta.filename, file_url: meta.file_uri });
+        continue;
+      }
       if (meta.generator === 'daily_access_pdf') {
         out.push(...await buildAccessAttachments(svc, meta, meta.record_ids || content.demo_record_ids || [], brand, customerName, false));
       } else if (meta.generator === 'daily_access_csv') {
@@ -233,7 +270,7 @@ export async function sendOne(
   if (!claim.won) return { skipped: true, reason: claim.reason };
   const token = claim.token as string;
 
-  const attachments = (opts?.attachments || []).filter((a) => a.content);
+  const attachments = (opts?.attachments || []).filter((a) => a.content || a.file_url);
   const attempt = async (addr: string) => {
     try {
       const r = await sendAuditedEmail(svc, {
