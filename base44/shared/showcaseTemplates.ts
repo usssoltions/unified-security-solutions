@@ -54,6 +54,11 @@ export const SHOWCASE_TEMPLATE_CATALOG: ShowcaseTemplateSpec[] = [
   { template_id: 'daily_access_report', label: 'Daily Access Control Report', module: 'ACCESS', channel: 'email', scenario: 'The branded daily access report (entries, exits, denials) for one site.', needs: ['AccessLog', 'Site'] },
   { template_id: 'visitor_registration', label: 'Visitor Registration Notice', module: 'ESTATE', channel: 'email', scenario: 'A resident-linked visitor registration notification.', needs: ['AccessLog'] },
   { template_id: 'laundry_request', label: 'Laundry Request — Administrator Alert', module: 'ESTATE', channel: 'email', scenario: 'A resident laundry request is submitted to administrators.', needs: ['LaundryRequest'] },
+  // ── REAL REPORT EXPORTS (actual downloadable attachments) ────────────────
+  { template_id: 'hospitality_visits_report', label: 'Hospitality Visits Report (GRID GATE) — PDF', module: 'ACCESS', channel: 'email', scenario: 'The branded downloadable Hospitality Visits PDF (primary + secondary logos, GRID GATE branding) built from demo visits.', needs: ['HospitalityVisit', 'AccessLog'] },
+  { template_id: 'daily_activity_report', label: 'Daily Activity Report — PDF', module: 'OPERATIONS', channel: 'email', scenario: 'The downloadable daily activity PDF (incidents, maintenance, patrols, shifts) built from the busiest demo day.', needs: ['Incident', 'MaintenanceRequest', 'PatrolLog', 'Shift'] },
+  { template_id: 'monthly_incident_report', label: 'Monthly Incident Analysis Report — PDF', module: 'REPORTING_CORE', channel: 'email', scenario: 'The downloadable monthly incident analysis PDF built from demo incidents.', needs: ['Incident'] },
+  { template_id: 'monthly_maintenance_report', label: 'Monthly Maintenance Analysis Report — PDF', module: 'REPORTING_CORE', channel: 'email', scenario: 'The downloadable monthly maintenance analysis PDF built from demo maintenance requests.', needs: ['MaintenanceRequest'] },
 ];
 
 const DEMO = { subjectPrefix: 'DEMO | ' };
@@ -109,7 +114,7 @@ export async function buildTemplateExample(
   svc: any,
   t: ShowcaseTemplateSpec,
   ctx: { customer_id: string; customerName: string; brand: any; records: Record<string, any[]> },
-): Promise<{ subject: string; html: string; text: string; demo_record_ids: string[] } | null> {
+): Promise<{ subject: string; html: string; text: string; demo_record_ids: string[]; attachments?: any[] } | null> {
   const picked = pickExample(t.template_id, ctx.records);
   const p = picked.primary;
   const brand = ctx.brand;
