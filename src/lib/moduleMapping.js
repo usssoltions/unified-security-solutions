@@ -165,7 +165,28 @@ export function entitlementWindowActive(e) {
   return true;
 }
 
-export function isPageModuleEnabled(entitlements, pageName, isPlatformAdmin = false) {
+/* SYSTEM CONFIGURATION exposes cross-module platform settings (security
+ * incident/maintenance/alarm/asset dropdowns, WhatsApp contacts, reporting
+ * automation and priorities). It is NOT part of the Attendance Register: an
+ * attendance-only customer has no legitimate use for it — their own
+ * configuration lives in Attendance Settings. Configuration stays available
+ * to every caller whose entitlements include any non-attendance operational
+ * module; Platform and Reseller Administrators are role-curated and keep it.
+ * Enforced here (ONE gate) so the sidebar filter AND the ProtectedPage route
+ * guard behave identically — direct URL navigation cannot bypass it. */
+const CONFIGURATION_MODULE_KEYS = [
+  "OPERATIONS", "COMPLETE_SECURITY", "TASK_SCHEDULING", "PATROL",
+  "ACCESS", "ESTATE", "OCCUPATIONAL_THERAPY",
+];
+
+export function isPageModuleEnabled(entitlements, pageName, isPlatformAdmin = false, roleType = null) {
+  if (pageName === "Configuration") {
+    if (isPlatformAdmin || roleType === "reseller_admin") return true;
+    return (entitlements || []).some(
+      (e) => CONFIGURATION_MODULE_KEYS.includes(e.module_key) && e.enabled
+        && (!e.status || e.status === "active") && entitlementWindowActive(e)
+    );
+  }
   const key = PAGE_MODULE_MAP[pageName];
   if (!key) return true;
   if (isPlatformAdmin) return true;

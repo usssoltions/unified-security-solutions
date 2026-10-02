@@ -116,9 +116,14 @@ export default async function(req: Request): Promise<Response> {
             : (isResellerAdmin && !(customer_id && isPlatformAdmin))
               ? { reseller_id: caller.reseller_id }
               : { customer_id: (customer_id && (isPlatformAdmin || isResellerAdmin)) ? customer_id : caller.customer_id };
+          // CANCELLED invitations are historical audit rows — they must never
+          // keep attributing an unscoped sign-up to this tenant, otherwise a
+          // cleaned-up test association (e.g. usstest93) keeps re-appearing in
+          // "Setup needs attention" forever.
           const myScopes = await base44.asServiceRole.entities.PendingTenantScope
             .filter(scopeQuery, '-created_date', 500)
-            .catch(() => []);
+            .catch(() => [])
+            .then((rows: any[]) => (rows || []).filter((s: any) => s.status !== 'cancelled'));
           incomplete_accounts = (unscoped || []).map((u: any) => {
             if (!u.email) return null;
             const exact = (myScopes || []).find((s: any) => normaliseEmail(s.email) === normaliseEmail(u.email));

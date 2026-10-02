@@ -410,7 +410,7 @@ export default function Layout({ children, currentPageName }) {
       ? allNavItems.filter(item => ["ScheduledTasks", "Profile"].includes(item.pageKey))
       : allNavItems.filter(item => {
           const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
-          return isPageModuleEnabled(entitlements, pageName, isPlatformAdmin);
+          return isPageModuleEnabled(entitlements, pageName, isPlatformAdmin, user?.role_type);
         });
   // Module-aware home: when the role's marked root page is filtered out by a
   // module entitlement (attendance-only customer_admin has no REPORTING_CORE),
@@ -444,7 +444,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Maintenance", tab: "maintenance", pageKey: "GuardMaintenance", icon: Wrench, color: "text-amber-400" },
         { title: "QR Scan", tab: "qr", pageKey: "QRScanner", icon: QrCode, color: "text-sky-400" },
         { title: "Access Control", tab: "access", pageKey: "AccessControl", icon: QrCode, color: "text-indigo-400" }
-      ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false));
+      ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false, user.role_type));
     }
     if (role === "dispatcher" || role === "admin") {
       // Module-gated like the sidebar: all three tabs belong to the
@@ -453,7 +453,7 @@ export default function Layout({ children, currentPageName }) {
         { title: "Control", tab: "control", pageKey: "ControlRoom", icon: Radio, color: "text-sky-400" },
         { title: "Shifts", tab: "scheduling", pageKey: "Scheduling", icon: Calendar, color: "text-emerald-400" },
         { title: "Sites", tab: "sites", pageKey: "SiteManagement", icon: MapPin, color: "text-amber-400" }
-      ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false));
+      ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false, user.role_type));
     }
     return [];
   };

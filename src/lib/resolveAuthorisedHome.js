@@ -51,7 +51,7 @@ function isPageAccessible(user, pageKey, entitlements, platformAdmin) {
   if (!allowed || !allowed.has(pageKey)) return false;
   // Module gate handles CORE pages, PLATFORM_ADMIN_ONLY pages and the
   // single-key-or-array PAGE_MODULE_MAP values uniformly.
-  return platformAdmin || isPageModuleEnabled(entitlements, pageKey, false);
+  return platformAdmin || isPageModuleEnabled(entitlements, pageKey, false, user.role_type);
 }
 
 export function resolveAuthorisedHome(user, entitlements = []) {

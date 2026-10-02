@@ -122,8 +122,25 @@ export default function TenantUserInviteForm({
     let alive = true;
     setEnabledModuleKeys(null);
     const fetchKeys = customerLocked
-      ? base44.entities.ModuleEntitlement.filter({ customer_id: form.customer_id, enabled: true })
-          .then((ents) => (ents || []).map((e) => e.module_key))
+      ? (async () => {
+          // Direct entitlement reads can return [] when the session token does
+          // not carry custom user fields (RLS {{user.data.customer_id}} → null)
+          // — the documented module-entitlements hook defect. Fail over to the
+          // server-side resolver (the CALLER's own entitlements, same tenant)
+          // so the role dropdown never collapses to Customer Administrator
+          // alone (which hid Attendance Staff from licensed customers).
+          try {
+            const ents = await base44.entities.ModuleEntitlement.filter({ customer_id: form.customer_id, enabled: true });
+            const keys = (ents || []).map((e) => e.module_key).filter(Boolean);
+            if (keys.length) return keys;
+          } catch (_) { /* fall through to the server-side resolver */ }
+          try {
+            const res = await base44.functions.invoke("getGuardLandingConfig", {});
+            const d = res?.data || res;
+            if (d?.resolved && Array.isArray(d.module_keys)) return d.module_keys;
+          } catch (_) { /* fail closed */ }
+          return [];
+        })()
       : base44.functions.invoke("manageCustomerEntitlement", { action: "list", customer_id: form.customer_id })
           .then((res) => { const d = res?.data || res; return d?.module_keys || []; });
     fetchKeys

@@ -57,7 +57,7 @@ export default function ProtectedPage({ pageKey, children }) {
 
   // Layer 2: module entitlement check (platform admins bypass; handles
   // single-key and multi-key (array) PAGE_MODULE_MAP entries uniformly)
-  if (!platformAdmin && !isPageModuleEnabled(entitlements, pageKey, false)) {
+  if (!platformAdmin && !isPageModuleEnabled(entitlements, pageKey, false, user.role_type)) {
     const home = resolveAuthorisedHome(user, entitlements);
     // If the authorised home is the current page we'd loop — show SetupRequired
     // instead. This is the fix for the blank-dashboard self-redirect loop.
