@@ -3,6 +3,13 @@
   "type": "object",
   "description": "GRID GATE Hospitality access-control workflow: ONE custom-category visit at a site whose Site.access_workflow = 'grid_gate_hospitality'. Activated only by the site's own access_workflow setting, never by branding. GATEWAY-ONLY ACCESS through finalizeAccessEntry (hospitality_submit / hospitality_cancel / hospitality_list / hospitality_evidence), which resolves tenant scope server-side and re-validates every requirement. DOCUMENT CAPTURE: 'Scan Vehicle Disk' then 'Licence Disk' (interpreted as the driver's licence) are captured with the existing scanner services; each capture is 'scanned' (decoded payload submitted, the identifier must be present inside it, SHA-256 fingerprint stored) or 'manual_photo' (ownership-verified document photo + typed identifier). A bare scanned flag is never accepted. STATE MACHINE: pending -> confirming (atomic conditional claim carrying a unique confirm_claim_token; stealable atomically after 2 minutes) -> confirmed (admission decision; current presence is derived from the linked AccessLog) | cancelled (reason recorded; access never granted). Evidence uris are accepted only when a server-created HospitalityEvidence ownership record matches this visit's customer, site and upload session. Direct client access restricted to platform administration.",
   "properties": {
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ownership \u2014 server-resolved, never client-trusted."

@@ -3,6 +3,18 @@
   "type": "object",
   "description": "Permanent audit record of every access entry, exit and denial \u2014 THE authoritative visit record (one record = one full entry->exit lifecycle). PERMANENT DUAL ATTRIBUTION: entry side (guard_id/guard_name, entry_device_registration_id/entry_device_name, site/gate, entry_time, scan_method) and exit side (exit_guard_*, exit_device_*, exit_gate, exit_time, exit_scan_method) are recorded separately; an exit never overwrites entry attribution. CONCURRENCY: exits are conditional status 'inside'->'exited' updates. VOID CORRECTIONS: a record that must not stand (e.g. a hospitality entry whose request lost the per-site grant lock or its confirmation claim before committing) is marked status 'voided' with void_reason, voided_at and canonical_access_log_id \u2014 never a fabricated physical exit; history is preserved. TENANT ISOLATION: customer-scoped; reseller branch reserved for reseller administrators; cross-tenant exit and registered-device requirement enforced server-side by finalizeAccessEntry.",
   "properties": {
+    "is_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "TECHNICAL-TEST MARKER: true for harness/fixture audit records \u2014 excluded from customer-facing lists, dashboards, current presence, analytics and exports by default; platform administrators may inspect them explicitly. Never set on genuine operational records."
+    },
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ID for multi-tenant isolation"
