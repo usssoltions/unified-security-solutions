@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShoppingBag, Plus, X, Phone, Star, Store } from "lucide-react";
 import { listVendors, createVendor, updateVendor } from "@/lib/estateApi";
+import LoadStatusBanner from "@/components/shared/LoadStatusBanner";
 
 const EMPTY_FORM = { business_name: "", contact_name: "", email: "", phone: "", category: "restaurant", description: "", delivery_available: false, minimum_order: "", operating_hours: "", status: "active" };
 
@@ -18,7 +19,7 @@ export default function EstateVendors() {
   const qc = useQueryClient();
 
   // Vendors flow through the estateAccess gateway — tenant scope stamped server-side.
-  const { data: vendors = [] } = useQuery({ queryKey: ["all_vendors"], queryFn: () => listVendors().then(r => r.vendors), initialData: [] });
+  const { data: vendors = [], isLoading, error, refetch } = useQuery({ queryKey: ["all_vendors"], queryFn: () => listVendors().then(r => r.vendors) });
 
   const createMutation = useMutation({
     mutationFn: (data) => createVendor({ ...data, minimum_order: Number(data.minimum_order) || 0 }),
@@ -103,7 +104,8 @@ export default function EstateVendors() {
               </CardContent>
             </Card>
           ))}
-          {vendors.length === 0 && <p className="text-slate-400 text-center py-8 col-span-2">No vendors yet</p>}
+          <div className="col-span-full"><LoadStatusBanner loading={isLoading} error={error} onRetry={refetch} /></div>
+          {!isLoading && !error && vendors.length === 0 && <p className="text-slate-400 text-center py-8 col-span-2">No vendors yet</p>}
         </div>
       </div>
     </div>

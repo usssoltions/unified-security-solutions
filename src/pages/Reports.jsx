@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LoadStatusBanner from "@/components/shared/LoadStatusBanner";
 import {
   AlertTriangle,
   Wrench,
@@ -33,18 +34,16 @@ export default function Reports() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const queryClient = useQueryClient();
 
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [], isLoading: incLoading, error: incError, refetch: refetchInc } = useQuery({
     queryKey: ["incidents"],
     queryFn: async () => base44.entities.Incident.list("-reported_at", 100),
-    initialData: [],
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });
 
-  const { data: maintenance = [] } = useQuery({
+  const { data: maintenance = [], isLoading: mntLoading, error: mntError, refetch: refetchMnt } = useQuery({
     queryKey: ["maintenance"],
     queryFn: async () => base44.entities.MaintenanceRequest.list("-reported_at", 100),
-    initialData: [],
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });
@@ -514,6 +513,11 @@ export default function Reports() {
           </Select>
         </div>
 
+        <LoadStatusBanner
+          loading={incLoading || mntLoading}
+          error={incError || mntError}
+          onRetry={() => { refetchInc(); refetchMnt(); }}
+        />
         <Tabs defaultValue="all">
           <TabsList className="grid w-full grid-cols-3 bg-slate-800/50">
             <TabsTrigger value="all">All ({filteredAll.length})</TabsTrigger>

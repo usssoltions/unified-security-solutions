@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Ticket, Search, User, MapPin, Clock, X, CheckCircle2, AlertTriangle } from "lucide-react";
 import { listTickets, listVendors as listVendorsApi, updateTicket } from "@/lib/estateApi";
+import LoadStatusBanner from "@/components/shared/LoadStatusBanner";
 
 export default function TicketManagement() {
   const [user, setUser] = useState(null);
@@ -24,17 +25,15 @@ export default function TicketManagement() {
 
   // Tickets and vendors flow through the estateAccess gateway — tenant
   // scope resolved server-side; updates dispatch resident notifications.
-  const { data: tickets = [] } = useQuery({
+  const { data: tickets = [], isLoading: ticketsLoading, error: ticketsError, refetch: refetchTickets } = useQuery({
     queryKey: ["all_tickets_mgmt"],
     queryFn: () => listTickets().then(r => r.tickets),
-    initialData: [],
     refetchInterval: 30000
   });
 
   const { data: vendors = [] } = useQuery({
     queryKey: ["vendors_active"],
     queryFn: () => listVendorsApi({ status: "active" }).then(r => r.vendors),
-    initialData: []
   });
 
   const updateMutation = useMutation({
@@ -90,6 +89,7 @@ export default function TicketManagement() {
           <Input placeholder="Search by title, resident, or unit..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 bg-slate-800 border-slate-700 text-white" />
         </div>
 
+        <LoadStatusBanner loading={ticketsLoading} error={ticketsError} onRetry={refetchTickets} />
         <Tabs defaultValue="open">
           <TabsList className="grid grid-cols-4 bg-slate-800/50">
             <TabsTrigger value="open">Open ({byStatus(["open", "assigned", "in_progress"]).length})</TabsTrigger>

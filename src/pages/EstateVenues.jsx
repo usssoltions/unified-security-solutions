@@ -12,6 +12,7 @@ import { Building, Plus, X, Users, Clock, AlertCircle, CheckCircle2, XCircle } f
 import {
   listVenues, listBookings, createVenue, updateVenue, deleteVenue, updateBooking,
 } from "@/lib/estateApi";
+import LoadStatusBanner from "@/components/shared/LoadStatusBanner";
 
 const EMPTY_FORM = { name: "", description: "", category: "clubhouse", capacity: "", available_hours_start: "07:00", available_hours_end: "22:00", rules: "", status: "active" };
 
@@ -25,12 +26,11 @@ export default function EstateVenues() {
     base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
-  const { data: venues = [] } = useQuery({ queryKey: ["all_venues"], queryFn: () => listVenues().then(r => r.venues), initialData: [] });
+  const { data: venues = [], isLoading: venuesLoading, error: venuesError, refetch: refetchVenues } = useQuery({ queryKey: ["all_venues"], queryFn: () => listVenues().then(r => r.venues) });
 
   const { data: bookings = [] } = useQuery({
     queryKey: ["venue_bookings_mgmt"],
     queryFn: () => listBookings().then(r => r.bookings),
-    initialData: [],
   });
 
   const [editingVenue, setEditingVenue] = useState(null);
@@ -122,6 +122,7 @@ export default function EstateVenues() {
           </Card>
         )}
 
+        <LoadStatusBanner loading={venuesLoading} error={venuesError} onRetry={refetchVenues} />
         <Tabs defaultValue="venues">
           <TabsList className="grid grid-cols-3 bg-slate-800/50">
             <TabsTrigger value="venues">Venues ({venues.length})</TabsTrigger>

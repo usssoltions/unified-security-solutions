@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Megaphone, Plus, X, Send, Eye, Trash2, Globe, Users } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { listAnnouncements, createAnnouncement, publishAnnouncement, deleteAnnouncement } from "@/lib/estateApi";
+import LoadStatusBanner from "@/components/shared/LoadStatusBanner";
 
 export default function AnnouncementManagement() {
   const [user, setUser] = useState(null);
@@ -25,10 +26,9 @@ export default function AnnouncementManagement() {
 
   // Announcements flow through the estateAccess gateway — tenant scope,
   // publishing and notification dispatch are enforced server-side.
-  const { data: announcements = [] } = useQuery({
+  const { data: announcements = [], isLoading, error, refetch } = useQuery({
     queryKey: ["all_announcements"],
     queryFn: () => listAnnouncements().then(r => r.announcements),
-    initialData: []
   });
 
   const createMutation = useMutation({
@@ -127,8 +127,9 @@ export default function AnnouncementManagement() {
           </Card>
         )}
 
+        <LoadStatusBanner loading={isLoading} error={error} onRetry={refetch} />
         <div className="space-y-3">
-          {announcements.length === 0 ? (
+          {isLoading || error ? null : announcements.length === 0 ? (
             <Card className="bg-slate-800/50 border-slate-700">
               <CardContent className="p-8 text-center">
                 <Megaphone className="w-12 h-12 text-slate-600 mx-auto mb-3" />

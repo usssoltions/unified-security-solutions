@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Search, Plus, X, Phone, Home, Car, UserCheck, Link2, Unlink } from "lucide-react";
 import { listResidents, createResident, updateResident, unlinkResidentUser } from "@/lib/estateApi";
+import LoadStatusBanner from "@/components/shared/LoadStatusBanner";
 import ResidentLinkDialog from "@/components/estate/ResidentLinkDialog";
 
 export default function EstateResidents() {
@@ -19,7 +20,7 @@ export default function EstateResidents() {
 
   // All resident records flow through the estateAccess gateway — tenant scope
   // is resolved and stamped server-side.
-  const { data: residents = [] } = useQuery({ queryKey: ["all_residents"], queryFn: () => listResidents().then(r => r.residents), initialData: [] });
+  const { data: residents = [], isLoading, error, refetch } = useQuery({ queryKey: ["all_residents"], queryFn: () => listResidents().then(r => r.residents) });
 
   const createMutation = useMutation({
     mutationFn: (data) => createResident({ ...data, move_in_date: new Date().toISOString().split("T")[0] }),
@@ -127,7 +128,8 @@ export default function EstateResidents() {
               </Card>
             );
           })}
-          {filtered.length === 0 && <p className="text-slate-400 text-center py-8">No residents found</p>}
+          <LoadStatusBanner loading={isLoading} error={error} onRetry={refetch} />
+          {!isLoading && !error && filtered.length === 0 && <p className="text-slate-400 text-center py-8">No residents found</p>}
         </div>
       </div>
     </div>
