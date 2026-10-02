@@ -69,7 +69,31 @@ export default function UserManagement() {
   });
 
   const isPlatformAdmin = isPlatformAdminUser(currentUser);
-  const customerType = customer?.customer_type;
+
+  // AUTHORITATIVE SERVER-SIDE TENANT CONTEXT — session tokens on real devices
+  // do not reliably carry custom User fields (customer_id/reseller_id), and
+  // direct entity reads are RLS-gated on those same token fields, so BOTH the
+  // raw user object and the Customer.get() read can silently resolve empty for
+  // a real Customer Administrator. That was the root cause of the Add User
+  // form falling back to the platform/reseller branch ("No customers
+  // available" + "Loading available roles…" forever + the reseller banner):
+  // lockedCustomer never resolved. getGuardLandingConfig resolves the CALLER's
+  // own tenant SERVER-SIDE and returns only their own customer's id, name,
+  // type and licensed modules — the same authoritative resolver the
+  // module-entitlements hook already falls back to.
+  const { data: tenantContext, isLoading: tenantContextLoading } = useQuery({
+    queryKey: ["tenant_context", currentUser?.id],
+    queryFn: async () => {
+      const res = await base44.functions.invoke("getGuardLandingConfig", {});
+      const d = res?.data !== undefined ? res.data : res;
+      return d || {};
+    },
+    enabled: !!currentUser && !isPlatformAdmin,
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
+  });
+  const effectiveCustomerId = customerId || tenantContext?.customer_id || null;
+  const customerType = customer?.customer_type || tenantContext?.customer_type || null;
 
   // Module-entitlement role catalogue: the roles offered in this tenant's
   // user management (filters, counters, Add/Edit role dropdowns) derive from
@@ -237,7 +261,22 @@ export default function UserManagement() {
             </div>
           </div>
           <Button
-            onClick={() => setShowInviteForm(true)}
+            onClick={() => {
+              // FAIL-CLOSED INVITATION GATE: a customer/reseller administrator
+              // whose tenant context cannot be established can never open the
+              // form (so it can never submit an incorrectly scoped invitation).
+              if (!isPlatformAdmin && !effectiveCustomerId) {
+                toast({
+                  title: tenantContextLoading ? "Still confirming your organisation…" : "Could not confirm your organisation",
+                  description: tenantContextLoading
+                    ? "Add User opens once your tenant context is confirmed — please try again in a moment."
+                    : "Invitations stay blocked until your organisation can be verified. Please retry or contact support.",
+                  variant: tenantContextLoading ? "default" : "destructive",
+                });
+                return;
+              }
+              setShowInviteForm(true);
+            }}
             className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700"
           >
             <Plus className="w-5 h-5 mr-2" /> Add User
@@ -382,9 +421,15 @@ export default function UserManagement() {
             open={showInviteForm}
             onClose={() => setShowInviteForm(false)}
             onDone={() => queryClient.invalidateQueries(["allUsers"])}
-            lockedCustomer={!isPlatformAdmin && customerId && customer ? { id: customer.id, name: customer.name } : undefined}
-            resellerId={!isPlatformAdmin && !customerId ? currentUser?.reseller_id : undefined}
+            // SERVER-RESOLVED LOCKED CUSTOMER: prefer the authoritative tenant
+            // context (works even when the session token / RLS reads come back
+            // empty on real devices) and fall back to the direct Customer read.
+            lockedCustomer={!isPlatformAdmin && effectiveCustomerId
+              ? { id: effectiveCustomerId, name: tenantContext?.customer_name || customer?.name || "" }
+              : undefined}
+            resellerId={!isPlatformAdmin && !effectiveCustomerId ? currentUser?.reseller_id : undefined}
             allowResellerAdmin={isPlatformAdmin}
+            draftOwnerId={currentUser?.id}
           />
         )}
 

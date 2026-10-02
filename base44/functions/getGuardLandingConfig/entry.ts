@@ -36,6 +36,11 @@ export default async function(req: Request): Promise<Response> {
       module_keys: [],
       customer_id: caller.customer_id || null,
       role_type: caller.role_type || null,
+      // The caller's OWN customer's display identity (same tenant scope as
+      // everything above — no other customer's data is ever returned). Used
+      // by tenant consoles whose session token cannot carry customer fields.
+      customer_name: null,
+      customer_type: null,
     };
     // Platform admins / legacy unscoped accounts: nothing tenant-scoped to
     // resolve — the client keeps its existing (non-guard) behaviour.
@@ -47,6 +52,8 @@ export default async function(req: Request): Promise<Response> {
       if (customer) {
         out.resolved = true;
         out.guard_default_landing = customer.guard_default_landing || null;
+        out.customer_name = customer.name || null;
+        out.customer_type = customer.customer_type || null;
       }
     } catch (_) { /* landing stays null → client keeps existing behaviour */ }
     try {

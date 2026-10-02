@@ -231,6 +231,9 @@ export default function Layout({ children, currentPageName }) {
     window.history.pushState({ ussGuard: true }, "");
     const handlePopState = () => {
       window.history.pushState({ ussGuard: true }, "");
+      // An open modal (e.g. the Add User invitation form) owns the back press:
+      // it surfaces its own unsaved-changes guard instead of navigating home.
+      if (window.__ussModalGuardActive) return;
       goHome();
     };
     window.addEventListener("popstate", handlePopState);
