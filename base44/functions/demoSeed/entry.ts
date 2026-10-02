@@ -753,6 +753,9 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
   const rows = [];
   const counts = {};
   const tag = (entity, made) => { for (const m of made) rows.push({ entity, id: m.id }); counts[entity] = (counts[entity] || 0) + made.length; };
+  // Batched writes only: dozens of single-record creates trip the platform
+  // rate limiter; a short settle between entity batches keeps runs reliable.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // PARTIAL-WRITE RECONCILIATION: a screens run that failed mid-build left
   // records WITHOUT ledger rows (the ledger is written only after the phase
   // completes) and an unstamped phase key — a plain re-run would duplicate
@@ -772,9 +775,6 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
     }
   }
   const siteDisplay = site.hospitality_display_name || site.name;
-  // Batched writes only: dozens of single-record creates trip the platform
-  // rate limiter; a short settle between entity batches keeps runs reliable.
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const dateOff = (off) => { const t = new Date(now.getTime() - off * 86400000); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`; };
   const at = (off, hh, mm) => iso(saUTC(new Date(now.getTime() - off * 86400000).getUTCFullYear(), new Date(now.getTime() - off * 86400000).getUTCMonth(), new Date(now.getTime() - off * 86400000).getUTCDate(), hh, mm));
 
@@ -1336,6 +1336,16 @@ export default async function(req) {
         // ONCE per customer — a second demo site of the same customer never
         // duplicates it.
         if (await ledgerKeyDone([key, `${batchId}:comms`]) || await customerLedgerDone('CallHistory')) return Response.json({ ok: true, phase, skipped: true });
+        // Partial-run reconciliation: delete UNTRACKED demo-marked comms
+        // records (ledger rows are written only at phase end) so a re-run
+        // never duplicates them. Tracked and genuine records are untouched.
+        const commsLedger = await svc.entities.DemoSeedRecord.filter({ customer_id: cid, kind: 'seeded' }, '-created_date', 5000).catch(() => []);
+        const commsTracked = new Set(commsLedger.map((r) => r.record_id));
+        for (const e of ['ChatMessage', 'CallHistory', 'Notification', 'DocumentScan']) {
+          const existingRows = await svc.entities[e].filter({ customer_id: cid }, '-created_date', 2000).catch(() => []);
+          const partials = existingRows.filter((r) => !commsTracked.has(r.id) && (JSON.stringify(r).includes('demo-call-') || JSON.stringify(r).includes(DEMO_MARKER) || JSON.stringify(r).includes('[SIMULATED]')));
+          for (const r of partials) await svc.entities[e].delete(r.id).catch(() => {});
+        }
         const { chat, calls, notifs, docs } = buildComms(rnd, batchId, cid, rid, site, now);
         const ledgerRows = [];
         const track = (entity, made, idField) => { for (const m of made) ledgerRows.push({ batch_id: batchId, kind: 'seeded', entity_name: entity, record_id: m.id || m[idField], customer_id: cid, site_id: siteId }); };
@@ -1352,6 +1362,15 @@ export default async function(req) {
       if (phase === 'estate') {
         const key = `${batchId}:${siteId}:estate`;
         if (await ledgerKeyDone([key, `${batchId}:estate`]) || await customerLedgerDone('Vendor')) return Response.json({ ok: true, phase, skipped: true });
+        // Partial-run reconciliation: delete UNTRACKED demo-marked estate
+        // records before seeding (same ledger-only-at-end pattern as comms).
+        const estateLedger = await svc.entities.DemoSeedRecord.filter({ customer_id: cid, kind: 'seeded' }, '-created_date', 5000).catch(() => []);
+        const estateTracked = new Set(estateLedger.map((r) => r.record_id));
+        for (const e of ['Vendor', 'Venue', 'VenueBooking']) {
+          const existingRows = await svc.entities[e].filter({ customer_id: cid }, '-created_date', 2000).catch(() => []);
+          const partials = existingRows.filter((r) => !estateTracked.has(r.id) && (JSON.stringify(r).includes(DEMO_MARKER) || JSON.stringify(r).includes('[SIMULATED]')));
+          for (const r of partials) await svc.entities[e].delete(r.id).catch(() => {});
+        }
         const { vendors, venues, bookings } = buildEstate(rnd, batchId, cid, rid, site, now);
         const madeV = []; for (const c of chunk(vendors, 3)) madeV.push(...(await svc.entities.Vendor.bulkCreate(c)));
         const madeVen = []; for (const c of chunk(venues, 2)) madeVen.push(...(await svc.entities.Venue.bulkCreate(c)));

@@ -102,6 +102,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── DEMO-SEED DISPATCH SUPPRESSION (batch-scoped, not permanent) ─────
+    // A scheduled report whose tenant holds a REGISTERED demo-seed batch is
+    // never dispatched to external recipients: its aggregate content is
+    // simulated data. The block exists only while the demo batch is
+    // registered — reset removes it — and manual report generation/viewing
+    // for the demo tenant remains available.
+    if (scopeCid) {
+      const demoBatches = await svc.entities.DemoSeedRecord.filter({ kind: 'batch', customer_id: String(scopeCid) }).catch(() => []);
+      if ((demoBatches || []).some((b) => b.batch_id)) {
+        return Response.json({ success: true, skipped: true, reason: 'demo_seeded_tenant_scheduled_dispatch_suppressed', schedule_id });
+      }
+    }
+
     // TENANT BRANDING — customer → reseller → platform default, resolved from
     // the report's OWN tenant scope.
     const brand = await resolveCommunicationBrand(svc, {
