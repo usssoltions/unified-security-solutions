@@ -468,6 +468,71 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, status: r.ok ? 'sent' : 'failed', results: r.results });
     }
 
+    // ── dry_run ──────────────────────────────────────────────────────────
+    // DRY-RUN delivery verification — NO email leaves the system and the
+    // pack is NOT mutated. Exercises the SAME recipient validation, approval
+    // and dedup-key logic the real send stages run, and reports the exact
+    // per-item delivery plan (targets, dedup keys, already-sent duplicates,
+    // per-item content validity). Used for pre-delivery verification only.
+    if (action === 'dry_run') {
+      const pack = await loadPack();
+      if (!pack) return Response.json({ error: 'Pack not found' }, { status: 404 });
+      const stage = String(body.stage || 'preview');
+      const config = await requireConfig(pack);
+      const to = String(body.to || '');
+      const expected = stage === 'customer' ? config.customer_email : config.owner_preview_email;
+      const recipientCheck = (!to || norm(to) !== norm(expected))
+        ? { ok: false, would_refuse: 403, error: `${stage} delivery may only target the configured address (${expected}).`, expected, supplied: to || null }
+        : { ok: true, would_refuse: null, error: null, expected, supplied: to };
+      const bcc = stage === 'customer' ? (config.owner_copy_bcc_email || null) : null;
+      const stateCheck: any = { ok: true, error: null };
+      if (stage === 'preview' && ['sent', 'cancelled'].includes(pack.status)) {
+        stateCheck.ok = false; stateCheck.error = `pack is ${pack.status} — preview refused (409)`;
+      }
+      if (stage === 'customer') {
+        if (!['approved', 'sending'].includes(pack.status)) {
+          stateCheck.ok = false; stateCheck.error = `pack is '${pack.status}' — customer delivery requires an approved pack (409)`;
+        } else if ((pack.approval?.fingerprint || null) !== pack.content_fingerprint) {
+          stateCheck.ok = false; stateCheck.error = 'approval fingerprint mismatch — approval is stale (409)';
+        }
+      }
+      const included = (pack.contents || []).filter((c: any) => (pack.selections || []).find((s: any) => s.template_id === c.template_id && s.include !== false));
+      const stageResults = stage === 'preview' ? (pack.preview?.results || []) : (pack.customer_delivery?.results || []);
+      const plan = included.map((c: any, idx: number) => {
+        const dedupKey = `${pack.id}:${stage}:${c.template_id}:${idx}`;
+        const prior = stageResults.find((r: any) => r.dedup_key === dedupKey && r.status === 'sent');
+        return {
+          content_index: idx,
+          template_id: c.template_id,
+          label: c.label,
+          subject: c.subject,
+          dedup_key: dedupKey,
+          would_skip_as_already_sent: !!prior,
+          content_valid: !!(c.subject && ((c.html || '').length > 200 || (c.text || '').length > 40)),
+          html_length: (c.html || '').length,
+          text_length: (c.text || '').length,
+          demo_record_ids: (c.demo_record_ids || []).length,
+        };
+      });
+      const keys = plan.map((p: any) => p.dedup_key);
+      const duplicateKeys = keys.filter((k: string, i: number) => keys.indexOf(k) !== i);
+      const invalidItems = plan.filter((p: any) => !p.content_valid);
+      return Response.json({
+        success: true, dry_run: true, stage,
+        pack_number: pack.pack_number, pack_status: pack.status,
+        fingerprint: pack.content_fingerprint,
+        recipient_check: recipientCheck,
+        state_check: stateCheck,
+        copy_target: bcc,
+        items: plan.length,
+        plan,
+        dedup_keys_unique: duplicateKeys.length === 0,
+        duplicate_keys: duplicateKeys,
+        invalid_items: invalidItems.map((p: any) => p.content_index),
+        would_send: recipientCheck.ok && stateCheck.ok && invalidItems.length === 0,
+      });
+    }
+
     // ── cancel ───────────────────────────────────────────────────────────
     if (action === 'cancel') {
       const pack = await loadPack();
