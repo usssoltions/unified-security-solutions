@@ -1,7 +1,7 @@
 {
   "name": "ReportShowcasePack",
   "type": "object",
-  "description": "Report & Notification Showcase: ONE generated showcase pack for one customer. Contents are INERT rendered examples built from that customer's DEMO-seeded records using the platform's real notification/report templates \u2014 generating or previewing never alters incidents/tasks/schedules, never triggers gate actions and never invokes escalation workflows. STATE MACHINE: generated -> preview_sent -> approved -> sending -> sent (cancelled at any pre-send stage). APPROVAL GATE: customer delivery is only possible after an explicit approval recording the pack's content fingerprint and a typed acknowledgment; any regeneration changes the fingerprint and invalidates a prior approval. DELIVERY LEDGER: per-template results with status/attempts/dedup_key \u2014 a sent item is never re-sent, failed items are retryable. Every send is an EXPLICIT platform-admin action through the reportShowcase gateway with recipients validated against the customer's ShowcaseConfig (demo-suppression of AUTOMATED dispatch is untouched: this is a manually authorised showcase exception). GATEWAY-ONLY access; direct client access restricted to platform administration by RLS.",
+  "description": "Report & Notification Showcase: ONE generated showcase pack for one customer. Contents are INERT rendered examples built from that customer's DEMO-seeded records using the platform's real notification/report templates \u2014 generating or previewing never alters incidents/tasks/schedules, never triggers gate actions and never invokes escalation workflows. STATE MACHINE: generated -> preview_sent -> approved -> sending -> sent (cancelled at any pre-send stage). APPROVAL GATE: customer delivery is only possible after an explicit approval recording the pack's content fingerprint and a typed acknowledgment; any regeneration changes the fingerprint and invalidates a prior approval. DELIVERY LEDGER: per-template results with status/attempts/dedup_key \u2014 a sent item is never re-sent, failed items are retryable (concurrency-safety additionally enforced server-side by ShowcaseSendClaim CAS claims). ATTACHMENTS: report items carry REAL downloadable report files (branded PDFs/CSV from the platform's actual report generators, built from the pack's demo records at send time); contents only ever store attachment METADATA (filename/generator/record ids), never file bytes. Every send is an EXPLICIT platform-admin action through the reportShowcase gateway with recipients validated against the customer's ShowcaseConfig (demo-suppression of AUTOMATED dispatch is untouched: this is a manually authorised showcase exception). GATEWAY-ONLY access; direct client access restricted to platform administration by RLS.",
   "properties": {
     "pack_number": {
       "type": "string",
@@ -86,6 +86,37 @@
             "items": {
               "type": "string"
             }
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": {
+                  "type": "string"
+                },
+                "generator": {
+                  "type": "string",
+                  "description": "Server-side generator id that builds the file at send time from the pack's demo records (e.g. daily_access_pdf, daily_access_csv, hospitality_visits_pdf, daily_activity_pdf, monthly_incident_pdf, monthly_maintenance_pdf)."
+                },
+                "record_ids": {
+                  "description": "Demo record ids the generator renders (array, or object of per-entity arrays for multi-source reports)."
+                },
+                "date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional reporting-date label for date-bounded generators."
+                }
+              },
+              "required": [
+                "filename",
+                "generator"
+              ]
+            },
+            "default": [],
+            "description": "Metadata of the REAL downloadable report files attached to this item when it is sent (built at send time from the pack's demo records)."
           }
         }
       },
@@ -118,6 +149,13 @@
             "string",
             "null"
           ]
+        },
+        "secondary_logo_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Customer-level secondary document logo (e.g. Grid Protection eagle alongside the GRID GATE primary)."
         },
         "missing_overrides": {
           "type": "array",
@@ -185,9 +223,9 @@
                 ],
                 "format": "date-time"
               }
-            }
-          },
-          "default": []
+            },
+            "default": []
+          }
         }
       },
       "description": "Owner preview delivery ledger (sales mailbox only)."
@@ -295,9 +333,9 @@
                 ],
                 "format": "date-time"
               }
-            }
-          },
-          "default": []
+            },
+            "default": []
+          }
         }
       },
       "description": "Customer delivery ledger (customer address + identical owner copy)."

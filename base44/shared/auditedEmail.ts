@@ -132,6 +132,12 @@ export async function sendAuditedEmail(
      *  provided — call sites without either keep their exact pre-migration
      *  send-every-time semantics (never collapsed by a coarse event type). */
     dedupe?: boolean;
+    /** ISOLATED SELF-TEST interception — when provided, stands in for the
+     *  real provider transport so a self-test can prove delivery logic
+     *  (e.g. duplicate-send prevention) while counting instead of sending.
+     *  The delivery guard, mode validation and audit all still run. No
+     *  production call site supplies this. */
+    transport?: (p: { to: string; subject: string; html?: string; text?: string; body?: string; attachments?: { filename: string; content: string }[] }) => Promise<any>;
     /** ISOLATED SELF-TEST injection — when provided, overrides the
      *  server-controlled DELIVERY_MODE/TEST_MAILBOX configuration and is
      *  normalized with the SAME fail-closed validation (an invalid injected
@@ -222,15 +228,27 @@ export async function sendAuditedEmail(
   let sendResult: any = null;
   let auditId: string | null = null;
   try {
-    sendResult = await svc.integrations.Core.SendEmail({
-      from_name: p.from_name || (brand && brand.brand_name) || undefined,
-      to: guard.to, // the GUARDED recipient (rewritten in test mode)
-      subject: guard.subject, // '[TEST] ' prefixed in test mode
-      ...(p.html ? { html: p.html } : {}),
-      ...(p.text ? { text: p.text } : {}),
-      ...(p.body ? { body: p.body } : {}),
-      ...(p.attachments && p.attachments.length ? { attachments: p.attachments } : {}),
-    });
+    if (p.transport) {
+      // Isolated self-test interception — the guard and audit have already
+      // run above; the recorder replaces the provider call entirely.
+      sendResult = await p.transport({
+        to: guard.to, subject: guard.subject,
+        ...(p.html ? { html: p.html } : {}),
+        ...(p.text ? { text: p.text } : {}),
+        ...(p.body ? { body: p.body } : {}),
+        ...(p.attachments && p.attachments.length ? { attachments: p.attachments } : {}),
+      });
+    } else {
+      sendResult = await svc.integrations.Core.SendEmail({
+        from_name: p.from_name || (brand && brand.brand_name) || undefined,
+        to: guard.to, // the GUARDED recipient (rewritten in test mode)
+        subject: guard.subject, // '[TEST] ' prefixed in test mode
+        ...(p.html ? { html: p.html } : {}),
+        ...(p.text ? { text: p.text } : {}),
+        ...(p.body ? { body: p.body } : {}),
+        ...(p.attachments && p.attachments.length ? { attachments: p.attachments } : {}),
+      });
+    }
   } catch (e: any) {
     ok = false;
     // SAFE failure reason only — truncated provider exception, no payload.
