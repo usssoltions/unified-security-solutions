@@ -3,6 +3,13 @@
   "type": "object",
   "description": "Task Scheduling module: a customer's physical Control Room with its own operators, supervisors, service areas (linked sites) and task queue. A customer may operate multiple Control Rooms (e.g. Control Room 1 and Control Room 2) with separate queues. DATA LIFECYCLE: DEACTIVATE (status 'inactive') removes the room from new task list / assignment options (the gateway rejects batch creation for non-active rooms) while keeping it visible in historical reporting; ARCHIVE (status 'archived') additionally hides it from active management views; DELETE is permitted only for a room with NO task or task-list history whatsoever \u2014 a room referenced by any batch/task must be deactivated or archived so historical records keep their original control room name snapshot. TENANT ACCESS PATTERN: this entity deliberately carries NO {{user.data.*}} RLS rules \u2014 ALL tenant reads/writes go through the scheduledTaskAccess backend function, which resolves the caller's tenant server-side from their User record, validates control-room/customer/reseller scope on every operation, and fails closed with 403 for cross-tenant access. Direct client access below is restricted to platform admins only.",
   "properties": {
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ID for multi-tenant isolation"

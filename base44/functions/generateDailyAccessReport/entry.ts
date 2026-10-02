@@ -149,15 +149,22 @@ export default async function(req: Request): Promise<Response> {
 
         // ── Tenant-scoped data (site + its customer ONLY) ──
         const [insideRows, exitedRows, deniedRows, overRows, devices] = await Promise.all([
+          // TECHNICAL-TEST CLASSIFICATION: harness fixtures (is_test) are never
+          // counted, listed or exported in customer-facing reports. A status
+          // filter cannot exclude missing/false fields, so the runtime filter
+          // below drops them after fetch.
           svc.entities.AccessLog.filter({ site_id: site.id, status: 'inside' }, '-timestamp', 200).catch(() => []),
           svc.entities.AccessLog.filter({ site_id: site.id, status: 'exited' }, '-timestamp', 1000).catch(() => []),
           svc.entities.AccessLog.filter({ site_id: site.id, status: 'denied' }, '-timestamp', 200).catch(() => []),
           svc.entities.AccessLog.filter({ site_id: site.id, status: 'overridden' }, '-timestamp', 200).catch(() => []),
           svc.entities.DeviceRegistration.filter({ customer_id: cid, status: 'active' }).catch(() => []),
         ]);
-        const stillInside = insideRows || [];
-        const exited = exitedRows || [];
-        const denied = [...(deniedRows || []), ...(overRows || [])];
+        // Drop technical-test fixtures after fetch (records created before the
+        // is_test field was declared may lack the field entirely).
+        const notTest = (l: any) => l?.is_test !== true;
+        const stillInside = (insideRows || []).filter(notTest);
+        const exited = (exitedRows || []).filter(notTest);
+        const denied = [...(deniedRows || []), ...(overRows || [])].filter(notTest);
         const model = buildDailyAccessModel({
           period, fmt, stillInside, exited, denied,
           devices: devices || [],

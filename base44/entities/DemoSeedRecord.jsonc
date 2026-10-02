@@ -1,0 +1,115 @@
+{
+  "name": "DemoSeedRecord",
+  "type": "object",
+  "description": "PLATFORM-INTERNAL demo provenance ledger. One row per record created by the demoSeed gateway (plus one per classified technical-test record), enabling batch-scoped idempotency (a seed phase already recorded for a batch is never re-run), batch-scoped reset (reset deletes exactly the referenced record ids) and audit of demo/technical-test provenance. Rows for small-count entities (control rooms, comms, estate) carry the record id + idempotency key because those entities are not batch-tagged by schema. GATEWAY-ONLY: written exclusively by the demoSeed gateway under the service role; direct client access is restricted to platform administration by RLS.",
+  "properties": {
+    "batch_id": {
+      "type": "string",
+      "description": "Demo seed batch identifier (e.g. DEMO-20261002-XK4F)."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "seeded",
+        "technical_test",
+        "batch"
+      ],
+      "description": "seeded = a demo record created by the seed; technical_test = an existing harness/fixture record classified as a technical test (never deleted by reset); batch = the batch configuration snapshot (also stored on the record's config field)."
+    },
+    "entity_name": {
+      "type": "string"
+    },
+    "record_id": {
+      "type": "string"
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Stable per-phase key ('<batch>:<phase>') used to skip re-runs \u2014 a key already present is never duplicated."
+    },
+    "customer_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "batch_id",
+    "kind",
+    "entity_name",
+    "record_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

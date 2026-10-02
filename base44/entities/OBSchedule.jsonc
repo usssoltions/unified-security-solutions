@@ -3,6 +3,13 @@
   "type": "object",
   "description": "Task & OB Scheduling module: a Digital Occurrence Book (OB) check schedule \u2014 a recurring or specified-times series of OB checks owned by ONE control room of ONE customer, either Overall control-room scope (no site) or Specific-site scope. Configured by an authorised administrator/supervisor: title + clear instructions, category, cadence (every N minutes OR one/more specified times), active days, start/end dates, operating window (incl. overnight and 24-hour), overdue grace period, escalation delay and whether evidence is required. Intervals are anchored to the schedule's window START TIME, never to the previous completion. Occurrence generation is server-side, bounded and deduplicated by occurrence_key ('<scheduleId>:<operatingDate>:<minutesFromWindowStart>') \u2014 scheduler retries, overlapping runs and schedule edits can never duplicate checks; editing a schedule preserves completed/cancelled history and cleanly regenerates only future PENDING occurrences. GATEWAY-ONLY ACCESS: all tenant read/write flows through the obAccess gateway (server-side tenant/control-room/site resolution, server-side Digital OB entitlement gate); direct client access is restricted to platform administration by RLS. No payment functionality.",
   "properties": {
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ownership \u2014 server-resolved, never client-trusted."
@@ -34,7 +41,7 @@
         "overall",
         "site"
       ],
-      "description": "'overall' = the check belongs to the control room with NO individual site; 'site' = bound to one authorised site of the customer. Both scopes can coexist for the same customer. An overall check never auto-completes a site-specific check."
+      "description": "'overall' = the check belongs to the control room with NO individual site; 'site' = bound to one authorised site of the customer. Both scopes can coexist for the same customer."
     },
     "site_id": {
       "type": [
@@ -84,6 +91,7 @@
     },
     "every_n_minutes": {
       "type": [
+        "string",
         "number",
         "null"
       ],

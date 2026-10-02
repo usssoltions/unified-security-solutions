@@ -3,6 +3,13 @@
   "type": "object",
   "description": "Task & OB Scheduling module: ONE Digital Occurrence Book record \u2014 either a SCHEDULED OB CHECK instance generated server-side from an OBSchedule (status 'pending' until its controller records the outcome) or an UNSCHEDULED OB ENTRY captured directly (source 'unscheduled', completed at submission). Submission is a single ATOMIC conditional write (status 'pending' \u2192 'completed' + entry fields in ONE update), so double taps, retries, connection interruptions and two controllers submitting the same check can never create duplicate entries nor leave a check completed without its OB record \u2014 the losing submission receives the already-recorded entry. A missed check remains OUTSTANDING until completed or explicitly cancelled by an authorised user with a recorded reason; late completions keep their ORIGINAL due time and are reported as late (submitted_at > due_at). OB reference numbers are generated server-side from cryptographic randomness (never by counting records). Corrections are APPENDED as dated amendments (author, reason, corrected information) while the original entry values are permanently retained in original_entry \u2014 no silent overwrite, no ordinary-user deletion. GATEWAY-ONLY ACCESS: all tenant read/write flows through the obAccess gateway; direct client access is restricted to platform administration by RLS.",
   "properties": {
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ownership \u2014 server-resolved, never client-trusted."

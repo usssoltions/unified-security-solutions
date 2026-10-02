@@ -1228,6 +1228,11 @@ export default async function(req: Request): Promise<Response> {
       if (!canInspect) return Response.json({ error: 'Your role cannot inspect hospitality visits', code: 'forbidden_role' }, { status: 403 });
       const a = access_data || {};
       const q: any = {};
+      // TECHNICAL-TEST CLASSIFICATION: harness fixtures (is_test) are excluded
+      // from every customer-facing list by default. Platform administrators
+      // may pass include_tests to audit them explicitly (never via customer
+      // accounts).
+      if (!a.include_tests || !isPlatformUser(caller)) q.is_test = { $ne: true };
       if (isResellerAdmin(caller) && !isPlatformUser(caller)) q.reseller_id = rid;
       else if (!isPlatformUser(caller)) q.customer_id = cid;
       if (!isPlatformUser(caller) && !isResellerAdmin(caller) && caller.site_id) q.site_id = String(caller.site_id);
