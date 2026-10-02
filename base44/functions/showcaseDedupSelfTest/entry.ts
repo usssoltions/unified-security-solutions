@@ -96,10 +96,6 @@ Deno.serve(async (req) => {
     const content = (pack as any).contents?.[0] || (pack as any)?.data?.contents?.[0];
 
     const results: any = {};
-    results.debug = {
-      check_file_uri: checkFileUri,
-      content_attachments: (content?.attachments || []).map((a: any) => ({ keys: Object.keys(a), file_uri: a.file_uri || null })),
-    };
 
     // ── TEST 1 — sequential repeat send ───────────────────────────────────
     const packView1 = { ...(pack as any), id: packId, preview: { sent_at: null, recipient: null, results: [] } };
