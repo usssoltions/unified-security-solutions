@@ -256,7 +256,7 @@ export async function buildItemAttachments(svc: any, content: any, brand: any, c
       /* an attachment that cannot be built never blocks the send */
     }
   }
-  return out.filter((a) => a.content && a.filename);
+  return out.filter((a) => (a.content || a.file_url) && a.filename);
 }
 
 // ── sendOne — claim -> send -> commit/release, with the pack results ledger ──
