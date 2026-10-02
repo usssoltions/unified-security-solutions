@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, Car, User, QrCode, LogIn, LogOut, CheckCircle2, XCircle,
-  Search, Fingerprint, CreditCard, X, Settings, ShieldCheck,
+  Search, Fingerprint, CreditCard, X, Settings, ShieldCheck, RefreshCw,
   MapPin, Calendar, Clock, IdCard, AlertCircle, Home, Wrench, Package,
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
@@ -42,7 +42,7 @@ const HOSPITALITY_CATEGORIES = [
   { id: "check_in", label: "Check Ins", icon: User },
   { id: "contractor", label: "Contractors", icon: Wrench },
   { id: "delivery", label: "Deliveries", icon: Package },
-  { id: "event_visitor", label: "Event / Function Visitor", icon: Calendar },
+  { id: "event_visitor", label: "Event or Function Visitor", icon: Calendar },
   { id: "guest", label: "Guests", icon: User },
   { id: "service_provider", label: "Service Provider", icon: Wrench },
   { id: "staff", label: "Staff", icon: IdCard },
@@ -204,24 +204,58 @@ export default function AccessControl() {
   // default entry workflow or the GRID GATE Hospitality workflow. The
   // workflow itself is re-enforced server-side on every submission — this
   // config only drives which UI is shown.
-  const { data: siteConfig = null } = useQuery({
+  // ALL of the caller's AUTHORISED sites are loaded (server-side tenant
+  // resolution, never a client read): when a customer operates several sites
+  // (e.g. the three hotel demo sites), the guard explicitly selects which
+  // hotel's workflow and live log this device is working — "Main Gate" alone
+  // never identifies the site. Nothing is guessed.
+  const {
+    data: authorisedSites = [],
+    isLoading: siteResolving,
+    isError: siteResolveError,
+    refetch: refetchSiteConfig,
+  } = useQuery({
     queryKey: ["access_site_config", user?.site_id, user?.customer_id],
     queryFn: async () => {
       if (user?.site_id) {
         const res = await base44.functions.invoke("siteAccess", { action: "get", id: user.site_id });
         const d = res?.data !== undefined ? res.data : res;
-        return d?.site || null;
+        if (d?.error) throw new Error(d.error);
+        const site = d?.site || null;
+        return site ? [site] : [];
       }
       const res = await base44.functions.invoke("siteAccess", { action: "list", status: "active" });
       const d = res?.data !== undefined ? res.data : res;
-      const sites = d?.sites || [];
-      return sites.length === 1 ? sites[0] : null;
+      if (d?.error) throw new Error(d.error);
+      return d?.sites || [];
     },
     enabled: !!user,
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
+    retry: 1,
   });
+
+  // Selected site: a user-assigned site always wins; otherwise the guard's
+  // explicit choice (persisted per user on this device); a single authorised
+  // site auto-selects. A stale/invalid saved choice resolves to nothing and
+  // re-prompts — the default entry flow is NEVER shown as a silent fallback.
+  const [sitePick, setSitePick] = useState(null);
+  const sitePickKey = user ? `access_site_pick_${user.id}` : null;
+  useEffect(() => {
+    if (!sitePickKey) return;
+    try { const saved = localStorage.getItem(sitePickKey); if (saved) setSitePick(saved); } catch (_) {}
+  }, [sitePickKey]);
+  const chooseSite = (id) => {
+    setSitePick(id);
+    if (sitePickKey) { try { localStorage.setItem(sitePickKey, id); } catch (_) {} }
+  };
+  const autoSiteId = authorisedSites.length === 1 ? authorisedSites[0]?.id : null;
+  const siteConfig = authorisedSites.find((s) => s.id === (user?.site_id || sitePick || autoSiteId)) || null;
+  const selectedSiteId = siteConfig?.id || null;
   const hospitalitySite = siteConfig?.access_workflow === "grid_gate_hospitality";
+  // Site resolution is NOT silent: while it loads, fails, or when several
+  // sites exist without a selection, NO entry modes are displayed at all.
+  const siteUnresolved = !!user && !user?.site_id && authorisedSites.length > 1 && !siteConfig;
 
   // SCANNER PRELOAD (performance pass): the moment an authorised guard enters
   // Access Control, warm the heavy scanner dependencies in the background —
@@ -777,6 +811,10 @@ export default function AccessControl() {
   // removed from the live log the moment an exit is finalised.
   const filteredLogs = recentLogs.filter((log) => {
     if (log.status && log.status !== "inside") return false;
+    // Live log is scoped to the SAME selected site as the workflow — records
+    // from another site never appear here (legacy records without a site_id
+    // on the log remain visible).
+    if (selectedSiteId && log.site_id && log.site_id !== selectedSiteId) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -809,7 +847,7 @@ export default function AccessControl() {
             </div>
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">Access Control</h1>
-              <p className="text-slate-400 text-xs">Guarded Entry & Exit</p>
+              <p className="text-slate-400 text-xs truncate max-w-[180px] sm:max-w-none">{siteConfig ? siteConfig.name : "Guarded Entry & Exit"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -825,6 +863,23 @@ export default function AccessControl() {
       </div>
 
       <div className="max-w-2xl mx-auto p-4 space-y-4">
+        {/* Authorised site selector — whenever this account can access more
+            than one site and no site is assigned to the user. The selected
+            site drives the workflow AND the live log below. */}
+        {!user?.site_id && authorisedSites.length > 1 && (
+          <div>
+            <label className="text-slate-400 text-xs mb-1.5 block font-medium">Site</label>
+            <Select value={selectedSiteId || ""} onValueChange={chooseSite}>
+              <SelectTrigger className="bg-slate-800/80 border-slate-700 text-white h-11">
+                <SelectValue placeholder="Select site" />
+              </SelectTrigger>
+              <SelectContent>
+                {authorisedSites.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Gate + Event controls */}
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -864,7 +919,30 @@ export default function AccessControl() {
         {/* Mode selection — GRID GATE Hospitality sites show the ten
             documented categories instead of the default entry modes.
             The exit flow (OUT) is unchanged for both workflows. */}
-        {!mode && !hospitalitySite && (
+        {!mode && siteUnresolved && (
+          <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-center space-y-2">
+            <MapPin className="w-8 h-8 text-amber-400 mx-auto" />
+            <p className="text-amber-200 text-sm font-semibold">Select the site you are working</p>
+            <p className="text-slate-400 text-xs">Entry categories and the live log follow the selected site's workflow.</p>
+          </div>
+        )}
+        {!mode && siteResolving && (
+          <div className="rounded-2xl border border-slate-700/50 bg-slate-800/40 p-6 flex items-center justify-center gap-3">
+            <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-slate-300 text-sm">Loading site & workflow…</span>
+          </div>
+        )}
+        {!mode && siteResolveError && (
+          <div className="rounded-2xl border border-rose-500/50 bg-rose-500/10 p-4 text-center space-y-3">
+            <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
+            <p className="text-rose-200 text-sm font-semibold">Site & workflow could not be loaded</p>
+            <p className="text-slate-400 text-xs">Entry modes stay hidden until the site's access workflow is confirmed.</p>
+            <Button onClick={() => refetchSiteConfig()} variant="outline" className="border-slate-600 text-slate-300 h-11">
+              <RefreshCw className="w-4 h-4 mr-2" /> Retry
+            </Button>
+          </div>
+        )}
+        {!mode && !siteResolving && !siteResolveError && !siteUnresolved && !hospitalitySite && (
           <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
             {MODES.map((m) => (
               <button
