@@ -741,6 +741,287 @@ function buildEstate(rnd, batch, cid, rid, site, now) {
   return { vendors, venues, bookings };
 }
 
+/* ═══ SCREENS PHASE BUILDER — the remaining customer-facing screens ═══
+   Estate properties/residents/destinations, pre-registered visitor arrivals,
+   blacklist, SecureScan vehicle-disc registry, patrol checklists (templates +
+   completions), assets, shift handovers, report history, announcements,
+   service tickets, voting and RESOLVED historical panic alerts (never active
+   — a resolved drill can never page anyone). All records are ledger-tracked
+   (kind 'seeded'), site-scoped, visibly marked [SIMULATED], and generate NO
+   notifications, invites, calls or recordings. */
+async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
+  const rows = [];
+  const counts = {};
+  const tag = (entity, made) => { for (const m of made) rows.push({ entity, id: m.id }); counts[entity] = (counts[entity] || 0) + made.length; };
+  const siteDisplay = site.hospitality_display_name || site.name;
+  const dateOff = (off) => { const t = new Date(now.getTime() - off * 86400000); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`; };
+  const at = (off, hh, mm) => iso(saUTC(new Date(now.getTime() - off * 86400000).getUTCFullYear(), new Date(now.getTime() - off * 86400000).getUTCMonth(), new Date(now.getTime() - off * 86400000).getUTCDate(), hh, mm));
+
+  // ── Residents (long-stay guests) — NO linked app user; receives nothing ──
+  const UNITS = ['101', '104', '108', '205', '210', '305', '312', 'PH1'];
+  const residents = UNITS.map((unit, i) => ({
+    customer_id: cid, reseller_id: rid, site_id: site.id,
+    full_name: pickName(rnd, FIRST, LAST), unit_number: unit,
+    email: `resident${i + 1}@${batch.slice(5).toLowerCase()}.demo`, phone: `+2783010000${String(i + 1).padStart(2, '0')}`,
+    estate_name: siteDisplay, status: 'active', move_in_date: dateOff(200 - i * 17),
+    notes: `[${DEMO_MARKER}] Demo resident record — no linked app user, receives nothing.`,
+  }));
+  const madeResidents = [];
+  for (const c of chunk(residents, 8)) madeResidents.push(...(await svc.entities.Resident.bulkCreate(c)));
+  tag('Resident', madeResidents);
+  const resRef = (i) => madeResidents[i % madeResidents.length];
+
+  // ── Properties ──
+  const madeProps = [];
+  const properties = UNITS.slice(0, 6).map((unit, i) => ({
+    customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
+    unit_number: unit, property_type: 'apartment', occupancy_status: i % 3 === 2 ? 'vacant' : 'tenant_occupied',
+    bedrooms: 1 + (i % 3), bathrooms: 1, owner_name: pickName(rnd, FIRST, LAST),
+    status: 'active', notes: `[${DEMO_MARKER}] Demo property record.`,
+  }));
+  for (const c of chunk(properties, 6)) madeProps.push(...(await svc.entities.Property.bulkCreate(c)));
+  tag('Property', madeProps);
+
+  // ── Destinations ──
+  const madeDests = [];
+  const dests = [
+    ['Reception & Guest Services', 'Front desk'], ['Spa & Wellness Centre', 'Level 1'],
+    ['Conference Centre', 'Level 2'], ['Staff Quarters', 'Back-of-house'], ['Restaurant', 'Ground floor'],
+  ].map(([name, unit], i) => ({
+    customer_id: cid, reseller_id: rid, site_id: site.id, name, unit, active: true,
+    contact_person: pickName(rnd, FIRST, LAST), telephone: `+2783020000${String(i + 1).padStart(2, '0')}`,
+    notes: `[${DEMO_MARKER}] Demo destination.`,
+  }));
+  for (const c of chunk(dests, 5)) madeDests.push(...(await svc.entities.Destination.bulkCreate(c)));
+  tag('Destination', madeDests);
+
+  // ── Visitors — pre-registered expected arrivals (future) + recent past ──
+  const madeVisitors = [];
+  const visitors = [];
+  for (let i = 0; i < 8; i++) {
+    const upcoming = i < 4;
+    const off = upcoming ? -(1 + i) : 3 + i;
+    const r = resRef(i);
+    visitors.push({
+      customer_id: cid, reseller_id: rid, site_id: site.id,
+      resident_id: r.id, resident_name: r.full_name, unit_number: r.unit_number,
+      visitor_name: pickName(rnd, i % 2 ? FIRST : INTL_FIRST, i % 2 ? LAST : INTL_LAST),
+      visitor_phone: `+2783030000${String(i + 1).padStart(2, '0')}`,
+      visitor_entry_type: i % 3 === 0 ? 'vehicle' : 'pedestrian',
+      vehicle_registration: i % 3 === 0 ? `CA ${200 + i}-${String(300 + i)}` : null,
+      visit_type: 'pre_registered',
+      expected_date: dateOff(off), expected_arrival_time: `${String(9 + (i % 9)).padStart(2, '0')}:30`,
+      status: upcoming ? 'pending' : (i % 2 ? 'entered' : 'exited'),
+      destination: `Room ${r.unit_number}`,
+      notes: `[${DEMO_MARKER}] Demo expected arrival.`,
+    });
+  }
+  for (const c of chunk(visitors, 8)) madeVisitors.push(...(await svc.entities.Visitor.bulkCreate(c)));
+  tag('Visitor', madeVisitors);
+
+  // ── Blacklist (2 active, 1 deactivated) ──
+  const madeBlack = [];
+  const blacklist = [
+    ['person', 'sa_id', '8801015111088', 'trespassing', 'high', true],
+    ['vehicle', 'vehicle_registration', 'CA 990-776', 'theft', 'critical', true],
+    ['person', 'driver_licence', 'DL-DEMO-88231', 'suspicious_activity', 'medium', false],
+  ].map(([entry_type, identifier_type, identifier_value, reason, severity, active], i) => ({
+    customer_id: cid, reseller_id: rid, site_id: site.id,
+    entry_type, identifier_type, identifier_value, reason, severity, active,
+    name: pickName(rnd, FIRST, LAST),
+    notes: `[${DEMO_MARKER}] Demo blacklist entry.`,
+    added_by_id: 'demo-admin', added_by_name: 'Demo Administrator',
+    ...(active ? {} : { deactivated_by_id: 'demo-admin', deactivated_by_name: 'Demo Administrator', deactivated_at: at(10, 9, 0) }),
+  }));
+  for (const c of chunk(blacklist, 3)) madeBlack.push(...(await svc.entities.BlacklistEntry.bulkCreate(c)));
+  tag('BlacklistEntry', madeBlack);
+
+  // ── SecureScan vehicle-disc registry ──
+  const madeDiscs = [];
+  for (let i = 0; i < 8; i++) {
+    const make = MAKES[i % MAKES.length];
+    const g = ROSTER[i % ROSTER.length];
+    madeDiscs.push(await svc.entities.VehicleLicenceDisc.create({
+      customer_id: cid, reseller_id: rid,
+      registration_number: `CA ${400 + i * 7}-${String(500 + i * 3)}`,
+      vin: `DEMOVIN${batch.slice(5)}${String(i).padStart(3, '0')}`,
+      licence_number: `LIC-DEMO-${batch.slice(5)}-${String(i + 1).padStart(4, '0')}`,
+      make: make[0], model: make[1], colour: make[2],
+      expiry_date: dateOff(-(200 + i * 30)),
+      owner: pickName(rnd, FIRST, LAST), province: 'Gauteng',
+      raw_scan_json: JSON.stringify({ simulated: true, note: 'No genuine scan occurred — demo fixture' }),
+      scan_timestamp: at(2 + i * 5, 9 + (i % 8), 15),
+      scanned_by_id: g[0], scanned_by_name: `[SIMULATED] ${g[1]}`,
+    }));
+  }
+  tag('VehicleLicenceDisc', madeDiscs);
+
+  // ── Patrol checklists: templates + completions ──
+  const TEMPLATE_DEFS = [
+    ['Shift Start Inspection', ['Confirm control room handover completed', 'Inspect main entrance gate and confirm it is secure', 'Record condition of perimeter fencing']],
+    ['Night Patrol Checklist', ['Check all emergency exits are unlocked and clear', 'Verify basement parking lighting operational', 'Confirm CCTV monitors active in control room']],
+    ['Pool & Leisure Area Check', ['Confirm pool gate locked after hours', 'Check gym door access reader', 'Report any wet-floor hazards']],
+  ];
+  const madeTemplates = [];
+  for (const [name, texts] of TEMPLATE_DEFS) {
+    madeTemplates.push(await svc.entities.ChecklistTemplate.create({
+      customer_id: cid, reseller_id: rid, site_id: site.id,
+      name: `[SIMULATED] ${name}`,
+      items: texts.map((t, j) => ({ id: `${batch}-it-${name.length}-${j}`, text: t, type: 'checkbox', required: true })),
+      requires_signature: false, status: 'active',
+    }));
+  }
+  tag('ChecklistTemplate', madeTemplates);
+  const madeCompletions = [];
+  for (let i = 0; i < 12; i++) {
+    const tpl = madeTemplates[i % madeTemplates.length];
+    const g = ROSTER[i % ROSTER.length];
+    madeCompletions.push(await svc.entities.ChecklistCompletion.create({
+      customer_id: cid, reseller_id: rid, template_id: tpl.id, template_name: tpl.name,
+      guard_id: g[0], guard_name: g[1], shift_id: `${batch}-shift-${i}`,
+      site_id: site.id, checkpoint_id: CHECKPOINTS[i % CHECKPOINTS.length].id,
+      completed_items: (tpl.items || []).map((it) => ({ item_id: it.id, checked: true, value: '', photo_url: '' })),
+      completed_at: at(1 + Math.floor(i / 2), 7 + (i % 10), (i * 9) % 60),
+      status: i === 11 ? 'incomplete' : 'completed',
+      notes: `[${DEMO_MARKER}] Demo checklist completion.`,
+    }));
+  }
+  tag('ChecklistCompletion', madeCompletions);
+
+  // ── Assets ──
+  const madeAssets = [];
+  const ASSET_DEFS = [['Patrol vehicle — Hilux', 'vehicle', 'DHS-001'], ['Two-way radio set', 'electronics', 'RAD-014'], ['Riot shield kit', 'safety_gear', 'SG-003'], ['Boom gate remote units', 'tools', 'TL-021'], ['CCTV NVR (back-of-house)', 'electronics', 'NVR-002'], ['Guard sign-on tablet', 'electronics', 'TAB-005']];
+  for (const [name, category, num] of ASSET_DEFS) {
+    madeAssets.push(await svc.entities.Asset.create({
+      customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
+      asset_name: `[SIMULATED] ${name}`, asset_number: `${num}-${batch.slice(5)}`, category,
+      status: 'active', purchase_date: dateOff(300), current_value: 1000 + Math.floor(rnd() * 9000),
+      next_service_date: dateOff(-(30 + Math.floor(rnd() * 60))),
+      notes: `[${DEMO_MARKER}] Demo asset record.`,
+    }));
+  }
+  tag('Asset', madeAssets);
+
+  // ── Shift handovers (historical) ──
+  const madeHandovers = [];
+  for (let i = 0; i < 6; i++) {
+    const off = 1 + i;
+    const gOut = ROSTER[i % ROSTER.length], gIn = ROSTER[(i + 1) % ROSTER.length];
+    madeHandovers.push(await svc.entities.ShiftHandover.create({
+      customer_id: cid, reseller_id: rid, shift_id: `${batch}-handover-${i}`,
+      site_id: site.id, site_name: site.name,
+      outgoing_guard_id: gOut[0], outgoing_guard_name: `[SIMULATED] ${gOut[1]}`,
+      incoming_guard_id: gIn[0], incoming_guard_name: `[SIMULATED] ${gIn[1]}`,
+      handover_time: at(off, 18, 5),
+      site_status: { status: 'All normal', notes: `[${DEMO_MARKER}] Simulated handover summary.` },
+      key_activities: [`[${DEMO_MARKER}] ${3 + i} patrol scans completed`, `[${DEMO_MARKER}] ${2 + i} visitor entries processed`],
+      outstanding_tasks: i % 3 === 0 ? [`[${DEMO_MARKER}] Follow up P1 boom gate sensor`] : [],
+      incidents_during_shift: [], maintenance_issues: [], visitors_log: [],
+      weather_conditions: 'Clear', special_instructions: `[${DEMO_MARKER}] Simulated handover record.`,
+    }));
+  }
+  tag('ShiftHandover', madeHandovers);
+
+  // ── Report history ──
+  const madeReports = [];
+  const REPORT_DEFS = [['daily', 'Daily Access Control Report'], ['weekly', 'Weekly Operations Summary'], ['incident_summary', 'Incident Summary Report'], ['shift_end', 'Shift End Report']];
+  for (let i = 0; i < 8; i++) {
+    const [rtype, label] = REPORT_DEFS[i % REPORT_DEFS.length];
+    const off = 1 + i * 7;
+    const g = ROSTER[i % ROSTER.length];
+    madeReports.push(await svc.entities.GeneratedReport.create({
+      customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
+      title: `[SIMULATED] ${label} — ${siteDisplay} — ${dateOff(off)}`,
+      report_type: rtype, guard_id: g[0], guard_name: g[1],
+      report_date: dateOff(off),
+      content: `[${DEMO_MARKER}] ${label} for ${siteDisplay} covering ${dateOff(off)}. Simulated demonstration summary — entries, patrols, incidents and maintenance activity. No genuine operational data.`,
+      summary: `[${DEMO_MARKER}] ${label} (simulated demo record).`,
+      statistics: { entries: 8 + Math.floor(rnd() * 20), exits: 8 + Math.floor(rnd() * 20), patrols: 2 + Math.floor(rnd() * 3), incidents: Math.floor(rnd() * 2), maintenance: Math.floor(rnd() * 2) },
+      generated_at: at(off, 17, 5),
+    }));
+  }
+  tag('GeneratedReport', madeReports);
+
+  // ── Announcements (published, NO email/push) ──
+  const madeAnn = [];
+  const ANN_DEFS = [['Evening storm warning', 'security', 'Pool deck furniture to be secured before 18:00.'], ['Scheduled water supply maintenance', 'maintenance', 'Municipal maintenance on Thursday 09:00–11:00.'], ['Fire drill — Wednesday 10:00', 'security', 'Full evacuation drill; assembly point at the main gate.']];
+  for (const [title, category, body] of ANN_DEFS) {
+    madeAnn.push(await svc.entities.Announcement.create({
+      customer_id: cid, reseller_id: rid,
+      title: `[SIMULATED] ${title}`, body: `[${DEMO_MARKER}] ${body}`,
+      category, priority: 'normal', target_audience: 'all',
+      send_email: false, send_push: false, published: true,
+      published_at: at(2 + Math.floor(rnd() * 20), 8, 30),
+      created_by: 'demo-admin', created_by_name: 'Demo Administrator',
+    }));
+  }
+  tag('Announcement', madeAnn);
+
+  // ── Service tickets ──
+  const madeTickets = [];
+  const TICKET_DEFS = [['Leaking tap in room bathroom', 'plumbing', 'resolved', 'medium'], ['Flickering corridor light', 'electrical', 'in_progress', 'low'], ['Noise complaint — late night function', 'noise', 'closed', 'medium'], ['Gate remote not responding', 'security', 'open', 'high'], ['Garden service cleared clippings into walkway', 'landscaping', 'resolved', 'low']];
+  for (let i = 0; i < TICKET_DEFS.length; i++) {
+    const [title, category, status, priority] = TICKET_DEFS[i];
+    const r = resRef(i);
+    madeTickets.push(await svc.entities.ServiceTicket.create({
+      customer_id: cid, reseller_id: rid, site_id: site.id,
+      ticket_number: `TCK-DEMO-${batch.slice(5)}-${String(i + 1).padStart(4, '0')}`,
+      resident_id: r.id, resident_name: r.full_name, unit_number: r.unit_number,
+      title: `[SIMULATED] ${title}`, description: `[${DEMO_MARKER}] ${title} — reported for demonstration.`,
+      category, priority, status,
+      assigned_to_name: status === 'open' ? null : 'Facilities (Demo)',
+      assigned_at: status === 'open' ? null : at(2 + i, 10, 15),
+      resolution_notes: status === 'resolved' || status === 'closed' ? `[${DEMO_MARKER}] Attended and resolved (simulated).` : null,
+      resolved_at: status === 'resolved' || status === 'closed' ? at(1 + i, 15, 40) : null,
+      closed_at: status === 'closed' ? at(1 + i, 16, 0) : null,
+    }));
+  }
+  tag('ServiceTicket', madeTickets);
+
+  // ── Voting (one active, one closed) ──
+  const madeVotes = [];
+  madeVotes.push(await svc.entities.VotingQuestion.create({
+    customer_id: cid, reseller_id: rid, site_id: site.id,
+    question: '[SIMULATED] Should the pool area hours extend to 21:00?',
+    description: `[${DEMO_MARKER}] Demo community vote.`,
+    category: 'community', options: ['Yes', 'No', 'Abstain'],
+    status: 'active', opens_at: at(5, 8, 0), closes_at: at(-10, 20, 0),
+    votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
+  }));
+  madeVotes.push(await svc.entities.VotingQuestion.create({
+    customer_id: cid, reseller_id: rid, site_id: site.id,
+    question: '[SIMULATED] Approval for additional CCTV camera at the restaurant entrance',
+    description: `[${DEMO_MARKER}] Demo security vote (closed).`,
+    category: 'security', options: ['Approve', 'Reject'],
+    status: 'closed', opens_at: at(40, 8, 0), closes_at: at(30, 20, 0),
+    votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
+  }));
+  tag('VotingQuestion', madeVotes);
+
+  // ── Panic drills — RESOLVED historical only (never active, never paged) ──
+  const madePanic = [];
+  for (let i = 0; i < 4; i++) {
+    const off = 5 + i * 9;
+    const g = ROSTER[i % ROSTER.length];
+    const started = at(off, 12 + i, 15);
+    madePanic.push(await svc.entities.PanicAlert.create({
+      customer_id: cid, reseller_id: rid, site_id: site.id, site_name: site.name,
+      panic_number: `PNC-DEMO-${batch.slice(5)}-${String(i + 1).padStart(4, '0')}`,
+      user_id: g[0], user_name: `[SIMULATED] ${g[1]}`, user_role: 'guard', badge_number: g[2],
+      status: 'resolved', priority: i % 2 ? 'high' : 'medium',
+      notes: `[${DEMO_MARKER}] Simulated historical panic drill — no genuine panic, no notifications sent.`,
+      location: { lat: -26.1077 + rnd() * 0.0006, lng: 28.0567 + rnd() * 0.0006 },
+      location_captured_at: started, notification_sent: true,
+      acknowledged_by: 'demo-op1', acknowledged_by_name: 'Control Room (Demo)', acknowledged_at: iso(new Date(Date.parse(started) + 30000)),
+      resolved_by: 'demo-op1', resolved_by_name: 'Control Room (Demo)', resolved_at: iso(new Date(Date.parse(started) + 4 * 60000)),
+      resolution_notes: `[${DEMO_MARKER}] Drilled response completed.`,
+    }));
+  }
+  tag('PanicAlert', madePanic);
+
+  return { rows, counts };
+}
+
 /* ═══════════ GATEWAY ═══════════ */
 
 export default async function(req) {
@@ -770,12 +1051,29 @@ export default async function(req) {
     const siteDisplay = site.hospitality_display_name || site.name;
 
     // ── batch resolution ──
-    const batchRows = await svc.entities.DemoSeedRecord.filter({ kind: 'batch', customer_id: cid }, '-created_date', 5).catch(() => []);
+    // ONE batch per CUSTOMER+SITE: each demo site is an independently
+    // seedable/resettable unit (batch-scoped idempotency and reset).
+    const batchRows = await svc.entities.DemoSeedRecord.filter({ kind: 'batch', customer_id: cid, site_id: siteId }, '-created_date', 5).catch(() => []);
     const batchRow = batchRows.find(r => r.batch_id && !r.reset_at) || null;
     const batchId = batchRow ? batchRow.batch_id : null;
 
-    const ledgerKeyDone = async (key) => {
-      const rows = await svc.entities.DemoSeedRecord.filter({ kind: 'seeded', idempotency_key: key }).catch(() => []);
+    // Phase keys are SITE-SCOPED ('<batch>:<siteId>:<phase>') so one customer
+    // can hold several demo sites, each with its own idempotent phases.
+    // Legacy unsuffixed keys (first-generation single-site batches) are still
+    // honoured as skips so existing batches are never re-run.
+    const ledgerKeyDone = async (keys) => {
+      const list = Array.isArray(keys) ? keys : [keys];
+      for (const key of list) {
+        const rows = await svc.entities.DemoSeedRecord.filter({ kind: 'seeded', idempotency_key: key }).catch(() => []);
+        if (rows.length > 0) return true;
+      }
+      return false;
+    };
+    // CUSTOMER-LEVEL ledger check — customer-scoped data (chat, calls,
+    // notifications, vendors, venues) must exist ONCE per customer; a second
+    // demo site of the same customer must never duplicate it.
+    const customerLedgerDone = async (entityName) => {
+      const rows = await svc.entities.DemoSeedRecord.filter({ kind: 'seeded', entity_name: entityName, customer_id: cid }).catch(() => []);
       return rows.length > 0;
     };
     const markPhase = async (batch, key, notes) => {
@@ -824,7 +1122,8 @@ export default async function(req) {
       const now = new Date();
 
       if (phase === 'setup') {
-        const key = `${batchId}:setup`;
+        const key = `${batchId}:${siteId}:setup`;
+        if (await ledgerKeyDone([key, `${batchId}:setup`])) return Response.json({ ok: true, phase, skipped: true });
         // Classification is RERUN-SAFE (never deletes; re-marking is_test is
         // idempotent) so the skip check only applies to the control room.
         // 1) CLASSIFY technical tests — reconciled against the earlier 42-visit audit
@@ -883,8 +1182,8 @@ export default async function(req) {
       }
 
       if (phase === 'shifts') {
-        const key = `${batchId}:shifts`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:shifts`;
+        if (await ledgerKeyDone([key, `${batchId}:shifts`])) return Response.json({ ok: true, phase, skipped: true });
         const existing = await svc.entities.Shift.filter({ demo_batch_id: batchId }).catch(() => []);
         if (existing.length) return Response.json({ ok: true, phase, skipped: true, existing: existing.length });
         const rows = buildShifts(rnd, batchId, cid, rid, site, now);
@@ -894,8 +1193,8 @@ export default async function(req) {
       }
 
       if (phase === 'patrols') {
-        const key = `${batchId}:patrols`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:patrols`;
+        if (await ledgerKeyDone([key, `${batchId}:patrols`])) return Response.json({ ok: true, phase, skipped: true });
         const shifts = await svc.entities.Shift.filter({ demo_batch_id: batchId }).catch(() => []);
         const { patrols, logs } = buildPatrols(rnd, batchId, cid, rid, site, shifts, now);
         for (const c of chunk(patrols, 50)) await svc.entities.ScheduledPatrol.bulkCreate(c);
@@ -905,8 +1204,8 @@ export default async function(req) {
       }
 
       if (phase === 'hospitality') {
-        const key = `${batchId}:hospitality`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:hospitality`;
+        if (await ledgerKeyDone([key, `${batchId}:hospitality`])) return Response.json({ ok: true, phase, skipped: true });
         const existing = await svc.entities.HospitalityVisit.filter({ demo_batch_id: batchId }, '-created_date', 1).catch(() => []);
         if (existing.length) return Response.json({ ok: true, phase, skipped: true, existing: existing.length });
         const shifts = await svc.entities.Shift.filter({ demo_batch_id: batchId }).catch(() => []);
@@ -935,8 +1234,8 @@ export default async function(req) {
       }
 
       if (phase === 'ops') {
-        const key = `${batchId}:ops`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:ops`;
+        if (await ledgerKeyDone([key, `${batchId}:ops`])) return Response.json({ ok: true, phase, skipped: true });
         const crRows = await svc.entities.ControlRoom.filter({ demo_batch_id: batchId }).catch(() => []);
         const crId = crRows[0]?.id || null;
         const { schedules, obs, tasks, batches } = buildOps(rnd, batchId, cid, rid, site, crId, now);
@@ -954,8 +1253,8 @@ export default async function(req) {
       }
 
       if (phase === 'incidents') {
-        const key = `${batchId}:incidents`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:incidents`;
+        if (await ledgerKeyDone([key, `${batchId}:incidents`])) return Response.json({ ok: true, phase, skipped: true });
         const shifts = await svc.entities.Shift.filter({ demo_batch_id: batchId }).catch(() => []);
         const { incidents, maints } = buildIncidents(rnd, batchId, cid, rid, site, shifts, now);
         for (const c of chunk(incidents, 25)) await svc.entities.Incident.bulkCreate(c);
@@ -965,8 +1264,11 @@ export default async function(req) {
       }
 
       if (phase === 'comms') {
-        const key = `${batchId}:comms`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:comms`;
+        // Customer-level data (chat, calls, notifications, doc scans) seeds
+        // ONCE per customer — a second demo site of the same customer never
+        // duplicates it.
+        if (await ledgerKeyDone([key, `${batchId}:comms`]) || await customerLedgerDone('CallHistory')) return Response.json({ ok: true, phase, skipped: true });
         const { chat, calls, notifs, docs } = buildComms(rnd, batchId, cid, rid, site, now);
         const ledgerRows = [];
         const track = (entity, made, idField) => { for (const m of made) ledgerRows.push({ batch_id: batchId, kind: 'seeded', entity_name: entity, record_id: m.id || m[idField], customer_id: cid, site_id: siteId }); };
@@ -981,8 +1283,8 @@ export default async function(req) {
       }
 
       if (phase === 'estate') {
-        const key = `${batchId}:estate`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:estate`;
+        if (await ledgerKeyDone([key, `${batchId}:estate`]) || await customerLedgerDone('Vendor')) return Response.json({ ok: true, phase, skipped: true });
         const { vendors, venues, bookings } = buildEstate(rnd, batchId, cid, rid, site, now);
         const madeV = []; for (const c of chunk(vendors, 3)) madeV.push(...(await svc.entities.Vendor.bulkCreate(c)));
         const madeVen = []; for (const c of chunk(venues, 2)) madeVen.push(...(await svc.entities.Venue.bulkCreate(c)));
@@ -995,12 +1297,22 @@ export default async function(req) {
         ];
         for (const c of chunk(ledgerRows, 50)) await svc.entities.DemoSeedRecord.bulkCreate(c);
         await markPhase(batchId, key, `vendors=${vendors.length} venues=${venues.length} bookings=${bookings.length}`);
-        return Response.json({ ok: true, phase, vendors: vendors.length, venues: venues.length, venue_bookings: bookings.length, next_phase: 'finalize' });
+        return Response.json({ ok: true, phase, vendors: vendors.length, venues: venues.length, venue_bookings: bookings.length, next_phase: 'screens' });
+      }
+
+      if (phase === 'screens') {
+        const key = `${batchId}:${siteId}:screens`;
+        if (await ledgerKeyDone([key])) return Response.json({ ok: true, phase, skipped: true });
+        const made = await buildScreensPhase(svc, rnd, batchId, cid, rid, site, now);
+        const ledgerRows = made.rows.map((r) => ({ batch_id: batchId, kind: 'seeded', entity_name: r.entity, record_id: r.id, customer_id: cid, site_id: siteId }));
+        for (const c of chunk(ledgerRows, 100)) await svc.entities.DemoSeedRecord.bulkCreate(c);
+        await markPhase(batchId, key, JSON.stringify(made.counts));
+        return Response.json({ ok: true, phase, counts: made.counts, next_phase: 'finalize' });
       }
 
       if (phase === 'finalize') {
-        const key = `${batchId}:finalize`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        const key = `${batchId}:${siteId}:finalize`;
+        if (await ledgerKeyDone([key, `${batchId}:finalize`])) return Response.json({ ok: true, phase, skipped: true });
         // Tag any platform-generated (workflow) records that reference demo
         // shifts/patrols but were created without the batch tag — only when
         // this is the first seed (no genuine operational records exist yet).
@@ -1028,7 +1340,7 @@ export default async function(req) {
         return Response.json({ ok: true, phase, workflow_generated_tagged: tagged, complete: true });
       }
 
-      return Response.json({ error: 'Unknown phase. Use setup, shifts, patrols, hospitality, ops, incidents, comms, estate, finalize.' }, { status: 400 });
+      return Response.json({ error: 'Unknown phase. Use setup, shifts, patrols, hospitality, ops, incidents, comms, estate, screens, finalize.' }, { status: 400 });
     }
 
     if (action === 'reset') {

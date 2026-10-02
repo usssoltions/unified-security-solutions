@@ -134,6 +134,18 @@ export default async function(req: Request): Promise<Response> {
         const customer = (custRows || [])[0];
         if (!customer) { skipped++; continue; }
 
+        // SCHEDULED DEMO-SEED SKIP (automation + delivery layer): a customer
+        // with a registered demo-seed batch never receives scheduled report
+        // runs or report emails. Demo tenants are explored manually in the
+        // app; automated dispatch must never fire for them and must never
+        // email real recipients about simulated events. Manual single-site
+        // runs (site_id supplied) are unaffected — admins may still generate
+        // a report for a demo site on demand.
+        if (!singleSiteId) {
+          const demoBatchRows = await svc.entities.DemoSeedRecord.filter({ kind: 'batch', customer_id: cid }).catch(() => []);
+          if ((demoBatchRows || []).some((b: any) => b.batch_id)) { skipped++; continue; }
+        }
+
         const tz = DEFAULT_REPORT_TIMEZONE; // per-site timezone default (SAST)
         const nowMs = Date.now();
         const period = computeReportingPeriod(nowMs, tz);
