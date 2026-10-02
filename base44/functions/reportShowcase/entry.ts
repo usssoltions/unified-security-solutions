@@ -88,8 +88,10 @@ async function loadDemoRecords(svc: any, customer_id: string, entityNames: strin
     // FALLBACK (provenance-safe): older seeding phases recorded only phase
     // rows in the ledger, not one row per record. Those records still carry
     // demo_batch_id / is_test on themselves — read them tenant-scoped and
-    // merge (ledger rows always win, ids are deduplicated).
-    if (recs.length < 1) {
+    // merge into the ledger-selected set (ledger rows always win, ids are
+    // deduplicated). Always merged so per-site coverage (e.g. one Daily
+    // Access Report per demo site) is complete even when a ledger row exists.
+    {
       const direct = await (svc.entities as any)[name]?.filter({ customer_id }).catch(() => []);
       for (const rec of direct || []) {
         if ((rec.demo_batch_id || rec.is_test) && !seen.has(rec.id)) { seen.add(rec.id); recs.push(rec); }
@@ -139,8 +141,11 @@ async function buildIndexEmail(brand: any, customerName: string, contents: any[]
 async function sendOne(
   svc: any, pack: any, user: any, stage: 'preview' | 'customer',
   content: any, to: string, brand: any, customer_id: string, copy_to?: string | null,
+  contentIdx?: number,
 ) {
-  const dedupKey = `${pack.id}:${stage}:${content.template_id}`;
+  // The content index disambiguates per-site variants that share a template_id
+  // (e.g. one Daily Access Report per demo site) in the send ledger.
+  const dedupKey = `${pack.id}:${stage}:${content.template_id}:${contentIdx ?? 0}`;
   const results = stage === 'preview' ? [...(pack.preview?.results || [])] : [...(pack.customer_delivery?.results || [])];
   if (results.some((r) => r.dedup_key === dedupKey && r.status === 'sent')) {
     return { skipped: true, reason: 'already_sent' };
@@ -256,16 +261,30 @@ Deno.serve(async (req) => {
       const contents: any[] = [];
       for (const t of SHOWCASE_TEMPLATE_CATALOG) {
         if (!selections.find((s) => s.template_id === t.template_id && s.include)) continue;
-        const example = await buildTemplateExample(svc, t, {
-          customer_id, customerName, brand, records,
-        });
-        if (example) {
-          contents.push({
-            template_id: t.template_id, label: t.label, module: t.module, channel: t.channel,
-            scenario: t.scenario, ...example,
+        // Daily Access Report is a SINGLE-SITE report — render ONE item per demo
+        // site so all seeded sites are represented accurately (each item contains
+        // only that site's demo logs and names only that site).
+        const demoLogSites = t.template_id === 'daily_access_report'
+          ? [...new Set((records.AccessLog || []).map((l: any) => l.site_name || l.site_id).filter(Boolean))]
+          : [null];
+        for (const site of demoLogSites) {
+          const scopedRecords = site
+            ? { ...records, AccessLog: (records.AccessLog || []).filter((l: any) => (l.site_name || l.site_id) === site && l.demo_batch_id) }
+            : records;
+          const example = await buildTemplateExample(svc, t, {
+            customer_id, customerName, brand, records: scopedRecords,
           });
+          if (example) {
+            contents.push({
+              template_id: t.template_id,
+              label: site ? `${t.label} — ${site}` : t.label,
+              module: t.module, channel: t.channel,
+              scenario: site ? `${t.scenario} Rendered for ${site}.` : t.scenario,
+              ...example,
+            });
+          }
+          await sleep(300);
         }
-        await sleep(300);
       }
       if (!contents.length) {
         return Response.json({ error: 'No template could be rendered — no suitable demo records found for the selected templates.' }, { status: 422 });
@@ -326,7 +345,7 @@ Deno.serve(async (req) => {
       });
       const results: any[] = [];
       for (const c of included) {
-        const r = await sendOne(svc, { ...pack, id: pack.id }, user, 'preview', c, to, brand, pack.customer_id);
+        const r = await sendOne(svc, { ...pack, id: pack.id }, user, 'preview', c, to, brand, pack.customer_id, null, included.indexOf(c));
         if (!r.skipped) {
           await svc.entities.ReportShowcasePack.update(pack.id, { preview: { sent_at: pack.preview?.sent_at || new Date().toISOString(), recipient: to, results: r.results } });
           pack.preview = { sent_at: pack.preview?.sent_at || new Date().toISOString(), recipient: to, results: r.results };
@@ -404,7 +423,7 @@ Deno.serve(async (req) => {
       });
       pack.customer_delivery = { to, bcc_copy_to: bcc, started_at: pack.customer_delivery?.started_at || new Date().toISOString(), completed_at: null, results: pack.customer_delivery?.results || [] };
       for (const c of included) {
-        const r = await sendOne(svc, pack, user, 'customer', c, to, brand, pack.customer_id, bcc);
+        const r = await sendOne(svc, pack, user, 'customer', c, to, brand, pack.customer_id, bcc, included.indexOf(c));
         if (!r.skipped) {
           await svc.entities.ReportShowcasePack.update(pack.id, { customer_delivery: { ...pack.customer_delivery, results: r.results } });
           pack.customer_delivery.results = r.results;
@@ -434,11 +453,13 @@ Deno.serve(async (req) => {
       }
       const config = await requireConfig(pack);
       const brand = await brandFor(pack);
-      const content = (pack.contents || []).find((c: any) => c.template_id === template_id);
+      // Optional `label` disambiguates per-site variants that share a template_id.
+      const matchLabel = body.label ? String(body.label) : null;
+      const content = (pack.contents || []).find((c: any) => c.template_id === template_id && (!matchLabel || c.label === matchLabel));
       if (!content) return Response.json({ error: 'Template not in pack' }, { status: 404 });
       const to = stage === 'preview' ? (pack.preview?.recipient || config.owner_preview_email) : (pack.customer_delivery?.to || config.customer_email);
       const bcc = stage === 'customer' ? (pack.customer_delivery?.bcc_copy_to || null) : null;
-      const r = await sendOne(svc, pack, user, stage as 'preview' | 'customer', content, to, brand, pack.customer_id, bcc);
+      const r = await sendOne(svc, pack, user, stage as 'preview' | 'customer', content, to, brand, pack.customer_id, bcc, (pack.contents || []).indexOf(content));
       if (r.skipped) return Response.json({ success: true, skipped: true, reason: r.reason });
       const patch: any = stage === 'preview'
         ? { preview: { ...pack.preview, results: r.results } }

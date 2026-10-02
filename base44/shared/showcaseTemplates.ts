@@ -276,9 +276,9 @@ export async function buildTemplateExample(
       if (!p) return null;
       const batchTasks = (picked.tasks || []).filter((tk: any) => tk.batch_id === p.id);
       const raw: any = deadlineReport(p, batchTasks, ctx.customerName, brand, brand?.brand_name);
-      const html = typeof raw === 'string' ? raw : (raw?.html || raw?.body || String(raw));
-      const text = `DEMO | Task Completion Report — ${p.title}\n${DEMO_FOOTER}`;
-      return { subject: `DEMO | Task Completion Report — ${p.title}`, html, text, demo_record_ids: [p.id, ...batchTasks.slice(0, 5).map((tk: any) => tk.id)].filter(Boolean) };
+      const html = typeof raw === 'string' ? raw : (raw?.emailHtml || raw?.html || '');
+      const text = typeof raw === 'string' ? raw : (raw?.emailBody || `DEMO | Task Completion Report — ${p.title}\n${DEMO_FOOTER}`);
+      return { subject: raw?.subject || `DEMO | Task Completion Report — ${p.title}`, html, text, demo_record_ids: [p.id, ...batchTasks.slice(0, 5).map((tk: any) => tk.id)].filter(Boolean) };
     }
     case 'task_list_telegram': {
       if (!p) return null;
@@ -317,8 +317,18 @@ export async function buildTemplateExample(
       return { subject: `DEMO | OB check overdue — ${p.ob_reference || p.title}`, html: out.html, text: out.text, demo_record_ids: ids };
     }
     case 'daily_access_report': {
-      const logs = picked.logs || [];
+      let logs = picked.logs || [];
       if (!logs.length) return null;
+      // Coherent single-site report: group by the logs' own site and take the
+      // largest group (Sites are shared platform records — never demo-flagged).
+      const bySite: Record<string, any[]> = {};
+      for (const l of logs) {
+        const key = l.site_name || l.site_id || 'unknown';
+        (bySite[key] ||= []).push(l);
+      }
+      const siteKey = Object.keys(bySite).sort((a, b) => bySite[b].length - bySite[a].length)[0];
+      logs = bySite[siteKey];
+      const siteName = logs[0]?.site_name || siteKey;
       const anchorMs = Math.max(...logs.map((l: any) => new Date(l.entry_time || l.timestamp || l.created_date).getTime() || 0).filter(Boolean));
       const period = computeReportingPeriod(anchorMs, 'Africa/Johannesburg');
       const fmt = makeZonedFormatters('Africa/Johannesburg');
@@ -327,20 +337,20 @@ export async function buildTemplateExample(
       const denied = logs.filter((l: any) => l.status === 'denied' || l.status === 'blacklisted');
       const model = buildDailyAccessModel({
         period, fmt, stillInside, exited, denied, devices: [],
-        customerName: ctx.customerName, siteName: p?.name || picked.siteName || 'Demo Site',
+        customerName: ctx.customerName, siteName,
         generatedAtMs: Date.now(),
       });
       const body = renderDailyAccessEmailBody(model);
       const html = renderTransactionalShell({
         brand,
-        title: `Daily Access Control Report — ${p?.name || 'Demo Site'}`,
+        title: `Daily Access Control Report — ${siteName}`,
         preheader: DEMO_LABEL,
         bodyHtml: body,
         footerNote: DEMO_FOOTER,
         timezone: 'Africa/Johannesburg',
       });
-      const text = `DEMO | Daily Access Control Report — ${p?.name || 'Demo Site'}\n${DEMO_FOOTER}`;
-      return { subject: `DEMO | Daily Access Control Report — ${p?.name || 'Demo Site'}`, html, text, demo_record_ids: logs.slice(0, 10).map((l: any) => l.id) };
+      const text = `DEMO | Daily Access Control Report — ${siteName}\n${DEMO_FOOTER}`;
+      return { subject: `DEMO | Daily Access Control Report — ${siteName}`, html, text, demo_record_ids: logs.slice(0, 10).map((l: any) => l.id) };
     }
     case 'visitor_registration': {
       if (!p) return null;
