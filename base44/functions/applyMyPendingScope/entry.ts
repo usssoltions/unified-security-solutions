@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { emailsNearMatch, normaliseEmail } from '../../shared/scopeDiagnostics.ts';
 
 /**
  * applyMyPendingScope — self-service, server-side application of a queued
@@ -66,9 +67,21 @@ export default async function(req: Request): Promise<Response> {
       const appliedRows = await base44.asServiceRole.entities.PendingTenantScope.filter({
         email, status: 'applied',
       }).catch(() => []);
-      const candidate = (appliedRows || []).find(
+      const candidates = appliedRows || [];
+      let candidate = candidates.find(
         (s: any) => !s.applied_user_id || s.applied_user_id === caller.id
       );
+      if (!candidate && candidates.length > 0) {
+        // The scope was consumed by an EARLIER account with this same invited
+        // email that no longer exists (e.g. its User record was removed during
+        // test cleanup). The invitation was genuinely queued by an admin for
+        // this exact email, so a fresh signup with that email may re-apply it.
+        const stale = candidates[0];
+        if (stale.applied_user_id) {
+          const prior = await base44.asServiceRole.entities.User.get(stale.applied_user_id).catch(() => null);
+          if (!prior) candidate = stale;
+        }
+      }
       if (candidate) {
         scope = candidate;
         scopeState = 'applied_unverified';
@@ -77,11 +90,22 @@ export default async function(req: Request): Promise<Response> {
     if (!scope) {
       // ADMIN-SIDE DIAGNOSTIC: an authenticated caller with NO scope, NO role
       // and no pending invitation scope is exactly the "Account Setup
-      // Incomplete" state (proven vector: direct sign-up on the auth page —
-      // the account exists but NO invitation was ever queued for the email).
-      // Log an actionable audit entry (WHO is stuck, WHY) so administrators
-      // can see and repair it (canonical repair: invite that exact email from
-      // the Users page — the existing-user rescope path, no duplicate user).
+      // Incomplete" state. Proven vectors: direct sign-up on the auth page,
+      // or the invitee signing up with a MISTYPED/alternate address (the
+      // invitation email itself can never be mistyped — the admin queued a
+      // scope for exactly the address they typed).
+      // NEAR-MATCH HINT: a pending invitation for a near-identical address is
+      // recorded in the audit entry (administrator repair detail) and flagged
+      // to the caller GENERICALLY (boolean only — the other address is never
+      // disclosed to the blocked caller).
+      let similarInvitation = false;
+      let similarEmail: string | null = null;
+      try {
+        const allPending = await base44.asServiceRole.entities.PendingTenantScope
+          .filter({ status: 'pending' }).catch(() => []);
+        const match = (allPending || []).find((s: any) => emailsNearMatch(email, s.email));
+        if (match) { similarInvitation = true; similarEmail = normaliseEmail(match.email); }
+      } catch (_) { /* diagnostics must never break the response */ }
       try {
         await base44.asServiceRole.entities.PlatformAuditLog.create({
           event_type: 'tenant_user.scope_failed',
@@ -90,10 +114,13 @@ export default async function(req: Request): Promise<Response> {
           entity_name: 'User',
           entity_id: caller.id,
           action: 'apply_pending_tenant_scope',
-          notes: `Login blocked: no pending tenant scope exists for ${email}. Invite the user (or resend their invitation) so a scope is queued for this exact email address.`,
+          notes: `Login blocked: no pending tenant scope exists for ${email}.` +
+            (similarEmail
+              ? ` A pending invitation EXISTS for the near-identical address ${similarEmail} — this account was almost certainly created with a mistyped/alternate address. Repair: invite THIS exact email (re-scopes the existing account), or ask the invitee to accept the original invitation link.`
+              : ' Invite the user (or resend their invitation) so a scope is queued for this exact email address.'),
         });
       } catch (_) { /* diagnostics must never break the response */ }
-      return Response.json({ applied: false, reason: 'no_pending_scope' });
+      return Response.json({ applied: false, reason: 'no_pending_scope', similar_invitation_exists: similarInvitation });
     }
 
     // DEFENSE-IN-DEPTH: a guard scope without a site assignment cannot

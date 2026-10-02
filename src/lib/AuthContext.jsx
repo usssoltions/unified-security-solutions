@@ -121,6 +121,7 @@ export const AuthProvider = ({ children }) => {
           // PERMANENT reasons stop the loop — retrying cannot conjure an
           // invitation that was never queued.
           const PERMANENT_REASONS = ['no_pending_scope', 'guard_site_missing', 'membership_failed', 'empty_scope'];
+          let similarInvitation = false;
           for (let attempt = 0; attempt < 3 && !applied; attempt++) {
             if (attempt > 0) await new Promise((r) => setTimeout(r, 600 * attempt));
             try {
@@ -134,6 +135,7 @@ export const AuthProvider = ({ children }) => {
                 currentUser = await base44.auth.me();
               } else {
                 lastReason = d?.reason || null;
+                if (d?.similar_invitation_exists) similarInvitation = true;
               }
             } catch (_) { lastReason = 'invoke_failed'; }
             if (PERMANENT_REASONS.includes(lastReason)) break;
@@ -159,7 +161,9 @@ export const AuthProvider = ({ children }) => {
             setAuthError({
               type: 'onboarding_failed',
               message: lastReason === 'no_pending_scope'
-                ? `No invitation is queued for this exact email address${stuckEmail ? ` (${stuckEmail})` : ''}. Ask your administrator to send you an invitation from the Users page — direct sign-up cannot be linked to an organisation.`
+                ? (similarInvitation
+                    ? `No invitation matches this exact email address${stuckEmail ? ` (${stuckEmail})` : ''}, but an invitation exists for a similar address — it was likely mistyped. Ask your administrator to send an invitation to this exact address from the Users page, or sign up using the link in the original invitation email.`
+                    : `No invitation is queued for this exact email address${stuckEmail ? ` (${stuckEmail})` : ''}. Ask your administrator to send you an invitation from the Users page — direct sign-up cannot be linked to an organisation.`)
                 : 'Your account setup could not be completed. Please contact your administrator.'
             });
             setIsLoadingAuth(false);

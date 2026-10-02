@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import { emailsNearMatch, normaliseEmail } from '../../shared/scopeDiagnostics.ts';
 
 /**
  * getTenantUsers — tenant-scoped user AND pending-invitation listing for the
@@ -92,7 +93,56 @@ export default async function(req: Request): Promise<Response> {
         .catch(() => []);
       pending_invitations = (pend || []).filter((p) => !p.cancelled_at);
     }
-    return Response.json({ users: users || [], pending_invitations });
+
+    // INCOMPLETE PROVISIONING DIAGNOSTICS — an authenticated account that is
+    // fully unscoped/roleless is exactly the "Account Setup Incomplete"
+    // state. It can NEVER appear in the tenant users list (it carries no
+    // customer_id), so administrators previously could not see it at all.
+    // Only accounts attributable to THIS admin's own invitation history are
+    // surfaced: the account's email exactly matches, or is a conservative
+    // near-match of (the mistyped-address class), one of the admin's OWN
+    // PendingTenantScope emails. Never a blanket cross-tenant dump, and the
+    // account is never auto-scoped — the admin decides and the canonical
+    // repair (invite that exact email → existing-user rescope) stays manual.
+    let incomplete_accounts: any[] = [];
+    if (isPlatformAdmin || isResellerAdmin || isCustomerAdmin) {
+      try {
+        const unscoped = await base44.asServiceRole.entities.User
+          .filter({ customer_id: null, reseller_id: null, role_type: null }, '-created_date', 500)
+          .catch(() => []);
+        if ((unscoped || []).length > 0) {
+          const scopeQuery = (isPlatformAdmin && !customer_id && !reseller_id)
+            ? {}
+            : (isResellerAdmin && !(customer_id && isPlatformAdmin))
+              ? { reseller_id: caller.reseller_id }
+              : { customer_id: (customer_id && (isPlatformAdmin || isResellerAdmin)) ? customer_id : caller.customer_id };
+          const myScopes = await base44.asServiceRole.entities.PendingTenantScope
+            .filter(scopeQuery, '-created_date', 500)
+            .catch(() => []);
+          incomplete_accounts = (unscoped || []).map((u: any) => {
+            if (!u.email) return null;
+            const exact = (myScopes || []).find((s: any) => normaliseEmail(s.email) === normaliseEmail(u.email));
+            if (exact) {
+              return {
+                user_id: u.id, email: u.email, full_name: u.full_name || u.display_name || null,
+                created_date: u.created_date, match_type: 'exact',
+                matched_invitation: { scope_id: exact.id, email: exact.email, role_type: exact.role_type, customer_id: exact.customer_id, site_id: exact.site_id || null },
+              };
+            }
+            const near = (myScopes || []).find((s: any) => emailsNearMatch(u.email, s.email));
+            if (near) {
+              return {
+                user_id: u.id, email: u.email, full_name: u.full_name || u.display_name || null,
+                created_date: u.created_date, match_type: 'near_match',
+                matched_invitation: { scope_id: near.id, email: near.email, role_type: near.role_type, customer_id: near.customer_id, site_id: near.site_id || null },
+              };
+            }
+            return null;
+          }).filter(Boolean);
+        }
+      } catch (_) { incomplete_accounts = []; }
+    }
+    return Response.json({ users: users || [], pending_invitations, incomplete_accounts });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

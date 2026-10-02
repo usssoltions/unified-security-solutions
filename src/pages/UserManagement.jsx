@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Users, Plus, Search } from "lucide-react";
+import { Users, Plus, Search, AlertTriangle, Send, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PullToRefresh from "@/components/PullToRefresh";
 import UserForm from "../components/users/UserForm";
@@ -33,7 +33,7 @@ export default function UserManagement() {
   // medical roles (reception, therapist, practice_admin) cannot reach other
   // users through User.list(). getTenantUsers returns the caller's tenant
   // users (or all users for platform oversight) with the same scoping rules.
-  const { data: users = [], isLoading } = useQuery({
+  const { data: usersPayload = {}, isLoading } = useQuery({
     queryKey: ["allUsers"],
     queryFn: async () => {
       const res = await base44.functions.invoke("getTenantUsers", {});
@@ -42,9 +42,14 @@ export default function UserManagement() {
       // backend-function call in this app). Reading res.users directly
       // always yielded undefined → the "0 users" bug.
       const d = res?.data !== undefined ? res.data : res;
-      return d?.users || [];
+      return d || {};
     },
   });
+  const users = usersPayload?.users || [];
+  // PROVISIONING DIAGNOSTICS: invitations awaiting acceptance, and sign-ups
+  // that could not be linked to any invitation ("Account Setup Incomplete").
+  const pendingInvitations = usersPayload?.pending_invitations || [];
+  const incompleteAccounts = usersPayload?.incomplete_accounts || [];
 
   // Resolve the current user's tenant type so the role set adapts to the
   // industry vertical (Medical vs Security). Platform admins (no customer)
@@ -105,6 +110,53 @@ export default function UserManagement() {
       });
     },
   });
+
+  // PROVISIONING REPAIR (server-validated): re-inviting an exact email
+  // re-scopes the existing blocked account (no duplicate user) and dispatches
+  // the invitation; resend re-dispatches a stored invitation.
+  const [repairBusy, setRepairBusy] = useState(null);
+  const repairIncomplete = async (acc) => {
+    const mi = acc.matched_invitation || {};
+    if (!mi.role_type) return;
+    if (!window.confirm(`Send an invitation to ${acc.email} as ${mi.role_type}?\n\nThe existing blocked account will be scoped when the invitee accepts — no duplicate account is created.`)) return;
+    setRepairBusy(acc.user_id);
+    try {
+      const res = await base44.functions.invoke('inviteTenantUser', {
+        action: 'invite',
+        email: acc.email,
+        role_type: mi.role_type,
+        customer_id: mi.customer_id || undefined,
+        site_id: mi.site_id || undefined,
+        first_name: (acc.full_name || '').trim().split(/\s+/)[0] || undefined,
+      });
+      const d = res?.data || res;
+      if (d?.error) throw new Error(d.error);
+      toast({ title: 'Invitation sent', description: `${acc.email} will be scoped as ${mi.role_type} when they accept.` });
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+    } catch (e) {
+      toast({ title: 'Could not repair account', description: e?.message || 'Please try again.', variant: 'destructive' });
+    } finally {
+      setRepairBusy(null);
+    }
+  };
+  const resendPending = async (p) => {
+    setRepairBusy(p.id);
+    try {
+      const res = await base44.functions.invoke('inviteTenantUser', { action: 'resend', pending_scope_id: p.id });
+      const d = res?.data || res;
+      if (d?.error) throw new Error(d.error);
+      if (d?.delivery_status === 'failed') {
+        toast({ title: 'Delivery failed', description: d?.error || 'The email could not be sent. The invitation was kept — try again.', variant: 'destructive' });
+      } else {
+        toast({ title: 'Invitation re-sent', description: `Sent to ${p.email}.` });
+      }
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+    } catch (e) {
+      toast({ title: 'Could not resend', description: e?.message || 'Please try again.', variant: 'destructive' });
+    } finally {
+      setRepairBusy(null);
+    }
+  };
 
   const handleEdit = (user) => { setEditingUser(user); setShowUserForm(true); };
   const handleRemove = (user) => {
@@ -196,6 +248,49 @@ export default function UserManagement() {
             </Card>
           ))}
         </div>
+
+        {/* Setup needs attention — pending invitations + blocked sign-ups */}
+        {(pendingInvitations.length > 0 || incompleteAccounts.length > 0) && (
+          <Card className="bg-amber-500/10 border-amber-500/30">
+            <CardContent className="pt-6 space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+                <h3 className="text-white font-semibold">Setup needs attention</h3>
+              </div>
+              {incompleteAccounts.map((acc) => (
+                <div key={acc.user_id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-900/60 border border-amber-500/20 rounded-xl px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm text-white truncate">{acc.full_name || acc.email}</p>
+                    <p className="text-xs text-slate-400 truncate">
+                      Signed up as {acc.email} but never linked to an invitation
+                      {acc.matched_invitation?.email ? ` · closest invitation: ${acc.matched_invitation.email} (${acc.matched_invitation.role_type})` : ''}
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={() => repairIncomplete(acc)} disabled={repairBusy === acc.user_id} className="bg-amber-500 hover:bg-amber-600 text-slate-950 shrink-0">
+                    <RefreshCw className={`w-4 h-4 mr-1 ${repairBusy === acc.user_id ? 'animate-spin' : ''}`} />
+                    Send invite &amp; fix
+                  </Button>
+                </div>
+              ))}
+              {pendingInvitations.map((p) => (
+                <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-900/60 border border-slate-700 rounded-xl px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm text-white truncate">{p.display_name || p.email}</p>
+                    <p className="text-xs text-slate-400 truncate">{p.email} · {p.role_type}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={p.delivery_status === 'failed' ? 'destructive' : 'secondary'}>
+                      {p.delivery_status === 'failed' ? 'Delivery failed' : 'Awaiting acceptance'}
+                    </Badge>
+                    <Button size="sm" variant="outline" onClick={() => resendPending(p)} disabled={repairBusy === p.id} className="border-slate-600 text-slate-200">
+                      <Send className="w-4 h-4 mr-1" /> Resend
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Search */}
         <Card className="bg-slate-800/50 border-slate-700">

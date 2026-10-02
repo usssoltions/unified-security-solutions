@@ -213,6 +213,17 @@ export default function TenantUserInviteForm({
         if (d.rescoped) toast({ title: "Existing user re-scoped", description: `${form.email} already existed and was updated to ${form.role_type}.` });
         else if (d.already_pending) toast({ title: "Invitation already pending", description: `Scoping updated for ${form.email}. No duplicate invite sent.` });
         else toast({ title: "Invitation sent", description: `${form.email} will be scoped as ${form.role_type} when they accept.` });
+        // NEAR-MISS WARNING (non-blocking): a blocked, never-scoped account
+        // already exists for a near-identical address — usually the same
+        // invitee who signed up with a typo'd address earlier.
+        if (Array.isArray(d.similar_accounts) && d.similar_accounts.length > 0) {
+          toast({
+            title: "Check the address",
+            description: `An unregistered account already exists for ${d.similar_accounts.join(', ')}. If that was meant to be this invitee, invite that exact address instead.`,
+            variant: "destructive",
+            duration: 10000,
+          });
+        }
         reset();
         onDone?.();
         onClose?.();

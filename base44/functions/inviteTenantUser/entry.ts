@@ -6,6 +6,7 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import {
   enforceOperationalUserLimit, USER_LIMIT_REACHED_MESSAGE,
 } from '../../shared/userLicensing.ts';
+import { emailsNearMatch, normaliseEmail } from '../../shared/scopeDiagnostics.ts';
 
 /**
  * inviteTenantUser — securely invite a tenant-scoped user and queue the
@@ -60,10 +61,20 @@ async function managePendingInvitation(base44: any, caller: any, body: any, acti
 
   const isPlatformAdmin = caller.role === 'admin' || caller.role_type === 'platform_admin';
   const isResellerAdmin = caller.role_type === 'reseller_admin' || caller.admin_level === 'reseller';
-  if (!isPlatformAdmin && !isResellerAdmin) {
+  // CUSTOMER ADMINISTRATORS may manage invitations for their OWN customer —
+  // previously only platform/reseller admins could resend or cancel, which
+  // left a customer admin unable to repair their own failed deliveries.
+  const isCustomerAdmin =
+    !isPlatformAdmin && !isResellerAdmin &&
+    ['customer_admin', 'practice_admin', 'estate_manager'].includes(caller.role_type) &&
+    !!caller.customer_id && scope.customer_id === caller.customer_id;
+  if (!isPlatformAdmin && !isResellerAdmin && !isCustomerAdmin) {
     return Response.json({ error: 'You do not have permission to manage invitations', code: 'permission_denied' }, { status: 403 });
   }
-  if (!isPlatformAdmin) {
+  if (!isPlatformAdmin && !isResellerAdmin) {
+    // Customer admin: the invitation was already verified to belong to their
+    // own customer above.
+  } else if (!isPlatformAdmin) {
     if (!scope.reseller_id || scope.reseller_id !== caller.reseller_id) {
       return Response.json({ error: 'That invitation belongs to another reseller', code: 'permission_denied' }, { status: 403 });
     }
@@ -368,6 +379,23 @@ export default async function(req: Request): Promise<Response> {
 
     console.log('[inviteTenantUser] caller', caller.id, 'reseller_id', effectiveReseller, 'role_type', role_type, 'email', email);
 
+    // NEAR-MISS GUARD (proven "Account Setup Incomplete" vector — mistyped
+    // invitation addresses): if a fully UNSCOPED account already exists for a
+    // near-identical email (typo'd domain or mistyped local part), the admin
+    // is WARNED in the response — non-blocking, since either address may be
+    // genuinely intended. The blocked account is invisible in the Users list,
+    // so this is often the only signal at invite time.
+    let similar_accounts: string[] = [];
+    try {
+      const unscopedUsers = await base44.asServiceRole.entities.User.filter({
+        customer_id: null, reseller_id: null, role_type: null,
+      }, '-created_date', 500).catch(() => []);
+      similar_accounts = (unscopedUsers || [])
+        .filter((u: any) => u.email && emailsNearMatch(email, u.email))
+        .map((u: any) => normaliseEmail(u.email))
+        .slice(0, 5);
+    } catch (_) { /* diagnostics must never break the invitation */ }
+
     // ── Idempotency 1: if a User already exists for this email, rescope it. ──
     let existing = await base44.asServiceRole.entities.User.filter({ email }).catch(() => []);
     existing = (existing && existing[0]) ? existing[0] : null;
@@ -426,12 +454,23 @@ export default async function(req: Request): Promise<Response> {
         to: email, customerId: customer_id || null, resellerId: effectiveReseller,
         roleType: role_type, inviteeName: displayName, inviterName: callerName, kind: 'updated',
       });
-      return Response.json({ success: true, user_id: existing.id, rescoped: true });
+      return Response.json({ success: true, user_id: existing.id, rescoped: true, similar_accounts });
     }
 
     // ── Idempotency 2: upsert a PendingTenantScope by email. ──
-    let pendingRows = await base44.asServiceRole.entities.PendingTenantScope.filter({ email }).catch(() => []);
-    let pending = (pendingRows && pendingRows[0]) ? pendingRows[0] : null;
+    // ONE AUTHORITATIVE RECORD per email: prefer the pending scope; any OTHER
+    // still-pending duplicate for the same address is cancelled (superseded)
+    // so applyMyPendingScope can never pick an arbitrary stale scope with the
+    // wrong tenant/role.
+    const pendingRows = await base44.asServiceRole.entities.PendingTenantScope.filter({ email }).catch(() => []);
+    const rowList = pendingRows || [];
+    let pending = rowList.find((p: any) => p.status === 'pending') || rowList[0] || null;
+    if (pending && rowList.some((p: any) => p.id !== pending.id && p.status === 'pending')) {
+      await base44.asServiceRole.entities.PendingTenantScope.updateMany(
+        { email, status: 'pending', id: { $ne: pending.id } },
+        { $set: { status: 'cancelled', cancelled_at: new Date().toISOString(), notes: `Superseded — duplicate invitation scope for ${email}` } },
+      ).catch(() => {});
+    }
     const scopeFields = {
       email,
       role_type,
@@ -464,7 +503,21 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'The invitation could not be updated. Please try again.', code: 'scope_failed' }, { status: 500 });
       }
       console.log('[inviteTenantUser] updated existing pending scope', pending.id);
-      return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id });
+      // A previously FAILED delivery retries the platform invitation when the
+      // admin re-invites — "already pending" must never leave the invitee
+      // with neither a working invitation email nor a fresh send.
+      if (pending.delivery_status === 'failed') {
+        try {
+          await base44.users.inviteUser(email, 'user');
+          await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: new Date().toISOString(), delivery_status: 'sent' });
+        } catch (retryErr) {
+          const retryMsg = String(retryErr?.message || retryErr);
+          if (/already|exists|pending|invited/i.test(retryMsg)) {
+            await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: new Date().toISOString(), delivery_status: 'sent' }).catch(() => {});
+          }
+        }
+      }
+      return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id, similar_accounts });
     }
 
     // Delivery lifecycle: created as 'queued' the instant the invitation
@@ -532,7 +585,7 @@ export default async function(req: Request): Promise<Response> {
         // An invitation is already pending for this email; our PendingTenantScope
         // will apply when it is accepted. Not an error — no duplicate created.
         try { await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: nowIso, delivery_status: 'sent' }); } catch (_) {}
-        return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id });
+        return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id, similar_accounts });
       }
       // The invitation email could not be sent, but the pending scope is queued.
       try { await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { delivery_status: 'failed' }); } catch (_) {}
@@ -555,7 +608,7 @@ export default async function(req: Request): Promise<Response> {
       });
     } catch (_) {}
 
-    return Response.json({ success: true, pending_scope_id: pending.id, invite_sent: true });
+    return Response.json({ success: true, pending_scope_id: pending.id, invite_sent: true, similar_accounts });
   } catch (error) {
     const msg = String(error?.message || error);
     console.log('[inviteTenantUser] fatal', msg);
