@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Users, Plus, Search, AlertTriangle, Send, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PullToRefresh from "@/components/PullToRefresh";
@@ -111,27 +112,44 @@ export default function UserManagement() {
     },
   });
 
-  // PROVISIONING REPAIR (server-validated): re-inviting an exact email
-  // re-scopes the existing blocked account (no duplicate user) and dispatches
-  // the invitation; resend re-dispatches a stored invitation.
+  // PROVISIONING REPAIR — the near-match invitation is DIAGNOSTIC ONLY. The
+  // admin must explicitly confirm the intended address in the dialog; a fresh
+  // invitation is sent to that exact address and the scope is applied ONLY
+  // after the invitee verifies it through the invitation flow (server-side,
+  // on sign-in). Access is never granted to an account because its email
+  // resembles an invitation address.
   const [repairBusy, setRepairBusy] = useState(null);
-  const repairIncomplete = async (acc) => {
+  const [repairTarget, setRepairTarget] = useState(null);
+  const [repairAddress, setRepairAddress] = useState('');
+  const openRepairDialog = (acc) => {
+    setRepairTarget(acc);
+    setRepairAddress(acc.email || '');
+  };
+  const repairIncomplete = async () => {
+    const acc = repairTarget;
+    if (!acc) return;
     const mi = acc.matched_invitation || {};
-    if (!mi.role_type) return;
-    if (!window.confirm(`Send an invitation to ${acc.email} as ${mi.role_type}?\n\nThe existing blocked account will be scoped when the invitee accepts — no duplicate account is created.`)) return;
+    const invitedEmail = repairAddress.trim().toLowerCase();
+    if (!mi.role_type || !invitedEmail) return;
     setRepairBusy(acc.user_id);
     try {
       const res = await base44.functions.invoke('inviteTenantUser', {
         action: 'invite',
-        email: acc.email,
+        email: invitedEmail,
         role_type: mi.role_type,
         customer_id: mi.customer_id || undefined,
         site_id: mi.site_id || undefined,
         first_name: (acc.full_name || '').trim().split(/\s+/)[0] || undefined,
+        repair: true,
       });
       const d = res?.data || res;
       if (d?.error) throw new Error(d.error);
-      toast({ title: 'Invitation sent', description: `${acc.email} will be scoped as ${mi.role_type} when they accept.` });
+      if (d?.repair_queued) {
+        toast({ title: 'Invitation sent', description: `${invitedEmail} must sign in through the invitation flow — their access is applied then, and only to that account.` });
+      } else {
+        toast({ title: 'Invitation sent', description: `${invitedEmail} will be scoped when they accept.` });
+      }
+      setRepairTarget(null);
       queryClient.invalidateQueries({ queryKey: ['allUsers'] });
     } catch (e) {
       toast({ title: 'Could not repair account', description: e?.message || 'Please try again.', variant: 'destructive' });
@@ -266,7 +284,7 @@ export default function UserManagement() {
                       {acc.matched_invitation?.email ? ` · closest invitation: ${acc.matched_invitation.email} (${acc.matched_invitation.role_type})` : ''}
                     </p>
                   </div>
-                  <Button size="sm" onClick={() => repairIncomplete(acc)} disabled={repairBusy === acc.user_id} className="bg-amber-500 hover:bg-amber-600 text-slate-950 shrink-0">
+                  <Button size="sm" onClick={() => openRepairDialog(acc)} disabled={repairBusy === acc.user_id} className="bg-amber-500 hover:bg-amber-600 text-slate-950 shrink-0">
                     <RefreshCw className={`w-4 h-4 mr-1 ${repairBusy === acc.user_id ? 'animate-spin' : ''}`} />
                     Send invite &amp; fix
                   </Button>
@@ -368,6 +386,44 @@ export default function UserManagement() {
             resellerId={!isPlatformAdmin && !customerId ? currentUser?.reseller_id : undefined}
             allowResellerAdmin={isPlatformAdmin}
           />
+        )}
+
+        {repairTarget && (
+          <Dialog open={!!repairTarget} onOpenChange={(o) => { if (!o) setRepairTarget(null); }}>
+            <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 max-w-md">
+              <DialogHeader>
+                <DialogTitle>Confirm the intended address</DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  The similar invitation shown is diagnostic only — access is never granted by resemblance.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3 space-y-1">
+                  <p className="text-slate-300">Blocked sign-up: <span className="text-white">{repairTarget.full_name || repairTarget.email}</span></p>
+                  <p className="text-slate-400 text-xs">Closest invitation: {repairTarget.matched_invitation?.email || '—'} · role {repairTarget.matched_invitation?.role_type || '—'}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Send a fresh invitation to this exact address</label>
+                  <Input value={repairAddress} onChange={(e) => setRepairAddress(e.target.value)} className="bg-slate-900 border-slate-700 text-white" autoComplete="off" />
+                </div>
+                <p className="text-xs text-slate-400">
+                  Access is applied only after the invitee verifies this address by signing in through the invitation flow.
+                  {repairAddress.trim().toLowerCase() !== (repairTarget.email || '').toLowerCase() && ' This is a different address — a brand-new invitation will be created and the blocked account stays unscoped.'}
+                </p>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setRepairTarget(null)} className="border-slate-600 text-slate-200">Cancel</Button>
+                <Button
+                  onClick={repairIncomplete}
+                  disabled={repairBusy === repairTarget.user_id || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(repairAddress.trim())}
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950"
+                >
+                  {repairBusy === repairTarget.user_id ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+                  Send invitation
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     </PullToRefresh>

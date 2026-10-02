@@ -230,6 +230,12 @@ export default async function(req: Request): Promise<Response> {
     const lastName = String(last_name || '').trim();
     const displayName = String(providedDisplayName || '').trim() || [firstName, lastName].filter(Boolean).join(' ').trim() || null;
     const userStatus = user_status || status || 'active';
+    // PROVISIONING REPAIR — invitation-verified scope only. When true, an
+    // existing account is NEVER re-scoped at send time: the scope is queued
+    // as a pending scope for the invited EXACT address and applies
+    // server-side when the invitee signs in through the invitation flow
+    // (applyMyPendingScope). A near-match address is diagnostic only.
+    const isRepair = body.repair === true;
 
     if (!['invite', 'resend', 'cancel'].includes(action)) {
       return Response.json({ error: 'Unsupported action', code: 'bad_action' }, { status: 400 });
@@ -399,6 +405,93 @@ export default async function(req: Request): Promise<Response> {
     // ── Idempotency 1: if a User already exists for this email, rescope it. ──
     let existing = await base44.asServiceRole.entities.User.filter({ email }).catch(() => []);
     existing = (existing && existing[0]) ? existing[0] : null;
+
+    if (existing && isRepair) {
+      // PROVISIONING REPAIR — invitation-verified only. A near-match email is
+      // diagnostic: access is NEVER granted by resemblance, and an existing
+      // account is never re-scoped at send time. The scope is QUEUED as a
+      // pending scope for the exact invited address and applies server-side
+      // when the invitee signs in through the invitation flow. A confirmed
+      // address with NO existing account falls through to the normal
+      // fresh-invitation flow below (the blocked account stays untouched).
+      const repairFields = {
+        email, role_type, admin_level,
+        reseller_id: effectiveReseller || null,
+        customer_id: customer_id || null,
+        site_id: site_id || null,
+        first_name: firstName || null,
+        last_name: lastName || null,
+        display_name: displayName || null,
+        phone: phone || null,
+        user_status: userStatus || 'active',
+        status: 'pending',
+        invited_by: caller.id,
+        invited_by_name: callerName,
+        notes: `Repair invitation — ${role_type}${moduleLabel ? ` (${moduleLabel})` : ''} (${userStatus || 'active'})`,
+      };
+      const repairRows = await base44.asServiceRole.entities.PendingTenantScope.filter({ email }).catch(() => []);
+      let repairScope = (repairRows || []).find((p: any) => p.status === 'pending') || (repairRows || [])[0] || null;
+      if (repairScope && (repairRows || []).some((p: any) => p.id !== repairScope.id && p.status === 'pending')) {
+        await base44.asServiceRole.entities.PendingTenantScope.updateMany(
+          { email, status: 'pending', id: { $ne: repairScope.id } },
+          { $set: { status: 'cancelled', cancelled_at: new Date().toISOString(), notes: `Superseded — repair re-invitation for ${email}` } },
+        ).catch(() => {});
+      }
+      let repairQueued: any = null;
+      try {
+        const repairSlot = await enforceOperationalUserLimit(base44.asServiceRole, {
+          customer, roleType: role_type, email, existingUser: existing,
+          mutate: async () => {
+            return repairScope
+              ? base44.asServiceRole.entities.PendingTenantScope.update(repairScope.id, repairFields)
+              : base44.asServiceRole.entities.PendingTenantScope.create({ ...repairFields, delivery_status: 'queued' });
+          },
+        });
+        if (repairSlot.lock_error) {
+          return Response.json({ error: 'The system is busy processing another user change. Please try again.', code: 'slot_lock_timeout' }, { status: 503 });
+        }
+        if (repairSlot.blocked) {
+          return Response.json({
+            error: USER_LIMIT_REACHED_MESSAGE,
+            code: 'operational_user_limit_reached',
+            used: repairSlot.used, limit: repairSlot.limit,
+          }, { status: 409 });
+        }
+        repairQueued = repairSlot.result;
+      } catch (e) {
+        console.log('[inviteTenantUser] repair scope queue failed', String(e?.message || e));
+        return Response.json({ error: 'The repair invitation could not be queued. Please try again.', code: 'scope_failed' }, { status: 500 });
+      }
+      if (repairQueued && repairQueued.id) repairScope = repairQueued;
+      if (!repairScope || !repairScope.id) {
+        return Response.json({ error: 'The repair invitation could not be queued. Please try again.', code: 'scope_failed' }, { status: 500 });
+      }
+      // The account is already registered, so the branded invitation email
+      // reaches it directly; delivery status is stamped from the actual send.
+      const repairDelivery: any = { sent_at: new Date().toISOString(), delivery_status: 'sent' };
+      try {
+        await sendBrandedInvitationEmail(base44, {
+          to: email, customerId: customer_id || null, resellerId: effectiveReseller,
+          roleType: role_type, inviteeName: displayName, inviterName: callerName, kind: 'updated',
+        });
+      } catch (e) {
+        console.log('[inviteTenantUser] repair email failed', String(e?.message || e));
+        repairDelivery.delivery_status = 'failed';
+      }
+      await base44.asServiceRole.entities.PendingTenantScope.update(repairScope.id, repairDelivery).catch(() => {});
+      try {
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'tenant_user.repair_invited', user_id: caller.id, user_name: callerName,
+          reseller_id: effectiveReseller || undefined, customer_id: customer_id || undefined,
+          entity_name: 'PendingTenantScope', entity_id: repairScope.id,
+          action: 'repair_invitation_queued',
+          new_values: JSON.stringify({ email, role_type, admin_level, reseller_id: effectiveReseller, customer_id: customer_id || null }),
+          notes: `Repair invitation queued for ${email} as ${role_type} — scope applies on invitation-flow sign-in`,
+        });
+      } catch (_) {}
+      return Response.json({ success: true, repair_queued: true, pending_scope_id: repairScope.id, similar_accounts });
+    }
+
     if (existing) {
       const scopeUpdates = { role_type, admin_level, reseller_id: effectiveReseller, customer_id: customer_id || null };
       // Guard scope includes the SITE — a rescope must be equivalent to
