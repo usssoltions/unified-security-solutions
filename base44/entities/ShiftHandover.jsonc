@@ -3,6 +3,17 @@
   "type": "object",
   "description": "Start-of-shift / shift handover report. TENANT ISOLATION (was world-readable \u2014 read:null, fixed 2026-09-21): reads are now customer-scoped with a RESELLER-ADMIN-only reseller_id branch (admin_level 'reseller'); the outgoing and incoming guards and the creator always see their own reports; platform admins retain oversight. New records carry customer_id/reseller_id (stamped at creation); legacy unscoped records remain visible via own-record branches and to platform admins.",
   "properties": {
+    "demo_batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL demo provenance: the DEMO seed batch that created this record. Never set on live operational records."
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ownership for multi-tenant isolation"

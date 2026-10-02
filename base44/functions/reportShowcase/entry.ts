@@ -246,12 +246,16 @@ Deno.serve(async (req) => {
           shift_handover: 'ShiftHandover',
         };
         const srcEntity = siteSourceEntity[t.template_id] || null;
+        // records[] are already provenance-filtered by the loader (ledger
+        // selection + demo_batch_id/is_test fallback) — only exclude test
+        // fixtures here; demo_batch_id is optional on some legacy records.
+        const isDemo = (r: any) => !r.is_test;
         const demoLogSites = srcEntity
-          ? [...new Set((records[srcEntity] || []).filter((r: any) => r.demo_batch_id && !r.is_test).map((r: any) => r.site_name || r.site_id).filter(Boolean))]
+          ? [...new Set((records[srcEntity] || []).filter(isDemo).map((r: any) => r.site_name || r.site_id).filter(Boolean))]
           : [null];
         for (const site of demoLogSites) {
           const scopedRecords = site && srcEntity
-            ? { ...records, [srcEntity]: (records[srcEntity] || []).filter((r: any) => (r.site_name || r.site_id) === site && r.demo_batch_id && !r.is_test) }
+            ? { ...records, [srcEntity]: (records[srcEntity] || []).filter((r: any) => (r.site_name || r.site_id) === site && isDemo(r)) }
             : records;
           const example = await buildTemplateExample(svc, t, {
             customer_id, customerName, brand, records: scopedRecords,
