@@ -29,10 +29,14 @@ export default function ReportShowcase() {
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
+  // Configuration lookup goes through the reportShowcase gateway (platform-admin
+  // gated server-side) — the direct ShowcaseConfig client read is RLS-restricted
+  // and resolved empty for this session.
   useEffect(() => {
-    base44.entities.ShowcaseConfig.list().then((rows) => {
-      setConfigs(rows || []);
-      if (rows?.length) setSelected(rows[0]);
+    call({ action: "list_configs" }).then((data) => {
+      const rows = data?.configs || [];
+      setConfigs(rows);
+      if (rows.length) setSelected(rows[0]);
     }).catch((e) => setErr(String(e?.message || e)));
   }, []);
 
@@ -47,6 +51,18 @@ export default function ReportShowcase() {
     try {
       const data = await call({ action: "inventory", customer_id: cfg.customer_id });
       setInv(data);
+    } catch (e) { setErr(String(e?.message || e)); }
+    finally { setBusy(""); }
+  };
+
+  // Load an EXISTING pack (e.g. SHOW-20261002-SHBI) through the gateway's get
+  // action — no regeneration, the stored contents are reused as-is.
+  const loadPack = async (pack_id) => {
+    setBusy("load"); setErr(null); setMsg(null);
+    try {
+      const full = await call({ action: "get", pack_id });
+      setPack(full.pack);
+      setMsg(`Loaded existing pack ${full.pack?.pack_number}.`);
     } catch (e) { setErr(String(e?.message || e)); }
     finally { setBusy(""); }
   };
@@ -244,6 +260,25 @@ export default function ReportShowcase() {
                     </div>
                   </div>
                 ))}
+                {(inv.packs || []).filter((p) => p.status !== "cancelled").length > 0 && (
+                  <div className="pt-1 space-y-1">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Existing packs</p>
+                    {(inv.packs || []).filter((p) => p.status !== "cancelled").map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate">{p.pack_number}</p>
+                          <p className="text-[11px] text-slate-400">{String(p.created_date || "").slice(0, 16).replace("T", " ")}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge className="bg-sky-600 text-[10px]">{p.status}</Badge>
+                          <Button size="sm" variant="outline" className="border-slate-600 text-slate-200 h-7 px-2" disabled={busy === "load"} onClick={() => loadPack(p.id)}>
+                            Load
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

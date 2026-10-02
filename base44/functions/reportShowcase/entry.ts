@@ -2,6 +2,7 @@
  * reportShowcase — Report & Notification Showcase gateway (PLATFORM-ADMIN ONLY).
  *
  * Explicit, human-driven delivery of a generated showcase pack:
+ *   list_configs   — per-customer ShowcaseConfig list for the page's customer selector
  *   inventory      — module/licence + demo-data readiness per template
  *   generate       — render INERT examples from demo records (no sends, no side effects)
  *   send_preview   — 'Send Preview to Me': ONLY the customer's configured owner preview address
@@ -168,6 +169,23 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || '');
+
+    // ── list_configs ─────────────────────────────────────────────────────
+    // Platform-admin authorisation is already enforced above. The page loads
+    // its customer selector through this gateway action instead of a direct
+    // ShowcaseConfig client read, so a valid platform admin can never be left
+    // with an empty selector by the RLS-gated client read.
+    if (action === 'list_configs') {
+      const rows = await svc.entities.ShowcaseConfig.list();
+      return Response.json({
+        success: true,
+        configs: (rows || []).map((c: any) => ({
+          id: c.id, customer_id: c.customer_id, customer_name: c.customer_name,
+          owner_preview_email: c.owner_preview_email, customer_email: c.customer_email,
+          owner_copy_bcc_email: c.owner_copy_bcc_email || null,
+        })),
+      });
+    }
 
     // ── inventory ────────────────────────────────────────────────────────
     if (action === 'inventory') {
