@@ -5,11 +5,8 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveShiftReportRecipients } from '../../shared/shiftReportRecipients.ts';
-import {
-  resolveCommunicationBrand, escHtml,
-  formatSastDate, formatSastTime, formatSastDateTime,
-} from '../../shared/brandedCommunication.ts';
-import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
+import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { buildStartOfShiftReportEmail, haversineMetres } from '../../shared/startOfShiftReport.ts';
 
 /**
  * START OF SHIFT REPORT NOTIFICATION — In-App + Email + Telegram + native
@@ -34,16 +31,6 @@ import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
 import { resolveAppUrl, appUrlFor } from '../../shared/appUrl.ts';
 const RECIPIENT_ROLES = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
 const isPlatformUser = (u) => u.role_type === 'platform_admin' || u.admin_level === 'platform';
-
-function haversineMetres(a, b) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const x = Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return Math.round(2 * R * Math.asin(Math.sqrt(x)));
-}
 
 Deno.serve(async (req) => {
   // Deployment URL resolved centrally per request (custom-domain ready).
@@ -120,146 +107,22 @@ Deno.serve(async (req) => {
     diag.recipients = recipients.map(r => r.id);
     if (!recipients.length) diag.failures.push('no_recipients_resolved');
 
-    // ── Formatted operational facts ──
-    const shiftDateStr = scheduledStart ? formatSastDate(scheduledStart) : formatSastDate(submittedAt);
-    const scheduledStartStr = scheduledStart ? formatSastTime(scheduledStart) : '—';
-    const clockInStr = (clockIn && clockIn.timestamp) ? formatSastDateTime(clockIn.timestamp) : '—';
-    const submittedStr = formatSastDateTime(submittedAt);
-    const locationStr = guardGps ? `${guardGps.lat}, ${guardGps.lng}` : 'Not captured';
-    const distanceStr = distanceMetres !== null
-      ? `${distanceMetres} m from site${geofenceRadius ? ' (geofence radius ' + geofenceRadius + ' m)' : ''}` +
-        (withinFence === true ? ' — WITHIN GEOFENCE' : withinFence === false ? ' — OUTSIDE GEOFENCE' : '')
-      : (siteGpsValid ? 'Guard GPS not captured' : 'Site GPS not configured');
-
-    const photos = (media || []).filter(m => m && m.type === 'photo' && m.url);
-    const videos = (media || []).filter(m => m && m.type === 'video' && m.url);
-    const audios = (media || []).filter(m => m && m.type === 'audio' && m.url);
-
     const eventKey = 'sos_report:' + (handoverId || (user.id + ':' + submittedAt.slice(0, 16)));
     const heading = `🛡️ Start of Shift — ${guardName} @ ${siteName}`;
 
-    // ── Shared rich EMAIL body (branded, full operational report) ──
-    const photosHtml = photos.map(m => `
-      <div style="margin: 10px 0;">
-        <img src="${escHtml(m.url)}" alt="Photo evidence" style="max-width: 100%; height: auto; border-radius: 8px; border: 2px solid #e2e8f0;" />
-      </div>`).join('');
-    const videosHtml = videos.map(m => `
-      <div style="margin: 10px 0;">
-        <video controls style="max-width: 100%; border-radius: 8px; border: 2px solid #e2e8f0;">
-          <source src="${escHtml(m.url)}" type="video/mp4">
-        </video>
-        <p style="text-align: center; margin: 5px 0;"><a href="${escHtml(m.url)}" target="_blank" style="color: #0ea5e9;">📹 Open Video</a></p>
-      </div>`).join('');
-    const audiosHtml = audios.map(m => `
-      <div style="margin: 10px 0; background: #f1f5f9; padding: 15px; border-radius: 8px;">
-        <p style="margin: 0 0 10px 0; font-weight: bold;">🎤 Voice Note:</p>
-        <audio controls style="width: 100%;">
-          <source src="${escHtml(m.url)}" type="audio/webm">
-        </audio>
-      </div>`).join('');
-
-    // CENTRAL RENDERER — the document shell (logo, header, branding, footer,
-    // CTA, contact details) comes from the ONE transactional renderer; only
-    // the operational report content is composed here.
-    const emailBodyHtml = `
-          <div style="padding: 30px; background: #f8f9fa; border-bottom: 3px solid ${escHtml(brand.primary_color)};">
-            <h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: ${escHtml(guardName)}</h2>
-            <p style="color: #64748b; margin: 5px 0; font-size: 14px;">🏢 <strong>Client:</strong> ${escHtml(clientName)}</p>
-            <p style="color: #64748b; margin: 5px 0; font-size: 14px;">📍 <strong>Site:</strong> ${escHtml(siteName)}</p>
-            ${site && site.address ? `<p style="color: #64748b; margin: 5px 0; font-size: 14px;">🗺️ <strong>Address:</strong> ${escHtml(site.address)}</p>` : ''}
-            <p style="color: #64748b; margin: 5px 0; font-size: 14px;">📅 <strong>Shift date:</strong> ${escHtml(shiftDateStr)}</p>
-            ${user.badge_number ? `<p style="color: #64748b; margin: 5px 0; font-size: 14px;">🪪 <strong>Badge:</strong> ${escHtml(user.badge_number)}</p>` : ''}
-          </div>
-
-          <div style="padding: 30px;">
-            <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-              <h3 style="color: ${escHtml(brand.primary_color)}; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid ${escHtml(brand.primary_color)}; padding-bottom: 10px;">⏱️ Shift &amp; Clock-In</h3>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr><td style="padding:6px 0;color:#64748b;font-weight:bold;width:190px;font-size:13px;">Scheduled start:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;">${escHtml(scheduledStartStr)}</td></tr>
-                <tr><td style="padding:6px 0;color:#64748b;font-weight:bold;font-size:13px;">Actual clock-in:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;">${escHtml(clockInStr)}${clockIn && clockIn.verified ? ' (GPS verified)' : ''}</td></tr>
-                <tr><td style="padding:6px 0;color:#64748b;font-weight:bold;font-size:13px;">Report submitted:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;">${escHtml(submittedStr)}</td></tr>
-              </table>
-            </div>
-
-            <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-              <h3 style="color: ${escHtml(brand.primary_color)}; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid ${escHtml(brand.primary_color)}; padding-bottom: 10px;">📋 Start of Shift Details</h3>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr><td style="padding:6px 0;color:#64748b;font-weight:bold;width:190px;font-size:13px;">SHIFT/POST:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;">${escHtml(reportData.shift_post || 'N/A')}</td></tr>
-                <tr><td style="padding:6px 0;color:#64748b;font-weight:bold;font-size:13px;">SPECIAL INSTRUCTIONS:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;">${escHtml(reportData.special_instructions || 'None')}</td></tr>
-                <tr><td style="padding:6px 0;color:#64748b;font-weight:bold;font-size:13px;">POST ITEMS RECEIVED:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;">${escHtml(reportData.post_items_received || 'N/A')}</td></tr>
-                ${reportData.relieving_officer ? `<tr><td style="padding:6px 0;color:#64748b;font-weight:bold;font-size:13px;">RELIEVING OFFICER:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;">${escHtml(reportData.relieving_officer)}</td></tr>` : ''}
-                ${reportData.additional_notes ? `<tr><td style="padding:6px 0;color:#64748b;font-weight:bold;font-size:13px;">ADDITIONAL NOTES:</td><td style="padding:6px 0;color:#1e293b;font-size:15px;white-space:pre-wrap;">${escHtml(reportData.additional_notes)}</td></tr>` : ''}
-              </table>
-            </div>
-
-            ${reportData.observations && reportData.observations.length > 0 ? `
-            <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-              <h3 style="color: #0c4a6e; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px;">👁️ Observations</h3>
-              ${reportData.observations.map((obs, i) => `
-                <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #0ea5e9;">
-                  <p style="color: #0c4a6e; margin: 0 0 10px 0; font-weight: bold;">Observation #${i + 1}</p>
-                  <p style="margin: 5px 0;"><strong>Type:</strong> ${escHtml(obs.type || 'N/A')}</p>
-                  <p style="margin: 5px 0;"><strong>Time:</strong> ${escHtml(obs.time || 'N/A')}</p>
-                  <p style="margin: 5px 0;"><strong>Comments:</strong> ${escHtml(obs.comments || 'None')}</p>
-                </div>`).join('')}
-            </div>` : ''}
-
-            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid ${escHtml(brand.primary_color)}; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-              <h3 style="color: ${escHtml(brand.primary_color)}; margin: 0 0 15px 0; font-size: 18px;">📍 Location &amp; Geofence</h3>
-              <p style="margin: 5px 0; color: #1e293b;"><strong>GPS at submission:</strong> ${escHtml(locationStr)}</p>
-              <p style="margin: 5px 0 15px 0; color: #1e293b;"><strong>Geofence:</strong> ${escHtml(distanceStr)}</p>
-              ${googleMapsUrl ? `<div style="text-align: center;">
-                <a href="${escHtml(googleMapsUrl)}" style="display: inline-block; background: ${escHtml(brand.primary_color)}; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">📍 View on Google Maps</a>
-              </div>` : ''}
-            </div>
-
-            ${media.length > 0 ? `
-            <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-              <h3 style="color: #0c4a6e; margin: 0 0 20px 0; font-size: 18px; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px;">📎 Evidence (${media.length})</h3>
-              ${photosHtml}${videosHtml}${audiosHtml}
-            </div>` : ''}
-
-            ${reportData.signature ? `
-            <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px;">
-              <h3 style="color: #0c4a6e; margin: 0 0 15px 0; font-size: 18px; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px;">✍️ Digital Signature</h3>
-              <div style="background: white; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; text-align: center;">
-                <img src="${escHtml(reportData.signature)}" alt="Signature" style="max-width: 300px; height: auto;" />
-              </div>
-            </div>` : ''}
-
-          </div>`;
-    const emailHtml = renderTransactionalShell({
-      brand,
-      title: 'Start of Shift Report',
-      bodyHtml: emailBodyHtml,
-      cta: { label: 'Open Report History', url: REPORT_LINK },
+    // ── SHARED PRODUCTION BUILDER — the full Start of Shift email, text and
+    // Telegram rendering now lives in shared/startOfShiftReport.ts (the same
+    // builder the Report & Notification Showcase renders its examples from).
+    const sosReport = buildStartOfShiftReportEmail({
+      brand, site, siteName, guardName, badgeNumber: user.badge_number || null,
+      clientName, shift, reportData, location: guardGps || location, media,
+      submittedAt, distanceMetres, withinFence, geofenceRadius, siteGpsValid,
+      reportLink: REPORT_LINK,
     });
-    const emailSubject = `🛡️ Start of Shift Report — ${guardName} @ ${siteName} (${shiftDateStr})`;
-
-    // ── Shared TELEGRAM text (branded, operational summary + evidence links) ──
-    const telegramText = [
-      `🛡️ ${brand.brand_name}`,
-      `START OF SHIFT REPORT`,
-      ``,
-      `Officer: ${guardName}`,
-      `Client: ${clientName}`,
-      `Site: ${siteName}`,
-      site && site.address ? `Address: ${site.address}` : null,
-      `Shift date: ${shiftDateStr}`,
-      `Scheduled start: ${scheduledStartStr}`,
-      `Clock-in: ${clockInStr}`,
-      `Submitted: ${submittedStr}`,
-      `Location: ${locationStr}`,
-      `Geofence: ${distanceStr}`,
-      `Shift/Post: ${reportData.shift_post || 'N/A'}`,
-      reportData.relieving_officer ? `Relieving officer: ${reportData.relieving_officer}` : null,
-      reportData.additional_notes ? `Notes: ${String(reportData.additional_notes).slice(0, 300)}` : null,
-      (reportData.observations || []).length ? `Observations: ${reportData.observations.length}` : null,
-      photos.length ? `📷 Photo evidence: ${photos[0].url}${photos.length > 1 ? ` (+${photos.length - 1} more)` : ''}` : null,
-      videos.length ? `🎬 Video evidence: ${videos[0].url}${videos.length > 1 ? ` (+${videos.length - 1} more)` : ''}` : null,
-      ``,
-      `Open the report history for the full evidence:`,
-    ].filter(l => l !== null).join('\n');
+    const emailHtml = sosReport.emailHtml;
+    const emailSubject = sosReport.subject;
+    const telegramText = sosReport.telegramText;
+    const { shiftDateStr, submittedStr, distanceStr, clockInStr } = sosReport.facts;
 
     // ── PER-RECIPIENT DISPATCH — failure-isolated per recipient AND channel ──
     for (const admin of recipients) {
@@ -293,8 +156,13 @@ Deno.serve(async (req) => {
           await sendAuditedEmail(base44.asServiceRole, {
             to: admin.email,
             subject: emailSubject,
-            html: firstName ? emailHtml.replace('<h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: ', `<p style="color:#334155;font-size:15px;margin:0 0 10px;">Hello ${firstName},</p><h2 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 22px;">Officer: `) : emailHtml,
-            text: `START OF SHIFT REPORT\n\nOfficer: ${guardName}\nClient: ${clientName}\nSite: ${siteName}\nShift date: ${shiftDateStr}\nScheduled start: ${scheduledStartStr}\nClock-in: ${clockInStr}\nSubmitted: ${submittedStr}\nLocation: ${locationStr}\nGeofence: ${distanceStr}\n\nFull report: ${REPORT_LINK}`,
+            html: buildStartOfShiftReportEmail({
+              brand, site, siteName, guardName, badgeNumber: user.badge_number || null,
+              clientName, shift, reportData, location: guardGps || location, media,
+              submittedAt, distanceMetres, withinFence, geofenceRadius, siteGpsValid,
+              reportLink: REPORT_LINK, firstName,
+            }).emailHtml,
+            text: sosReport.text,
             brand,
             recipient_id: admin.id || undefined,
             recipient_name: admin.display_name || admin.full_name || undefined,

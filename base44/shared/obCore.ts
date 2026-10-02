@@ -326,7 +326,7 @@ async function sendObAlert(svc, occ, sch, kind) {
     ' push:' + (pr ? ('sent:' + pr.sent + ' skipped:' + pr.skipped + ' failed:' + pr.failed) : 'error') };
 }
 
-function escalationEmailHtml(occ, brand, brandName) {
+export function escalationEmailHtml(occ, brand, brandName) {
   const c = (brand && brand.primary) || '#0ea5e9';
   return '<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto">' +
     '<div style="background:' + c + ';color:#fff;padding:16px 20px;border-radius:8px 8px 0 0"><h2 style="margin:0;font-size:18px">' + (brandName || 'Task & OB Scheduling') + ' — OB ESCALATION</h2></div>' +
