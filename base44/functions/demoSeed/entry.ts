@@ -267,8 +267,11 @@ function buildHospitality(rnd, batch, cid, rid, site, shifts, now) {
       const local = rnd();
       let status = 'confirmed';
       if (local < 0.06 && day.offsetDays <= 0) status = 'confirmed'; // still inside handled below
-      const cancelled = rnd() < 0.055 && day.offsetDays < 2;
-      const pending = !cancelled && day.offsetDays >= -1 && rnd() < 0.06;
+      // offsetDays counts BACKWARD from today (59 = oldest) — recent days are
+      // offsets <= 1. Cancelled drafts spread across history; pending drafts
+      // only on the two most recent days.
+      const cancelled = rnd() < 0.055 && day.offsetDays >= 2;
+      const pending = !cancelled && day.offsetDays <= 1 && rnd() < 0.08;
       const pedestrianOnly = category === 'uber' || category === 'uber_eats_mrd';
       const isLocal = rnd() < 0.6;
       const name = isLocal ? pickName(rnd, FIRST, LAST) : pickName(rnd, INTL_FIRST, INTL_LAST);
@@ -698,7 +701,8 @@ function buildComms(rnd, batch, cid, rid, site, now) {
       raw_json: JSON.stringify({ simulated: true, note: 'No genuine scan occurred — demo fixture' }),
       mapped_summary: `[SIMULATED DEMO] ${d[3]} — synthetic field summary, no genuine document scanned.`,
       caller_page: 'demo', guard_id: d[1], guard_name: d[2],
-      site_id: site.id, timestamp: iso(new Date(now.getTime() - (2 + i * 5) * 86400000)),
+      site_id: site.id, time: iso(new Date(now.getTime() - (2 + i * 5) * 86400000)),
+      timestamp: iso(new Date(now.getTime() - (2 + i * 5) * 86400000)),
     });
   });
   return { chat, calls, notifs, docs };
@@ -711,8 +715,8 @@ function buildEstate(rnd, batch, cid, rid, site, now) {
     { business_name: '[SIMULATED] Sandton Laundry', category: 'laundry', contact_name: 'A. Fernandes', email: 'service@sandtonlaundry.demo', phone: '+27820009003', description: 'Linen and laundry service (demo vendor).', delivery_available: true, rating: 4.2 },
   ].map(v => ({ ...v, customer_id: cid, reseller_id: rid, status: 'active', operating_hours: '07:00–19:00', minimum_order: 0, notes: `[${DEMO_MARKER}] Demo vendor record.` }));
   const venues = [
-    { name: '[SIMULATED] Grand Ballroom', capacity: 220, description: 'Ballroom for events and functions (demo venue).', hourly_rate: 0 },
-    { name: '[SIMULATED] Poolside Terrace', capacity: 60, description: 'Outdoor terrace for smaller functions (demo venue).', hourly_rate: 0 },
+    { name: '[SIMULATED] Grand Ballroom', category: 'hall', capacity: 220, description: 'Ballroom for events and functions (demo venue).', hourly_rate: 0 },
+    { name: '[SIMULATED] Poolside Terrace', category: 'braai_area', capacity: 60, description: 'Outdoor terrace for smaller functions (demo venue).', hourly_rate: 0 },
   ].map(v => ({ ...v, customer_id: cid, reseller_id: rid, status: 'active', notes: `[${DEMO_MARKER}] Demo venue record.` }));
   const bookings = [
     { venue: 0, status: 'approved', when: 3, title: 'Corporate year-end function' },
@@ -721,11 +725,16 @@ function buildEstate(rnd, batch, cid, rid, site, now) {
     { venue: 1, status: 'cancelled', when: -2, title: 'Team braai' },
   ].map(b => {
     const t = new Date(now.getTime() + b.when * 86400000);
+    const y = t.getUTCFullYear(), m = String(t.getUTCMonth() + 1).padStart(2, '0'), d = String(t.getUTCDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
     return {
       customer_id: cid, reseller_id: rid, venue_id: null, venue_name: venues[b.venue].name,
       resident_id: 'demo-resident', resident_name: 'Demo Guest Services', unit_number: 'Events Desk',
-      event_title: `[SIMULATED] ${b.title}`, event_date: iso(saUTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), 18, 0)),
-      guests_expected: 20 + Math.floor(rnd() * 80), status: b.status, notes: `[${DEMO_MARKER}] Demo booking.`,
+      event_title: `[SIMULATED] ${b.title}`,
+      start_datetime: `${dateStr}T18:00:00`, end_datetime: `${dateStr}T22:00:00`,
+      booking_date: dateStr, start_time: '18:00', end_time: '22:00',
+      guests_expected: 20 + Math.floor(rnd() * 80), status: b.status, collision_checked: true,
+      notes: `[${DEMO_MARKER}] Demo booking.`,
     };
   });
   return { vendors, venues, bookings };
@@ -809,27 +818,37 @@ export default async function(req) {
 
       if (phase === 'setup') {
         const key = `${batchId}:setup`;
-        if (await ledgerKeyDone(key)) return Response.json({ ok: true, phase, skipped: true });
+        // Classification is RERUN-SAFE (never deletes; re-marking is_test is
+        // idempotent) so the skip check only applies to the control room.
         // 1) CLASSIFY technical tests — reconciled against the earlier 42-visit audit
-        const hvAll = await svc.entities.HospitalityVisit.filter({ customer_id: cid }, '-created_date', 1000).catch(() => []);
         const tokenRe = /^(duptest|test|tk_|verify_|selftest|self_test)/i;
-        const testVisits = hvAll.filter(v => v.is_test === true || tokenRe.test(String(v.submit_token || '')));
+        const fixtureRe = /\b(test|probe|matrix|tiebreak|idem)\b/i;
+        const prefixRe = /^(conc |gate walk one|john test|mr d rider)/i;
+        const isFixture = (s) => fixtureRe.test(String(s || '')) || prefixRe.test(String(s || '').trim().toLowerCase());
+        const hvAll = await svc.entities.HospitalityVisit.filter({ customer_id: cid }, '-created_date', 1000).catch(() => []);
+        const testVisits = hvAll.filter(v => v.is_test === true || tokenRe.test(String(v.submit_token || '')) || isFixture(`${v.person_name || ''}`));
         const testVisitIds = testVisits.map(v => v.id);
         if (testVisitIds.length) await svc.entities.HospitalityVisit.bulkUpdate(testVisitIds.map(id => ({ id, is_test: true })));
         const alAll = await svc.entities.AccessLog.filter({ customer_id: cid }, '-created_date', 500).catch(() => []);
         const linked = new Set(alAll.filter(l => l.hospitality_visit_id && testVisitIds.includes(l.hospitality_visit_id)).map(l => l.id));
-        const sigRe = /harness|self.?test|fixture|simulated/i;
-        const testLogs = alAll.filter(l => linked.has(l.id) || l.is_test === true || (String(l.notes || '').startsWith('GRID GATE Hospitality') && sigRe.test(`${l.person_name || ''}${l.notes || ''}`)) || sigRe.test(`${l.person_name || ''}${l.notes || ''}${l.exit_notes || ''}`));
+        const testLogs = alAll.filter(l =>
+          linked.has(l.id) || l.is_test === true ||
+          isFixture(`${l.person_name || ''}`) ||
+          (String(l.notes || '').startsWith('GRID GATE Hospitality') && String(l.guard_name || '') === 'Danie Oelofse' && String(l.created_date || '').startsWith('2026-10-01'))
+        );
         if (testLogs.length) await svc.entities.AccessLog.bulkUpdate(testLogs.map(l => ({ id: l.id, is_test: true })));
         const evAll = await svc.entities.HospitalityEvidence.filter({ customer_id: cid }).catch(() => []);
         const testEv = evAll.filter(e => e.is_test === true || e.kind === 'test' || tokenRe.test(String(e.submit_token || '')) || (e.visit_id && testVisitIds.includes(e.visit_id)));
         if (testEv.length) await svc.entities.HospitalityEvidence.bulkUpdate(testEv.map(e => ({ id: e.id, is_test: true })));
-        // ledger rows for every classified record (audit, never deleted by reset)
+        // ledger rows for every classified record (audit, never deleted by
+        // reset) — rerun-safe: existing classification rows are skipped.
+        const existingTT = await svc.entities.DemoSeedRecord.filter({ batch_id: batchId, kind: 'technical_test' }).catch(() => []);
+        const ttSeen = new Set(existingTT.map(r => `${r.entity_name}:${r.record_id}`));
         const ledgerRows = [
           ...testVisitIds.map(id => ({ batch_id: batchId, kind: 'technical_test', entity_name: 'HospitalityVisit', record_id: id, customer_id: cid, site_id: siteId })),
           ...testLogs.map(l => ({ batch_id: batchId, kind: 'technical_test', entity_name: 'AccessLog', record_id: l.id, customer_id: cid, site_id: siteId })),
           ...testEv.map(e => ({ batch_id: batchId, kind: 'technical_test', entity_name: 'HospitalityEvidence', record_id: e.id, customer_id: cid, site_id: siteId })),
-        ];
+        ].filter(r => !ttSeen.has(`${r.entity_name}:${r.record_id}`));
         for (const c of chunk(ledgerRows, 200)) await svc.entities.DemoSeedRecord.bulkCreate(c);
         // 2) Site config: checkpoints + patrol config + hospitality display name (preserve existing values)
         const siteUpdate = {};
@@ -846,7 +865,7 @@ export default async function(req) {
           const cr = await svc.entities.ControlRoom.create({ demo_batch_id: batchId, customer_id: cid, reseller_id: rid, name: 'Hyatt House Sandton Control Room', physical_address: site.address || null, status: 'active', linked_site_ids: [siteId], supervisor_user_ids: [], operator_user_ids: [], notes: `[${DEMO_MARKER}] Demo control room.` });
           crId = cr.id;
         }
-        await markPhase(batchId, key, JSON.stringify({ control_room_id: crId, classified: { visits: testVisitIds.length, logs: testLogs.length, evidence: testEv.length } }));
+        await markPhase(batchId, `${batchId}:setup`, JSON.stringify({ control_room_id: crId, classified: { visits: testVisitIds.length, logs: testLogs.length, evidence: testEv.length } }));
         return Response.json({ ok: true, phase, control_room_id: crId, classified: { hospitality_visits: testVisitIds.length, access_logs: testLogs.length, evidence: testEv.length }, next_phase: 'shifts' });
       }
 

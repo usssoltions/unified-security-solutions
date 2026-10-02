@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Search, ArrowUpDown, Shield, User } from "lucide-react";
+import { Download, Search, ArrowUpDown, Shield, User, FlaskConical } from "lucide-react";
 import { dedupePersonName } from "@/lib/personName";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
 
 const COLUMNS = [
   { key: "timestamp", label: "Date/Time" },
@@ -46,6 +47,15 @@ export default function AccessHistory() {
     dateFrom: "", dateTo: "",
   });
   const [sortDir, setSortDir] = useState("desc");
+  const [includeTests, setIncludeTests] = useState(false);
+
+  // Platform administrators may explicitly inspect technical-test (harness)
+  // records; every other user never sees them.
+  const { data: isPlatformAdmin = false } = useQuery({
+    queryKey: ["me_platform_admin"],
+    queryFn: async () => { try { return isPlatformAdminUser(await base44.auth.me()); } catch (_) { return false; } },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["access_logs_all"],
@@ -61,6 +71,7 @@ export default function AccessHistory() {
     const from = filters.dateFrom ? new Date(filters.dateFrom + "T00:00:00") : null;
     const to = filters.dateTo ? new Date(filters.dateTo + "T23:59:59") : null;
     let out = logs.filter((l) => {
+      if (l.is_test === true && !(includeTests && isPlatformAdmin)) return false;
       if (filters.event_type && l.event_type !== filters.event_type) return false;
       if (filters.gate && l.gate_name !== filters.gate) return false;
       if (filters.scan_method && l.scan_method !== filters.scan_method) return false;
@@ -83,7 +94,7 @@ export default function AccessHistory() {
       return sortDir === "desc" ? tb - ta : ta - tb;
     });
     return out;
-  }, [logs, filters, sortDir]);
+  }, [logs, filters, sortDir, includeTests, isPlatformAdmin]);
 
   const stats = useMemo(() => ({
     total: filtered.length,
@@ -127,6 +138,16 @@ export default function AccessHistory() {
               <p className="text-slate-400 text-xs">Permanent entry & exit records</p>
             </div>
           </div>
+          {isPlatformAdmin && (
+            <Button
+              onClick={() => setIncludeTests((v) => !v)}
+              variant="outline"
+              className={`h-9 text-xs border-slate-600 ${includeTests ? "bg-amber-500/20 text-amber-300 border-amber-500/50" : "text-slate-400"}`}
+              title="Technical-test (harness) records are excluded by default"
+            >
+              <FlaskConical className="w-4 h-4 mr-1.5" /> {includeTests ? "Tests shown" : "Tests hidden"}
+            </Button>
+          )}
           <Button onClick={exportCSV} disabled={filtered.length === 0} className="bg-sky-500 hover:bg-sky-600">
             <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>

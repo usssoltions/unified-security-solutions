@@ -2,8 +2,9 @@ import React, { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { FileDown, FileSpreadsheet, Hotel, Loader2 } from "lucide-react";
+import { FileDown, FileSpreadsheet, Hotel, Loader2, FlaskConical } from "lucide-react";
 import { listSites } from "@/lib/siteApi";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
 import { presenceOf, computeTotals, PRESENCE_LABELS, HOSP_CATEGORY_LABELS } from "@/lib/hospitalityMeta";
 import { exportVisitsCsv, exportVisitsPdf } from "@/lib/hospitalityExport";
 import VisitFilters from "@/components/hospitality/VisitFilters";
@@ -21,18 +22,28 @@ export default function HospitalityVisits() {
   const [open, setOpen] = useState(null);
   const [cancelling, setCancelling] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [includeTests, setIncludeTests] = useState(false);
+
+  // Platform administrators may explicitly inspect technical-test (harness)
+  // records; every other user never sees them (server-side exclusion).
+  const { data: isPlatformAdmin = false } = useQuery({
+    queryKey: ["me_platform_admin"],
+    queryFn: async () => { try { return isPlatformAdminUser(await base44.auth.me()); } catch (_) { return false; } },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: sites = [] } = useQuery({
     queryKey: ["hosp_sites"],
     queryFn: async () => ((await listSites({})) || []).filter((s) => s.access_workflow === "grid_gate_hospitality"),
   });
 
-  const queryKey = ["hosp_visits", filters];
+  const queryKey = ["hosp_visits", filters, includeTests && isPlatformAdmin];
   const { data, isLoading, error } = useQuery({
     queryKey,
     queryFn: async () => {
       const res = await base44.functions.invoke("finalizeAccessEntry", { action: "hospitality_list", access_data: {
         site_id: filters.site_id || undefined, category: filters.category || undefined, limit: 1000,
+        include_tests: includeTests && isPlatformAdmin ? true : undefined,
         date_from: filters.from ? new Date(`${filters.from}T00:00:00`).toISOString() : undefined,
         date_to: filters.to ? new Date(`${filters.to}T23:59:59`).toISOString() : undefined,
       } });
@@ -70,6 +81,16 @@ export default function HospitalityVisits() {
           </div>
         </div>
         <div className="flex gap-2">
+          {isPlatformAdmin && (
+            <Button
+              onClick={() => setIncludeTests((v) => !v)}
+              variant="outline"
+              className={`h-10 text-xs border-slate-600 ${includeTests ? "bg-amber-500/20 text-amber-300 border-amber-500/50" : "text-slate-400"}`}
+              title="Technical-test (harness) records are excluded by default"
+            >
+              <FlaskConical className="w-4 h-4 mr-1.5" /> {includeTests ? "Tests shown" : "Tests hidden"}
+            </Button>
+          )}
           <Button onClick={() => exportVisitsCsv(shown, fileBase)} disabled={!shown.length} variant="outline" className="h-10 border-slate-600 text-slate-200 active:scale-95 transition-transform">
             <FileSpreadsheet className="w-4 h-4 mr-2" /> CSV / Excel
           </Button>
