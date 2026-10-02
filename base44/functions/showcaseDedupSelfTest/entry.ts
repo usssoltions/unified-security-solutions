@@ -17,7 +17,7 @@
  * recorded delivery, losers 'claimed_by_concurrent_send'; (3) the audited
  * idempotency store holds exactly one 'sent' row per item+recipient.
  */
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sendOne } from '../../shared/showcaseDelivery.ts';
 
 function isPlatformAdmin(user: any): boolean {
@@ -114,11 +114,14 @@ Deno.serve(async (req) => {
     await sleep(300);
 
     // ── TEST 2 — concurrent attempts ──────────────────────────────────────
-    // Reset the isolated claim + ledger, then fire four attempts at once.
+    // Reset the isolated claim + ledger AND the audit idempotency rows left
+    // by TEST 1, so TEST 2 exercises the CONCURRENCY layer in isolation (the
+    // audit store is proven separately in TEST 3).
     await svc.entities.ShowcaseSendClaim.updateMany(
       { dedup_key: dedupKey, is_selftest: true },
       { $set: { status: 'unclaimed', claim_token: null, claimed_at: null } },
     );
+    await svc.entities.NotificationDelivery.deleteMany({ idempotency_key: `${dedupKey}:${to}`, channel: 'email' }).catch(() => null);
     const packView2 = { ...(pack as any), id: packId, preview: { sent_at: null, recipient: null, results: [] } };
     const before = sent.length;
     const concurrent = await Promise.all([

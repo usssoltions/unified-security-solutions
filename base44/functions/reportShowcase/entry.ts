@@ -19,14 +19,14 @@
  * this gateway is the narrowly authorised, manually-initiated exception, and
  * its pack content is inert rendered output from demo records.
  */
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import {
   SHOWCASE_TEMPLATE_CATALOG, buildTemplateExample, computePackFingerprint, DEMO_FOOTER,
 } from '../../shared/showcaseTemplates.ts';
 import {
-  sendOne as sendPackItem, createSendClaims, buildItemAttachments, freezeItemAttachments,
+  sendOne as sendPackItem, createSendClaims,
 } from '../../shared/showcaseDelivery.ts';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -146,16 +146,14 @@ async function sendOne(
   content: any, to: string, brand: any, customer_id: string, copy_to?: string | null,
   contentIdx?: number,
 ) {
-  // REAL ATTACHMENTS: the item's report files are built at send time from the
-  // pack's own demo records by the SHARED generators (the same builders the
-  // production dispatch path uses) — the pack stores only metadata.
-  const attachments = await buildItemAttachments(svc, content, brand, pack.customer_name || null);
-  let r = await sendPackItem(svc, pack, user, stage, content, to, brand, customer_id, copy_to, contentIdx, { attachments });
+  // Attachments are handled INSIDE the shared sendOne (frozen on first send,
+  // reused thereafter) — the gateway passes no attachments of its own.
+  let r = await sendPackItem(svc, pack, user, stage, content, to, brand, customer_id, copy_to, contentIdx);
   // Packs generated before the claim ledger existed have no claim rows —
   // create them for this pack, then claim again (never send unclaimed).
   if (r.skipped && r.reason === 'claim_missing') {
     await createSendClaims(svc, pack).catch(() => null);
-    r = await sendPackItem(svc, pack, user, stage, content, to, brand, customer_id, copy_to, contentIdx, { attachments });
+    r = await sendPackItem(svc, pack, user, stage, content, to, brand, customer_id, copy_to, contentIdx);
   }
   return r;
 }
@@ -261,16 +259,6 @@ Deno.serve(async (req) => {
       }
       if (!contents.length) {
         return Response.json({ error: 'No template could be rendered — no suitable demo records found for the selected templates.' }, { status: 422 });
-      }
-      // FREEZE the attachments: each item's real report files are built ONCE
-      // here and stored privately — the preview and the customer delivery
-      // reuse the EXACT files reviewed, so later demo-data changes can never
-      // alter an approved pack.
-      for (const c of contents) {
-        if ((c.attachments || []).length) {
-          c.attachments = await freezeItemAttachments(svc, c, brand, customerName);
-          await sleep(200);
-        }
       }
       const content_fingerprint = await computePackFingerprint({ selections, contents, branding_snapshot: snapshot });
       const rand = Math.random().toString(36).slice(2, 6).toUpperCase();

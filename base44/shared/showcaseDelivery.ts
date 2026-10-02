@@ -68,10 +68,15 @@ export async function claimSendItem(svc: any, dedup_key: string): Promise<{ won:
     if (row.status === 'claiming' && age <= CLAIM_STALE_MS) {
       return { won: false, reason: 'claimed_by_concurrent_send' };
     }
-    // Stale-claim recovery — CAS on the stale holder's token (same pattern as
-    // the OB sweep's claim leases): the previous holder crashed before commit.
+    // ATOMIC CLAIM — conditional update (same CAS pattern as the Stay Awake
+    // sweep's claim leases): an UNCLAIMED row is claimed on its own status;
+    // a STALE 'claiming' holder (older than 2 minutes, previous holder
+    // crashed before commit) is taken over conditionally on its token. The
+    // losing concurrent attempt's update matches nothing.
     const take = await svc.entities.ShowcaseSendClaim.updateMany(
-      { dedup_key, status: 'claiming', claim_token: row.claim_token || '__stale__' },
+      row.status === 'claiming'
+        ? { dedup_key, status: 'claiming', claim_token: row.claim_token || '__stale__' }
+        : { dedup_key, status: 'unclaimed' },
       { $set: { status: 'claiming', claim_token: token, claimed_at: new Date().toISOString(), attempts: (row.attempts || 0) + 1 } },
     ).catch(() => null);
     if (take && take.updated) return { won: true, token };
@@ -215,7 +220,10 @@ export async function freezeItemAttachments(svc: any, content: any, brand: any, 
       const up = await svc.integrations.Core.UploadPrivateFile({ file });
       const uri = up?.file_uri || up?.data?.file_uri || null;
       out.push(uri ? { ...meta, file_uri: uri } : meta);
-    } catch (_) { out.push(meta); }
+    } catch (e: any) {
+      try { console.error('[showcaseDelivery] freeze failed for', meta?.filename, String(e?.message || e)); } catch (_) {}
+      out.push(meta);
+    }
   }
   return out;
 }
@@ -243,7 +251,10 @@ export async function buildItemAttachments(svc: any, content: any, brand: any, c
       } else if (meta.generator === 'monthly_maintenance_pdf') {
         out.push(...await buildMonthlyAttachment(svc, meta, brand, 'maintenance'));
       }
-    } catch (_) { /* an attachment that cannot be built never blocks the send */ }
+    } catch (e: any) {
+      try { console.error('[showcaseDelivery] attachment build failed for', meta?.filename, String(e?.message || e)); } catch (_) {}
+      /* an attachment that cannot be built never blocks the send */
+    }
   }
   return out.filter((a) => a.content && a.filename);
 }
@@ -270,7 +281,53 @@ export async function sendOne(
   if (!claim.won) return { skipped: true, reason: claim.reason };
   const token = claim.token as string;
 
-  const attachments = (opts?.attachments || []).filter((a) => a.content || a.file_url);
+  // REAL ATTACHMENTS — FROZEN ON FIRST SEND. When the caller does not supply
+  // attachments (the production gateway path), the item's report files are
+  // built ONCE by the shared generators, uploaded to PRIVATE storage and the
+  // frozen file_uri PERSISTED into the pack contents — the other stage and
+  // every retry then REUSE the exact same files, so later demo-data changes
+  // can never alter an approved pack's attachments.
+  let attachments: { filename: string; content?: string; file_url?: string }[];
+  if (opts?.attachments) {
+    attachments = opts.attachments;
+  } else {
+    const builtAtts = await buildItemAttachments(svc, content, brand, (pack as any).customer_name || null);
+    const uris: Record<number, string> = {};
+    for (let i = 0; i < (content.attachments || []).length; i++) {
+      const meta: any = content.attachments[i];
+      if (!meta || meta.file_uri) continue;
+      const built = builtAtts.find((a) => a.filename === meta.filename && a.content);
+      if (!built?.content) continue;
+      try {
+        const type = /\.csv$/i.test(meta.filename) ? 'text/csv' : 'application/pdf';
+        const up = await svc.integrations.Core.UploadPrivateFile({
+          file: new File([bytesFromBase64(built.content as string)], meta.filename, { type }),
+        });
+        const uri = up?.file_uri || up?.data?.file_uri || null;
+        if (uri) {
+          uris[i] = uri;
+          const bi = builtAtts.findIndex((a) => a.filename === meta.filename && a.content);
+          if (bi >= 0) builtAtts[bi] = { filename: meta.filename, file_url: uri };
+        }
+      } catch (e: any) {
+        try { console.error('[showcaseDelivery] freeze-at-send failed for', meta.filename, String(e?.message || e)); } catch (_) {}
+      }
+    }
+    // Persist the frozen uris (fresh copy first — never clobber another
+    // item's just-frozen uri).
+    if (Object.keys(uris).length && contentIdx !== undefined) {
+      try {
+        const fresh = await svc.entities.ReportShowcasePack.get(pack.id).catch(() => null);
+        const freshPack = fresh?.data ?? fresh;
+        const contents = [...(freshPack?.contents || pack.contents || [])];
+        const item = { ...contents[contentIdx] };
+        item.attachments = (item.attachments || []).map((m: any, i: number) => (uris[i] ? { ...m, file_uri: uris[i] } : m));
+        contents[contentIdx] = item;
+        await svc.entities.ReportShowcasePack.update(pack.id, { contents });
+      } catch (_) { /* persistence failure never blocks the send */ }
+    }
+    attachments = builtAtts.filter((a) => a.content || a.file_url);
+  }
   const attempt = async (addr: string) => {
     try {
       const r = await sendAuditedEmail(svc, {

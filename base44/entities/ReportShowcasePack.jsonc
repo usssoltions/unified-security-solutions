@@ -1,7 +1,7 @@
 {
   "name": "ReportShowcasePack",
   "type": "object",
-  "description": "Report & Notification Showcase: ONE generated showcase pack for one customer. Contents are INERT rendered examples built from that customer's DEMO-seeded records using the platform's real notification/report templates \u2014 generating or previewing never alters incidents/tasks/schedules, never triggers gate actions and never invokes escalation workflows. STATE MACHINE: generated -> preview_sent -> approved -> sending -> sent (cancelled at any pre-send stage). APPROVAL GATE: customer delivery is only possible after an explicit approval recording the pack's content fingerprint and a typed acknowledgment; any regeneration changes the fingerprint and invalidates a prior approval. FROZEN ATTACHMENTS: report items' REAL report files (branded PDFs/CSV from the platform's actual report generators) are built and uploaded to PRIVATE storage ONCE at pack generation \u2014 preview and customer delivery REUSE the exact frozen files, so later demo-data changes can never alter an approved pack (regeneration creates a new pack + fingerprint). Contents only ever store attachment METADATA (filename/generator/record ids/frozen file uri), never file bytes. Every send is an EXPLICIT platform-admin action through the reportShowcase gateway with recipients validated against the customer's ShowcaseConfig (demo-suppression of AUTOMATED dispatch is untouched: this is a manually authorised showcase exception). GATEWAY-ONLY access; direct client access restricted to platform administration by RLS.",
+  "description": "Report & Notification Showcase: ONE generated showcase pack for one customer. Contents are INERT rendered examples built from that customer's DEMO-seeded records using the platform's real notification/report templates \u2014 generating or previewing never alters incidents/tasks/schedules, never triggers gate actions and never invokes escalation workflows. STATE MACHINE: generated -> preview_sent -> approved -> sending -> sent (cancelled at any pre-send stage). APPROVAL GATE: customer delivery is only possible after an explicit approval recording the pack's content fingerprint and a typed acknowledgment; any regeneration changes the fingerprint and invalidates a prior approval. FROZEN ATTACHMENTS: report items' REAL report files (branded PDFs/CSV from the platform's actual report generators) are built and uploaded to PRIVATE storage ONCE at FIRST SEND (the owner preview) \u2014 the customer delivery and every retry REUSE the exact frozen files, so later demo-data changes can never alter an approved pack (regeneration creates a new pack + fingerprint). Contents only ever store attachment METADATA (filename/generator/record ids/frozen file uri), never file bytes. Every send is an EXPLICIT platform-admin action through the reportShowcase gateway with recipients validated against the customer's ShowcaseConfig (demo-suppression of AUTOMATED dispatch is untouched: this is a manually authorised showcase exception). GATEWAY-ONLY access; direct client access restricted to platform administration by RLS.",
   "properties": {
     "pack_number": {
       "type": "string",
@@ -122,7 +122,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "INTERNAL frozen attachment: private storage uri of the REAL report file built and uploaded at pack generation \u2014 preview and customer delivery reuse this exact file."
+                  "description": "INTERNAL frozen attachment: private storage uri of the REAL report file built and uploaded at first send \u2014 the other stage and every retry reuse this exact file."
                 }
               },
               "required": [
@@ -131,7 +131,7 @@
               ]
             },
             "default": [],
-            "description": "Metadata of the REAL downloadable report files attached to this item when it is sent (frozen at pack generation; bytes never stored in the pack)."
+            "description": "Metadata of the REAL downloadable report files attached to this item when it is sent (frozen at first send; bytes never stored in the pack)."
           }
         }
       },
@@ -184,7 +184,7 @@
     },
     "content_fingerprint": {
       "type": "string",
-      "description": "SHA-256 of the pack's selections + contents + branding (incl. the frozen attachment file uris). Approval and customer delivery are bound to it."
+      "description": "SHA-256 of the pack's selections + contents + branding. Approval and customer delivery are bound to it."
     },
     "preview": {
       "type": "object",
