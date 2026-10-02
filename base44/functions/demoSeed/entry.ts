@@ -754,6 +754,9 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
   const counts = {};
   const tag = (entity, made) => { for (const m of made) rows.push({ entity, id: m.id }); counts[entity] = (counts[entity] || 0) + made.length; };
   const siteDisplay = site.hospitality_display_name || site.name;
+  // Batched writes only: dozens of single-record creates trip the platform
+  // rate limiter; a short settle between entity batches keeps runs reliable.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const dateOff = (off) => { const t = new Date(now.getTime() - off * 86400000); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`; };
   const at = (off, hh, mm) => iso(saUTC(new Date(now.getTime() - off * 86400000).getUTCFullYear(), new Date(now.getTime() - off * 86400000).getUTCMonth(), new Date(now.getTime() - off * 86400000).getUTCDate(), hh, mm));
 
@@ -841,7 +844,7 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
   for (let i = 0; i < 8; i++) {
     const make = MAKES[i % MAKES.length];
     const g = ROSTER[i % ROSTER.length];
-    madeDiscs.push(await svc.entities.VehicleLicenceDisc.create({
+    madeDiscs.push({
       customer_id: cid, reseller_id: rid,
       registration_number: `CA ${400 + i * 7}-${String(500 + i * 3)}`,
       vin: `DEMOVIN${batch.slice(5)}${String(i).padStart(3, '0')}`,
@@ -852,8 +855,16 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
       raw_scan_json: JSON.stringify({ simulated: true, note: 'No genuine scan occurred — demo fixture' }),
       scan_timestamp: at(2 + i * 5, 9 + (i % 8), 15),
       scanned_by_id: g[0], scanned_by_name: `[SIMULATED] ${g[1]}`,
-    }));
+    });
   }
+  for (const c of chunk(madeDiscs, 8)) madeDiscs.push(...[]) /* placeholder */;
+  const madeDiscs2 = [];
+  for (const c of chunk(madeDiscs.map(d => d), 8)) {
+    madeDiscs2.push(...(await svc.entities.VehicleLicenceDisc.bulkCreate(c)));
+    await sleep(400);
+  }
+  madeDiscs.length = 0;
+  madeDiscs.push(...madeDiscs2);
   tag('VehicleLicenceDisc', madeDiscs);
 
   // ── Patrol checklists: templates + completions ──
@@ -986,7 +997,7 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
     customer_id: cid, reseller_id: rid, site_id: site.id,
     question: '[SIMULATED] Should the pool area hours extend to 21:00?',
     description: `[${DEMO_MARKER}] Demo community vote.`,
-    category: 'community', options: ['Yes', 'No', 'Abstain'],
+    category: 'community', options: [{ id: 'o1', text: 'Yes' }, { id: 'o2', text: 'No' }, { id: 'o3', text: 'Abstain' }],
     status: 'active', opens_at: at(5, 8, 0), closes_at: at(-10, 20, 0),
     votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
   }));
@@ -994,7 +1005,7 @@ async function buildScreensPhase(svc, rnd, batch, cid, rid, site, now) {
     customer_id: cid, reseller_id: rid, site_id: site.id,
     question: '[SIMULATED] Approval for additional CCTV camera at the restaurant entrance',
     description: `[${DEMO_MARKER}] Demo security vote (closed).`,
-    category: 'security', options: ['Approve', 'Reject'],
+    category: 'security', options: [{ id: 'o1', text: 'Approve' }, { id: 'o2', text: 'Reject' }],
     status: 'closed', opens_at: at(40, 8, 0), closes_at: at(30, 20, 0),
     votes: [], created_by: 'demo-admin', created_by_name: 'Demo Administrator', anonymous_results: false,
   }));
