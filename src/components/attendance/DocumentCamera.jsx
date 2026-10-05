@@ -8,11 +8,10 @@
  *   2. After the green outline stays steady for ~1.2 s the frame is captured
  *      automatically — there is no manual shutter and no corner dragging.
  *   3. The full-resolution frame is re-detected, straightened and cropped to
- *      the document's outer edges (border kept, background removed). If the
- *      whole document cannot be confirmed nothing is produced; a clear retake
- *      message is shown and live detection simply continues.
- *   4. The crop is shown for approval (Retake / Use Photo) before anything is
- *      uploaded or saved.
+ *      the document's outer edges (border kept, background removed) and the
+ *      result is saved IMMEDIATELY — no approval tap. If the whole document
+ *      cannot be confirmed nothing is produced; a clear retake message is
+ *      shown and live detection simply continues.
  *
  * Camera init (progressive constraints, frame-ready gate, focus) is the
  * existing working flow. Physical document PHOTO subsystem only —
@@ -20,7 +19,7 @@
  */
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Loader2, RefreshCw, AlertTriangle, CheckCircle2, Image as ImageIcon } from "lucide-react";
+import { Camera, Loader2, AlertTriangle, Image as ImageIcon } from "lucide-react";
 import { guideForIdType } from "@/lib/documentPhoto";
 import { analyseLiveFrame, captureDocument } from "@/lib/docAutoCapture";
 
@@ -44,16 +43,13 @@ const GUIDANCE = {
 const RETAKE_MSG = "The whole document could not be confirmed — nothing was saved. Keep the entire document inside the frame and hold it steady.";
 
 export default function DocumentCamera({ title, idType = "sa_id", onUse, onCancel }) {
-  const [phase, setPhase] = useState("starting"); // starting | live | still | preview | denied
+  const [phase, setPhase] = useState("starting"); // starting | live | still | denied
   const [errorMsg, setErrorMsg] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [liveMsg, setLiveMsg] = useState({ ok: false, text: GUIDANCE.not_found });
   const [retakeMsg, setRetakeMsg] = useState(null);
   const [guideStyle, setGuideStyle] = useState({});
   const [stillUrl, setStillUrl] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [previewFile, setPreviewFile] = useState(null);
-  const [retakeSource, setRetakeSource] = useState("camera");
   const [processing, setProcessing] = useState(false);
   const [flash, setFlash] = useState(false);
 
@@ -190,23 +186,15 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     ctx.stroke();
   };
 
-  const showPreview = (file) => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    objectUrlRef.current = URL.createObjectURL(file);
-    setPreviewUrl(objectUrlRef.current);
-    setPreviewFile(file);
-    setRetakeMsg(null);
-    stopStream();
-    setPhase("preview");
-  };
-
-  // Full-resolution detect → straighten → crop. Never produces a partial image.
+  // Full-resolution detect → straighten → crop. Never produces a partial
+  // image. On success the cropped file is handed straight to onUse, which
+  // uploads/saves it — no approval tap.
   const runCapture = async (source, fit) => {
     busyRef.current = true;
     setProcessing(true);
     try {
       const out = await captureDocument({ source, fit, container: containerRef.current, guideEl: guideRef.current, idType });
-      if (out?.file) { showPreview(out.file); return true; }
+      if (out?.file) { setRetakeMsg(null); onUse(out.file); return true; }
       setRetakeMsg(RETAKE_MSG);
       return false;
     } catch (_) {
@@ -275,7 +263,6 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     objectUrlRef.current = URL.createObjectURL(f);
     setStillUrl(objectUrlRef.current);
-    setRetakeSource("still");
     setRetakeMsg(null);
     setPhase("still");
   };
@@ -283,14 +270,6 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
   // Gallery fallback (camera unavailable): same automatic detection on the photo.
   const onStillLoaded = () => {
     if (stillImgRef.current && !busyRef.current) setTimeout(() => runCapture(stillImgRef.current, "contain"), 50);
-  };
-
-  const handleRetake = () => {
-    setPreviewUrl(null);
-    setPreviewFile(null);
-    setRetakeMsg(null);
-    if (retakeSource === "still") setPhase("denied");
-    else startCamera();
   };
 
   return (
@@ -334,7 +313,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
         </div>
       )}
 
-      {retakeMsg && phase !== "preview" && (
+      {retakeMsg && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
           <p className="text-amber-300 text-sm flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {retakeMsg}</p>
         </div>
@@ -360,25 +339,6 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
             <input id="doc-cam-gallery" type="file" accept="image/*" className="hidden" onChange={pickFile} />
           </label>
         </div>
-      )}
-
-      {phase === "preview" && (
-        <>
-          <div className="bg-black rounded-xl overflow-hidden border border-[var(--border-default)]">
-            <img src={previewUrl} alt="Cropped document" className="w-full max-h-[48vh] object-contain" />
-          </div>
-          <p className="text-xs flex items-start gap-1.5 text-emerald-400">
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" /> Straightened and cropped to the document's edges. Confirm the WHOLE document (all corners, border and text) is visible.
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleRetake} className="flex-1 border-[var(--border-default)] text-slate-200 h-12">
-              <RefreshCw className="w-4 h-4 mr-1.5" /> Retake
-            </Button>
-            <Button onClick={() => onUse(previewFile)} variant="brand" className="flex-1 h-12">
-              <CheckCircle2 className="w-4 h-4 mr-1.5" /> Use Photo
-            </Button>
-          </div>
-        </>
       )}
 
       {processing && (
