@@ -97,7 +97,7 @@ export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip, ski
     <div className="space-y-4">
       <p className="text-slate-400 text-sm">
         Please take a clear photo of the <strong className="text-white">physical identification document</strong> presented.
-        Hold the document inside the frame — the camera finds its outer edges and captures automatically once the whole document is visible, sharp and steady. The photo is straightened, cropped to the document's edges and saved automatically. A retake is offered only if the document cannot be confirmed or the image is unclear.
+        Position the document inside the guide — the saved photo will contain the document only.
       </p>
       {error && (
         <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-rose-400 text-sm">{error}</div>
