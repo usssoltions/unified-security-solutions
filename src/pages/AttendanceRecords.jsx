@@ -102,10 +102,21 @@ export default function AttendanceRecords() {
 
   const handleIndividualPdf = async (record) => {
     try {
-      const withSigs = await withSignatures([record]);
-      const blob = await generateIndividualAttendancePdf(withSigs[0], {}, branding);
-      downloadBlob(blob, `attendance_${record.id_number_snapshot}_${record.attendance_date}.pdf`);
-    } catch (e) { alert("PDF generation failed."); }
+      // Fresh saved record (incl. signature + latest edits) and the visit's
+      // own photo snapshot, fetched server-side — both must finish before the
+      // PDF is built. A stored photo that cannot be retrieved blocks the PDF
+      // with an explicit error instead of a silent PDF without photos.
+      const [{ record: fresh }, photos] = await Promise.all([
+        attendanceCall("get_record", { record_id: record.id }),
+        attendanceCall("get_photo_data", { record_id: record.id }),
+      ]);
+      if (!fresh?.signature_data_url) throw new Error("The signature for this attendance could not be retrieved. The PDF was not created.");
+      if (photos.missing?.length) throw new Error(`The ID photo (${photos.missing.join(" and ")}) for this attendance could not be retrieved from storage. The PDF was not created.`);
+      const blob = await generateIndividualAttendancePdf({ ...fresh, id_photo_front_data: photos.front, id_photo_back_data: photos.back }, {}, branding);
+      downloadBlob(blob, `attendance_${fresh.id_number_snapshot}_${fresh.attendance_date}.pdf`);
+    } catch (e) {
+      toast({ title: "PDF not created", description: e?.message || "PDF generation failed.", variant: "destructive" });
+    }
   };
 
   // Controlled Customer-Admin deletion of a single attendance record

@@ -97,6 +97,7 @@ export default function AttendanceDashboard() {
           <h2 className="text-white text-2xl font-bold">Attendance Registered</h2>
           <p className="text-slate-300">{successInfo.workerName}</p>
           <p className="text-slate-400 text-sm">Registered at {successInfo.attendanceTime}</p>
+          {successInfo.photoSummary && <p className="text-slate-300 text-sm">{successInfo.photoSummary}</p>}
           <div className="flex flex-col gap-2 pt-2">
             <Button onClick={() => { setSuccessInfo(null); setShowWizard(true); }} variant="brand" className="w-full h-12">
               <Plus className="w-4 h-4 mr-2" /> Register Another

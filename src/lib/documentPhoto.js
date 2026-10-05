@@ -135,14 +135,19 @@ export function captureWarnings(crop) {
  * Upload the cropped document master. The crop is ALREADY a single-encoded
  * high-quality JPEG — it is uploaded directly with NO recompression
  * (never re-encode the same image twice).
- * @returns {Promise<string|null>} permanent file URL
+ * ID documents are sensitive: stored in PRIVATE storage (no public URL).
+ * Returns the private reference to save, plus a short-lived signed URL used
+ * only to preview/verify this capture.
+ * @returns {Promise<{ref: string, viewUrl: string|null}|null>}
  */
 export async function uploadDocumentPhoto(file) {
   if (!file) return null;
   try {
     const { base44 } = await import("@/api/base44Client");
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    return file_url || null;
+    const { file_uri } = await base44.integrations.Core.UploadPrivateFile({ file });
+    if (!file_uri) return null;
+    const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({ file_uri, expires_in: 3600 });
+    return { ref: file_uri, viewUrl: signed_url || null };
   } catch (_) {
     return null;
   }

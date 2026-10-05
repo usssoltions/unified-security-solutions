@@ -287,6 +287,7 @@ export async function generateIndividualAttendancePdf(record, worker, branding) 
   fld("Time", record.attendance_time || "—");
   fld("Surname, Initials", `${record.surname_snapshot || ""}${record.initials_snapshot ? ", " + record.initials_snapshot : ""}`);
   fld("ID / Passport Number", record.id_number_snapshot || "—");
+  fld("Document Type", ID_TYPE_LABEL[record.id_type_snapshot] || "—");
   fld("Company / Customer", record.company_snapshot || "—");
   fld("Job Description", record.job_description_snapshot || "—");
   fld("Medical Centre", record.medical_centre || "—");
@@ -296,42 +297,31 @@ export async function generateIndividualAttendancePdf(record, worker, branding) 
   fld("Captured By", record.captured_by_name || "—");
   fy += 4;
 
-  if (record.signature_data_url) {
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(80, 80, 80);
-    doc.text("Signature:", 15, fy);
-    fy += 2;
-    try { doc.addImage(record.signature_data_url, 15, fy, 80, 25); } catch (_) {}
-    fy += 30;
-  }
+  // Electronic signature — REQUIRED and embedded as a visible image.
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(80, 80, 80);
+  doc.text("Electronic Signature:", 15, fy);
+  doc.setDrawColor(200, 200, 200);
+  doc.rect(15, fy + 2, 90, 32);
+  await embedImage(doc, record.signature_data_url, 16, fy + 3, 88, 30, "The electronic signature");
+  fy += 2 + 32 + 8;
 
-  // ID-document photos retained on THIS visit — shown alongside the
-  // attendance details and signature (contain-fit, never stretched).
-  const docImages = [
-    record.id_photo_front_url ? { label: "FRONT", url: record.id_photo_front_url } : null,
-    record.id_photo_back_url ? { label: "BACK", url: record.id_photo_back_url } : null,
-  ].filter(Boolean);
-
-  if (docImages.length) {
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(80, 80, 80);
-    doc.text("ID Document:", 15, fy);
-    fy += 2;
-    const sideBySide = docImages.length === 2;
-    for (const { label, url } of docImages) {
-      const boxX = sideBySide ? (label === "FRONT" ? 15 : 110) : 15;
-      const boxW = 85;
-      const boxH = 62;
-      doc.setFontSize(9);
-      doc.setTextColor(60, 60, 60);
-      doc.text(`ID DOCUMENT — ${label}`, boxX + boxW / 2, fy, { align: "center" });
-      const fit = await fittedImageRect(url, boxW, boxH);
-      try { doc.addImage(url, boxX + (boxW - fit.w) / 2, fy + 3 + (boxH - fit.h) / 2, fit.w, fit.h); } catch (_) {}
-    }
-    fy += 3 + 62 + 5;
-  }
+  // ID-document photos of THIS visit (its own snapshot — never the worker's
+  // newer profile photos). Every stored photo must embed, or the PDF fails.
+  if (record.id_photo_front_url && !record.id_photo_front_data) throw new Error("The ID photo (front) could not be retrieved.");
+  if (record.id_photo_back_url && !record.id_photo_back_data) throw new Error("The ID photo (back) could not be retrieved.");
+  const captureMeta = [
+    PHOTO_SOURCE_LABEL[record.id_photo_source],
+    record.id_photo_captured_at ? new Date(record.id_photo_captured_at).toLocaleString("en-ZA") : null,
+    record.id_photo_captured_by_name ? `by ${record.id_photo_captured_by_name}` : null,
+  ].filter(Boolean).join(" · ");
+  fy = await drawIdPhotos(doc, fy, {
+    front: record.id_photo_front_url ? record.id_photo_front_data : null,
+    back: record.id_photo_back_url ? record.id_photo_back_data : null,
+    idType: record.id_type_snapshot, meta: captureMeta,
+    emptyText: "No ID photos saved for this attendance.",
+  });
 
   // Footer
   const footer = [
@@ -366,6 +356,65 @@ function fittedImageRect(url, maxW, maxH) {
     img.onerror = fallback;
     img.src = url;
   });
+}
+
+const ID_TYPE_LABEL = { sa_id: "SA ID", drivers_licence: "Driver's Licence", passport: "Passport", other: "Other" };
+const PHOTO_SOURCE_LABEL = {
+  captured_this_visit: "Captured during this attendance",
+  on_file: "Worker's photos on file used for this attendance",
+  attached_by_edit: "Attached by administrator edit",
+};
+
+/** Embed a data-url image contain-fit in a box. Throws (never silently
+ * skips) when the image is missing or cannot be embedded. */
+async function embedImage(doc, dataUrl, x, y, boxW, boxH, what) {
+  if (!dataUrl || !String(dataUrl).startsWith("data:image")) throw new Error(`${what} could not be retrieved.`);
+  const fit = await fittedImageRect(dataUrl, boxW, boxH);
+  try {
+    doc.addImage(dataUrl, x + (boxW - fit.w) / 2, y + (boxH - fit.h) / 2, fit.w, fit.h);
+  } catch (_) {
+    throw new Error(`${what} could not be embedded in the PDF.`);
+  }
+}
+
+/** ID-document photos, one per row at a readable size, labelled with the
+ * side and document type; adds pages as needed so nothing is clipped. */
+async function drawIdPhotos(doc, fy, { front, back, idType, meta, emptyText }) {
+  const typeLabel = ID_TYPE_LABEL[idType] || "ID document";
+  const BOX_W = 180, BOX_H = 95;
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60, 60, 60);
+  if (fy > 262) { doc.addPage(); fy = 20; }
+  doc.text(`ID DOCUMENT PHOTOS — ${typeLabel}`, 15, fy);
+  fy += 5;
+  if (meta) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.splitTextToSize(meta, 180).forEach((l) => { doc.text(l, 15, fy); fy += 4; });
+  }
+  const items = [
+    front ? { label: idType === "passport" ? "INFORMATION / PHOTO PAGE" : "FRONT", data: front } : null,
+    back ? { label: "BACK", data: back } : null,
+  ].filter(Boolean);
+  if (!items.length) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.text(emptyText, 15, fy + 2);
+    return fy + 10;
+  }
+  for (const { label, data } of items) {
+    if (fy + 7 + BOX_H > 280) { doc.addPage(); fy = 20; }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`${label} — ${typeLabel}`, 15, fy + 3);
+    doc.setDrawColor(200, 200, 200);
+    doc.rect(15, fy + 5, BOX_W, BOX_H);
+    await embedImage(doc, data, 16, fy + 6, BOX_W - 2, BOX_H - 2, `The ID photo (${label.toLowerCase()})`);
+    fy += 5 + BOX_H + 6;
+  }
+  return fy;
 }
 
 export async function generateWorkerIdPdf(worker, branding) {
@@ -412,28 +461,13 @@ export async function generateWorkerIdPdf(worker, branding) {
   // high-quality document photos). Width/height are computed from each
   // image's actual aspect ratio (contain-fit) — never stretched, never an
   // upscaled thumbnail.
-  const docImages = [
-    worker.id_front_url ? { label: "FRONT", url: worker.id_front_url } : null,
-    worker.id_back_url ? { label: "BACK", url: worker.id_back_url } : null,
-  ].filter(Boolean);
-
-  if (docImages.length) {
-    const sideBySide = docImages.length === 2;
-    for (const { label, url } of docImages) {
-      const boxX = sideBySide ? (label === "FRONT" ? 15 : 110) : 45;
-      const boxW = sideBySide ? 85 : 120;
-      const boxH = 62;
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(60, 60, 60);
-      doc.text(`IDENTIFICATION DOCUMENT — ${label}`, boxX + boxW / 2, fy, { align: "center" });
-      const fit = await fittedImageRect(url, boxW, boxH);
-      try {
-        doc.addImage(url, boxX + (boxW - fit.w) / 2, fy + 3 + (boxH - fit.h) / 2, fit.w, fit.h);
-      } catch (_) {}
-    }
-    fy += 3 + 62 + 5;
-  }
+  if (worker.id_front_url && !worker.id_front_data) throw new Error("The ID photo (front) could not be retrieved.");
+  if (worker.id_back_url && !worker.id_back_data) throw new Error("The ID photo (back) could not be retrieved.");
+  fy = await drawIdPhotos(doc, fy, {
+    front: worker.id_front_url ? worker.id_front_data : null,
+    back: worker.id_back_url ? worker.id_back_data : null,
+    idType: worker.id_type, meta: null, emptyText: "No ID photos on file.",
+  });
 
   const footer = [
     branding?.support_phone ? `T: ${branding.support_phone}` : null,

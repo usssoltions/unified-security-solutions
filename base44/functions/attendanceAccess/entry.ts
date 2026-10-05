@@ -166,6 +166,40 @@ export default async function main(req: Request): Promise<Response> {
     ? r.customer_id === scope.customer_id
     : scope.reseller_id ? r.reseller_id === scope.reseller_id : true;
 
+  // ── ID-document photo references ───────────────────────────────────────
+  // New captures are PRIVATE storage uris (UploadPrivateFile) — never
+  // publicly reachable. Legacy photos may still be public https urls.
+  // Viewing always goes through short-lived signed urls minted here, only
+  // after the caller's tenant scope has been checked.
+  const isPhotoRef = (v: any): boolean => typeof v === 'string' && v.length > 0 && v.length < 600 && !/\s/.test(v) && !v.startsWith('data:');
+  const signRef = async (ref: any): Promise<string | null> => {
+    if (!ref) return null;
+    if (/^https?:\/\//.test(ref)) return ref;
+    try {
+      const r = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: ref, expires_in: 3600 });
+      return r?.signed_url || null;
+    } catch { return null; }
+  };
+  const workerView = async (w: any) => w ? { ...w, id_front_view_url: await signRef(w.id_front_url), id_back_view_url: await signRef(w.id_back_url) } : w;
+  const recordView = async (r: any) => r ? { ...r, id_photo_front_view_url: await signRef(r.id_photo_front_url), id_photo_back_view_url: await signRef(r.id_photo_back_url) } : r;
+  // Fetch the stored image bytes server-side (no browser CORS) as a data url
+  // so PDFs embed the REAL image. null = could not be retrieved.
+  const photoData = async (ref: any): Promise<string | null> => {
+    const url = await signRef(ref);
+    if (!url) return null;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const type = (res.headers.get('content-type') || '').split(';')[0] || 'image/jpeg';
+      if (!type.startsWith('image/')) return null;
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.length === 0) return null;
+      let bin = '';
+      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      return `data:${type};base64,${btoa(bin)}`;
+    } catch { return null; }
+  };
+
   // Reseller id to stamp on records (derived from the Customer record when
   // the caller's own record does not carry it).
   const resolveResellerId = async (): Promise<string | null> => {
@@ -301,7 +335,7 @@ export default async function main(req: Request): Promise<Response> {
         const q = scopeQuery();
         if (params.active_only) q.status = 'active';
         const workers = await base44.asServiceRole.entities.AttendanceWorker.filter(q, '-created_date', 1000);
-        return Response.json({ workers: workers || [] });
+        return Response.json({ workers: await Promise.all((workers || []).map(workerView)) });
       }
 
       case 'find_worker': {
@@ -313,7 +347,7 @@ export default async function main(req: Request): Promise<Response> {
         // explicitly requested.
         if (!params.include_archived) q.status = 'active';
         const found = await base44.asServiceRole.entities.AttendanceWorker.filter(q, '-created_date', 5);
-        return Response.json({ worker: found && found.length > 0 ? found[0] : null });
+        return Response.json({ worker: found && found.length > 0 ? await workerView(found[0]) : null });
       }
 
       // ── Worker / Patient directory: create + update (profile flows) ─────────
@@ -510,6 +544,22 @@ export default async function main(req: Request): Promise<Response> {
         if (!rec.attendance_date || !rec.attendance_time) return err('Attendance date and time are required.');
         if (!rec.medical_centre || !rec.assessment_type) return err('Medical Centre and Assessment Type are required.');
 
+        // Explicit operator choice for THIS visit's ID photos:
+        //  'captured' = new photos captured now (refs in params.worker)
+        //  'existing' = use the worker's photos already on file
+        //  'none'     = operator explicitly continued without photos
+        const capFront = params.worker?.id_front_url || null;
+        const capBack = capFront ? (params.worker?.id_back_url || null) : null;
+        const photoMode = ['captured', 'existing', 'none'].includes(params.photo_mode)
+          ? params.photo_mode : (capFront ? 'captured' : 'none');
+        if (photoMode === 'captured' && (!isPhotoRef(capFront) || (capBack && !isPhotoRef(capBack)))) {
+          return err('The captured ID photos are missing or invalid. Please capture them again.');
+        }
+        // A new capture updates the worker profile unless the operator chose
+        // to keep the profile's existing photos (visit snapshot only).
+        const updateWorkerPhotos = params.update_worker_photos !== false;
+        let workerPhotosUpdated = false;
+
         const reseller_id = await resolveResellerId();
         let worker: any = null;
         let createdWorker = false;
@@ -523,10 +573,11 @@ export default async function main(req: Request): Promise<Response> {
           if (wu.company !== undefined && wu.company !== worker.company) updates.company = wu.company;
           if (wu.job_description !== undefined && wu.job_description !== worker.job_description) updates.job_description = wu.job_description;
           if (wu.cellphone !== undefined && wu.cellphone !== worker.cellphone) updates.cellphone = wu.cellphone;
-          if (wu.id_front_url && wu.id_front_url !== worker.id_front_url) {
+          if (photoMode === 'captured' && (updateWorkerPhotos || !worker.id_front_url)) {
             const ts = rec.attendance_timestamp || new Date().toISOString();
-            updates.id_front_url = wu.id_front_url;
-            updates.id_back_url = wu.id_back_url || null;
+            workerPhotosUpdated = true;
+            updates.id_front_url = capFront;
+            updates.id_back_url = capBack;
             updates.id_captured_at = ts;
             updates.id_captured_by_id = caller.id;
             updates.id_captured_by_name = callerName;
@@ -562,13 +613,14 @@ export default async function main(req: Request): Promise<Response> {
             // Attach newly captured ID-document photos to the matched
             // profile. Photos already on file are KEPT unless the operator
             // captured new ones — the operator's capture is never dropped.
-            if (w.id_front_url && w.id_front_url !== worker.id_front_url) {
+            if (photoMode === 'captured' && (updateWorkerPhotos || !worker.id_front_url)) {
               const ts2 = rec.attendance_timestamp || new Date().toISOString();
+              workerPhotosUpdated = true;
               await base44.asServiceRole.entities.AttendanceWorker.update(worker.id, {
                 // A new capture replaces the PAIR — never mix a new front
                 // with an older back photo.
-                id_front_url: w.id_front_url,
-                id_back_url: w.id_back_url || null,
+                id_front_url: capFront,
+                id_back_url: capBack,
                 id_captured_at: ts2,
                 id_captured_by_id: caller.id,
                 id_captured_by_name: callerName,
@@ -579,6 +631,7 @@ export default async function main(req: Request): Promise<Response> {
           } else {
             const ts = rec.attendance_timestamp || new Date().toISOString();
             createdWorker = true;
+            workerPhotosUpdated = photoMode === 'captured';
             worker = await base44.asServiceRole.entities.AttendanceWorker.create({
               customer_id: scope.customer_id,
               reseller_id,
@@ -590,24 +643,28 @@ export default async function main(req: Request): Promise<Response> {
               company: cleanText(w.company),
               job_description: cleanText(w.job_description),
               cellphone: cleanText(w.cellphone),
-              id_front_url: w.id_front_url || null,
-              id_back_url: w.id_back_url || null,
-              id_captured_at: w.id_front_url ? ts : null,
-              id_captured_by_id: w.id_front_url ? caller.id : null,
-              id_captured_by_name: w.id_front_url ? callerName : null,
+              id_front_url: photoMode === 'captured' ? capFront : null,
+              id_back_url: photoMode === 'captured' ? capBack : null,
+              id_captured_at: photoMode === 'captured' ? ts : null,
+              id_captured_by_id: photoMode === 'captured' ? caller.id : null,
+              id_captured_by_name: photoMode === 'captured' ? callerName : null,
               created_by_name: callerName,
               status: 'active',
             });
           }
         }
+        if (photoMode === 'existing' && !worker.id_front_url) {
+          return err('This worker has no ID photos on file to use. Please capture the ID photos.');
+        }
 
         // Visit photo snapshot: a new capture (front present in the payload
         // and different from what the profile had) is stored as a PAIR;
         // otherwise the profile's photos on file are used.
-        const newFront = params.worker?.id_front_url || null;
-        const isNewCapture = !!newFront && (createdWorker || newFront !== worker.id_front_url);
-        const visitFront = isNewCapture ? newFront : (worker.id_front_url || null);
-        const visitBack = isNewCapture ? (params.worker?.id_back_url || null) : (worker.id_back_url || null);
+        // `worker` here is the copy read BEFORE any photo update, so
+        // 'existing' snapshots exactly the photos the operator was shown.
+        const isNewCapture = photoMode === 'captured';
+        const visitFront = isNewCapture ? capFront : photoMode === 'existing' ? (worker.id_front_url || null) : null;
+        const visitBack = isNewCapture ? capBack : photoMode === 'existing' ? (worker.id_back_url || null) : null;
         const visitTs = rec.attendance_timestamp || new Date().toISOString();
 
         // Historical snapshot fields come from the validated input — profile
@@ -644,7 +701,7 @@ export default async function main(req: Request): Promise<Response> {
           captured_by_name: callerName,
         });
 
-        return Response.json({ success: true, worker_id: worker.id, record_id: created.id });
+        return Response.json({ success: true, worker_id: worker.id, record_id: created.id, photo_mode: photoMode, worker_photos_updated: workerPhotosUpdated });
       }
 
       // ── Records ─────────────────────────────────────────────────────────────
@@ -719,7 +776,28 @@ export default async function main(req: Request): Promise<Response> {
           id_front_url: w.id_front_url || null, id_back_url: w.id_back_url || null,
           id_captured_at: w.id_captured_at || null, id_captured_by_name: w.id_captured_by_name || null,
         } : null;
-        return Response.json({ record: r, worker, can_edit: canManageWorkers });
+        return Response.json({ record: await recordView(r), worker: await workerView(worker), can_edit: canManageWorkers });
+      }
+
+      // ── Image bytes for PDFs (record visit snapshot OR worker profile) ─────
+      // Scope-checked; returns data urls so the PDF embeds the real images.
+      // A stored photo that cannot be retrieved is reported in `missing`.
+      case 'get_photo_data': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        let front: any = null, back: any = null;
+        if (params.record_id) {
+          const r = await base44.asServiceRole.entities.AttendanceRecord.get(params.record_id).catch(() => null);
+          if (!r || !recordInScope(r)) return err('Attendance record not found in your scope.', 404);
+          front = r.id_photo_front_url; back = r.id_photo_back_url;
+        } else if (params.worker_id) {
+          const w = await base44.asServiceRole.entities.AttendanceWorker.get(params.worker_id).catch(() => null);
+          if (!w || !recordInScope(w)) return err('Worker not found in your scope.', 404);
+          front = w.id_front_url; back = w.id_back_url;
+        } else return err('A record id or worker id is required.');
+        const [fd, bd] = await Promise.all([front ? photoData(front) : null, back ? photoData(back) : null]);
+        const missing = [front && !fd ? 'front' : null, back && !bd ? 'back' : null].filter(Boolean);
+        return Response.json({ front: fd, back: bd, has_front: !!front, has_back: !!back, missing });
       }
 
       // ── Authorised correction of ONE attendance record ──────────────────────
@@ -764,8 +842,8 @@ export default async function main(req: Request): Promise<Response> {
         if (photoChange) {
           const front = params.id_photo_front_url || null;
           const back = front ? (params.id_photo_back_url || null) : null;
-          if (front && !/^https:\/\//.test(front)) return err('Invalid front photo.');
-          if (back && !/^https:\/\//.test(back)) return err('Invalid back photo.');
+          if (front && !isPhotoRef(front)) return err('Invalid front photo.');
+          if (back && !isPhotoRef(back)) return err('Invalid back photo.');
           if (front !== (r.id_photo_front_url || null) || back !== (r.id_photo_back_url || null)) {
             updates.id_photo_front_url = front;
             updates.id_photo_back_url = back;
@@ -816,7 +894,7 @@ export default async function main(req: Request): Promise<Response> {
           notes: `Edited attendance ${r.attendance_date} ${r.attendance_time} (${r.id_number_snapshot}). Fields: ${Object.keys(changes).join(', ')}. Reason: ${reason}`,
         }).catch(() => null);
         const fresh = await base44.asServiceRole.entities.AttendanceRecord.get(r.id);
-        return Response.json({ success: true, record: fresh, applied_to_worker: appliedToWorker });
+        return Response.json({ success: true, record: await recordView(fresh), applied_to_worker: appliedToWorker });
       }
 
       // ── Post-save verification ──────────────────────────────────────────────
@@ -834,7 +912,7 @@ export default async function main(req: Request): Promise<Response> {
         if (!w || w.customer_id !== scope.customer_id) return err('Worker not found in your scope.', 404);
         if (!r || r.customer_id !== scope.customer_id) return err('Record not found in your scope.', 404);
         const { signature_data_url: _sig, ...recordSafe } = r;
-        return Response.json({ worker: w, record: recordSafe });
+        return Response.json({ worker: await workerView(w), record: await recordView(recordSafe) });
       }
 
       case 'get_signatures': {

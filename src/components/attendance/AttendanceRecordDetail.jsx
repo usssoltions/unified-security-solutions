@@ -66,7 +66,8 @@ export default function AttendanceRecordDetail({ recordId, medicalCentres, asses
                 : <p className="text-slate-500 text-sm">No signature on record</p>}
             </div>
             <div className="bg-[var(--surface-card)] rounded-2xl border border-[var(--border-default)] p-4">
-              <IdPhotoPair front={r.id_photo_front_url} back={r.id_photo_back_url} source={r.id_photo_source}
+              {/* This attendance's OWN photo snapshot (signed private links) */}
+              <IdPhotoPair front={r.id_photo_front_url ? r.id_photo_front_view_url : null} back={r.id_photo_back_url ? r.id_photo_back_view_url : null} source={r.id_photo_source} stored={!!r.id_photo_front_url}
                 capturedAt={r.id_photo_captured_at} capturedBy={r.id_photo_captured_by_name} />
               {!r.id_photo_front_url && data.worker?.id_front_url && (
                 <p className="text-slate-400 text-xs mt-2">The worker profile has photos on file — use Edit to attach them to this visit if they are the document used.</p>

@@ -2,17 +2,24 @@ import React from "react";
 import { CheckCircle2, ImageOff } from "lucide-react";
 
 const SOURCE_LABEL = {
-  captured_this_visit: "Captured during this visit",
+  captured_this_visit: "Captured during this attendance",
   on_file: "Worker's photos on file",
   attached_by_edit: "Attached by administrator edit",
 };
 
 /** Front/back ID-document photos with capture status. */
-export default function IdPhotoPair({ front, back, source, capturedAt, capturedBy }) {
+export default function IdPhotoPair({ front, back, source, capturedAt, capturedBy, stored = false }) {
+  if (!front && stored) {
+    return (
+      <div className="flex items-center gap-2 text-rose-300 text-sm bg-rose-500/10 border border-rose-500/30 rounded-xl p-3">
+        <ImageOff className="w-4 h-4 shrink-0" /> ID photos are saved for this attendance but could not be loaded. Close and reopen to retry.
+      </div>
+    );
+  }
   if (!front) {
     return (
       <div className="flex items-center gap-2 text-amber-300 text-sm bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
-        <ImageOff className="w-4 h-4 shrink-0" /> No ID photos saved for this visit
+        <ImageOff className="w-4 h-4 shrink-0" /> No ID photos saved for this attendance
       </div>
     );
   }

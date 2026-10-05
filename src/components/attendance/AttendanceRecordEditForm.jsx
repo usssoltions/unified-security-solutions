@@ -83,8 +83,8 @@ export default function AttendanceRecordEditForm({ record, medicalCentres, asses
       <div className="bg-[var(--surface-raised)] rounded-xl p-3 space-y-3">
         <p className="text-white text-sm font-semibold">ID Document Photos</p>
         {photos
-          ? <IdPhotoPair front={photos.frontUrl} back={photos.backUrl} source="attached_by_edit" />
-          : <IdPhotoPair front={record.id_photo_front_url} back={record.id_photo_back_url} source={record.id_photo_source} capturedAt={record.id_photo_captured_at} capturedBy={record.id_photo_captured_by_name} />}
+          ? <IdPhotoPair front={photos.frontView} back={photos.backView} source="attached_by_edit" />
+          : <IdPhotoPair front={record.id_photo_front_url ? record.id_photo_front_view_url : null} back={record.id_photo_back_url ? record.id_photo_back_view_url : null} source={record.id_photo_source} capturedAt={record.id_photo_captured_at} capturedBy={record.id_photo_captured_by_name} />}
         <Button variant="outline" onClick={() => setCapturing(true)} className="w-full h-11 border-[var(--border-default)] text-slate-200">
           <Camera className="w-4 h-4 mr-2" /> {record.id_photo_front_url || photos ? "Replace photos" : "Attach photos"}
         </Button>

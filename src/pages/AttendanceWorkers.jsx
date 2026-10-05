@@ -95,9 +95,11 @@ export default function AttendanceWorkers() {
 
   const handleWorkerPdf = async (worker) => {
     try {
-      const blob = await generateWorkerIdPdf(worker, branding);
+      const photos = await attendanceCall("get_photo_data", { worker_id: worker.id });
+      if (photos.missing?.length) throw new Error(`The ID photo (${photos.missing.join(" and ")}) could not be retrieved from storage. The PDF was not created.`);
+      const blob = await generateWorkerIdPdf({ ...worker, id_front_data: photos.front, id_back_data: photos.back }, branding);
       downloadBlob(blob, `id_doc_${worker.id_number}.pdf`);
-    } catch (e) { alert("PDF generation failed."); }
+    } catch (e) { alert(e?.message || "PDF generation failed."); }
   };
 
   const formatDate = d => d ? new Date(d).toLocaleDateString("en-ZA") : "—";
@@ -244,8 +246,8 @@ export default function AttendanceWorkers() {
                       {w.id_front_url ? (
                         <div className="space-y-2">
                           <div className="flex gap-2">
-                            <img src={w.id_front_url} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
-                            {w.id_back_url && <img src={w.id_back_url} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
+                            <img src={w.id_front_view_url} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
+                            {w.id_back_url && <img src={w.id_back_view_url} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
                           </div>
                           {w.id_captured_at && <p className="text-slate-500 text-xs">Captured {formatDate(w.id_captured_at)}</p>}
                           <Button onClick={() => handleWorkerPdf(w)} variant="brand" className="h-11">

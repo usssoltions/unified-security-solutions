@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
 import AttendanceSignaturePad from "./AttendanceSignaturePad";
-import IdDocCapture from "./IdDocCapture";
+import IdPhotoStep from "./IdPhotoStep";
 import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { todayISO, localTimeStr } from "@/lib/attendanceDropdowns";
@@ -84,9 +84,14 @@ export default function NewAttendanceWizard({
   const [jobDescription, setJobDescription] = useState("");
   const [cellphone, setCellphone] = useState("");
 
-  // ID doc
+  // ID doc — this attendance's photo choice. Refs are PRIVATE storage
+  // references (saved); views are signed preview links (display only).
+  const [photoMode, setPhotoMode] = useState(null); // 'captured' | 'existing' | 'none'
   const [idFrontUrl, setIdFrontUrl] = useState(null);
   const [idBackUrl, setIdBackUrl] = useState(null);
+  const [idFrontView, setIdFrontView] = useState(null);
+  const [idBackView, setIdBackView] = useState(null);
+  const [updateWorkerPhotos, setUpdateWorkerPhotos] = useState(true);
 
   // Attendance detail fields
   const [medicalCentre, setMedicalCentre] = useState("");
@@ -144,8 +149,6 @@ export default function NewAttendanceWizard({
           setCompany(w.company || "");
           setJobDescription(w.job_description || "");
           setCellphone(w.cellphone || "");
-          setIdFrontUrl(w.id_front_url || null);
-          setIdBackUrl(w.id_back_url || null);
           setLicenceMissingFirstNames(false);
         } else {
           setExistingWorker(false);
@@ -168,8 +171,17 @@ export default function NewAttendanceWizard({
     setStep(2);
   };
 
-  // ── Step 3: ID Doc — skip for existing worker if doc present ─────────────
-  const skipIdDoc = existingWorker && (existingWorker.id_front_url);
+  // ── Step 3: ID Doc — ALWAYS shown (never skipped because photos exist) ──
+  const handlePhotoDone = ({ mode, frontUrl, backUrl, frontView, backView, updateWorker }) => {
+    const ew = existingWorker || {};
+    setPhotoMode(mode);
+    setIdFrontUrl(mode === "captured" ? frontUrl : mode === "existing" ? ew.id_front_url : null);
+    setIdBackUrl(mode === "captured" ? backUrl || null : mode === "existing" ? ew.id_back_url || null : null);
+    setIdFrontView(mode === "captured" ? frontView : mode === "existing" ? ew.id_front_view_url : null);
+    setIdBackView(mode === "captured" ? backView || null : mode === "existing" ? ew.id_back_view_url || null : null);
+    setUpdateWorkerPhotos(mode === "captured" ? updateWorker !== false : false);
+    setStep(4);
+  };
 
   // ── Step 6: Save ─────────────────────────────────────────────────────────
   const handleConfirm = async () => {
@@ -192,24 +204,21 @@ export default function NewAttendanceWizard({
         if (company !== existingWorker.company) workerUpdates.company = company;
         if (jobDescription !== existingWorker.job_description) workerUpdates.job_description = jobDescription;
         if (cellphone !== existingWorker.cellphone) workerUpdates.cellphone = cellphone;
-        if (idFrontUrl && idFrontUrl !== existingWorker.id_front_url) {
-          workerUpdates.id_front_url = idFrontUrl;
-          workerUpdates.id_back_url = idBackUrl || null;
-        }
       }
+      const captured = photoMode === "captured";
 
       const res = await attendanceCall("register_attendance", {
         existing_worker_id: existingWorker?.id || null,
         worker: {
           surname, initials, first_names: firstNames, id_number: idNumber, id_type: idType,
           company, job_description: jobDescription, cellphone,
-          // ID-document photos captured in step 3 are ALWAYS sent — the
-          // gateway saves them on a new profile and attaches them to an
-          // existing/deduped profile (keeping photos already on file unless
-          // the operator explicitly replaced them).
-          id_front_url: idFrontUrl || null,
-          id_back_url: idBackUrl || null,
+          // Only NEW captures are sent as photos; 'existing' tells the
+          // gateway to snapshot the profile's photos on file.
+          id_front_url: captured ? idFrontUrl : null,
+          id_back_url: captured ? idBackUrl || null : null,
         },
+        photo_mode: photoMode || "none",
+        update_worker_photos: captured ? updateWorkerPhotos : false,
         worker_updates: workerUpdates,
         record: {
           attendance_date: dateStr,
@@ -254,21 +263,28 @@ export default function NewAttendanceWizard({
       // profile's photos on file) must be stored EXACTLY on both the reloaded
       // profile and the visit. Without one, the profile keeps its photos and
       // the visit must mirror whatever the profile has.
-      const pairFront = idFrontUrl || null;
-      const pairBack = idFrontUrl ? (idBackUrl || null) : null;
-      if (pairFront) {
-        if ((sv.id_front_url ?? null) !== pairFront) mismatches.push("id_front_url");
-        if ((sv.id_back_url ?? null) !== pairBack) mismatches.push("id_back_url");
-      } else if (existingWorker && existingWorker.id) {
-        if ((sv.id_front_url ?? null) !== (existingWorker.id_front_url ?? null)) mismatches.push("id_front_url");
-      }
-      const visitFront = pairFront || sv.id_front_url || null;
-      const visitBack = pairFront ? pairBack : (sv.id_back_url || null);
+      // The visit must hold EXACTLY the photos chosen for this attendance.
+      const visitFront = photoMode === "none" ? null : (idFrontUrl || null);
+      const visitBack = photoMode === "none" ? null : (idBackUrl || null);
       if ((sr.id_photo_front_url ?? null) !== visitFront) mismatches.push("id_photo_front_url");
       if ((sr.id_photo_back_url ?? null) !== visitBack) mismatches.push("id_photo_back_url");
-      // The saved photos must actually reload from storage.
-      for (const [k, u] of [["id_photo_front_url", sr.id_photo_front_url], ["id_photo_back_url", sr.id_photo_back_url]]) {
-        if (u && !(await canLoadImage(u))) mismatches.push(k + " (image did not reload)");
+      // Worker profile: replaced by a new capture when chosen (or when it
+      // had none), otherwise left exactly as it was.
+      const ew = existingWorker && existingWorker.id ? existingWorker : null;
+      const profileUpdated = captured && (updateWorkerPhotos || !ew || !ew.id_front_url);
+      if (profileUpdated) {
+        if ((sv.id_front_url ?? null) !== idFrontUrl) mismatches.push("worker id_front_url");
+        if ((sv.id_back_url ?? null) !== (idBackUrl || null)) mismatches.push("worker id_back_url");
+      } else if (ew && (sv.id_front_url ?? null) !== (ew.id_front_url ?? null)) {
+        mismatches.push("worker id_front_url");
+      }
+      // The saved photos must actually reload from storage (signed links
+      // minted from the RELOADED record).
+      for (const [k, ref, view] of [
+        ["front photo", sr.id_photo_front_url, sr.id_photo_front_view_url],
+        ["back photo", sr.id_photo_back_url, sr.id_photo_back_view_url],
+      ]) {
+        if (ref && !(view && (await canLoadImage(view)))) mismatches.push(k + " did not reload from storage");
       }
       if (mismatches.length > 0) {
         setSaveError("Attendance WAS saved, but the stored values did not match the reviewed entry (" + mismatches.join(", ") + "). Do NOT confirm again — report this to your administrator.");
@@ -279,6 +295,9 @@ export default function NewAttendanceWizard({
         workerName: formatDisplayName({ surname, initials }),
         attendanceTime: timeStr,
         workerId: res?.worker_id,
+        photoSummary: !visitFront
+          ? "Saved without ID photos"
+          : `ID photos saved on this attendance${res?.worker_photos_updated ? " · worker profile photos updated" : " · worker profile photos unchanged"}`,
       });
     } catch (e) {
       setSaveError("Failed to save attendance. Please try again.");
@@ -312,14 +331,18 @@ export default function NewAttendanceWizard({
   const placeholdersBlocked = placeholderWarnings.length > 0;
   const step4Valid = medicalCentre && assessmentType;
 
-  const goNext = () => {
-    if (step === 2 && skipIdDoc) { setStep(4); return; }
+  const goNext = async () => {
+    // Manual entry: look the ID number up so an existing worker's photos on
+    // file can be offered (typed details are never overwritten).
+    if (step === 2 && existingWorker === false && idNumber.trim()) {
+      try {
+        const res = await attendanceCall("find_worker", { id_number: idNumber.trim() });
+        if (res?.worker) setExistingWorker(res.worker);
+      } catch { /* server dedups on save regardless */ }
+    }
     setStep(s => s + 1);
   };
-  const goBack = () => {
-    if (step === 4 && skipIdDoc) { setStep(2); return; }
-    setStep(s => Math.max(1, s - 1));
-  };
+  const goBack = () => setStep(s => Math.max(1, s - 1));
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (showScanner) {
@@ -467,55 +490,9 @@ export default function NewAttendanceWizard({
         </div>
       )}
 
-      {/* ── STEP 3: ID Document ── */}
+      {/* ── STEP 3: ID Document (always shown) ── */}
       {step === 3 && (
-        <div className="space-y-4">
-          <h2 className="text-white text-xl font-bold">Identification Document</h2>
-          {existingWorker && existingWorker.id_front_url && (
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 space-y-2">
-              <p className="text-emerald-300 text-sm font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" /> Document on file
-              </p>
-              {existingWorker.id_captured_at && (
-                <p className="text-slate-400 text-xs">
-                  Last captured: {new Date(existingWorker.id_captured_at).toLocaleDateString("en-ZA")}
-                </p>
-              )}
-              <div className="flex gap-2">
-                <img src={existingWorker.id_front_url} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
-                {existingWorker.id_back_url && (
-                  <img src={existingWorker.id_back_url} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
-                )}
-              </div>
-              <Button variant="outline" size="sm" onClick={() => { setIdFrontUrl(null); setIdBackUrl(null); }}
-                className="border-amber-500/50 text-amber-400 text-xs">
-                Replace / Update Document Photos
-              </Button>
-            </div>
-          )}
-          {existingWorker && !existingWorker.id_front_url && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-amber-300 text-sm">
-              No ID photos on file for this worker — please capture them now.
-            </div>
-          )}
-          {(!existingWorker || !existingWorker.id_front_url || !idFrontUrl) && (
-            <IdDocCapture
-              idType={idType}
-              onComplete={({ frontUrl, backUrl }) => { setIdFrontUrl(frontUrl); setIdBackUrl(backUrl); goNext(); }}
-              onSkip={goNext}
-            />
-          )}
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={goBack} className="flex-1 border-slate-600 text-slate-300 h-12">
-              <ChevronLeft className="w-4 h-4 mr-1" /> Back
-            </Button>
-            {(existingWorker?.id_front_url) && (
-              <Button onClick={goNext} variant="brand" className="flex-1 h-12">
-                Continue <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            )}
-          </div>
-        </div>
+        <IdPhotoStep existingWorker={existingWorker} idType={idType} onDone={handlePhotoDone} onBack={goBack} />
       )}
 
       {/* ── STEP 4: Attendance Details ── */}
@@ -590,11 +567,11 @@ export default function NewAttendanceWizard({
               ["Medical Centre", medicalCentre],
               ["Assessment Type", assessmentType],
               ["Additional Information", additionalInfo || "—"],
-              ["ID Photos", !idFrontUrl
-                ? "Not captured"
-                : existingWorker && idFrontUrl === existingWorker.id_front_url
-                  ? `On file${existingWorker.id_captured_at ? " (" + new Date(existingWorker.id_captured_at).toLocaleDateString("en-ZA") + ")" : ""}`
-                  : `Captured this visit (${idBackUrl ? "front + back" : "front only"})`],
+              ["ID Photos", photoMode === "existing"
+                ? `Worker's photos on file${existingWorker?.id_captured_at ? " (" + new Date(existingWorker.id_captured_at).toLocaleDateString("en-ZA") + ")" : ""}`
+                : photoMode === "captured"
+                  ? `Captured for this attendance (${idBackUrl ? "front + back" : "front only"}) · worker profile ${updateWorkerPhotos || !existingWorker?.id_front_url ? "will be updated" : "unchanged"}`
+                  : "None — saving without ID photos"],
             ].map(([label, val]) => (
               <div key={label} className="flex items-start gap-3 px-4 py-3">
                 <span className="text-slate-400 text-sm w-44 shrink-0">{label}</span>
@@ -602,6 +579,16 @@ export default function NewAttendanceWizard({
               </div>
             ))}
           </div>
+          {idFrontView && (
+            <div className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-3">
+              <p className="text-slate-400 text-xs mb-2">ID Photos for this attendance</p>
+              <div className="flex gap-2">
+                {[idFrontView, idBackView].filter(Boolean).map((u, i) => (
+                  <img key={i} src={u} alt={i ? "ID Back" : "ID Front"} className="h-20 rounded-lg object-contain border border-slate-600 bg-[var(--surface-base)]" />
+                ))}
+              </div>
+            </div>
+          )}
           {signatureDataUrl && (
             <div className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-3">
               <p className="text-slate-400 text-xs mb-2">Signature Preview</p>

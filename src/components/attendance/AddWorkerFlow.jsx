@@ -42,6 +42,9 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
   const [cellphone, setCellphone] = useState(worker?.cellphone || "");
   const [idFrontUrl, setIdFrontUrl] = useState(worker?.id_front_url || null);
   const [idBackUrl, setIdBackUrl] = useState(worker?.id_back_url || null);
+  // Signed preview links (photos are stored privately; refs above are saved).
+  const [idFrontView, setIdFrontView] = useState(worker?.id_front_view_url || null);
+  const [idBackView, setIdBackView] = useState(worker?.id_back_view_url || null);
 
   const [existing, setExisting] = useState(null); // duplicate found via lookup
   // Driver's Licence scans do not reliably provide full first names — when
@@ -279,8 +282,8 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
                   <CheckCircle2 className="w-4 h-4" /> Document photo on file
                 </p>
                 <div className="flex gap-2">
-                  <img src={idFrontUrl} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
-                  {idBackUrl && <img src={idBackUrl} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
+                  <img src={idFrontView} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
+                  {idBackView && <img src={idBackView} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
                 </div>
                 <Button variant="outline" size="sm"
                   onClick={() => { setIdFrontUrl(null); setIdBackUrl(null); }}
@@ -300,7 +303,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
           ) : (
             <>
               <IdDocCapture idType={idType}
-                onComplete={({ frontUrl, backUrl }) => { setIdFrontUrl(frontUrl); setIdBackUrl(backUrl); setStep(4); }}
+                onComplete={({ frontUrl, backUrl, frontView, backView }) => { setIdFrontUrl(frontUrl); setIdBackUrl(backUrl); setIdFrontView(frontView); setIdBackView(backView); setStep(4); }}
                 onSkip={() => setStep(4)} />
               <Button variant="ghost" onClick={() => setStep(2)} className="text-slate-500">
                 <ChevronLeft className="w-4 h-4 mr-1" /> Back

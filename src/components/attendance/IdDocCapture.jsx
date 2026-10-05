@@ -17,9 +17,11 @@ import DocumentCamera from "./DocumentCamera";
 import { uploadDocumentPhoto } from "@/lib/documentPhoto";
 import { canLoadImage } from "@/lib/imageReload";
 
-export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip }) {
-  const [frontUrl, setFrontUrl] = useState(null);
-  const [backUrl, setBackUrl] = useState(null);
+export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip, skipLabel = "Skip for now" }) {
+  // Each side: { ref (private storage reference), viewUrl (signed preview) }
+  const [front, setFront] = useState(null);
+  const [back, setBack] = useState(null);
+  const frontUrl = front?.viewUrl, backUrl = back?.viewUrl;
   const [uploading, setUploading] = useState(null); // "front" | "back" | null
   const [error, setError] = useState(null);
   const [cameraSide, setCameraSide] = useState(null); // "front" | "back" | null
@@ -36,13 +38,13 @@ export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip }) {
     setUploading(side);
     setError(null);
     try {
-      const url = await uploadDocumentPhoto(file);
-      if (!url) throw new Error("Upload failed");
+      const up = await uploadDocumentPhoto(file);
+      if (!up?.ref || !up.viewUrl) throw new Error("Upload failed");
       // "Captured" is shown ONLY once the uploaded file can be reloaded
       // from storage — never on an upload response alone.
-      if (!(await canLoadImage(url))) throw new Error("Uploaded image could not be reloaded");
-      if (side === "front") setFrontUrl(url);
-      else setBackUrl(url);
+      if (!(await canLoadImage(up.viewUrl))) throw new Error("Uploaded image could not be reloaded");
+      if (side === "front") setFront(up);
+      else setBack(up);
     } catch (e) {
       setError(`Failed to upload the ${side} image. Please try again.`);
     } finally {
@@ -104,10 +106,15 @@ export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip }) {
       {needsBack && <CaptureSlot side="back" label={backLabel} url={backUrl} />}
 
       <div className="flex gap-3 pt-2">
-        <Button variant="outline" onClick={onSkip} className="flex-1 border-[var(--border-default)] text-slate-200 h-12">
-          Skip for now
-        </Button>
-        <Button onClick={() => onComplete({ frontUrl, backUrl })} disabled={!canProceed}
+        {onSkip && (
+          <Button variant="outline" onClick={onSkip} className="flex-1 border-[var(--border-default)] text-slate-200 h-12">
+            {skipLabel}
+          </Button>
+        )}
+        <Button onClick={() => onComplete({
+          frontUrl: front.ref, backUrl: needsBack ? back?.ref || null : null,
+          frontView: front.viewUrl, backView: needsBack ? back?.viewUrl || null : null,
+        })} disabled={!canProceed || !!uploading}
           variant="brand" className="flex-1 h-12">
           <CheckCircle2 className="w-4 h-4 mr-2" /> Use Photos
         </Button>
