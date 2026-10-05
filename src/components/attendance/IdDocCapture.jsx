@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Camera, CheckCircle2, RotateCcw, Loader2 } from "lucide-react";
 import DocumentCamera from "./DocumentCamera";
 import { uploadDocumentPhoto } from "@/lib/documentPhoto";
+import { canLoadImage } from "@/lib/imageReload";
 
 export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip }) {
   const [frontUrl, setFrontUrl] = useState(null);
@@ -37,6 +38,9 @@ export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip }) {
     try {
       const url = await uploadDocumentPhoto(file);
       if (!url) throw new Error("Upload failed");
+      // "Captured" is shown ONLY once the uploaded file can be reloaded
+      // from storage — never on an upload response alone.
+      if (!(await canLoadImage(url))) throw new Error("Uploaded image could not be reloaded");
       if (side === "front") setFrontUrl(url);
       else setBackUrl(url);
     } catch (e) {

@@ -157,6 +157,11 @@ export default async function main(req: Request): Promise<Response> {
     return q; // platform admin with no scope → oversight of all
   };
 
+  // Same scope rule as every other single-record action.
+  const recordInScope = (r: any): boolean => scope.customer_id
+    ? r.customer_id === scope.customer_id
+    : scope.reseller_id ? r.reseller_id === scope.reseller_id : true;
+
   // Reseller id to stamp on records (derived from the Customer record when
   // the caller's own record does not carry it).
   const resolveResellerId = async (): Promise<string | null> => {
@@ -503,6 +508,7 @@ export default async function main(req: Request): Promise<Response> {
 
         const reseller_id = await resolveResellerId();
         let worker: any = null;
+        let createdWorker = false;
 
         if (params.existing_worker_id) {
           worker = await base44.asServiceRole.entities.AttendanceWorker.get(params.existing_worker_id).catch(() => null);
@@ -555,8 +561,10 @@ export default async function main(req: Request): Promise<Response> {
             if (w.id_front_url && w.id_front_url !== worker.id_front_url) {
               const ts2 = rec.attendance_timestamp || new Date().toISOString();
               await base44.asServiceRole.entities.AttendanceWorker.update(worker.id, {
+                // A new capture replaces the PAIR — never mix a new front
+                // with an older back photo.
                 id_front_url: w.id_front_url,
-                id_back_url: w.id_back_url || worker.id_back_url || null,
+                id_back_url: w.id_back_url || null,
                 id_captured_at: ts2,
                 id_captured_by_id: caller.id,
                 id_captured_by_name: callerName,
@@ -566,6 +574,7 @@ export default async function main(req: Request): Promise<Response> {
             }
           } else {
             const ts = rec.attendance_timestamp || new Date().toISOString();
+            createdWorker = true;
             worker = await base44.asServiceRole.entities.AttendanceWorker.create({
               customer_id: scope.customer_id,
               reseller_id,
@@ -587,6 +596,15 @@ export default async function main(req: Request): Promise<Response> {
             });
           }
         }
+
+        // Visit photo snapshot: a new capture (front present in the payload
+        // and different from what the profile had) is stored as a PAIR;
+        // otherwise the profile's photos on file are used.
+        const newFront = params.worker?.id_front_url || null;
+        const isNewCapture = !!newFront && (createdWorker || newFront !== worker.id_front_url);
+        const visitFront = isNewCapture ? newFront : (worker.id_front_url || null);
+        const visitBack = isNewCapture ? (params.worker?.id_back_url || null) : (worker.id_back_url || null);
+        const visitTs = rec.attendance_timestamp || new Date().toISOString();
 
         // Historical snapshot fields come from the validated input — profile
         // edits never rewrite past attendance records.
@@ -611,8 +629,13 @@ export default async function main(req: Request): Promise<Response> {
           // Visit-level ID-document photo snapshot: the newly captured
           // photos when the operator captured them, otherwise the worker's
           // current photos (the identity evidence this visit relied on).
-          id_photo_front_url: params.worker?.id_front_url || worker.id_front_url || null,
-          id_photo_back_url: params.worker?.id_back_url || worker.id_back_url || null,
+          id_photo_front_url: visitFront,
+          id_photo_back_url: visitBack,
+          id_photo_source: visitFront ? (isNewCapture ? 'captured_this_visit' : 'on_file') : null,
+          id_photo_captured_at: visitFront ? (isNewCapture ? visitTs : (worker.id_captured_at || null)) : null,
+          id_photo_captured_by_id: visitFront ? (isNewCapture ? caller.id : (worker.id_captured_by_id || null)) : null,
+          id_photo_captured_by_name: visitFront ? (isNewCapture ? callerName : (worker.id_captured_by_name || null)) : null,
+          edit_history: [],
           captured_by_id: caller.id,
           captured_by_name: callerName,
         });
@@ -674,6 +697,123 @@ export default async function main(req: Request): Promise<Response> {
           notes: `Deleted attendance for ${rec.surname_snapshot || 'unknown'}${rec.initials_snapshot ? ', ' + rec.initials_snapshot : ''} (ID ${rec.id_number_snapshot || '—'}) on ${rec.attendance_date} ${rec.attendance_time} at ${rec.medical_centre || '—'} (${rec.assessment_type || '—'}). Signature removed with the record.`,
         }).catch(() => null);
         return Response.json({ success: true });
+      }
+
+      // ── Open one attendance record (detail view) ────────────────────────────
+      // Returns the full record INCLUDING its signature plus a short summary
+      // of the linked worker profile. Scope-checked; cross-tenant ids 404.
+      case 'get_record': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!params.record_id) return err('An attendance record id is required.');
+        const r = await base44.asServiceRole.entities.AttendanceRecord.get(params.record_id).catch(() => null);
+        if (!r || !recordInScope(r)) return err('Attendance record not found in your scope.', 404);
+        const w = r.worker_id ? await base44.asServiceRole.entities.AttendanceWorker.get(r.worker_id).catch(() => null) : null;
+        const worker = w && w.customer_id === r.customer_id ? {
+          id: w.id, surname: w.surname, initials: w.initials, first_names: w.first_names,
+          id_number: w.id_number, id_type: w.id_type, status: w.status,
+          id_front_url: w.id_front_url || null, id_back_url: w.id_back_url || null,
+          id_captured_at: w.id_captured_at || null, id_captured_by_name: w.id_captured_by_name || null,
+        } : null;
+        return Response.json({ record: r, worker, can_edit: canManageWorkers });
+      }
+
+      // ── Authorised correction of ONE attendance record ──────────────────────
+      // Admins only (never attendance staff). Only snapshot details and the
+      // visit ID photos are editable — signature, date/time and worker link
+      // are NEVER touched. First edit freezes original_snapshot; every edit
+      // appends an attributed, reasoned entry to edit_history + audit log.
+      // Photos are attached to the worker profile ONLY when explicitly asked
+      // (apply_photos_to_worker) — profile edits never rewrite history and
+      // record edits never silently change the profile.
+      case 'update_attendance_record': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!canManageWorkers) return err('Only authorized administrators may edit attendance records.', 403);
+        if (!params.record_id) return err('An attendance record id is required.');
+        const reason = String(params.reason || '').trim();
+        if (reason.length < 5) return err('A reason for the correction is required (at least 5 characters).');
+        const r = await base44.asServiceRole.entities.AttendanceRecord.get(params.record_id).catch(() => null);
+        if (!r || !recordInScope(r)) return err('Attendance record not found in your scope.', 404);
+
+        const EDITABLE = [
+          'surname_snapshot', 'initials_snapshot', 'id_number_snapshot', 'id_type_snapshot',
+          'company_snapshot', 'job_description_snapshot', 'cellphone_snapshot',
+          'medical_centre', 'assessment_type', 'additional_information',
+        ];
+        const REQUIRED = ['surname_snapshot', 'id_number_snapshot', 'company_snapshot', 'job_description_snapshot', 'cellphone_snapshot', 'medical_centre', 'assessment_type'];
+        const PH_CHECK = ['surname_snapshot', 'initials_snapshot', 'id_number_snapshot', 'company_snapshot', 'job_description_snapshot', 'cellphone_snapshot'];
+        const f = params.fields || {};
+        const updates: Record<string, any> = {};
+        const changes: Record<string, any> = {};
+        for (const k of EDITABLE) {
+          if (f[k] === undefined) continue;
+          let v = String(f[k] ?? '');
+          if (k === 'id_number_snapshot') v = v.trim();
+          if (k === 'id_type_snapshot' && !ID_TYPES.includes(v)) return err('Invalid document type.');
+          if (REQUIRED.includes(k) && !v.trim()) return err(`${k.replace('_snapshot', '').replace(/_/g, ' ')} cannot be empty.`);
+          if (PH_CHECK.includes(k) && looksLikePlaceholder(v)) return err(PLACEHOLDER_MSG(k.replace('_snapshot', '')));
+          if (v !== String(r[k] ?? '')) { updates[k] = v; changes[k] = { from: r[k] ?? null, to: v }; }
+        }
+
+        const ts = new Date().toISOString();
+        const photoChange = params.id_photo_front_url !== undefined;
+        if (photoChange) {
+          const front = params.id_photo_front_url || null;
+          const back = front ? (params.id_photo_back_url || null) : null;
+          if (front && !/^https:\/\//.test(front)) return err('Invalid front photo.');
+          if (back && !/^https:\/\//.test(back)) return err('Invalid back photo.');
+          if (front !== (r.id_photo_front_url || null) || back !== (r.id_photo_back_url || null)) {
+            updates.id_photo_front_url = front;
+            updates.id_photo_back_url = back;
+            updates.id_photo_source = front ? 'attached_by_edit' : null;
+            updates.id_photo_captured_at = front ? ts : null;
+            updates.id_photo_captured_by_id = front ? caller.id : null;
+            updates.id_photo_captured_by_name = front ? callerName : null;
+            changes.id_photo_front_url = { from: r.id_photo_front_url || null, to: front };
+            changes.id_photo_back_url = { from: r.id_photo_back_url || null, to: back };
+          }
+        }
+        if (Object.keys(changes).length === 0) return err('Nothing to update.');
+
+        // Optional, explicit: also attach the visit photos to the profile.
+        let appliedToWorker = false;
+        if (params.apply_photos_to_worker && updates.id_photo_front_url && r.worker_id) {
+          const w = await base44.asServiceRole.entities.AttendanceWorker.get(r.worker_id).catch(() => null);
+          if (w && w.customer_id === r.customer_id) {
+            await base44.asServiceRole.entities.AttendanceWorker.update(w.id, {
+              id_front_url: updates.id_photo_front_url,
+              id_back_url: updates.id_photo_back_url || null,
+              id_captured_at: ts, id_captured_by_id: caller.id, id_captured_by_name: callerName,
+              id_updated_at: ts, updated_by_name: callerName,
+            });
+            appliedToWorker = true;
+            await writeAudit('worker.id_photos_attached', w.id, 'update',
+              `ID photos attached from attendance record ${r.id} (${r.attendance_date} ${r.attendance_time}). Previous front: ${w.id_front_url || 'none'}. Reason: ${reason}`, w);
+          }
+        }
+
+        if (!r.original_snapshot) {
+          const orig: Record<string, any> = {};
+          for (const k of [...EDITABLE, 'id_photo_front_url', 'id_photo_back_url']) orig[k] = r[k] ?? null;
+          updates.original_snapshot = orig;
+        }
+        updates.edit_history = [
+          ...(Array.isArray(r.edit_history) ? r.edit_history : []),
+          { timestamp: ts, editor_id: caller.id, editor_name: callerName, reason, changes, applied_to_worker: appliedToWorker },
+        ];
+        updates.last_edited_at = ts;
+        updates.last_edited_by_name = callerName;
+        await base44.asServiceRole.entities.AttendanceRecord.update(r.id, updates);
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'attendance.record_edited',
+          user_id: caller.id, user_name: callerName,
+          customer_id: r.customer_id, reseller_id: r.reseller_id || null,
+          entity_name: 'AttendanceRecord', entity_id: r.id, action: 'update',
+          notes: `Edited attendance ${r.attendance_date} ${r.attendance_time} (${r.id_number_snapshot}). Fields: ${Object.keys(changes).join(', ')}. Reason: ${reason}`,
+        }).catch(() => null);
+        const fresh = await base44.asServiceRole.entities.AttendanceRecord.get(r.id);
+        return Response.json({ success: true, record: fresh, applied_to_worker: appliedToWorker });
       }
 
       // ── Post-save verification ──────────────────────────────────────────────

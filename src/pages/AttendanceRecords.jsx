@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
-  ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X, Trash2
+  ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X, Trash2, Eye
 } from "lucide-react";
+import AttendanceRecordDetail from "@/components/attendance/AttendanceRecordDetail";
 import { Link } from "react-router-dom";
 import { generateOfficialRegisterPdf, generateIndividualAttendancePdf, downloadBlob } from "@/lib/attendancePdf";
 import { generateOfficialRegisterExcel, attendanceRegisterFilename } from "@/lib/attendanceExcel";
@@ -36,6 +37,7 @@ export default function AttendanceRecords() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [generatingExcel, setGeneratingExcel] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [openRecordId, setOpenRecordId] = useState(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -278,8 +280,8 @@ export default function AttendanceRecords() {
         <div className="space-y-2">
           {filtered.map(r => (
             <div key={r.id} className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-3 space-y-2">
-              <div className="flex items-start gap-3">
-                <div>
+              <div className="flex items-start gap-3 cursor-pointer" onClick={() => setOpenRecordId(r.id)}>
+                <div className="min-w-0 break-words">
                   <p className="text-white font-semibold text-sm">
                     {r.surname_snapshot}{r.initials_snapshot ? `, ${r.initials_snapshot}` : ""}
                   </p>
@@ -294,13 +296,16 @@ export default function AttendanceRecords() {
                 {r.medical_centre && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-link)]">{r.medical_centre}</Badge>}
                 {r.assessment_type && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-accent)]">{r.assessment_type}</Badge>}
               </div>
-              {(r.id_photo_front_url || r.id_photo_back_url) && (
-                <div className="flex gap-2">
-                  {r.id_photo_front_url && <img src={r.id_photo_front_url} alt="ID document front" className="h-16 w-24 object-cover rounded-lg border border-[var(--border-default)]" />}
-                  {r.id_photo_back_url && <img src={r.id_photo_back_url} alt="ID document back" className="h-16 w-24 object-cover rounded-lg border border-[var(--border-default)]" />}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {r.id_photo_front_url
+                  ? <Badge className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 text-[10px]">ID photos saved</Badge>
+                  : <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px]">No ID photos</Badge>}
+                {r.edit_history?.length > 0 && <Badge variant="outline" className="text-[10px] border-slate-600 text-slate-400">Edited</Badge>}
+              </div>
               <div className="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setOpenRecordId(r.id)} className="text-[var(--brand-link)] text-xs h-11 px-3 mr-auto">
+                  <Eye className="w-3.5 h-3.5 mr-1" /> Open
+                </Button>
                 {canDeleteRecords && (
                   <Button size="sm" variant="ghost" disabled={deletingId === r.id}
                     onClick={() => handleDeleteRecord(r)}
@@ -318,6 +323,12 @@ export default function AttendanceRecords() {
             </div>
           ))}
         </div>
+      )}
+
+      {openRecordId && (
+        <AttendanceRecordDetail recordId={openRecordId}
+          medicalCentres={dropdowns.medicalCentres} assessmentTypes={dropdowns.assessmentTypes}
+          onClose={() => setOpenRecordId(null)} onDownloadPdf={handleIndividualPdf} />
       )}
     </div>
   );

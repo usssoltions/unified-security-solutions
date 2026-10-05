@@ -22,6 +22,7 @@ import IdDocCapture from "./IdDocCapture";
 import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { todayISO, localTimeStr } from "@/lib/attendanceDropdowns";
+import { canLoadImage } from "@/lib/imageReload";
 
 const STEPS = [
   { id: 1, label: "Scan Document", icon: ScanLine },
@@ -249,20 +250,26 @@ export default function NewAttendanceWizard({
           : String(a ?? "") !== String(b ?? "");
         if (cmp(sr[rk], reviewed[k])) mismatches.push("record." + rk);
       });
-      // Photo verification: every submitted photo URL must be stored exactly
-      // on the reloaded profile (existing photos kept unless replaced).
-      const expectFront = existingWorker && existingWorker.id
-        ? (workerUpdates.id_front_url || existingWorker.id_front_url || null)
-        : (idFrontUrl || null);
-      const expectBack = existingWorker && existingWorker.id
-        ? (workerUpdates.id_front_url ? (workerUpdates.id_back_url ?? null) : (existingWorker.id_back_url ?? null))
-        : (idBackUrl ?? null);
-      if ((sv.id_front_url ?? null) !== expectFront) mismatches.push("id_front_url");
-      if ((sv.id_back_url ?? null) !== expectBack) mismatches.push("id_back_url");
-      // Visit snapshot: the attendance record must retain the photos used
-      // for this registration (new capture, else the profile's current photos).
-      if ((sr.id_photo_front_url ?? null) !== (idFrontUrl || null)) mismatches.push("id_photo_front_url");
-      if ((sr.id_photo_back_url ?? null) !== (idBackUrl ?? null)) mismatches.push("id_photo_back_url");
+      // Photo verification. A photo pair in hand (new capture, or the
+      // profile's photos on file) must be stored EXACTLY on both the reloaded
+      // profile and the visit. Without one, the profile keeps its photos and
+      // the visit must mirror whatever the profile has.
+      const pairFront = idFrontUrl || null;
+      const pairBack = idFrontUrl ? (idBackUrl || null) : null;
+      if (pairFront) {
+        if ((sv.id_front_url ?? null) !== pairFront) mismatches.push("id_front_url");
+        if ((sv.id_back_url ?? null) !== pairBack) mismatches.push("id_back_url");
+      } else if (existingWorker && existingWorker.id) {
+        if ((sv.id_front_url ?? null) !== (existingWorker.id_front_url ?? null)) mismatches.push("id_front_url");
+      }
+      const visitFront = pairFront || sv.id_front_url || null;
+      const visitBack = pairFront ? pairBack : (sv.id_back_url || null);
+      if ((sr.id_photo_front_url ?? null) !== visitFront) mismatches.push("id_photo_front_url");
+      if ((sr.id_photo_back_url ?? null) !== visitBack) mismatches.push("id_photo_back_url");
+      // The saved photos must actually reload from storage.
+      for (const [k, u] of [["id_photo_front_url", sr.id_photo_front_url], ["id_photo_back_url", sr.id_photo_back_url]]) {
+        if (u && !(await canLoadImage(u))) mismatches.push(k + " (image did not reload)");
+      }
       if (mismatches.length > 0) {
         setSaveError("Attendance WAS saved, but the stored values did not match the reviewed entry (" + mismatches.join(", ") + "). Do NOT confirm again — report this to your administrator.");
         return;
@@ -486,6 +493,11 @@ export default function NewAttendanceWizard({
               </Button>
             </div>
           )}
+          {existingWorker && !existingWorker.id_front_url && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-amber-300 text-sm">
+              No ID photos on file for this worker — please capture them now.
+            </div>
+          )}
           {(!existingWorker || !existingWorker.id_front_url || !idFrontUrl) && (
             <IdDocCapture
               idType={idType}
@@ -578,6 +590,11 @@ export default function NewAttendanceWizard({
               ["Medical Centre", medicalCentre],
               ["Assessment Type", assessmentType],
               ["Additional Information", additionalInfo || "—"],
+              ["ID Photos", !idFrontUrl
+                ? "Not captured"
+                : existingWorker && idFrontUrl === existingWorker.id_front_url
+                  ? `On file${existingWorker.id_captured_at ? " (" + new Date(existingWorker.id_captured_at).toLocaleDateString("en-ZA") + ")" : ""}`
+                  : `Captured this visit (${idBackUrl ? "front + back" : "front only"})`],
             ].map(([label, val]) => (
               <div key={label} className="flex items-start gap-3 px-4 py-3">
                 <span className="text-slate-400 text-sm w-44 shrink-0">{label}</span>
