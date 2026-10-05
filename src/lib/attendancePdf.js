@@ -252,7 +252,7 @@ export function generateOfficialRegisterPdf(records, branding) {
   return doc.output("blob");
 }
 
-export function generateIndividualAttendancePdf(record, worker, branding) {
+export async function generateIndividualAttendancePdf(record, worker, branding) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const [y, m, d] = (record.attendance_date || "").split("-");
   const dateStr = record.attendance_date ? `${d}/${m}/${y}` : "—";
@@ -304,6 +304,33 @@ export function generateIndividualAttendancePdf(record, worker, branding) {
     fy += 2;
     try { doc.addImage(record.signature_data_url, 15, fy, 80, 25); } catch (_) {}
     fy += 30;
+  }
+
+  // ID-document photos retained on THIS visit — shown alongside the
+  // attendance details and signature (contain-fit, never stretched).
+  const docImages = [
+    record.id_photo_front_url ? { label: "FRONT", url: record.id_photo_front_url } : null,
+    record.id_photo_back_url ? { label: "BACK", url: record.id_photo_back_url } : null,
+  ].filter(Boolean);
+
+  if (docImages.length) {
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(80, 80, 80);
+    doc.text("ID Document:", 15, fy);
+    fy += 2;
+    const sideBySide = docImages.length === 2;
+    for (const { label, url } of docImages) {
+      const boxX = sideBySide ? (label === "FRONT" ? 15 : 110) : 15;
+      const boxW = 85;
+      const boxH = 62;
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      doc.text(`ID DOCUMENT — ${label}`, boxX + boxW / 2, fy, { align: "center" });
+      const fit = await fittedImageRect(url, boxW, boxH);
+      try { doc.addImage(url, boxX + (boxW - fit.w) / 2, fy + 3 + (boxH - fit.h) / 2, fit.w, fit.h); } catch (_) {}
+    }
+    fy += 3 + 62 + 5;
   }
 
   // Footer

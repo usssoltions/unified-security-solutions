@@ -101,7 +101,7 @@ export default function AttendanceRecords() {
   const handleIndividualPdf = async (record) => {
     try {
       const withSigs = await withSignatures([record]);
-      const blob = generateIndividualAttendancePdf(withSigs[0], {}, branding);
+      const blob = await generateIndividualAttendancePdf(withSigs[0], {}, branding);
       downloadBlob(blob, `attendance_${record.id_number_snapshot}_${record.attendance_date}.pdf`);
     } catch (e) { alert("PDF generation failed."); }
   };
@@ -294,6 +294,12 @@ export default function AttendanceRecords() {
                 {r.medical_centre && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-link)]">{r.medical_centre}</Badge>}
                 {r.assessment_type && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-accent)]">{r.assessment_type}</Badge>}
               </div>
+              {(r.id_photo_front_url || r.id_photo_back_url) && (
+                <div className="flex gap-2">
+                  {r.id_photo_front_url && <img src={r.id_photo_front_url} alt="ID document front" className="h-16 w-24 object-cover rounded-lg border border-[var(--border-default)]" />}
+                  {r.id_photo_back_url && <img src={r.id_photo_back_url} alt="ID document back" className="h-16 w-24 object-cover rounded-lg border border-[var(--border-default)]" />}
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 {canDeleteRecords && (
                   <Button size="sm" variant="ghost" disabled={deletingId === r.id}

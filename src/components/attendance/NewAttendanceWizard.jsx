@@ -259,6 +259,10 @@ export default function NewAttendanceWizard({
         : (idBackUrl ?? null);
       if ((sv.id_front_url ?? null) !== expectFront) mismatches.push("id_front_url");
       if ((sv.id_back_url ?? null) !== expectBack) mismatches.push("id_back_url");
+      // Visit snapshot: the attendance record must retain the photos used
+      // for this registration (new capture, else the profile's current photos).
+      if ((sr.id_photo_front_url ?? null) !== (idFrontUrl || null)) mismatches.push("id_photo_front_url");
+      if ((sr.id_photo_back_url ?? null) !== (idBackUrl ?? null)) mismatches.push("id_photo_back_url");
       if (mismatches.length > 0) {
         setSaveError("Attendance WAS saved, but the stored values did not match the reviewed entry (" + mismatches.join(", ") + "). Do NOT confirm again — report this to your administrator.");
         return;

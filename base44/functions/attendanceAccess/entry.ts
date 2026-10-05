@@ -608,6 +608,11 @@ export default async function main(req: Request): Promise<Response> {
           additional_information: rec.additional_information || '',
           assessment_type: rec.assessment_type,
           signature_data_url: sig,
+          // Visit-level ID-document photo snapshot: the newly captured
+          // photos when the operator captured them, otherwise the worker's
+          // current photos (the identity evidence this visit relied on).
+          id_photo_front_url: params.worker?.id_front_url || worker.id_front_url || null,
+          id_photo_back_url: params.worker?.id_back_url || worker.id_back_url || null,
           captured_by_id: caller.id,
           captured_by_name: callerName,
         });
