@@ -24,9 +24,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Camera, Loader2, RefreshCw, AlertTriangle, CheckCircle2, Image as ImageIcon,
+  Camera, Loader2, RefreshCw, AlertTriangle, CheckCircle2, Image as ImageIcon, Crop,
 } from "lucide-react";
 import { guideForIdType, visibleSourceRect, cropToGuide, captureWarnings } from "@/lib/documentPhoto";
+import {
+  detectDocumentQuad, warpQuadToJpegFile, fileToCanvas, quadToFrac, fracToQuad,
+} from "@/lib/documentEdgeDetect";
+import DocCropAdjust from "./DocCropAdjust";
 
 // Progressive camera constraints — never fail because an advanced
 // resolution/facing combination is unsupported on a device.
@@ -37,7 +41,7 @@ const CAMERA_CONSTRAINTS = [
 ];
 
 export default function DocumentCamera({ title, idType = "sa_id", onUse, onCancel }) {
-  const [phase, setPhase] = useState("starting"); // starting | live | still | preview | denied
+  const [phase, setPhase] = useState("starting"); // starting | live | still | preview | adjust | denied
   const [errorMsg, setErrorMsg] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [cameraReady, setCameraReady] = useState(false);
@@ -47,6 +51,10 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
   const [retakeSource, setRetakeSource] = useState("camera");
+  const [processing, setProcessing] = useState(false);
+  // { finalFile, originalFile, quadFrac, detected, uncertain } — the guide
+  // crop, the automatic edge-detection result and the final approved crop.
+  const [processInfo, setProcessInfo] = useState(null);
 
   const videoRef = useRef(null);
   const stillImgRef = useRef(null);
@@ -212,18 +220,93 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     } catch (_) {}
   };
 
-  const setPreviewFromCrop = (crop) => {
+  const finishReview = (info) => {
+    if (!info?.finalFile) return;
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = URL.createObjectURL(info.finalFile);
+    setPreviewUrl(objectUrlRef.current);
+    setPreviewFile(info.finalFile);
+    setProcessInfo(info);
+    stopStream(); // leaving the live camera after a successful capture
+    setPhase("preview");
+  };
+
+  /**
+   * Detect the document's actual edges in the guide crop, straighten and
+   * crop to them. CONFIDENT result → the straightened crop is previewed for
+   * approval. UNCERTAIN result → the manual corner editor is shown and
+   * nothing misleading is ever saved silently.
+   */
+  const preparePreview = async (crop) => {
     if (!crop) {
       setStatusLine("Capture failed — please try again.");
       return;
     }
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    objectUrlRef.current = URL.createObjectURL(crop.file);
-    setPreviewUrl(objectUrlRef.current);
-    setPreviewFile(crop.file);
-    setWarnings(captureWarnings(crop));
-    stopStream(); // leaving the live camera after a successful capture
-    setPhase("preview");
+    setProcessing(true);
+    try {
+      const canvas = await fileToCanvas(crop.file);
+      const det = detectDocumentQuad(canvas);
+      const info = {
+        originalFile: crop.file,
+        finalFile: null,
+        quadFrac: null,
+        detected: false,
+        uncertain: false,
+      };
+      if (det?.confident && !det.fillsFrame) {
+        const warped = await warpQuadToJpegFile(canvas, det.quad, { maxDim: 1600, quality: 0.92 });
+        if (warped) {
+          info.finalFile = warped;
+          info.quadFrac = quadToFrac(det.quad, canvas.width, canvas.height);
+          info.detected = true;
+        }
+      } else if (det?.confident && det.fillsFrame) {
+        // The document already fills the frame — the guide crop IS the document.
+        info.finalFile = crop.file;
+        info.quadFrac = [[0, 0], [1, 0], [1, 1], [0, 1]];
+        info.detected = true;
+      }
+      if (!info.finalFile) {
+        info.uncertain = true;
+        setWarnings(captureWarnings(crop));
+        setProcessInfo(info);
+        stopStream();
+        setPhase("adjust");
+        return;
+      }
+      setWarnings(captureWarnings(crop));
+      finishReview(info);
+    } catch (_) {
+      // Edge pipeline failed — fall back to the manual corner editor rather
+      // than silently saving a crop that may include background.
+      setWarnings(captureWarnings(crop));
+      setProcessInfo({
+        originalFile: crop.file, finalFile: null, quadFrac: null,
+        detected: false, uncertain: true,
+      });
+      stopStream();
+      setPhase("adjust");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const applyManualCrop = async (frac) => {
+    const info = processInfo;
+    if (!info?.originalFile) return;
+    setProcessing(true);
+    try {
+      const canvas = await fileToCanvas(info.originalFile);
+      const quad = fracToQuad(frac, canvas.width, canvas.height);
+      const warped = await warpQuadToJpegFile(canvas, quad, { maxDim: 1600, quality: 0.92 });
+      if (!warped) throw new Error("warp failed");
+      finishReview({ ...info, finalFile: warped, quadFrac: frac, detected: true, uncertain: false });
+    } catch (_) {
+      setStatusLine("Could not crop with those corners — please adjust and try again.");
+      setTimeout(() => setStatusLine(null), 2500);
+    } finally {
+      setProcessing(false);
+    }
   };
 
   // Capture from the LIVE video frame — guarded: no capture unless real
@@ -241,7 +324,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       cw: container.clientWidth, ch: container.clientHeight,
       fit: "cover", guideEl, container,
     });
-    setPreviewFromCrop(await cropToGuide(video, rect));
+    preparePreview(await cropToGuide(video, rect));
   };
 
   // Crop the chosen gallery photo (object-fit: contain mapping) — still from
@@ -254,7 +337,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       cw: container.clientWidth, ch: container.clientHeight,
       fit: "contain", guideEl, container,
     });
-    setPreviewFromCrop(await cropToGuide(img, rect));
+    preparePreview(await cropToGuide(img, rect));
   };
 
   const pickFile = (e) => {
@@ -271,6 +354,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
   const handleRetake = () => {
     setPreviewUrl(null);
     setPreviewFile(null);
+    setProcessInfo(null);
     setWarnings([]);
     if (retakeSource === "still" && stillUrl) {
       setPhase("still");
@@ -376,7 +460,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       )}
 
       {phase === "live" && (
-        <Button onClick={grabFrame} disabled={!cameraReady} variant="brand" className="w-full h-12">
+        <Button onClick={grabFrame} disabled={!cameraReady || processing} variant="brand" className="w-full h-12">
           {cameraReady
             ? <><Camera className="w-4 h-4 mr-2" /> Capture Photo</>
             : <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Starting camera…</>}
@@ -384,9 +468,23 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       )}
 
       {phase === "still" && (
-        <Button onClick={grabStill} variant="brand" className="w-full h-12">
+        <Button onClick={grabStill} disabled={processing} variant="brand" className="w-full h-12">
           <CheckCircle2 className="w-4 h-4 mr-2" /> Use Photo
         </Button>
+      )}
+
+      {phase === "adjust" && (
+        <DocCropAdjust
+          file={processInfo?.originalFile}
+          busy={processing}
+          note={
+            processInfo?.uncertain
+              ? "We could not confidently find the document's edges. Drag each corner circle onto the document's corners, then Apply Crop — or retake the photo."
+              : "Drag the corner circles onto the document's corners, then Apply Crop."
+          }
+          onApply={applyManualCrop}
+          onCancel={() => (previewFile ? setPhase("preview") : handleRetake())}
+        />
       )}
 
       {phase === "preview" && (
@@ -394,6 +492,11 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
           <div className="bg-black rounded-xl overflow-hidden border border-[var(--border-default)]">
             <img src={previewUrl} alt="Cropped document" className="w-full max-h-[48vh] object-contain" />
           </div>
+          <p className={`text-xs flex items-start gap-1.5 ${processInfo?.detected ? "text-emerald-400" : "text-amber-300"}`}>
+            {processInfo?.detected
+              ? <><CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" /> Cropped to the detected document edges — confirm the WHOLE document (all corners, borders and text) is visible before saving.</>
+              : <><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> Manually cropped — confirm the WHOLE document is visible before saving.</>}
+          </p>
           {warnings.length > 0 && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1">
               {warnings.map((w) => (
@@ -403,15 +506,25 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
               ))}
             </div>
           )}
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={handleRetake} className="flex-1 border-[var(--border-default)] text-slate-200 h-12">
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleRetake} disabled={processing} className="flex-1 border-[var(--border-default)] text-slate-200 h-12">
               <RefreshCw className="w-4 h-4 mr-1.5" /> Retake
             </Button>
-            <Button onClick={() => onUse(previewFile)} variant="brand" className="flex-1 h-12">
+            <Button variant="outline" onClick={() => setPhase("adjust")} disabled={processing} className="flex-1 border-[var(--border-default)] text-slate-200 h-12">
+              <Crop className="w-4 h-4 mr-1.5" /> Adjust
+            </Button>
+            <Button onClick={() => onUse(previewFile)} disabled={processing} variant="brand" className="flex-1 h-12">
               <CheckCircle2 className="w-4 h-4 mr-1.5" /> Use Photo
             </Button>
           </div>
         </>
+      )}
+
+      {processing && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
+          <p className="text-slate-200 text-sm">Processing document…</p>
+        </div>
       )}
     </div>
   );
