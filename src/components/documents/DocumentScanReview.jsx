@@ -206,6 +206,20 @@ export default function DocumentScanReview({
                 <div><span className="text-slate-500">formattedJSON keys:</span> <span className="text-slate-200">{Object.keys(result.formattedJSON).join(", ")}</span></div>
               )}
               <div><span className="text-slate-500">Scan timestamp:</span> <span className="text-slate-200">{result?.timestamp}</span></div>
+              {/* PREVIEW ENVIRONMENT: the camera track's actually-delivered
+                  resolution etc. — shown on-device only inside builder Preview. */}
+              {result?._envPreview ? (
+                <div>
+                  <span className="text-slate-500">Preview environment:</span>
+                  <p className="text-slate-200 text-[11px] break-all font-mono mt-0.5">
+                    camera {result._envPreview.video?.width || "?"}x{result._envPreview.video?.height || "?"}
+                    {result._envPreview.video?.frameRate ? ` @ ${Math.round(result._envPreview.video.frameRate)}fps` : ""}
+                    {" · viewport "}{result._envPreview.viewport?.w}x{result._envPreview.viewport?.h}
+                    {" · screen "}{result._envPreview.screen?.w}x{result._envPreview.screen?.h}
+                    {" @ "}{result._envPreview.dpr}x
+                  </p>
+                </div>
+              ) : null}
               {/* RAW DECODE (diagnostics only): lets a phone-vs-tablet comparison
                   of the underlying decoded payload be made on-device. */}
               {result?.textualData ? (

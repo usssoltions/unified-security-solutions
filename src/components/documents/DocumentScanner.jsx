@@ -23,6 +23,7 @@ import * as scanner from "@/lib/documentScannerService";
 import DocumentScanReview from "@/components/documents/DocumentScanReview";
 import { base44 } from "@/api/base44Client";
 import { recordScanAudit } from "@/lib/documentScanAudit";
+import { isIframe } from "@/lib/utils";
 
 function playBeep() {
   try {
@@ -225,6 +226,23 @@ export default function DocumentScanner({
     console.log("[barKoder] photo_present", { yes: !!photo, source: parsed.formattedJSONSource });
     scanner.logDebug("photo_present", { yes: !!photo });
 
+    // Preview-only environment probe (Base builder Preview = iframe): the
+    // camera track's ACTUAL delivered resolution, viewport, screen and density.
+    // Attached to the parsed result so the review panel can show it on-device,
+    // and stored in the preview-only scan audit. Never built in the actual app.
+    let env = null;
+    if (isIframe) {
+      env = { preview: true, viewport: { w: window.innerWidth, h: window.innerHeight },
+        screen: { w: window.screen?.width, h: window.screen?.height }, dpr: window.devicePixelRatio || 1 };
+      try {
+        const el = document.querySelector("#barkoder-container video");
+        const track = el?.srcObject?.getVideoTracks?.()[0];
+        const s = track?.getSettings?.() || {};
+        env.video = { width: s.width, height: s.height, frameRate: s.frameRate, facingMode: s.facingMode, label: track?.label || "" };
+      } catch (_) {}
+      try { parsed._envPreview = env; } catch (_) {}
+    }
+
     const scanPayload = {
       result: parsed, photoUrl: photo, mappedFields: mapped,
       profile: resolvedProfile, resolvedProfileId: profileId,
@@ -236,11 +254,14 @@ export default function DocumentScanner({
     setResolved({ profileId, profile: resolvedProfile, parserUsed, qrInfo });
     playBeep();
 
-    // DEVICE-TAGGED SCAN AUDIT — best-effort, never gates the workflow. Stores
-    // the parsed fields (photo bytes stripped, size-capped) plus the caller's
-    // device descriptor, so decodes of the SAME document from different devices
-    // (phone vs tablet) can be compared later from the stored audit records.
-    (async () => {
+    // PREVIEW-ONLY SCAN AUDIT (temporary diagnostic — REMOVE after the tablet
+    // test is approved): runs ONLY inside Base builder Preview (iframe), so the
+    // actual app never stores scan payloads. Captures the underlying decoded
+    // data (photo bytes stripped, size-capped) plus the preview environment
+    // (viewport, screen, and the camera track's ACTUAL delivered resolution),
+    // so a phone-Preview vs tablet-Preview scan of the SAME document can be
+    // compared exactly and the incomplete-scan cause proven from the records.
+    if (isIframe) (async () => {
       try {
         let rawJson = "";
         try {
@@ -249,7 +270,7 @@ export default function DocumentScanner({
             clone.Fields = clone.Fields.filter((f) =>
               !["imagerawbase64", "image width", "image height"].includes(String(f?.Field ?? f?.Name ?? "").toLowerCase()));
           }
-          rawJson = JSON.stringify({ barcodeType: parsed.barcodeType, textualData: parsed.textualData, formattedText: parsed.formattedText, formattedJSON: clone }).slice(0, 6000);
+          rawJson = JSON.stringify({ env, barcodeType: parsed.barcodeType, textualData: parsed.textualData, formattedText: parsed.formattedText, formattedJSON: clone }).slice(0, 6000);
         } catch (_) {
           rawJson = String(parsed.textualData || "").slice(0, 6000);
         }
