@@ -22,8 +22,6 @@ import { X, Zap, RefreshCw, AlertCircle, Loader2, ScanLine } from "lucide-react"
 import * as scanner from "@/lib/documentScannerService";
 import DocumentScanReview from "@/components/documents/DocumentScanReview";
 import { base44 } from "@/api/base44Client";
-import { recordScanAudit } from "@/lib/documentScanAudit";
-import { isIframe } from "@/lib/utils";
 
 function playBeep() {
   try {
@@ -101,8 +99,6 @@ export default function DocumentScanner({
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
   const processingRef = useRef(false);
   const viewportRef = useRef(null);
-  // Current user for the device-tagged scan audit (best-effort, resolved once).
-  const auditUserRef = useRef(null);
   // PERFORMANCE: camera enumeration (permissions.query + getCameras) only
   // needs to happen once per scanner open — it feeds the optional camera
   // picker only. On an in-session profile switch (licence → vehicle disc) the
@@ -120,8 +116,6 @@ export default function DocumentScanner({
   useEffect(() => {
     let cancelled = false;
     const start = async () => {
-      // Scan-audit user identity (RLS requires the caller's own user id).
-      try { base44.auth.me().then((u) => { auditUserRef.current = u; }).catch(() => {}); } catch (_) {}
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
       // The builder preview runs in an iframe without camera permission — bail early
       // with a clear message instead of hanging forever on getUserMedia.
@@ -226,23 +220,6 @@ export default function DocumentScanner({
     console.log("[barKoder] photo_present", { yes: !!photo, source: parsed.formattedJSONSource });
     scanner.logDebug("photo_present", { yes: !!photo });
 
-    // Preview-only environment probe (Base builder Preview = iframe): the
-    // camera track's ACTUAL delivered resolution, viewport, screen and density.
-    // Attached to the parsed result so the review panel can show it on-device,
-    // and stored in the preview-only scan audit. Never built in the actual app.
-    let env = null;
-    if (isIframe) {
-      env = { preview: true, viewport: { w: window.innerWidth, h: window.innerHeight },
-        screen: { w: window.screen?.width, h: window.screen?.height }, dpr: window.devicePixelRatio || 1 };
-      try {
-        const el = document.querySelector("#barkoder-container video");
-        const track = el?.srcObject?.getVideoTracks?.()[0];
-        const s = track?.getSettings?.() || {};
-        env.video = { width: s.width, height: s.height, frameRate: s.frameRate, facingMode: s.facingMode, label: track?.label || "" };
-      } catch (_) {}
-      try { parsed._envPreview = env; } catch (_) {}
-    }
-
     const scanPayload = {
       result: parsed, photoUrl: photo, mappedFields: mapped,
       profile: resolvedProfile, resolvedProfileId: profileId,
@@ -253,39 +230,6 @@ export default function DocumentScanner({
     setMappedFields(mapped);
     setResolved({ profileId, profile: resolvedProfile, parserUsed, qrInfo });
     playBeep();
-
-    // PREVIEW-ONLY SCAN AUDIT (temporary diagnostic — REMOVE after the tablet
-    // test is approved): runs ONLY inside Base builder Preview (iframe), so the
-    // actual app never stores scan payloads. Captures the underlying decoded
-    // data (photo bytes stripped, size-capped) plus the preview environment
-    // (viewport, screen, and the camera track's ACTUAL delivered resolution),
-    // so a phone-Preview vs tablet-Preview scan of the SAME document can be
-    // compared exactly and the incomplete-scan cause proven from the records.
-    if (isIframe) (async () => {
-      try {
-        let rawJson = "";
-        try {
-          const clone = JSON.parse(JSON.stringify(parsed.formattedJSON || {}));
-          if (Array.isArray(clone.Fields)) {
-            clone.Fields = clone.Fields.filter((f) =>
-              !["imagerawbase64", "image width", "image height"].includes(String(f?.Field ?? f?.Name ?? "").toLowerCase()));
-          }
-          rawJson = JSON.stringify({ env, barcodeType: parsed.barcodeType, textualData: parsed.textualData, formattedText: parsed.formattedText, formattedJSON: clone }).slice(0, 6000);
-        } catch (_) {
-          rawJson = String(parsed.textualData || "").slice(0, 6000);
-        }
-        let mappedSummary = "";
-        try { const { _raw, ...rest } = mapped || {}; mappedSummary = JSON.stringify(rest).slice(0, 2000); } catch (_) {}
-        await recordScanAudit({
-          user: auditUserRef.current || await base44.auth.me().catch(() => null),
-          callerPage: caller || "document_scanner",
-          documentType: profileId, barcodeType: parsed.barcodeType,
-          success: !!parsed.formattedJSON, reason: parsed.malformedJSON ? "malformed_formatted_json" : "",
-          sdkVersion: scanner.SDK_VERSION, parserUsed, profile: profileId,
-          rawJson, mappedSummary,
-        });
-      } catch (_) {}
-    })();
 
     // autoAccept (Access Control QR pass): skip the generic review panel and
     // dispatch the freshly-decoded result straight to the caller so it can look
