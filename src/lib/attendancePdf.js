@@ -76,12 +76,11 @@ function drawTableHeader(doc, y, lineColor) {
   // Already included in the first column
 }
 
-function drawRow(doc, row, y, rowNum, lineColor) {
-  const tW = totalTableW();
-  doc.setDrawColor(...lineColor);
-  doc.setLineWidth(0.2);
-  doc.rect(MARGIN, y, tW, ROW_H, "S");
+const LINE_H = 2.9; // mm per wrapped text line (6.5pt font)
 
+// Wrap every cell's FULL value across as many lines as it needs — a long
+// surname/initials value or ID/passport number is never clipped to one line.
+function computeRowLayout(doc, row) {
   const values = [
     row ? `${row.surname_snapshot || ""}${row.initials_snapshot ? ", " + row.initials_snapshot : ""}` : "",
     row ? row.id_number_snapshot || "" : "",
@@ -93,30 +92,46 @@ function drawRow(doc, row, y, rowNum, lineColor) {
     row ? row.cellphone_snapshot || "" : "",
     "", // Signature — rendered separately
   ];
+  doc.setFontSize(6.5);
+  const cellLines = values.map((v, i) => (i === 8 ? [] : doc.splitTextToSize(String(v ?? ""), COL_WIDTHS[i] - 2)));
+  const maxLines = Math.max(1, ...cellLines.map(l => l.length));
+  return { cellLines, rowH: Math.max(ROW_H, maxLines * LINE_H + 2.4) };
+}
+
+function measureRowHeight(doc, row) { return computeRowLayout(doc, row).rowH; }
+
+function drawRow(doc, row, y, lineColor) {
+  const tW = totalTableW();
+  const { cellLines, rowH } = computeRowLayout(doc, row);
+  doc.setDrawColor(...lineColor);
+  doc.setLineWidth(0.2);
+  doc.rect(MARGIN, y, tW, rowH, "S");
 
   let cx = MARGIN;
-  COL_WIDTHS.forEach((w, i) => {
-    if (i > 0) { doc.setDrawColor(...lineColor); doc.line(cx, y, cx, y + ROW_H); }
+  cellLines.forEach((lines, i) => {
+    if (i > 0) { doc.setDrawColor(...lineColor); doc.line(cx, y, cx, y + rowH); }
     if (i !== 8) {
       doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(20, 20, 20);
-      const wrapped = doc.splitTextToSize(values[i], w - 2);
-      doc.text(wrapped[0] || "", cx + 1.5, y + ROW_H / 2 + 2.2);
+      lines.forEach((line, li) => {
+        doc.text(line, cx + 1.5, y + 3.6 + li * LINE_H);
+      });
     }
-    cx += w;
+    cx += COL_WIDTHS[i];
   });
 
-  // Render signature image if present
+  // Render signature image if present — scaled to the row's actual height
   if (row?.signature_data_url) {
     try {
       const sigX = colX(8) + 1;
       const sigY = y + 0.8;
       const sigW = COL_WIDTHS[8] - 2;
-      const sigH = ROW_H - 1.6;
+      const sigH = rowH - 1.6;
       doc.addImage(row.signature_data_url, sigX, sigY, sigW, sigH);
     } catch (_) { /* signature rendering failed */ }
   }
+  return rowH;
 }
 
 function dateHeader(doc, dateStr, branding, pageNum, pageTotal) {
@@ -200,12 +215,18 @@ export function generateOfficialRegisterPdf(records, branding) {
     const dayRecords = byDate[dateStr].sort((a, b) =>
       (a.attendance_time || "").localeCompare(b.attendance_time || "")
     );
-    // Chunk into pages of ROWS_PER_PAGE
+    // Dynamic pagination: each row grows with its wrapped content, so a page
+    // holds as many rows as ACTUALLY fit — tall rows never clip and page
+    // breaks never fall inside a row.
+    const usableRowSpace = PAGE_H - MARGIN - 4 - (MARGIN + 16 + HEADER_ROWS_H);
     const chunks = [];
-    for (let i = 0; i < dayRecords.length; i += ROWS_PER_PAGE) {
-      chunks.push(dayRecords.slice(i, i + ROWS_PER_PAGE));
-    }
-    if (chunks.length === 0) chunks.push([]); // empty day (should not happen with our filter)
+    let cur = [], used = 0;
+    dayRecords.forEach(rec => {
+      const h = measureRowHeight(doc, rec);
+      if (cur.length && used + h > usableRowSpace) { chunks.push(cur); cur = []; used = 0; }
+      cur.push(rec); used += h;
+    });
+    if (cur.length) chunks.push(cur);
 
     chunks.forEach((chunk, pageIdx) => {
       if (!isFirstPage) doc.addPage();
@@ -215,16 +236,14 @@ export function generateOfficialRegisterPdf(records, branding) {
       drawTableHeader(doc, tableTop, lineColor);
 
       let rowY = tableTop + HEADER_ROWS_H;
-      for (let ri = 0; ri < ROWS_PER_PAGE; ri++) {
-        const record = chunk[ri] || null;
+      chunk.forEach((record, ri) => {
         // Alternate faint row tint for legibility
-        if (record && ri % 2 === 1) {
+        if (ri % 2 === 1) {
           doc.setFillColor(250, 250, 252);
-          doc.rect(MARGIN, rowY, totalTableW(), ROW_H, "F");
+          doc.rect(MARGIN, rowY, totalTableW(), measureRowHeight(doc, record), "F");
         }
-        drawRow(doc, record, rowY, ri + 1 + pageIdx * ROWS_PER_PAGE, lineColor);
-        rowY += ROW_H;
-      }
+        rowY += drawRow(doc, record, rowY, lineColor);
+      });
 
       pageFooter(doc, branding);
     });
@@ -254,22 +273,28 @@ export function generateIndividualAttendancePdf(record, worker, branding) {
     doc.text(label, 15, y);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(20, 20, 20);
-    doc.text(String(value || "—"), 75, y);
+    // The full value wraps to the available width — a long surname or ID /
+    // passport number is rendered completely, never clipped at the page edge.
+    const lines = doc.splitTextToSize(String(value || "—"), 110);
+    lines.forEach((line, li) => doc.text(line, 75, y + li * 4.2));
+    return lines.length - 1;
   };
 
   let fy = 42;
   const fGap = 9;
-  field("Date", dateStr, fy); fy += fGap;
-  field("Time", record.attendance_time || "—", fy); fy += fGap;
-  field("Surname, Initials", `${record.surname_snapshot || ""}${record.initials_snapshot ? ", " + record.initials_snapshot : ""}`, fy); fy += fGap;
-  field("ID / Passport Number", record.id_number_snapshot || "—", fy); fy += fGap;
-  field("Company / Customer", record.company_snapshot || "—", fy); fy += fGap;
-  field("Job Description", record.job_description_snapshot || "—", fy); fy += fGap;
-  field("Medical Centre", record.medical_centre || "—", fy); fy += fGap;
-  field("Additional Information", record.additional_information || "—", fy); fy += fGap;
-  field("Assessment Type", record.assessment_type || "—", fy); fy += fGap;
-  field("Cellphone Number", record.cellphone_snapshot || "—", fy); fy += fGap;
-  field("Captured By", record.captured_by_name || "—", fy); fy += fGap + 4;
+  const fld = (label, value) => { fy += fGap + field(label, value, fy) * 4.2; };
+  fld("Date", dateStr);
+  fld("Time", record.attendance_time || "—");
+  fld("Surname, Initials", `${record.surname_snapshot || ""}${record.initials_snapshot ? ", " + record.initials_snapshot : ""}`);
+  fld("ID / Passport Number", record.id_number_snapshot || "—");
+  fld("Company / Customer", record.company_snapshot || "—");
+  fld("Job Description", record.job_description_snapshot || "—");
+  fld("Medical Centre", record.medical_centre || "—");
+  fld("Additional Information", record.additional_information || "—");
+  fld("Assessment Type", record.assessment_type || "—");
+  fld("Cellphone Number", record.cellphone_snapshot || "—");
+  fld("Captured By", record.captured_by_name || "—");
+  fy += 4;
 
   if (record.signature_data_url) {
     doc.setFontSize(8);
@@ -335,19 +360,24 @@ export async function generateWorkerIdPdf(worker, branding) {
     doc.text(label, 15, y);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(20, 20, 20);
-    doc.text(String(value || "—"), 75, y);
+    // The full value wraps to the available width — a long surname or ID /
+    // passport number is rendered completely, never clipped at the page edge.
+    const lines = doc.splitTextToSize(String(value || "—"), 110);
+    lines.forEach((line, li) => doc.text(line, 75, y + li * 4.2));
+    return lines.length - 1;
   };
 
   let fy = 42;
   const fGap = 9;
-  field("Name", worker.first_names || "—", fy); fy += fGap;
-  field("Surname / Initials", `${worker.surname || ""}${worker.initials ? ", " + worker.initials : ""}`, fy); fy += fGap;
-  field("ID / Passport Number", worker.id_number || "—", fy); fy += fGap;
-  field("Document Type", ({ sa_id: "SA ID", drivers_licence: "Driver's Licence", passport: "Passport", other: "Other" })[worker.id_type] || "—", fy); fy += fGap;
-  field("Company / Customer", worker.company || "—", fy); fy += fGap;
-  field("Job Description", worker.job_description || "—", fy); fy += fGap;
+  const fld = (label, value) => { fy += fGap + field(label, value, fy) * 4.2; };
+  fld("Name", worker.first_names || "—");
+  fld("Surname / Initials", `${worker.surname || ""}${worker.initials ? ", " + worker.initials : ""}`);
+  fld("ID / Passport Number", worker.id_number || "—");
+  fld("Document Type", ({ sa_id: "SA ID", drivers_licence: "Driver's Licence", passport: "Passport", other: "Other" })[worker.id_type] || "—");
+  fld("Company / Customer", worker.company || "—");
+  fld("Job Description", worker.job_description || "—");
   if (worker.id_captured_at) {
-    field("Date Document Captured", new Date(worker.id_captured_at).toLocaleDateString("en-ZA"), fy); fy += fGap;
+    fld("Date Document Captured", new Date(worker.id_captured_at).toLocaleDateString("en-ZA"));
   }
   fy += 6;
 

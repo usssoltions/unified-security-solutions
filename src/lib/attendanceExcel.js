@@ -18,8 +18,8 @@ import JSZip from "jszip";
 
 // Official register columns — SAME order as the Official PDF register.
 const COLS = [
-  { header: "Surname, Initials", width: 22 },
-  { header: "Identification / Passport number", width: 24 },
+  { header: "Surname, Initials", width: 26 },
+  { header: "Identification / Passport number", width: 28 },
   { header: "Company / Customer", width: 20 },
   { header: "Job Description", width: 20 },
   { header: "Medical Centre", width: 16 },
@@ -185,7 +185,9 @@ export async function generateOfficialRegisterExcel(records, branding, dateFrom,
         if (i === SIG_COL) return `<c r="${colLetter(i)}${rowIdx}" s="${STYLE_SIG_CELL}"/>`;
         return stringCell(rowIdx, i, vals[i], STYLE_DATA);
       }).join("");
-      rowsXml.push(`<row r="${rowIdx}" ht="${hasSig ? 48 : 28}" customHeight="1">${cells}</row>`);
+      // Signature rows keep a fixed tall height (image anchor); text rows use
+      // Excel's AUTO height so wrapped long values are never clipped.
+      rowsXml.push(`<row r="${rowIdx}"${hasSig ? ' ht="48" customHeight="1"' : ""}>${cells}</row>`);
       if (hasSig) {
         const [meta, b64] = rec.signature_data_url.split(",");
         images.push({

@@ -201,7 +201,7 @@ export default function AttendanceDashboard() {
                   <Users className="w-4 h-4 text-slate-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">
+                  <p className="text-white text-sm font-medium break-words">
                     {r.surname_snapshot}{r.initials_snapshot ? `, ${r.initials_snapshot}` : ""}
                   </p>
                   <p className="text-slate-400 text-xs truncate">{r.company_snapshot || "—"} · {r.medical_centre || "—"}</p>
