@@ -855,22 +855,105 @@ export default async function main(req: Request): Promise<Response> {
             changes.id_photo_back_url = { from: r.id_photo_back_url || null, to: back };
           }
         }
-        if (Object.keys(changes).length === 0) return err('Nothing to update.');
+        // ── Worker profile sync (verified corrections reach the profile) ──
+        // The corrected identity/profile details are applied to the worker
+        // profile matched by customer + ID number, so the person is found in
+        // Workers search with the corrected details. Rules:
+        //  1. a profile with the corrected ID number exists in this customer
+        //     → that profile is updated (never a duplicate);
+        //  2. otherwise the record's linked profile is corrected in place when
+        //     it is this same identity (its ID equals the record's pre-edit ID
+        //     or is placeholder debris) and no OTHER visit relies on its
+        //     current genuine ID number;
+        //  3. otherwise a new profile is created for the corrected ID.
+        // Only this record and the matched profile change — other workers and
+        // other attendance records are never touched.
+        const fin = { ...r, ...updates };
+        const finalId = String(fin.id_number_snapshot || '').trim();
+        const PROFILE_MAP: [string, string][] = [
+          ['surname', 'surname_snapshot'], ['initials', 'initials_snapshot'], ['id_number', 'id_number_snapshot'],
+          ['id_type', 'id_type_snapshot'], ['company', 'company_snapshot'],
+          ['job_description', 'job_description_snapshot'], ['cellphone', 'cellphone_snapshot'],
+        ];
+        const profileVals: Record<string, any> = {};
+        for (const [wk, rk] of PROFILE_MAP) profileVals[wk] = String(fin[rk] ?? '').trim();
+        if (!ID_TYPES.includes(profileVals.id_type)) profileVals.id_type = 'sa_id';
+        const profileClean = finalId && !PH_CHECK.some((k) => looksLikePlaceholder(fin[k]))
+          && REQUIRED.filter((k) => k.endsWith('_snapshot')).every((k) => String(fin[k] ?? '').trim());
+
+        let profileAction = 'skipped';
+        let profileTarget: any = null;
+        const profileUpdates: Record<string, any> = {};
+        let linked: any = null;
+        if (r.worker_id) {
+          linked = await base44.asServiceRole.entities.AttendanceWorker.get(r.worker_id).catch(() => null);
+          if (linked && linked.customer_id !== r.customer_id) linked = null;
+        }
+        if (profileClean) {
+          const matches = await base44.asServiceRole.entities.AttendanceWorker
+            .filter({ customer_id: r.customer_id, id_number: finalId }, '-created_date', 5);
+          profileTarget = (matches || []).find((m) => linked && m.id === linked.id) || (matches || [])[0] || null;
+          if (profileTarget) {
+            profileAction = profileTarget.id === linked?.id ? 'updated_linked' : 'updated_matching';
+          } else if (linked) {
+            const preId = String(r.id_number_snapshot || '').trim();
+            const sameIdentity = linked.id_number === preId || looksLikePlaceholder(linked.id_number);
+            let othersRely = false;
+            if (sameIdentity && !looksLikePlaceholder(linked.id_number)) {
+              const visits = await base44.asServiceRole.entities.AttendanceRecord
+                .filter({ customer_id: r.customer_id, worker_id: linked.id }, '-created_date', 500);
+              othersRely = (visits || []).some((v) => v.id !== r.id && String(v.id_number_snapshot || '').trim() === linked.id_number);
+            }
+            if (sameIdentity && !othersRely) { profileTarget = linked; profileAction = 'corrected_linked'; }
+            else profileAction = 'created';
+          } else profileAction = 'created';
+
+          if (profileTarget) {
+            for (const [wk] of PROFILE_MAP) {
+              if (String(profileTarget[wk] ?? '') !== profileVals[wk]) profileUpdates[wk] = profileVals[wk];
+            }
+            if (profileTarget.status === 'inactive') profileUpdates.status = 'active';
+            if (Object.keys(profileUpdates).length === 0) profileAction = 'in_sync';
+          }
+        }
+
+        const wantPhotos = !!(params.apply_photos_to_worker && updates.id_photo_front_url);
+        const profileWork = profileAction === 'created' || Object.keys(profileUpdates).length > 0 || (wantPhotos && (profileTarget || linked));
+        if (Object.keys(changes).length === 0 && !profileWork) return err('Nothing to update.');
 
         // Optional, explicit: also attach the visit photos to the profile.
         let appliedToWorker = false;
-        if (params.apply_photos_to_worker && updates.id_photo_front_url && r.worker_id) {
-          const w = await base44.asServiceRole.entities.AttendanceWorker.get(r.worker_id).catch(() => null);
-          if (w && w.customer_id === r.customer_id) {
-            await base44.asServiceRole.entities.AttendanceWorker.update(w.id, {
-              id_front_url: updates.id_photo_front_url,
-              id_back_url: updates.id_photo_back_url || null,
-              id_captured_at: ts, id_captured_by_id: caller.id, id_captured_by_name: callerName,
-              id_updated_at: ts, updated_by_name: callerName,
-            });
-            appliedToWorker = true;
-            await writeAudit('worker.id_photos_attached', w.id, 'update',
-              `ID photos attached from attendance record ${r.id} (${r.attendance_date} ${r.attendance_time}). Previous front: ${w.id_front_url || 'none'}. Reason: ${reason}`, w);
+        const photoFields = wantPhotos ? {
+          id_front_url: updates.id_photo_front_url,
+          id_back_url: updates.id_photo_back_url || null,
+          id_captured_at: ts, id_captured_by_id: caller.id, id_captured_by_name: callerName, id_updated_at: ts,
+        } : {};
+
+        let profileId: string | null = profileTarget?.id || null;
+        if (profileAction === 'created') {
+          const reseller_id = r.reseller_id || await resolveResellerId();
+          const created = await base44.asServiceRole.entities.AttendanceWorker.create({
+            customer_id: r.customer_id, reseller_id,
+            ...profileVals, first_names: '',
+            id_front_url: null, id_back_url: null,
+            ...photoFields,
+            created_by_name: callerName, status: 'active',
+          });
+          profileId = created.id;
+          appliedToWorker = wantPhotos;
+          await writeAudit('worker.created_from_record_edit', created.id, 'create',
+            `Profile created from corrected attendance record ${r.id} (${r.attendance_date} ${r.attendance_time}), ID ${finalId}. Reason: ${reason}`, created);
+        } else {
+          const photoTarget = profileTarget || linked;
+          const target = profileTarget || (wantPhotos ? linked : null);
+          const upd = { ...(profileTarget ? profileUpdates : {}), ...(wantPhotos && photoTarget ? photoFields : {}) };
+          if (target && Object.keys(upd).length > 0) {
+            await base44.asServiceRole.entities.AttendanceWorker.update(target.id, { ...upd, updated_by_name: callerName });
+            appliedToWorker = wantPhotos;
+            profileId = target.id;
+            const diff = Object.keys(profileUpdates).map((k) => `${k}: "${target[k] ?? ''}" → "${profileUpdates[k]}"`).join('; ');
+            await writeAudit('worker.corrected_from_record_edit', target.id, 'update',
+              `Profile updated from attendance record ${r.id} (${r.attendance_date} ${r.attendance_time}). ${diff || 'No detail changes.'}${wantPhotos ? ' ID photos attached.' : ''} Reason: ${reason}`, target);
           }
         }
 
@@ -881,7 +964,8 @@ export default async function main(req: Request): Promise<Response> {
         }
         updates.edit_history = [
           ...(Array.isArray(r.edit_history) ? r.edit_history : []),
-          { timestamp: ts, editor_id: caller.id, editor_name: callerName, reason, changes, applied_to_worker: appliedToWorker },
+          { timestamp: ts, editor_id: caller.id, editor_name: callerName, reason, changes, applied_to_worker: appliedToWorker,
+            worker_profile_action: profileAction, worker_profile_id: profileId },
         ];
         updates.last_edited_at = ts;
         updates.last_edited_by_name = callerName;
@@ -894,7 +978,7 @@ export default async function main(req: Request): Promise<Response> {
           notes: `Edited attendance ${r.attendance_date} ${r.attendance_time} (${r.id_number_snapshot}). Fields: ${Object.keys(changes).join(', ')}. Reason: ${reason}`,
         }).catch(() => null);
         const fresh = await base44.asServiceRole.entities.AttendanceRecord.get(r.id);
-        return Response.json({ success: true, record: await recordView(fresh), applied_to_worker: appliedToWorker });
+        return Response.json({ success: true, record: await recordView(fresh), applied_to_worker: appliedToWorker, worker_profile_action: profileAction, worker_profile_id: profileId });
       }
 
       // ── Post-save verification ──────────────────────────────────────────────

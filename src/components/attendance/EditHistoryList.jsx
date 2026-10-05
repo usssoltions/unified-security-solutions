@@ -8,6 +8,13 @@ const short = (v) => {
   return /^https?:\/\//.test(s) ? "photo" : s;
 };
 
+const PROFILE_TEXT = {
+  updated_linked: "Worker profile updated with these details",
+  corrected_linked: "Worker profile corrected with these details",
+  updated_matching: "Matching worker profile (same ID number) updated",
+  created: "New worker profile created for this ID number",
+};
+
 /** Read-only, append-only edit log for an attendance record. */
 export default function EditHistoryList({ history }) {
   if (!history?.length) return null;
@@ -22,6 +29,7 @@ export default function EditHistoryList({ history }) {
             <p key={k} className="text-slate-400 break-words"><span className="text-slate-300 capitalize">{label(k)}</span>: {short(c.from)} → {short(c.to)}</p>
           ))}
           {h.applied_to_worker && <p className="text-emerald-400">Photos also saved on the worker profile</p>}
+          {PROFILE_TEXT[h.worker_profile_action] && <p className="text-emerald-400">{PROFILE_TEXT[h.worker_profile_action]}</p>}
         </div>
       ))}
     </div>
