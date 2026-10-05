@@ -66,6 +66,10 @@ const placeholderField = (w: any, keys: string[]): string | null => {
 };
 const PLACEHOLDER_MSG = (f: string) =>
   `Placeholder text (for example "...") is not allowed in ${f}. Enter the real details from the ID document — values are saved exactly as entered.`;
+// Whitespace hygiene: visible text is stored exactly as typed; only invisible
+// leading/trailing whitespace is dropped so debris like "TW Group " can never
+// enter the register or break exact searches.
+const cleanText = (v: any): any => (typeof v === 'string' ? v.trim() : v);
 
 function err(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
@@ -578,14 +582,14 @@ export default async function main(req: Request): Promise<Response> {
             worker = await base44.asServiceRole.entities.AttendanceWorker.create({
               customer_id: scope.customer_id,
               reseller_id,
-              surname: w.surname,
-              initials: w.initials || '',
-              first_names: w.first_names || '',
+              surname: cleanText(w.surname),
+              initials: cleanText(w.initials) || '',
+              first_names: cleanText(w.first_names) || '',
               id_number: idNumber,
               id_type: idType,
-              company: w.company,
-              job_description: w.job_description,
-              cellphone: w.cellphone,
+              company: cleanText(w.company),
+              job_description: cleanText(w.job_description),
+              cellphone: cleanText(w.cellphone),
               id_front_url: w.id_front_url || null,
               id_back_url: w.id_back_url || null,
               id_captured_at: w.id_front_url ? ts : null,
@@ -615,13 +619,13 @@ export default async function main(req: Request): Promise<Response> {
           attendance_date: rec.attendance_date,
           attendance_time: rec.attendance_time,
           attendance_timestamp: rec.attendance_timestamp || new Date().toISOString(),
-          surname_snapshot: params.worker?.surname ?? worker.surname,
-          initials_snapshot: params.worker?.initials ?? worker.initials,
-          id_number_snapshot: params.worker?.id_number ?? worker.id_number,
-          id_type_snapshot: params.worker?.id_type ?? worker.id_type,
-          company_snapshot: params.worker?.company ?? worker.company,
-          job_description_snapshot: params.worker?.job_description ?? worker.job_description,
-          cellphone_snapshot: params.worker?.cellphone ?? worker.cellphone,
+          surname_snapshot: cleanText(params.worker?.surname ?? worker.surname),
+          initials_snapshot: cleanText(params.worker?.initials ?? worker.initials),
+          id_number_snapshot: cleanText(params.worker?.id_number ?? worker.id_number),
+          id_type_snapshot: cleanText(params.worker?.id_type ?? worker.id_type),
+          company_snapshot: cleanText(params.worker?.company ?? worker.company),
+          job_description_snapshot: cleanText(params.worker?.job_description ?? worker.job_description),
+          cellphone_snapshot: cleanText(params.worker?.cellphone ?? worker.cellphone),
           medical_centre: rec.medical_centre,
           additional_information: rec.additional_information || '',
           assessment_type: rec.assessment_type,
@@ -748,8 +752,7 @@ export default async function main(req: Request): Promise<Response> {
         const changes: Record<string, any> = {};
         for (const k of EDITABLE) {
           if (f[k] === undefined) continue;
-          let v = String(f[k] ?? '');
-          if (k === 'id_number_snapshot') v = v.trim();
+          let v = String(f[k] ?? '').trim();
           if (k === 'id_type_snapshot' && !ID_TYPES.includes(v)) return err('Invalid document type.');
           if (REQUIRED.includes(k) && !v.trim()) return err(`${k.replace('_snapshot', '').replace(/_/g, ' ')} cannot be empty.`);
           if (PH_CHECK.includes(k) && looksLikePlaceholder(v)) return err(PLACEHOLDER_MSG(k.replace('_snapshot', '')));
