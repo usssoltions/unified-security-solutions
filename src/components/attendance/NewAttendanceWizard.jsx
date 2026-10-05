@@ -232,6 +232,18 @@ export default function NewAttendanceWizard({
   // cannot continue until First Names is completed manually.
   const firstNamesRequired = licenceMissingFirstNames && idType === "drivers_licence" && !firstNames.trim();
   const step2Valid = surname.trim() && idNumber.trim() && company.trim() && jobDescription.trim() && cellphone.trim() && !firstNamesRequired;
+  // Placeholder / ellipsis guard: "...", "…", "---", "0000000000" style debris
+  // in a required field is warned about — WARN ONLY, never blocks and never
+  // alters the input (whatever the operator typed is preserved exactly).
+  const looksLikePlaceholder = (v) => {
+    const t = String(v || "").trim();
+    return t.length > 0 && (/(\.{2,}|…)/.test(t) || /^[.\-_*\sx0]+$/i.test(t));
+  };
+  const placeholderWarnings = [
+    surname.trim() && looksLikePlaceholder(surname) ? "Surname" : null,
+    initials.trim() && looksLikePlaceholder(initials) ? "Initials" : null,
+    idNumber.trim() && looksLikePlaceholder(idNumber) ? "ID / Passport number" : null,
+  ].filter(Boolean);
   const step4Valid = medicalCentre && assessmentType;
 
   const goNext = () => {
@@ -293,6 +305,17 @@ export default function NewAttendanceWizard({
                 <CheckCircle2 className="w-4 h-4" /> Existing Worker/Patient Found
               </p>
               <p className="text-slate-300 text-xs mt-1">Profile on file. Review and update any changed details below.</p>
+            </div>
+          )}
+
+          {placeholderWarnings.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+              <p className="text-amber-300 text-sm font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" /> Placeholder text detected
+              </p>
+              <p className="text-slate-300 text-xs mt-1">
+                {placeholderWarnings.join(", ")} look like placeholder text (for example "..."). Please enter the person's real details — what you type is saved exactly as entered and appears on the official register.
+              </p>
             </div>
           )}
 

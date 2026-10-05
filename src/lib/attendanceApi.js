@@ -27,11 +27,30 @@ export async function attendanceCall(action, params = {}) {
   return d;
 }
 
-/** Fetch signatures for a set of record ids (scoped server-side). */
+/** Fetch signatures for a set of record ids (scoped server-side).
+ * Signatures are large base64 PNGs (~25KB each) — a big register fetched in
+ * ONE response risks an oversized payload being cut short, which silently
+ * blanks signature cells for whoever exports (a client saw only the first
+ * row's signature). Fetch in small batches, then retry any record that came
+ * back missing one-by-one so a transient loss never leaves a blank cell. */
 export async function fetchSignatures(recordIds) {
   if (!recordIds?.length) return {};
-  const res = await attendanceCall("get_signatures", { record_ids: recordIds });
-  return res?.signatures || {};
+  const sigs = {};
+  const CHUNK = 8;
+  const chunks = [];
+  for (let i = 0; i < recordIds.length; i += CHUNK) chunks.push(recordIds.slice(i, i + CHUNK));
+  for (const chunk of chunks) {
+    const res = await attendanceCall("get_signatures", { record_ids: chunk });
+    Object.assign(sigs, res?.signatures || {});
+  }
+  const missing = recordIds.filter((id) => !sigs[id]);
+  for (const id of missing) {
+    try {
+      const res = await attendanceCall("get_signatures", { record_ids: [id] });
+      if (res?.signatures?.[id]) sigs[id] = res.signatures[id];
+    } catch (_) { /* leave blank — reported for follow-up, never fabricated */ }
+  }
+  return sigs;
 }
 
 /** Merge signatures into records for PDF generation. */

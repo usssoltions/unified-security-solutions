@@ -207,9 +207,12 @@ export async function generateOfficialRegisterExcel(records, branding, dateFrom,
   const wsParts = [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`,
+    `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>`,
     `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${headerRow}" topLeftCell="A${headerRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`,
     colsXml,
     `<sheetData>${rowsXml.join("")}</sheetData>`,
+    `<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>`,
+    `<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>`,
   ];
   if (images.length > 0) wsParts.push(`<drawing r:id="rId1"/>`);
   wsParts.push(`</worksheet>`);
@@ -224,6 +227,7 @@ ${sharedStrings.map((s) => `<si><t xml:space="preserve">${escXml(s)}</t></si>`).
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheets><sheet name="Attendance Register" sheetId="1" r:id="rId1"/></sheets>
+<definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">'Attendance Register'!$${headerRow}:$${headerRow}</definedName></definedNames>
 </workbook>`;
 
   const wbRels = `<?xml version="1.0" encoding="UTF-8"?>
@@ -241,7 +245,7 @@ ${sharedStrings.map((s) => `<si><t xml:space="preserve">${escXml(s)}</t></si>`).
     const anchors = images.map((img, i) => {
       const cx = SIG_W_PX * EMU_PER_PX;
       const cy = SIG_H_PX * EMU_PER_PX;
-      return `<xdr:oneCellAnchor><xdr:from><xdr:col>${img.col0}</xdr:col><xdr:colOff>19050</xdr:colOff><xdr:row>${img.row0}</xdr:row><xdr:rowOff>9525</xdr:rowOff></xdr:from><xdr:ext cx="${cx}" cy="${cy}"/><xdr:pic><xdr:nvGraphicFramePr><xdr:cNvPr id="${i + 2}" name="Signature ${i + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvGraphicFramePr><xdr:blipFill><a:blip r:embed="rId${i + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
+      return `<xdr:oneCellAnchor><xdr:from><xdr:col>${img.col0}</xdr:col><xdr:colOff>19050</xdr:colOff><xdr:row>${img.row0}</xdr:row><xdr:rowOff>9525</xdr:rowOff></xdr:from><xdr:ext cx="${cx}" cy="${cy}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i + 2}" name="Signature ${i + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId${i + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
     }).join("");
     drawingXml = `<?xml version="1.0" encoding="UTF-8"?>
 <xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
