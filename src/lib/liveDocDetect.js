@@ -36,7 +36,8 @@ const MAX_CROSSINGS = 14;   // candidate edge crossings kept per scan line
 const RANSAC_TOL = 3.0;     // px distance for a point to support a line
 const RANSAC_ITERATIONS = 90;
 const MIN_SIDE_LINES = 6;   // a side line must be supported by ≥ 6 scan lines
-const CANDIDATE_LINES = 3;  // RANSAC lines kept per side for the combo search
+const CANDIDATE_LINES = 4;  // RANSAC lines kept per side for the combo search
+const COMBO_SHORTLIST = 24; // top-scored combinations inspected in detail
 
 /** Grayscale (two-pass box blur) + Sobel gradient magnitude of an RGBA frame. */
 export function analyzeFrame(frame) {
@@ -184,28 +185,14 @@ function ransacLines(pts) {
       if (a === b) continue;
       const rows = supportRows(remaining, a, b);
       if (!rows || rows.size <= (best?.rows.size || 0)) continue;
-      best = { rows };
+      best = { rows, seedA: a, seedB: b };
     }
     if (!best || best.rows.size < MIN_SIDE_LINES) break;
-    // Refit by total least squares on the inliers
-    const a0 = pts[0];
-    void a0;
-    const inl = remaining.filter((p) => {
-      const dx = best.dirx ?? 0; void dx;
-      return true;
-    });
-    void inl;
-    const sample = [...best.rows].length;
-    void sample;
-    const refPts = remaining.filter((p) => p[2] !== undefined);
-    void refPts;
-    // inliers = points whose scan line is in best.rows AND close to some line
-    // through the support — approximate with all points of supporting lines
-    // that lie within tolerance of the pair line (recomputed below).
-    const pairA = [...best.rows].length ? null : null;
-    void pairA;
-    lines.push(finalizeLine(remaining, best.seedA, best.seedB, best.rows.size));
-    remaining = remaining.filter((p) => distToLine(p, lines[lines.length - 1]) > RANSAC_TOL);
+    // Refit by total least squares on the inliers, then remove them so the
+    // next candidate line describes different structure.
+    const line = finalizeLine(remaining, best.seedA, best.seedB, best.rows.size);
+    lines.push(line);
+    remaining = remaining.filter((p) => distToLine(p, line) > RANSAC_TOL);
   }
   return lines;
 }
@@ -342,8 +329,15 @@ function evaluateCombo(lines4, an, opts) {
   const tr = lineIntersect(T, R);
   const br = lineIntersect(B, R);
   const bl = lineIntersect(B, L);
-  const quad = [tl, tr, br, bl];
+  let quad = [tl, tr, br, bl];
   if (quad.some((p) => !p || !isFinite(p[0]) || !isFinite(p[1]))) return null;
+  // Canonical corner order [tl, tr, br, bl] — RANSAC line direction is
+  // arbitrary, so the T/B (or L/R) roles can swap and rotate the labelling
+  // 180°. Callers (perspective warp) depend on this order.
+  const sum = quad.map((p) => p[0] + p[1]);
+  const dif = quad.map((p) => p[0] - p[1]);
+  const iSum = (arr, s) => arr.reduce((bi, v, i) => (s ? v < arr[bi] : v > arr[bi]) ? i : bi, 0);
+  quad = [quad[iSum(sum, true)], quad[iSum(dif, false)], quad[iSum(sum, false)], quad[iSum(dif, true)]];
   const { w, h } = an;
 
   // Convexity + sane corner angles
@@ -390,7 +384,12 @@ function evaluateCombo(lines4, an, opts) {
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-const PRIORITY = ["alignment", "not_in_frame", "too_far", "shape", "blurry", "glare", "too_dark", "not_distinct"];
+const PRIORITY = ["alignment", "not_in_frame", "too_far", "shape", "busy_interior", "blurry", "glare", "too_dark", "not_distinct"];
+
+// A document's interior is mostly smooth; a busy surface (woven tablecloth,
+// patterned fabric) filling the "document" floods it with edges. Above this
+// edge-density the quad describes the surface, not a document.
+const BUSY_SHARP_FRAC = 0.16;
 
 /**
  * Detect the document quadrilateral in one RGBA frame.
@@ -425,55 +424,79 @@ export function detectQuadImageData(frame, opts = {}) {
     if (!sideLines.left.length || !sideLines.right.length ||
         !sideLines.top.length || !sideLines.bottom.length) return result;
 
-    // Combination search over the candidate side lines
-    let best = null;
+    // Combination search over the candidate side lines — collect every valid
+    // combination, strongest first. The top-scoring quad is only accepted when
+    // it also passes the quality checks; otherwise lower-scoring combinations
+    // are tried, so a pattern-induced full-frame quad cannot shadow the real
+    // document boundary.
+    const combos = [];
     for (const L of sideLines.left) {
       for (const R of sideLines.right) {
         for (const T of sideLines.top) {
           for (const B of sideLines.bottom) {
             const cand = evaluateCombo([L, R, T, B], an, opts);
-            if (cand && (!best || cand.score > best.score)) best = cand;
+            if (cand) combos.push(cand);
           }
         }
       }
     }
-    if (!best) return { ...result, reasons: ["alignment"] };
-
-    result.found = true;
-    result.quad = best.quad.map((p) => ({ x: p[0], y: p[1] }));
-    result.areaFrac = best.areaFrac;
-
-    // Quality checks on the winning quad
-    const reasons = [];
-    if (best.areaFrac < 0.1) reasons.push("too_far");
-    if (opts.guideRect && best.fill < 0.4) reasons.push("too_far");
+    if (!combos.length) return { ...result, reasons: ["alignment"] };
+    combos.sort((a, b) => b.score - a.score);
 
     const ratios = opts.ratios?.length ? opts.ratios : [1.6];
     const side = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
-    const dims = [side(result.quad[0], result.quad[1]), side(result.quad[3], result.quad[2]),
-      side(result.quad[0], result.quad[3]), side(result.quad[1], result.quad[2])];
-    const ratio = Math.max(...dims) / Math.max(1, Math.min(...dims));
-    const aScore = aspectScore(ratio, ratios);
-    if (aScore <= 0) reasons.push("shape");
 
-    const m = interiorMetrics(an, best.quad);
-    if (!m) reasons.push("alignment");
-    else {
-      if (m.meanMag < 10 || m.sharpFrac < 0.015) reasons.push("blurry");
-      if (m.glareFrac > 0.12) reasons.push("glare");
-      if (m.meanGray < 25) reasons.push("too_dark");
+    let best = null;
+    let bestOverall = null;
+    for (const cand of combos.slice(0, COMBO_SHORTLIST)) {
+      // Interior quality of this candidate: a document's interior is mostly
+      // smooth; a quad that swallowed background pattern is busier inside —
+      // this breaks ties between a true document boundary and the frame/pattern.
+      const m = interiorMetrics(an, cand.quad);
+      let effective = m ? cand.score + 2 * Math.max(0, Math.min(1, 1 - m.sharpFrac * 4)) : cand.score;
+      // A quad pinned to the region border while a valid document boundary
+      // sits just inside it is the pattern/background margin, not the document
+      // (post-capture stills keep a thin crop margin around the document).
+      const rb = region;
+      const btolX = (rb.x1 - rb.x0) * 0.02, btolY = (rb.y1 - rb.y0) * 0.02;
+      if (cand.quad.some((p) =>
+        p[0] <= rb.x0 + btolX || p[0] >= rb.x1 - btolX ||
+        p[1] <= rb.y0 + btolY || p[1] >= rb.y1 - btolY)) effective -= 0.3;
+      // Quality checks
+      const reasons = [];
+      if (cand.areaFrac < 0.1) reasons.push("too_far");
+      if (opts.guideRect && cand.fill < 0.4) reasons.push("too_far");
+      if (aspectScore(cand.ratio, ratios) <= 0) reasons.push("shape");
+      if (!m) reasons.push("alignment");
+      else {
+        if (m.sharpFrac > BUSY_SHARP_FRAC) reasons.push("busy_interior");
+        else if (m.meanMag < 10 || m.sharpFrac < 0.015) reasons.push("blurry");
+        if (m.glareFrac > 0.12) reasons.push("glare");
+        if (m.meanGray < 25) reasons.push("too_dark");
+      }
+      if (sideContrastScore(an, cand.quad) < 3) reasons.push("not_distinct");
+
+      const entry = { cand, effective, reasons };
+      if (!reasons.length && (!best || effective > best.effective)) best = entry;
+      if (!bestOverall || effective > bestOverall.effective) bestOverall = entry;
     }
-    if (sideContrastScore(an, best.quad) < 3) reasons.push("not_distinct");
+    if (!best && !bestOverall) return { ...result, reasons: ["alignment"] };
+    const chosen = (best || bestOverall).cand;
+    const reasons = best ? [] : [...new Set(bestOverall.reasons)].sort(
+      (a, b) => PRIORITY.indexOf(a) - PRIORITY.indexOf(b)
+    );
 
-    reasons.sort((a, b) => PRIORITY.indexOf(a) - PRIORITY.indexOf(b));
-    result.reasons = [...new Set(reasons)];
+    result.found = true;
+    result.quad = chosen.quad.map((p) => ({ x: p[0], y: p[1] }));
+    result.areaFrac = chosen.areaFrac;
+    result.reasons = reasons;
 
     // "Fills the frame" — the guide crop already IS the document (still mode)
     const ftol = 0.03;
-    result.fillsFrame = result.areaFrac >= 0.9 && best.quad.every((p) =>
+    result.fillsFrame = result.areaFrac >= 0.9 && chosen.quad.every((p) =>
       p[0] >= -ftol * w && p[0] <= w + ftol * w && p[1] >= -ftol * h && p[1] <= h + ftol * h
     );
-    result.confident = result.reasons.length === 0;
+    result.confident = reasons.length === 0;
     return result;
   } catch (_) {
     return result;

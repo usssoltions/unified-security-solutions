@@ -59,6 +59,7 @@ const GUIDANCE = {
   glare: "Tilt the document slightly to remove the light glare",
   too_dark: "Move to better light — the photo is too dark",
   not_distinct: "Place the document on a plainer, contrasting surface",
+  busy_interior: "Move the document to a plainer surface — the background is too busy",
 };
 
 export default function DocumentCamera({ title, idType = "sa_id", onUse, onCancel }) {
