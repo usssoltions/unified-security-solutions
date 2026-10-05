@@ -909,7 +909,11 @@ export default async function main(req: Request): Promise<Response> {
           } else profileAction = 'created';
 
           if (profileTarget) {
-            for (const [wk] of PROFILE_MAP) {
+            // Existing profiles receive IDENTITY corrections only — visit-specific
+            // details (company, job, cellphone, …) stay on the visit and never
+            // overwrite the profile. A newly created profile is seeded from the
+            // full corrected record because it has no details of its own.
+            for (const wk of ['surname', 'initials', 'id_number', 'id_type']) {
               if (String(profileTarget[wk] ?? '') !== profileVals[wk]) profileUpdates[wk] = profileVals[wk];
             }
             if (profileTarget.status === 'inactive') profileUpdates.status = 'active';

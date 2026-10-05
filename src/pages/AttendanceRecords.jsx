@@ -37,7 +37,12 @@ export default function AttendanceRecords() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [generatingExcel, setGeneratingExcel] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-  const [openRecordId, setOpenRecordId] = useState(null);
+  // Deep link from the dashboard: ?record=<unique record id> opens that entry.
+  const [openRecordId, setOpenRecordId] = useState(() => new URLSearchParams(window.location.search).get("record"));
+  const closeRecord = () => {
+    setOpenRecordId(null);
+    if (new URLSearchParams(window.location.search).has("record")) window.history.replaceState(null, "", "/AttendanceRecords");
+  };
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -339,7 +344,7 @@ export default function AttendanceRecords() {
       {openRecordId && (
         <AttendanceRecordDetail recordId={openRecordId}
           medicalCentres={dropdowns.medicalCentres} assessmentTypes={dropdowns.assessmentTypes}
-          onClose={() => setOpenRecordId(null)} onDownloadPdf={handleIndividualPdf} />
+          onClose={closeRecord} onDownloadPdf={handleIndividualPdf} />
       )}
     </div>
   );

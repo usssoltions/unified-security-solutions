@@ -197,7 +197,8 @@ export default function AttendanceDashboard() {
         ) : (
           <div className="space-y-2">
             {recent.map(r => (
-              <div key={r.id} className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] px-4 py-3 flex items-center gap-3">
+              <Link key={r.id} to={`/AttendanceRecords?record=${encodeURIComponent(r.id)}`}
+                className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] px-4 py-3 flex items-center gap-3 min-h-[56px] hover:bg-[var(--surface-raised)] active:scale-[0.99] transition brand-focus">
                 <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
                   <Users className="w-4 h-4 text-slate-400" />
                 </div>
@@ -211,7 +212,7 @@ export default function AttendanceDashboard() {
                   <p className="text-slate-300 text-xs">{r.attendance_time}</p>
                   <Badge variant="outline" className="text-[10px] border-slate-600 text-slate-400">{r.assessment_type || "—"}</Badge>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
