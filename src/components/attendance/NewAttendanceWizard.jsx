@@ -173,6 +173,7 @@ export default function NewAttendanceWizard({
   // ── Step 6: Save ─────────────────────────────────────────────────────────
   const handleConfirm = async () => {
     if (saveRef.current || saving) return;
+    if (placeholdersBlocked) return; // placeholder values can never be saved
     saveRef.current = true;
     setSaving(true);
     setSaveError(null);
@@ -214,6 +215,39 @@ export default function NewAttendanceWizard({
         signature_data_url: signatureDataUrl,
       });
 
+      // Post-save verification: RELOAD the saved worker + record from the
+      // server and confirm every value matches the reviewed entry
+      // character-for-character. The wizard stays open on any mismatch so the
+      // operator can report it — re-submitting would create a duplicate.
+      const verify = await attendanceCall("verify_saved", {
+        worker_id: res?.worker_id, record_id: res?.record_id,
+      });
+      const sv = verify?.worker || {};
+      const sr = verify?.record || {};
+      const reviewed = {
+        surname, initials, first_names: firstNames, id_number: idNumber,
+        company, job_description: jobDescription, cellphone,
+      };
+      const mismatches = [];
+      ["surname", "initials", "first_names", "id_number", "company", "job_description", "cellphone"].forEach((k) => {
+        if (String(sv[k] ?? "") !== String(reviewed[k] ?? "")) mismatches.push(k);
+      });
+      [
+        ["surname_snapshot", "surname"], ["initials_snapshot", "initials"],
+        ["id_number_snapshot", "id_number"], ["company_snapshot", "company"],
+        ["job_description_snapshot", "job_description"], ["cellphone_snapshot", "cellphone"],
+      ].forEach(([rk, k]) => {
+        // id_number is trimmed server-side (dedup key) — compare trimmed.
+        const cmp = (a, b) => k === "id_number"
+          ? String(a ?? "").trim() !== String(b ?? "").trim()
+          : String(a ?? "") !== String(b ?? "");
+        if (cmp(sr[rk], reviewed[k])) mismatches.push("record." + rk);
+      });
+      if (mismatches.length > 0) {
+        setSaveError("Attendance WAS saved, but the stored values did not match the reviewed entry (" + mismatches.join(", ") + "). Do NOT confirm again — report this to your administrator.");
+        return;
+      }
+
       onSuccess({
         workerName: formatDisplayName({ surname, initials }),
         attendanceTime: timeStr,
@@ -233,8 +267,9 @@ export default function NewAttendanceWizard({
   const firstNamesRequired = licenceMissingFirstNames && idType === "drivers_licence" && !firstNames.trim();
   const step2Valid = surname.trim() && idNumber.trim() && company.trim() && jobDescription.trim() && cellphone.trim() && !firstNamesRequired;
   // Placeholder / ellipsis guard: "...", "…", "---", "0000000000" style debris
-  // in a required field is warned about — WARN ONLY, never blocks and never
-  // alters the input (whatever the operator typed is preserved exactly).
+  // in a required field BLOCKS saving (client AND server-side). The operator's
+  // other entered information is never cleared — only the flagged fields must
+  // be corrected before attendance can be saved.
   const looksLikePlaceholder = (v) => {
     const t = String(v || "").trim();
     return t.length > 0 && (/(\.{2,}|…)/.test(t) || /^[.\-_*\sx0]+$/i.test(t));
@@ -243,7 +278,11 @@ export default function NewAttendanceWizard({
     surname.trim() && looksLikePlaceholder(surname) ? "Surname" : null,
     initials.trim() && looksLikePlaceholder(initials) ? "Initials" : null,
     idNumber.trim() && looksLikePlaceholder(idNumber) ? "ID / Passport number" : null,
+    company.trim() && looksLikePlaceholder(company) ? "Company / Customer" : null,
+    jobDescription.trim() && looksLikePlaceholder(jobDescription) ? "Job Description" : null,
+    cellphone.trim() && looksLikePlaceholder(cellphone) ? "Cellphone Number" : null,
   ].filter(Boolean);
+  const placeholdersBlocked = placeholderWarnings.length > 0;
   const step4Valid = medicalCentre && assessmentType;
 
   const goNext = () => {
@@ -308,13 +347,22 @@ export default function NewAttendanceWizard({
             </div>
           )}
 
+          {scannedFields && (
+            <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3">
+              <p className="text-sky-300 text-xs flex items-start gap-2">
+                <Eye className="w-4 h-4 shrink-0" />
+                The details below were read from the scanned document. Check every field against the ID document / photo before saving — scanned values are never saved automatically without your review, and you can correct any field here.
+              </p>
+            </div>
+          )}
+
           {placeholderWarnings.length > 0 && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
               <p className="text-amber-300 text-sm font-semibold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" /> Placeholder text detected
+                <AlertCircle className="w-4 h-4" /> Placeholder text detected — cannot save
               </p>
               <p className="text-slate-300 text-xs mt-1">
-                {placeholderWarnings.join(", ")} look like placeholder text (for example "..."). Please enter the person's real details — what you type is saved exactly as entered and appears on the official register.
+                {placeholderWarnings.join(", ")} look like placeholder text (for example "..."). Attendance cannot be saved until the person's real details are entered. Everything you have typed is kept — correct only the flagged fields.
               </p>
             </div>
           )}
@@ -385,7 +433,7 @@ export default function NewAttendanceWizard({
             <Button variant="outline" onClick={goBack} className="flex-1 border-slate-600 text-slate-300 h-12">
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
-            <Button onClick={goNext} disabled={!step2Valid} variant="brand" className="flex-1 h-12">
+            <Button onClick={goNext} disabled={!step2Valid || placeholdersBlocked} variant="brand" className="flex-1 h-12">
               Next <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -523,8 +571,16 @@ export default function NewAttendanceWizard({
               <img src={signatureDataUrl} alt="Signature" className="h-16 bg-white rounded-lg border border-slate-600" />
             </div>
           )}
+          {placeholderWarnings.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+              <p className="text-amber-300 text-sm font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" /> Cannot save — placeholder text in {placeholderWarnings.join(", ")}
+              </p>
+              <p className="text-slate-300 text-xs mt-1">Go back and enter the real details from the ID document. Everything you entered is kept.</p>
+            </div>
+          )}
           {saveError && (
-            <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 flex items-center gap-2 text-rose-400 text-sm">
+            <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 flex items-start gap-2 text-rose-400 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" /> {saveError}
             </div>
           )}
@@ -532,7 +588,7 @@ export default function NewAttendanceWizard({
             <Button variant="outline" onClick={goBack} disabled={saving} className="flex-1 border-slate-600 text-slate-300 h-12">
               <ChevronLeft className="w-4 h-4 mr-1" /> Edit
             </Button>
-            <Button onClick={handleConfirm} disabled={saving} variant="brand" className="flex-1 h-14 text-base">
+            <Button onClick={handleConfirm} disabled={saving || placeholdersBlocked} variant="brand" className="flex-1 h-14 text-base">
               {saving ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
               {saving ? "Saving…" : "Confirm Attendance"}
             </Button>

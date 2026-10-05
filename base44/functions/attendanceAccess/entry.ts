@@ -48,6 +48,25 @@ const CUSTOMER_ADMIN_ROLES = ['admin', 'practice_admin', 'estate_manager', 'cust
 const ID_TYPES = ['sa_id', 'drivers_licence', 'passport', 'other'];
 const OPTION_TYPES = ['medical_centre', 'assessment_type'];
 
+// Placeholder / ellipsis guard (server-side enforcement, mirrored in the
+// wizard): "...", "…", "---", "0000000000" style debris in an identity /
+// profile field is NEVER accepted for a saved record. Values are otherwise
+// stored EXACTLY as entered — no masking, abbreviation or truncation.
+const PLACEHOLDER_ELLIPSIS_RE = /\.{2,}|…/;
+const PLACEHOLDER_ONLY_RE = /^[.\-_*\sx0]+$/i;
+const looksLikePlaceholder = (v: any): boolean => {
+  const t = String(v ?? '').trim();
+  return t.length > 0 && (PLACEHOLDER_ELLIPSIS_RE.test(t) || PLACEHOLDER_ONLY_RE.test(t));
+};
+const placeholderField = (w: any, keys: string[]): string | null => {
+  for (const k of keys) {
+    if (w[k] !== undefined && looksLikePlaceholder(w[k])) return k;
+  }
+  return null;
+};
+const PLACEHOLDER_MSG = (f: string) =>
+  `Placeholder text (for example "...") is not allowed in ${f}. Enter the real details from the ID document — values are saved exactly as entered.`;
+
 function err(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
 }
@@ -302,6 +321,8 @@ export default async function main(req: Request): Promise<Response> {
         if (!w.surname || !idNumber || !w.company || !w.job_description || !w.cellphone) {
           return err('Surname, ID number, company, job description and cellphone are required.');
         }
+        const phField = placeholderField(w, ['surname', 'initials', 'first_names', 'id_number', 'company', 'job_description', 'cellphone']);
+        if (phField) return err(PLACEHOLDER_MSG(phField));
         const idType = ID_TYPES.includes(w.id_type) ? w.id_type : 'sa_id';
         // SERVER-SIDE duplicate prevention: one profile per ID/document number
         // per customer. If the person already exists, return the existing
@@ -349,6 +370,8 @@ export default async function main(req: Request): Promise<Response> {
         const w = params.worker || {};
         const updates: Record<string, any> = {};
 
+        const phField = placeholderField(w, ['surname', 'initials', 'first_names', 'id_number', 'company', 'job_description', 'cellphone']);
+        if (phField) return err(PLACEHOLDER_MSG(phField));
         if (w.id_number !== undefined) {
           const idNumber = String(w.id_number).trim();
           if (!idNumber) return err('The ID / document number cannot be empty.');
@@ -509,6 +532,8 @@ export default async function main(req: Request): Promise<Response> {
           if (!w.surname || !idNumber || !w.company || !w.job_description || !w.cellphone) {
             return err('Surname, ID number, company, job description and cellphone are required.');
           }
+          const phField = placeholderField(w, ['surname', 'initials', 'first_names', 'id_number', 'company', 'job_description', 'cellphone']);
+          if (phField) return err(PLACEHOLDER_MSG(phField));
           const idType = ID_TYPES.includes(w.id_type) ? w.id_type : 'sa_id';
           // Deduplication: an existing profile for this ID number is reused
           // (same tenant) so a duplicate worker can never be created.
@@ -629,6 +654,24 @@ export default async function main(req: Request): Promise<Response> {
           notes: `Deleted attendance for ${rec.surname_snapshot || 'unknown'}${rec.initials_snapshot ? ', ' + rec.initials_snapshot : ''} (ID ${rec.id_number_snapshot || '—'}) on ${rec.attendance_date} ${rec.attendance_time} at ${rec.medical_centre || '—'} (${rec.assessment_type || '—'}). Signature removed with the record.`,
         }).catch(() => null);
         return Response.json({ success: true });
+      }
+
+      // ── Post-save verification ──────────────────────────────────────────────
+      // RELOADS the just-saved worker + record (fresh server-side reads, never
+      // echoes of the write) so the UI can confirm every stored value matches
+      // the reviewed entry character-for-character. Scope-checked like every
+      // other action.
+      case 'verify_saved': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!scope.customer_id) return err('A customer scope is required.', 400);
+        if (!params.worker_id || !params.record_id) return err('A worker id and record id are required.');
+        const w = await base44.asServiceRole.entities.AttendanceWorker.get(params.worker_id).catch(() => null);
+        const r = await base44.asServiceRole.entities.AttendanceRecord.get(params.record_id).catch(() => null);
+        if (!w || w.customer_id !== scope.customer_id) return err('Worker not found in your scope.', 404);
+        if (!r || r.customer_id !== scope.customer_id) return err('Record not found in your scope.', 404);
+        const { signature_data_url: _sig, ...recordSafe } = r;
+        return Response.json({ worker: w, record: recordSafe });
       }
 
       case 'get_signatures': {
