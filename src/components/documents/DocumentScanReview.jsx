@@ -13,6 +13,35 @@ const HIDDEN_KEYS = new Set(["_raw"]);
 // SADL image fields rendered as the photo (handled separately) — never as text.
 const HIDDEN_PARSED_KEYS = ["imagerawbase64", "image width", "image height"];
 
+// TRUNCATED-DECODE DETECTION: a partial PDF417 decode (typical when the camera
+// is too far, the lens slow, or the barcode not flat) yields mid-string
+// fragments such as "…OF…" or "…5097…" in place of complete values. The
+// display layer never clips these — they ARE the decoded data — so they must
+// be flagged at review time and never treated as complete details.
+const FRAGMENT_RE = /(\.{3,}|\u2026)/;
+const CRITICAL_FIELDS = {
+  drivers_licence: ["surname", "driver_licence_number"],
+  sa_id: ["surname", "visitor_id_number"],
+  passport: ["surname", "visitor_id_number"],
+  vehicle_disc: ["registration_number"],
+};
+function fieldLabel(k) { return String(k).replace(/_/g, " "); }
+export function assessScanCompleteness(result, mappedFields, profile) {
+  const issues = [];
+  if (!result?.parsed || result?.malformedJSON) {
+    issues.push("The barcode was decoded but structured parsing was not available");
+  }
+  const crit = CRITICAL_FIELDS[profile?.id];
+  if (crit) {
+    for (const f of crit) {
+      const v = String(mappedFields?.[f] ?? "").trim();
+      if (!v) issues.push(`Missing value: ${fieldLabel(f)}`);
+      else if (FRAGMENT_RE.test(v)) issues.push(`Fragmented (truncated) value: ${fieldLabel(f)}`);
+    }
+  }
+  return issues;
+}
+
 export default function DocumentScanReview({
   result, photoUrl, mappedFields, profile, qrInfo,
   onAccept, onScanAgain, onCancel,
@@ -48,6 +77,8 @@ export default function DocumentScanReview({
 
   const isQR = profile?.id === "qr";
   const primaryName = mappedFields?.visitor_name || mappedFields?.registration_number || "";
+  const completenessIssues = assessScanCompleteness(result, mappedFields, profile);
+  const incomplete = completenessIssues.length > 0;
 
   return (
     <div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex flex-col">
@@ -78,9 +109,25 @@ export default function DocumentScanReview({
             <QrCode className="w-6 h-6 text-purple-300 shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="text-purple-300 text-xs font-semibold uppercase tracking-wide">QR · {qrInfo.qrType}</p>
-              <p className="text-white text-sm break-all font-mono">{String(qrInfo.payload ?? "").slice(0, 160)}</p>
+              <p className="text-white text-sm break-all font-mono">{String(qrInfo.payload ?? "")}</p>
               <p className="text-slate-400 text-xs mt-0.5">Caller: {qrInfo.caller || "—"}</p>
             </div>
+          </div>
+        )}
+
+        {/* INCOMPLETE-SCAN FLAG — a fragmented/missing decode is never shown as
+            complete details. Rescan is the primary action; accepting continues
+            with the fragments so the operator can correct the values by hand. */}
+        {incomplete && (
+          <div className="rounded-xl border-2 border-rose-500/60 bg-rose-500/10 p-3 space-y-1">
+            <p className="text-rose-300 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
+              <FileWarning className="w-4 h-4 shrink-0" /> Incomplete scan — not full document data
+            </p>
+            <p className="text-rose-200/90 text-xs">{completenessIssues.join(" · ")}</p>
+            <p className="text-slate-300 text-xs">
+              Scan Again and hold the barcode steady, close to the camera, well lit and flat
+              — or Accept and correct the details manually.
+            </p>
           </div>
         )}
 
@@ -124,12 +171,16 @@ export default function DocumentScanReview({
           </h3>
           {isParsed && fieldEntries.length > 0 ? (
             <div className="space-y-1.5">
-              {fieldEntries.map(([name, value], i) => (
-                <div key={i} className="flex items-start justify-between gap-3 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800">
-                  <span className="text-slate-400 text-xs shrink-0">{String(name)}</span>
-                  <span className="text-white text-sm text-right break-all">{String(value ?? "")}</span>
-                </div>
-              ))}
+              {fieldEntries.map(([name, value], i) => {
+                const v = String(value ?? "");
+                const frag = FRAGMENT_RE.test(v);
+                return (
+                  <div key={i} className="flex items-start justify-between gap-3 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800">
+                    <span className="text-slate-400 text-xs shrink-0">{String(name)}</span>
+                    <span className={`text-sm text-right break-all ${frag ? "text-rose-300" : "text-white"}`}>{v}</span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="flex items-center gap-2 text-amber-300 text-sm p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
@@ -155,6 +206,20 @@ export default function DocumentScanReview({
                 <div><span className="text-slate-500">formattedJSON keys:</span> <span className="text-slate-200">{Object.keys(result.formattedJSON).join(", ")}</span></div>
               )}
               <div><span className="text-slate-500">Scan timestamp:</span> <span className="text-slate-200">{result?.timestamp}</span></div>
+              {/* RAW DECODE (diagnostics only): lets a phone-vs-tablet comparison
+                  of the underlying decoded payload be made on-device. */}
+              {result?.textualData ? (
+                <div>
+                  <span className="text-slate-500">Raw decoded payload ({result.textualData.length} chars):</span>
+                  <p className="text-slate-200 text-[11px] break-all font-mono mt-0.5">{result.textualData}</p>
+                </div>
+              ) : <div><span className="text-slate-500">Raw decoded payload:</span> <span className="text-slate-200">none</span></div>}
+              {result?.formattedText ? (
+                <div>
+                  <span className="text-slate-500">Formatted text:</span>
+                  <p className="text-slate-200 text-[11px] break-all font-mono mt-0.5">{result.formattedText}</p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -167,9 +232,12 @@ export default function DocumentScanReview({
         <Button variant="outline" onClick={onScanAgain} disabled={accepting} className="border-slate-600 text-sky-300">
           <RefreshCw className="w-4 h-4 mr-1.5" /> Scan Again
         </Button>
-        <Button onClick={handleAcceptClick} disabled={accepting} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+        <Button onClick={handleAcceptClick} disabled={accepting} variant={incomplete ? "outline" : "default"}
+          className={incomplete ? "border-amber-500/50 text-amber-300" : "bg-emerald-500 hover:bg-emerald-600 text-white"}>
           {accepting ? (
             <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Continuing…</>
+          ) : incomplete ? (
+            <><CheckCircle2 className="w-4 h-4 mr-1.5" /> Accept & Correct</>
           ) : (
             <><CheckCircle2 className="w-4 h-4 mr-1.5" /> Accept</>
           )}

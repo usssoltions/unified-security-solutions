@@ -21,6 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { X, Zap, RefreshCw, AlertCircle, Loader2, ScanLine } from "lucide-react";
 import * as scanner from "@/lib/documentScannerService";
 import DocumentScanReview from "@/components/documents/DocumentScanReview";
+import { base44 } from "@/api/base44Client";
+import { recordScanAudit } from "@/lib/documentScanAudit";
 
 function playBeep() {
   try {
@@ -98,6 +100,8 @@ export default function DocumentScanner({
   const [resolved, setResolved] = useState(null); // { profileId, profile, parserUsed, qrInfo }
   const processingRef = useRef(false);
   const viewportRef = useRef(null);
+  // Current user for the device-tagged scan audit (best-effort, resolved once).
+  const auditUserRef = useRef(null);
   // PERFORMANCE: camera enumeration (permissions.query + getCameras) only
   // needs to happen once per scanner open — it feeds the optional camera
   // picker only. On an in-session profile switch (licence → vehicle disc) the
@@ -115,6 +119,8 @@ export default function DocumentScanner({
   useEffect(() => {
     let cancelled = false;
     const start = async () => {
+      // Scan-audit user identity (RLS requires the caller's own user id).
+      try { base44.auth.me().then((u) => { auditUserRef.current = u; }).catch(() => {}); } catch (_) {}
       if (typeof window !== "undefined" && !window.isSecureContext) return reportError({ type: "insecure_context" });
       // The builder preview runs in an iframe without camera permission — bail early
       // with a clear message instead of hanging forever on getUserMedia.
@@ -229,6 +235,36 @@ export default function DocumentScanner({
     setMappedFields(mapped);
     setResolved({ profileId, profile: resolvedProfile, parserUsed, qrInfo });
     playBeep();
+
+    // DEVICE-TAGGED SCAN AUDIT — best-effort, never gates the workflow. Stores
+    // the parsed fields (photo bytes stripped, size-capped) plus the caller's
+    // device descriptor, so decodes of the SAME document from different devices
+    // (phone vs tablet) can be compared later from the stored audit records.
+    (async () => {
+      try {
+        let rawJson = "";
+        try {
+          const clone = JSON.parse(JSON.stringify(parsed.formattedJSON || {}));
+          if (Array.isArray(clone.Fields)) {
+            clone.Fields = clone.Fields.filter((f) =>
+              !["imagerawbase64", "image width", "image height"].includes(String(f?.Field ?? f?.Name ?? "").toLowerCase()));
+          }
+          rawJson = JSON.stringify({ barcodeType: parsed.barcodeType, textualData: parsed.textualData, formattedText: parsed.formattedText, formattedJSON: clone }).slice(0, 6000);
+        } catch (_) {
+          rawJson = String(parsed.textualData || "").slice(0, 6000);
+        }
+        let mappedSummary = "";
+        try { const { _raw, ...rest } = mapped || {}; mappedSummary = JSON.stringify(rest).slice(0, 2000); } catch (_) {}
+        await recordScanAudit({
+          user: auditUserRef.current || await base44.auth.me().catch(() => null),
+          callerPage: caller || "document_scanner",
+          documentType: profileId, barcodeType: parsed.barcodeType,
+          success: !!parsed.formattedJSON, reason: parsed.malformedJSON ? "malformed_formatted_json" : "",
+          sdkVersion: scanner.SDK_VERSION, parserUsed, profile: profileId,
+          rawJson, mappedSummary,
+        });
+      } catch (_) {}
+    })();
 
     // autoAccept (Access Control QR pass): skip the generic review panel and
     // dispatch the freshly-decoded result straight to the caller so it can look
