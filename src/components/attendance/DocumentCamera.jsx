@@ -1,23 +1,24 @@
 /**
  * DocumentCamera — guided live capture for physical ID document photos.
  *
- * ROBUST CAMERA INIT SEQUENCE (fixes the black-preview bug):
- *   1. Progressive getUserMedia constraint fallback (advanced → environment → any).
- *   2. The <video> element is MOUNTED during "starting" and "live" phases —
- *      the stream is attached to a real element, never to a null ref.
- *   3. Wait for loadedmetadata → play() → readyState >= 2 with non-zero
- *      videoWidth/videoHeight — only then is the camera marked READY and
- *      Capture Photo enabled.
- *   4. Autofocus capabilities are applied only AFTER the preview is live and
- *      only if the device reports them (getCapabilities) — unsupported focus
- *      can never break the preview.
- *   5. Stream tracks are stopped ONLY on final unmount / leaving the live
- *      camera — never by ordinary re-renders.
+ * LIVE AUTO-CAPTURE FLOW:
+ *   1. The live video is analysed continuously (a downscaled offscreen copy,
+ *      ~3-4 fps): the document's actual four corners are detected via
+ *      scan-line edge crossings + RANSAC side fits (liveDocDetect).
+ *   2. The detected quad is drawn live: amber while the document is incomplete
+ *      / blurred / glared, GREEN once all four corners sit inside the guide
+ *      with sufficient quality — then, after the document has remained steady
+ *      for ~1.2 s, the frame is captured AUTOMATICALLY.
+ *   3. A manual Capture button always remains available as fallback — manual
+ *      corner-dragging is never forced when the document is clearly aligned.
+ *   4. After capture the SAME detection runs at higher quality on the
+ *      full-resolution frame: the document is straightened and cropped to its
+ *      actual edges and the result is ALWAYS shown for approval (Retake /
+ *      Adjust / Use) — nothing is uploaded or saved before approval.
  *
- * On capture the image is TRULY cropped from the ORIGINAL camera-resolution
- * frame to the guide area before anything is saved. The darkened surround
- * darkens only OUTSIDE the guide (a box-shadow ring) — the guide interior is
- * fully transparent to the live video.
+ * ROBUST CAMERA INIT (unchanged): progressive getUserMedia fallback, video
+ * mounted during starting/live, frames verified before CAPTURE is enabled,
+ * autofocus applied only when supported, tracks stopped only on final unmount.
  *
  * Physical document PHOTO subsystem only — Barkoder/SecureScan is untouched.
  */
@@ -30,6 +31,9 @@ import { guideForIdType, visibleSourceRect, cropToGuide, captureWarnings } from 
 import {
   detectDocumentQuad, warpQuadToJpegFile, fileToCanvas, quadToFrac, fracToQuad,
 } from "@/lib/documentEdgeDetect";
+import {
+  detectQuadImageData, detectQuadCanvas, plausibleRatiosForIdType,
+} from "@/lib/liveDocDetect";
 import DocCropAdjust from "./DocCropAdjust";
 
 // Progressive camera constraints — never fail because an advanced
@@ -40,18 +44,37 @@ const CAMERA_CONSTRAINTS = [
   { video: true, audio: false },
 ];
 
+// Auto-capture: the aligned quad must persist this many analysis frames
+// (~300 ms apart) before the shutter fires (~1.2 s of steadiness).
+const STEADY_NEEDED = 4;
+const ANALYSE_INTERVAL_MS = 300;
+
+// Operator guidance for each detector reason code.
+const GUIDANCE = {
+  not_in_frame: "Position the whole document inside the frame",
+  alignment: "Align the document inside the guide — all corners must be visible",
+  too_far: "Move closer until the document fills the guide",
+  shape: "This does not look like the selected document — check the document type",
+  blurry: "Hold steady — the image is not sharp enough yet",
+  glare: "Tilt the document slightly to remove the light glare",
+  too_dark: "Move to better light — the photo is too dark",
+  not_distinct: "Place the document on a plainer, contrasting surface",
+};
+
 export default function DocumentCamera({ title, idType = "sa_id", onUse, onCancel }) {
   const [phase, setPhase] = useState("starting"); // starting | live | still | preview | adjust | denied
   const [errorMsg, setErrorMsg] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [cameraReady, setCameraReady] = useState(false);
   const [statusLine, setStatusLine] = useState(null);
+  const [liveMsg, setLiveMsg] = useState({ ok: false, text: "Position the document inside the frame" });
   const [guideStyle, setGuideStyle] = useState({});
   const [stillUrl, setStillUrl] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
   const [retakeSource, setRetakeSource] = useState("camera");
   const [processing, setProcessing] = useState(false);
+  const [flash, setFlash] = useState(false);
   // { finalFile, originalFile, quadFrac, detected, uncertain } — the guide
   // crop, the automatic edge-detection result and the final approved crop.
   const [processInfo, setProcessInfo] = useState(null);
@@ -60,9 +83,18 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
   const stillImgRef = useRef(null);
   const containerRef = useRef(null);
   const guideRef = useRef(null);
+  const overlayRef = useRef(null);
   const streamRef = useRef(null);
   const objectUrlRef = useRef(null);
   const cancelledRef = useRef(false);
+  // Live detection loop state (refs — the interval callback always sees fresh values)
+  const analysisCanvasRef = useRef(null);
+  const guideStyleRef = useRef(null);
+  const lastQuadRef = useRef(null);
+  const steadyRef = useRef(0);
+  const autoLockRef = useRef(false);   // one automatic capture per camera session
+  const processingRef = useRef(false);
+  const ratios = plausibleRatiosForIdType(idType);
 
   const guide = guideForIdType(idType);
 
@@ -108,6 +140,10 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     setWarnings([]);
     setStatusLine(null);
     setCameraReady(false);
+    autoLockRef.current = false;
+    steadyRef.current = 0;
+    lastQuadRef.current = null;
+    setLiveMsg({ ok: false, text: "Position the document inside the frame" });
 
     // 1) Request the stream with progressive constraint fallback
     let stream = null;
@@ -168,7 +204,6 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       stopStream();
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
-     
   }, []);
 
   // Guide geometry — scales with the viewport, always preserving the
@@ -189,18 +224,139 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
         gw = gh * guide.aspect;
         if (gw > cw * 0.86) { gw = cw * 0.86; gh = gw / guide.aspect; }
       }
-      setGuideStyle({
+      const st = {
         left: Math.round((cw - gw) / 2),
         top: Math.round((ch - gh) / 2),
         width: Math.round(gw),
         height: Math.round(gh),
-      });
+      };
+      guideStyleRef.current = st;
+      setGuideStyle(st);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(c);
     return () => ro.disconnect();
   }, [phase, guide]);
+
+  // ── Live detection loop ───────────────────────────────────────────────────
+  const drawOverlay = (res, ready) => {
+    const canvas = overlayRef.current, container = containerRef.current, analysis = analysisCanvasRef.current;
+    if (!canvas || !container || !analysis) return;
+    const cw = container.clientWidth, ch = container.clientHeight;
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, cw, ch);
+    if (!res?.quad) return;
+    // analysis px → container px
+    const k = cw / analysis.width;
+    ctx.beginPath();
+    res.quad.forEach((p, i) => {
+      const x = p.x * k, y = p.y * k;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    if (ready) {
+      ctx.fillStyle = "rgba(16, 185, 129, 0.12)";
+      ctx.fill();
+    }
+    ctx.lineWidth = ready ? 4 : 3;
+    ctx.strokeStyle = ready ? "#10b981" : "rgba(245, 158, 11, 0.95)";
+    ctx.stroke();
+    for (const p of res.quad) {
+      ctx.beginPath();
+      ctx.arc(p.x * k, p.y * k, ready ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = ready ? "#10b981" : "rgba(245, 158, 11, 0.95)";
+      ctx.fill();
+    }
+  };
+
+  const analyseFrame = async () => {
+    const video = videoRef.current, container = containerRef.current;
+    if (!video || !video.videoWidth || video.readyState < 2 || !container) return;
+    const gs = guideStyleRef.current;
+    if (!gs?.width) return;
+    const cw = container.clientWidth, ch = container.clientHeight;
+    const aW = 300;
+    const aH = Math.max(64, Math.round((aW * ch) / cw));
+    let ac = analysisCanvasRef.current;
+    if (!ac) { ac = document.createElement("canvas"); analysisCanvasRef.current = ac; }
+    if (ac.width !== aW || ac.height !== aH) { ac.width = aW; ac.height = aH; }
+    const ctx = ac.getContext("2d", { willReadFrequently: true });
+    // Draw the video exactly as displayed (object-fit: cover), scaled into the
+    // analysis canvas — analysis px = container px × (aW / cw).
+    const f = aW / cw;
+    const scale = Math.max(cw / video.videoWidth, ch / video.videoHeight);
+    ctx.drawImage(
+      video,
+      ((cw - video.videoWidth * scale) / 2) * f,
+      ((ch - video.videoHeight * scale) / 2) * f,
+      video.videoWidth * scale * f,
+      video.videoHeight * scale * f
+    );
+    let img;
+    try { img = ctx.getImageData(0, 0, aW, aH); } catch (_) { return; }
+
+    const guideRect = {
+      x0: gs.left * f, y0: gs.top * f,
+      x1: (gs.left + gs.width) * f, y1: (gs.top + gs.height) * f,
+    };
+    const res = detectQuadImageData(
+      { data: img.data, width: aW, height: aH },
+      { guideRect, requireInsideGuide: true, ratios }
+    );
+
+    // Steadiness: the aligned quad must persist (corners within 3% movement)
+    const q = res.confident ? res.quad : null;
+    let steady = 0;
+    if (q && lastQuadRef.current) {
+      const tol = aW * 0.03;
+      const close = q.every((p, i) =>
+        Math.hypot(p.x - lastQuadRef.current[i].x, p.y - lastQuadRef.current[i].y) <= tol
+      );
+      steady = close ? steadyRef.current + 1 : 1;
+    } else if (q) {
+      steady = 1;
+    }
+    steadyRef.current = steady;
+    lastQuadRef.current = q;
+
+    const ready = res.confident && steady >= 1;
+    drawOverlay(res, ready);
+
+    // Operator feedback
+    let text;
+    if (res.confident && steady >= 2) text = "Hold steady… capturing";
+    else if (res.confident) text = "Aligned — hold the document steady";
+    else {
+      const code = res.reasons?.[0] || "not_in_frame";
+      text = GUIDANCE[code] || "Position the document inside the frame";
+    }
+    setLiveMsg((prev) => (prev.text === text && prev.ok === res.confident ? prev : { ok: res.confident, text }));
+
+    // AUTO-CAPTURE: aligned + steady for ~1.2 s → fire the shutter once
+    if (res.confident && steady >= STEADY_NEEDED && !autoLockRef.current && !processingRef.current) {
+      autoLockRef.current = true;
+      setFlash(true);
+      setTimeout(() => setFlash(false), 280);
+      grabFrame();
+    }
+  };
+
+  useEffect(() => {
+    if (phase !== "live" || !cameraReady) return undefined;
+    let alive = true;
+    let busy = false;
+    const tick = async () => {
+      if (!alive || busy || autoLockRef.current || processingRef.current) return;
+      busy = true;
+      try { await analyseFrame(); } catch (_) {}
+      busy = false;
+    };
+    const id = setInterval(tick, ANALYSE_INTERVAL_MS);
+    return () => { alive = false; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, cameraReady, idType]);
 
   // Tap-to-focus — only when the camera is READY and the device supports it
   const tapToFocus = async (e) => {
@@ -234,18 +390,19 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
   /**
    * Detect the document's actual edges in the guide crop, straighten and
    * crop to them. CONFIDENT result → the straightened crop is previewed for
-   * approval. UNCERTAIN result → the manual corner editor is shown and
-   * nothing misleading is ever saved silently.
+   * approval. UNCERTAIN result → the manual corner editor is shown (seeded
+   * with the best-effort quad when one exists) and nothing misleading is
+   * ever saved silently.
    */
   const preparePreview = async (crop) => {
     if (!crop) {
       setStatusLine("Capture failed — please try again.");
       return;
     }
+    processingRef.current = true;
     setProcessing(true);
     try {
       const canvas = await fileToCanvas(crop.file);
-      const det = detectDocumentQuad(canvas);
       const info = {
         originalFile: crop.file,
         finalFile: null,
@@ -253,21 +410,42 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
         detected: false,
         uncertain: false,
       };
-      if (det?.confident && !det.fillsFrame) {
+      // Primary: scan-line detector (tuned for real document boundaries).
+      let det = detectQuadCanvas(canvas, { ratios });
+      // Fallback: Hough-line detector on the same crop.
+      if (!det?.confident) {
+        const hough = detectDocumentQuad(canvas);
+        if (hough?.confident) {
+          det = {
+            confident: true,
+            fillsFrame: hough.fillsFrame,
+            quad: hough.quad,
+            areaFrac: hough.areaFrac,
+            coverage: hough.coverage,
+          };
+        } else if (hough?.quad && !det?.quad) {
+          det = { ...det, quad: hough.quad };
+        }
+      }
+      if (det?.confident && det.fillsFrame) {
+        // The document already fills the frame — the guide crop IS the document.
+        info.finalFile = crop.file;
+        info.quadFrac = [[0, 0], [1, 0], [1, 1], [0, 1]];
+        info.detected = true;
+      } else if (det?.confident && det.quad) {
         const warped = await warpQuadToJpegFile(canvas, det.quad, { maxDim: 1600, quality: 0.92 });
         if (warped) {
           info.finalFile = warped;
           info.quadFrac = quadToFrac(det.quad, canvas.width, canvas.height);
           info.detected = true;
         }
-      } else if (det?.confident && det.fillsFrame) {
-        // The document already fills the frame — the guide crop IS the document.
-        info.finalFile = crop.file;
-        info.quadFrac = [[0, 0], [1, 0], [1, 1], [0, 1]];
-        info.detected = true;
       }
       if (!info.finalFile) {
         info.uncertain = true;
+        // Seed the manual editor with the best-effort quad when one exists
+        if (det?.quad && (det.areaFrac || 0) >= 0.15) {
+          info.quadFrac = quadToFrac(det.quad, canvas.width, canvas.height);
+        }
         setWarnings(captureWarnings(crop));
         setProcessInfo(info);
         stopStream();
@@ -287,6 +465,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       stopStream();
       setPhase("adjust");
     } finally {
+      processingRef.current = false;
       setProcessing(false);
     }
   };
@@ -294,6 +473,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
   const applyManualCrop = async (frac) => {
     const info = processInfo;
     if (!info?.originalFile) return;
+    processingRef.current = true;
     setProcessing(true);
     try {
       const canvas = await fileToCanvas(info.originalFile);
@@ -305,6 +485,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       setStatusLine("Could not crop with those corners — please adjust and try again.");
       setTimeout(() => setStatusLine(null), 2500);
     } finally {
+      processingRef.current = false;
       setProcessing(false);
     }
   };
@@ -363,8 +544,6 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
     }
   };
 
-  const textTop = guideStyle.top != null ? Math.max(6, guideStyle.top - 24) : null;
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -403,7 +582,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
           )}
 
           {statusLine && (
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-slate-900/90 text-slate-200 text-xs px-3 py-1.5 rounded-full z-10">
+            <div className="absolute top-11 left-1/2 -translate-x-1/2 bg-slate-900/90 text-slate-200 text-xs px-3 py-1.5 rounded-full z-10">
               {statusLine}
             </div>
           )}
@@ -412,30 +591,37 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
               RING outside the frame only; the guide interior is fully
               transparent to the live video underneath. */}
           {guideStyle.width != null && (
-            <>
-              <div
-                ref={guideRef}
-                className="absolute rounded-lg pointer-events-none"
-                style={{
-                  left: guideStyle.left, top: guideStyle.top,
-                  width: guideStyle.width, height: guideStyle.height,
-                  boxShadow: "0 0 0 9999px rgba(2, 6, 23, 0.55)",
-                  border: "2px solid rgba(255, 255, 255, 0.85)",
-                }}
-              >
-                <span className="absolute -top-0.5 -left-0.5 w-6 h-6 border-t-4 border-l-4 border-[var(--brand-accent)] rounded-tl-md" />
-                <span className="absolute -top-0.5 -right-0.5 w-6 h-6 border-t-4 border-r-4 border-[var(--brand-accent)] rounded-tr-md" />
-                <span className="absolute -bottom-0.5 -left-0.5 w-6 h-6 border-b-4 border-l-4 border-[var(--brand-accent)] rounded-bl-md" />
-                <span className="absolute -bottom-0.5 -right-0.5 w-6 h-6 border-b-4 border-r-4 border-[var(--brand-accent)] rounded-br-md" />
-              </div>
-              <p
-                className="absolute left-2 right-2 text-center text-white/90 text-xs font-medium"
-                style={{ top: textTop }}
-              >
-                Position the document inside the frame and move closer until it fills the guide.
-              </p>
-            </>
+            <div
+              ref={guideRef}
+              className="absolute rounded-lg pointer-events-none"
+              style={{
+                left: guideStyle.left, top: guideStyle.top,
+                width: guideStyle.width, height: guideStyle.height,
+                boxShadow: "0 0 0 9999px rgba(2, 6, 23, 0.55)",
+                border: "2px solid rgba(255, 255, 255, 0.85)",
+              }}
+            >
+              <span className="absolute -top-0.5 -left-0.5 w-6 h-6 border-t-4 border-l-4 border-[var(--brand-accent)] rounded-tl-md" />
+              <span className="absolute -top-0.5 -right-0.5 w-6 h-6 border-t-4 border-r-4 border-[var(--brand-accent)] rounded-tr-md" />
+              <span className="absolute -bottom-0.5 -left-0.5 w-6 h-6 border-b-4 border-l-4 border-[var(--brand-accent)] rounded-bl-md" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-6 h-6 border-b-4 border-r-4 border-[var(--brand-accent)] rounded-br-md" />
+            </div>
           )}
+
+          {/* Live detected-quad outline (amber → green) */}
+          {phase === "live" && (
+            <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none z-[5]" />
+          )}
+
+          {/* Live alignment / auto-capture feedback */}
+          {phase === "live" && cameraReady && (
+            <div className={`absolute bottom-2 left-1/2 -translate-x-1/2 z-10 max-w-[94%] text-center text-xs px-3 py-1.5 rounded-full ${liveMsg.ok ? "bg-emerald-600/90 text-white" : "bg-slate-900/90 text-amber-200"}`}>
+              {liveMsg.text}
+            </div>
+          )}
+
+          {/* Shutter flash on automatic capture */}
+          {flash && <div className="absolute inset-0 bg-white/80 z-20 pointer-events-none" />}
         </div>
       )}
 
@@ -460,9 +646,9 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       )}
 
       {phase === "live" && (
-        <Button onClick={grabFrame} disabled={!cameraReady || processing} variant="brand" className="w-full h-12">
+        <Button onClick={() => { autoLockRef.current = true; grabFrame(); }} disabled={!cameraReady || processing} variant="brand" className="w-full h-12">
           {cameraReady
-            ? <><Camera className="w-4 h-4 mr-2" /> Capture Photo</>
+            ? <><Camera className="w-4 h-4 mr-2" /> Capture Photo Now</>
             : <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Starting camera…</>}
         </Button>
       )}
@@ -476,6 +662,7 @@ export default function DocumentCamera({ title, idType = "sa_id", onUse, onCance
       {phase === "adjust" && (
         <DocCropAdjust
           file={processInfo?.originalFile}
+          initialCorners={processInfo?.quadFrac || undefined}
           busy={processing}
           note={
             processInfo?.uncertain

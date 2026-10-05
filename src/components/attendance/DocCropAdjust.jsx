@@ -9,11 +9,13 @@ import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Crop, Loader2 } from "lucide-react";
 
-const DEFAULT_CORNERS = [[0.03, 0.05], [0.97, 0.05], [0.97, 0.95], [0.03, 0.95]];
+const DEFAULT_CORNERS = [[0.012, 0.012], [0.988, 0.012], [0.988, 0.988], [0.012, 0.988]];
 
-export default function DocCropAdjust({ file, note, busy = false, onApply, onCancel }) {
+export default function DocCropAdjust({ file, note, busy = false, initialCorners, onApply, onCancel }) {
   const [url, setUrl] = useState(null);
-  const [corners, setCorners] = useState(DEFAULT_CORNERS);
+  // The editor starts on the best-effort detected quad when one exists —
+  // never on an arbitrary inset box that ignores the document's position.
+  const [corners, setCorners] = useState(initialCorners || DEFAULT_CORNERS);
   const imgRef = useRef(null);
   const dragRef = useRef(null);
 
@@ -111,7 +113,7 @@ export default function DocCropAdjust({ file, note, busy = false, onApply, onCan
           className="flex-1 border-[var(--border-default)] text-slate-200 h-12">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cancel"}
         </Button>
-        <Button variant="outline" onClick={() => setCorners(DEFAULT_CORNERS)} disabled={busy}
+        <Button variant="outline" onClick={() => setCorners(initialCorners || DEFAULT_CORNERS)} disabled={busy}
           className="border-[var(--border-default)] text-slate-200 h-12 px-3">
           Reset
         </Button>

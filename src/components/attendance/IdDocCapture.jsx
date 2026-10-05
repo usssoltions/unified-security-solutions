@@ -97,7 +97,7 @@ export default function IdDocCapture({ idType = "sa_id", onComplete, onSkip, ski
     <div className="space-y-4">
       <p className="text-slate-400 text-sm">
         Please take a clear photo of the <strong className="text-white">physical identification document</strong> presented.
-        Position the document inside the guide. After capture, the app detects the document's edges, straightens and crops to them, and shows the final crop for your approval before saving — the saved photo contains the document only.
+        Hold the document inside the frame — the camera finds its edges and captures automatically once the whole document is aligned, sharp and glare-free (or tap Capture Photo Now). After capture the document is straightened and cropped to its edges, and you always approve the final crop before it is saved — the saved photo contains the document only.
       </p>
       {error && (
         <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-rose-400 text-sm">{error}</div>
