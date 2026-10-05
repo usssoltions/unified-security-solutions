@@ -202,6 +202,12 @@ export default function NewAttendanceWizard({
         worker: {
           surname, initials, first_names: firstNames, id_number: idNumber, id_type: idType,
           company, job_description: jobDescription, cellphone,
+          // ID-document photos captured in step 3 are ALWAYS sent — the
+          // gateway saves them on a new profile and attaches them to an
+          // existing/deduped profile (keeping photos already on file unless
+          // the operator explicitly replaced them).
+          id_front_url: idFrontUrl || null,
+          id_back_url: idBackUrl || null,
         },
         worker_updates: workerUpdates,
         record: {
@@ -243,6 +249,16 @@ export default function NewAttendanceWizard({
           : String(a ?? "") !== String(b ?? "");
         if (cmp(sr[rk], reviewed[k])) mismatches.push("record." + rk);
       });
+      // Photo verification: every submitted photo URL must be stored exactly
+      // on the reloaded profile (existing photos kept unless replaced).
+      const expectFront = existingWorker && existingWorker.id
+        ? (workerUpdates.id_front_url || existingWorker.id_front_url || null)
+        : (idFrontUrl || null);
+      const expectBack = existingWorker && existingWorker.id
+        ? (workerUpdates.id_front_url ? (workerUpdates.id_back_url ?? null) : (existingWorker.id_back_url ?? null))
+        : (idBackUrl ?? null);
+      if ((sv.id_front_url ?? null) !== expectFront) mismatches.push("id_front_url");
+      if ((sv.id_back_url ?? null) !== expectBack) mismatches.push("id_back_url");
       if (mismatches.length > 0) {
         setSaveError("Attendance WAS saved, but the stored values did not match the reviewed entry (" + mismatches.join(", ") + "). Do NOT confirm again — report this to your administrator.");
         return;

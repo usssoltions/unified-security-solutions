@@ -549,6 +549,21 @@ export default async function main(req: Request): Promise<Response> {
                 status: 'active', updated_by_name: callerName,
               });
             }
+            // Attach newly captured ID-document photos to the matched
+            // profile. Photos already on file are KEPT unless the operator
+            // captured new ones — the operator's capture is never dropped.
+            if (w.id_front_url && w.id_front_url !== worker.id_front_url) {
+              const ts2 = rec.attendance_timestamp || new Date().toISOString();
+              await base44.asServiceRole.entities.AttendanceWorker.update(worker.id, {
+                id_front_url: w.id_front_url,
+                id_back_url: w.id_back_url || worker.id_back_url || null,
+                id_captured_at: ts2,
+                id_captured_by_id: caller.id,
+                id_captured_by_name: callerName,
+                id_updated_at: ts2,
+                updated_by_name: callerName,
+              });
+            }
           } else {
             const ts = rec.attendance_timestamp || new Date().toISOString();
             worker = await base44.asServiceRole.entities.AttendanceWorker.create({
