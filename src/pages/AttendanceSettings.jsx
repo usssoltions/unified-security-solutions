@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Settings, Plus, Pencil, Archive, RotateCcw, Loader2, Check, X, ShieldAlert,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Clock
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { attendanceCall } from "@/lib/attendanceApi";
@@ -194,6 +195,25 @@ export default function AttendanceSettings() {
 
   const canManage = !!ctx.can_manage_options;
 
+  // Per-customer deferred-signature feature gate (DEFAULT OFF, enforced
+  // server-side by the gateway — this toggle is the admin surface only).
+  const queryClient = useQueryClient();
+  const { data: settingsData } = useQuery({
+    queryKey: ["att_settings"],
+    queryFn: () => attendanceCall("get_settings").then(r => r.settings || {}),
+    enabled: !!ctx?.authorized && canManage, staleTime: 30000,
+  });
+  const deferredEnabled = !!settingsData?.deferred_signatures_enabled;
+  const [savingSetting, setSavingSetting] = useState(false);
+  const toggleDeferred = async () => {
+    setSavingSetting(true);
+    try {
+      await attendanceCall("save_settings", { deferred_signatures_enabled: !deferredEnabled });
+      queryClient.invalidateQueries({ queryKey: ["att_settings"] });
+      queryClient.invalidateQueries({ queryKey: ["att_context"] });
+    } finally { setSavingSetting(false); }
+  };
+
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-5">
       <div className="flex items-center gap-3 mb-2">
@@ -235,6 +255,22 @@ export default function AttendanceSettings() {
         onRefresh={refetch}
         readOnly={!canManage}
       />
+
+      <div className="bg-[var(--surface-card)] rounded-2xl border border-[var(--border-default)] overflow-hidden">
+        <div className="px-4 py-3 bg-[var(--surface-raised)] flex items-center gap-2">
+          <Clock className="w-4 h-4 text-[var(--brand-link)]" />
+          <h3 className="text-white font-semibold text-sm">Signature Capture</h3>
+        </div>
+        <div className="px-4 py-4 flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <p className="text-white text-sm font-medium">Allow "Save — Sign Later"</p>
+            <p className="text-slate-400 text-xs mt-1">
+              When enabled, the registration wizard also offers saving the attendance WITHOUT an immediate signature (every detail and ID-document validation still applies) — it is saved as Awaiting Signature and the signature is captured later against the exact same visit. Default off.
+            </p>
+          </div>
+          <Switch checked={deferredEnabled} onCheckedChange={toggleDeferred} disabled={savingSetting} className="shrink-0" />
+        </div>
+      </div>
 
       <div className="bg-[var(--surface-raised)] rounded-xl border border-[var(--border-default)] p-4">
         <p className="text-slate-400 text-xs">

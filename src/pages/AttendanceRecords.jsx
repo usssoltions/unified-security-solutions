@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
-  ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X, Trash2, Eye
+  ClipboardList, Filter, Search, Download, Loader2, ShieldAlert, X, Trash2, Eye, Clock, PenTool
 } from "lucide-react";
 import AttendanceRecordDetail from "@/components/attendance/AttendanceRecordDetail";
+import SignPendingDialog from "@/components/attendance/SignPendingDialog";
 import { Link } from "react-router-dom";
 import { generateOfficialRegisterPdf, generateIndividualAttendancePdf, downloadBlob } from "@/lib/attendancePdf";
 import { generateOfficialRegisterExcel, attendanceRegisterFilename } from "@/lib/attendanceExcel";
@@ -33,6 +34,11 @@ export default function AttendanceRecords() {
   const [filterCompany, setFilterCompany] = useState("");
   const [filterMedical, setFilterMedical] = useState("");
   const [filterAssessment, setFilterAssessment] = useState("");
+  // Signature-status filter: all | pending | needs_review | signed. The
+  // ?pending=1 deep link (from the dashboard banner) opens pre-filtered.
+  const [filterSignature, setFilterSignature] = useState(() =>
+    new URLSearchParams(window.location.search).has("pending") ? "pending" : "all");
+  const [signingRecord, setSigningRecord] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [generatingExcel, setGeneratingExcel] = useState(false);
@@ -71,13 +77,35 @@ export default function AttendanceRecords() {
     staleTime: 15000,
   });
 
-  const filtered = records.filter(r => {
+  // Awaiting signatures — date-independent server-side query (outstanding
+  // visits from ANY day). Always fetched while the page is open so the
+  // reminder banner and the signature filter can include them; refreshed on
+  // save, signing and every return to the app.
+  const { data: pendingData } = useQuery({
+    queryKey: ["att_pending"],
+    queryFn: () => attendanceCall("list_pending"),
+    enabled: !!ctx?.authorized, staleTime: 30000,
+  });
+  const pendingRecords = pendingData?.records || [];
+
+  const baseRecords = filterSignature === "all"
+    ? records
+    // Signature filtering must include outstanding visits from earlier days
+    // that fall OUTSIDE the selected date range — the pending list is merged in.
+    : Object.values(Object.fromEntries([...records, ...pendingRecords].map(r => [r.id, r])))
+      .sort((a, b) =>
+        (a.attendance_date || "").localeCompare(b.attendance_date || "") ||
+        (a.attendance_time || "").localeCompare(b.attendance_time || ""));
+
+  const filtered = baseRecords.filter(r => {
+    const sig = r.signature_status || "signed";
+    const matchSig = filterSignature === "all" || sig === filterSignature;
     const txt = searchText.toLowerCase();
     const matchText = !txt || [r.surname_snapshot, r.initials_snapshot, r.id_number_snapshot, r.company_snapshot, r.cellphone_snapshot].some(v => (v || "").toLowerCase().includes(txt));
     const matchCompany = !filterCompany || (r.company_snapshot || "").toLowerCase().includes(filterCompany.toLowerCase());
     const matchMedical = !filterMedical || r.medical_centre === filterMedical;
     const matchAssess = !filterAssessment || r.assessment_type === filterAssessment;
-    return matchText && matchCompany && matchMedical && matchAssess;
+    return matchSig && matchText && matchCompany && matchMedical && matchAssess;
   });
 
   // Signatures are fetched fresh from the gateway at generation time (they
@@ -115,7 +143,11 @@ export default function AttendanceRecords() {
         attendanceCall("get_record", { record_id: record.id }),
         attendanceCall("get_photo_data", { record_id: record.id }),
       ]);
-      if (!fresh?.signature_data_url) throw new Error("The signature for this attendance could not be retrieved. The PDF was not created.");
+      if (!fresh?.signature_data_url) {
+        throw new Error(fresh?.signature_status === "pending" || fresh?.signature_status === "needs_review"
+          ? "This attendance is still awaiting its signature — capture the signature first, then generate the PDF."
+          : "The signature for this attendance could not be retrieved. The PDF was not created.");
+      }
       if (photos.missing?.length) throw new Error(`The ID photo (${photos.missing.join(" and ")}) for this attendance could not be retrieved from storage. The PDF was not created.`);
       const blob = await generateIndividualAttendancePdf({ ...fresh, id_photo_front_data: photos.front, id_photo_back_data: photos.back }, {}, branding);
       downloadBlob(blob, `attendance_${fresh.id_number_snapshot}_${fresh.attendance_date}.pdf`);
@@ -161,6 +193,16 @@ export default function AttendanceRecords() {
     return `${dt}/${m}/${y}`;
   };
 
+  // A deferred visit was signed — refresh every attendance surface.
+  const handleSigned = () => {
+    setSigningRecord(null);
+    queryClient.invalidateQueries({ queryKey: ["att_pending"] });
+    queryClient.invalidateQueries({ queryKey: ["att_records"] });
+    queryClient.invalidateQueries({ queryKey: ["att_today"] });
+    queryClient.invalidateQueries({ queryKey: ["att_month_count"] });
+    toast({ title: "Signature captured", description: "The attendance visit is now signed." });
+  };
+
   if (!ctx) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -187,6 +229,19 @@ export default function AttendanceRecords() {
         <Link to="/AttendanceDashboard" className="text-slate-400 text-sm hover:text-white">← Dashboard</Link>
         <h1 className="text-white text-xl font-bold flex-1">Attendance Records</h1>
       </div>
+
+      {/* Visible reminder while signatures are pending — taps straight into
+          the Awaiting-signature filter (includes earlier days) */}
+      {pendingRecords.length > 0 && (
+        <button onClick={() => { setFilterSignature("pending"); setShowFilters(true); }}
+          className="w-full bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition">
+          <Clock className="w-5 h-5 text-amber-300 shrink-0" />
+          <span className="text-amber-300 text-sm font-medium flex-1">
+            {pendingRecords.length} attendance visit{pendingRecords.length !== 1 ? "s" : ""} awaiting signature
+          </span>
+          <span className="text-amber-300 text-xs underline shrink-0">Show</span>
+        </button>
+      )}
 
       {/* Date preset tabs */}
       <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -251,6 +306,20 @@ export default function AttendanceRecords() {
             </Select>
           </div>
           <div className="col-span-2">
+            <label className="text-slate-400 text-xs mb-1 block">Signature Status</label>
+            <Select value={filterSignature} onValueChange={setFilterSignature}>
+              <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="pending">Awaiting signature</SelectItem>
+                <SelectItem value="needs_review">Flagged for review</SelectItem>
+                <SelectItem value="signed">Signed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-2">
             <label className="text-slate-400 text-xs mb-1 block">Assessment Type</label>
             <Select value={filterAssessment || "__all__"} onValueChange={v => setFilterAssessment(v === "__all__" ? "" : v)}>
               <SelectTrigger className="w-full bg-slate-900 border-slate-700 text-white h-9 text-sm">
@@ -311,6 +380,8 @@ export default function AttendanceRecords() {
                 {r.company_snapshot && <Badge variant="outline" className="text-[10px] border-slate-600 text-slate-300">{r.company_snapshot}</Badge>}
                 {r.medical_centre && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-link)]">{r.medical_centre}</Badge>}
                 {r.assessment_type && <Badge variant="outline" className="text-[10px] border-[var(--border-default)] text-[var(--brand-accent)]">{r.assessment_type}</Badge>}
+                {r.signature_status === "pending" && <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px]">Awaiting signature</Badge>}
+                {r.signature_status === "needs_review" && <Badge className="bg-orange-500/20 text-orange-300 border border-orange-500/40 text-[10px]">Flagged for review</Badge>}
               </div>
               <div className="flex items-center gap-2">
                 {r.id_photo_front_url
@@ -332,6 +403,11 @@ export default function AttendanceRecords() {
                     Delete Record
                   </Button>
                 )}
+                {(r.signature_status === "pending" || r.signature_status === "needs_review") && (
+                  <Button size="sm" variant="ghost" onClick={() => setSigningRecord(r)} className="text-amber-300 text-xs h-11 px-3 hover:bg-amber-500/10">
+                    <PenTool className="w-3.5 h-3.5 mr-1" /> Capture Signature
+                  </Button>
+                )}
                 <Button size="sm" variant="ghost" onClick={() => handleIndividualPdf(r)} className="text-slate-400 text-xs h-11 px-3">
                   <Download className="w-3 h-3 mr-1" /> PDF
                 </Button>
@@ -345,6 +421,10 @@ export default function AttendanceRecords() {
         <AttendanceRecordDetail recordId={openRecordId}
           medicalCentres={dropdowns.medicalCentres} assessmentTypes={dropdowns.assessmentTypes}
           onClose={closeRecord} onDownloadPdf={handleIndividualPdf} />
+      )}
+
+      {signingRecord && (
+        <SignPendingDialog record={signingRecord} onClose={() => setSigningRecord(null)} onSigned={handleSigned} />
       )}
     </div>
   );

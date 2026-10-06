@@ -181,8 +181,15 @@ export async function generateOfficialRegisterExcel(records, branding, dateFrom,
       rowIdx += 1;
       const vals = recordRowValues(rec);
       const hasSig = !!rec.signature_data_url && String(rec.signature_data_url).startsWith("data:image");
+      // Signature collected later — the row keeps its original place in the
+      // register and the Signature cell is clearly labelled.
+      const pendingLabel = !hasSig && (rec.signature_status === "pending" || rec.signature_status === "needs_review")
+        ? (rec.signature_status === "needs_review" ? "Awaiting signature (flagged for review)" : "Awaiting signature")
+        : "";
       const cells = COLS.map((c, i) => {
-        if (i === SIG_COL) return `<c r="${colLetter(i)}${rowIdx}" s="${STYLE_SIG_CELL}"/>`;
+        if (i === SIG_COL) {
+          return pendingLabel ? stringCell(rowIdx, i, pendingLabel, STYLE_DATA) : `<c r="${colLetter(i)}${rowIdx}" s="${STYLE_SIG_CELL}"/>`;
+        }
         return stringCell(rowIdx, i, vals[i], STYLE_DATA);
       }).join("");
       // Signature rows keep a fixed tall height (image anchor); text rows use
@@ -199,6 +206,16 @@ export async function generateOfficialRegisterExcel(records, branding, dateFrom,
       }
     });
   });
+
+  // Pending total — clearly shown when later-collected signatures are
+  // outstanding in this register.
+  const pendingCount = (records || []).filter((rec) => !rec.signature_data_url
+    && (rec.signature_status === "pending" || rec.signature_status === "needs_review")).length;
+  if (pendingCount > 0) {
+    rowIdx += 1;
+    rowsXml.push(`<row r="${rowIdx}">${stringCell(rowIdx, 0,
+      `Awaiting signature: ${pendingCount} of ${records.length} records in this register.`, STYLE_DATELINE)}</row>`);
+  }
 
   // ── Package parts ──
   const colsXml = `<cols>${COLS.map((c, i) =>

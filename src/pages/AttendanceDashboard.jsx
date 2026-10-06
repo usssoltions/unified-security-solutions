@@ -294,6 +294,10 @@ export default function AttendanceDashboard() {
           </div>
         )}
       </div>
+
+      {signingRecord && (
+        <SignPendingDialog record={signingRecord} onClose={() => setSigningRecord(null)} onSigned={handleSigned} />
+      )}
     </div>
   );
 }

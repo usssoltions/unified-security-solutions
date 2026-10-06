@@ -130,6 +130,13 @@ function drawRow(doc, row, y, lineColor) {
       const sigH = rowH - 1.6;
       doc.addImage(row.signature_data_url, sigX, sigY, sigW, sigH);
     } catch (_) { /* signature rendering failed */ }
+  } else if (row?.signature_status === "pending" || row?.signature_status === "needs_review") {
+    // Signature collected later — the row keeps its original place in the
+    // register and is clearly labelled.
+    doc.setFontSize(6);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(150, 90, 0);
+    doc.text(row.signature_status === "needs_review" ? "Awaiting signature (flagged for review)" : "Awaiting signature", colX(8) + 1.5, y + 3.6);
   }
   return rowH;
 }
@@ -248,6 +255,17 @@ export function generateOfficialRegisterPdf(records, branding) {
       pageFooter(doc, branding);
     });
   });
+
+  // Pending total — clearly shown when later-collected signatures are
+  // outstanding in this register.
+  const pendingCount = records.filter((rec) => !rec.signature_data_url
+    && (rec.signature_status === "pending" || rec.signature_status === "needs_review")).length;
+  if (pendingCount > 0) {
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(150, 90, 0);
+    doc.text(`Awaiting signature: ${pendingCount} of ${records.length} records in this register.`, MARGIN, PAGE_H - MARGIN - 5);
+  }
 
   return doc.output("blob");
 }
