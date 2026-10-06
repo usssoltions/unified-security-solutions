@@ -166,6 +166,26 @@ export default function AttendanceSettings() {
     enabled: !!ctx?.authorized, staleTime: 15000,
   });
 
+  // Per-customer deferred-signature feature gate (DEFAULT OFF, enforced
+  // server-side by the gateway — this toggle is the admin surface only).
+  const queryClient = useQueryClient();
+  const { data: settingsData } = useQuery({
+    queryKey: ["att_settings"],
+    queryFn: () => attendanceCall("get_settings").then(r => r.settings || {}),
+    enabled: !!ctx?.authorized, staleTime: 30000,
+  });
+  const [savingSetting, setSavingSetting] = useState(false);
+  const deferredEnabled = !!settingsData?.deferred_signatures_enabled;
+  const canManage = !!ctx?.can_manage_options;
+  const toggleDeferred = async () => {
+    setSavingSetting(true);
+    try {
+      await attendanceCall("save_settings", { deferred_signatures_enabled: !deferredEnabled });
+      queryClient.invalidateQueries({ queryKey: ["att_settings"] });
+      queryClient.invalidateQueries({ queryKey: ["att_context"] });
+    } finally { setSavingSetting(false); }
+  };
+
   const handleResetDefaults = async () => {
     try {
       await attendanceCall("reset_defaults");
@@ -192,27 +212,6 @@ export default function AttendanceSettings() {
       </div>
     );
   }
-
-  const canManage = !!ctx.can_manage_options;
-
-  // Per-customer deferred-signature feature gate (DEFAULT OFF, enforced
-  // server-side by the gateway — this toggle is the admin surface only).
-  const queryClient = useQueryClient();
-  const { data: settingsData } = useQuery({
-    queryKey: ["att_settings"],
-    queryFn: () => attendanceCall("get_settings").then(r => r.settings || {}),
-    enabled: !!ctx?.authorized && canManage, staleTime: 30000,
-  });
-  const deferredEnabled = !!settingsData?.deferred_signatures_enabled;
-  const [savingSetting, setSavingSetting] = useState(false);
-  const toggleDeferred = async () => {
-    setSavingSetting(true);
-    try {
-      await attendanceCall("save_settings", { deferred_signatures_enabled: !deferredEnabled });
-      queryClient.invalidateQueries({ queryKey: ["att_settings"] });
-      queryClient.invalidateQueries({ queryKey: ["att_context"] });
-    } finally { setSavingSetting(false); }
-  };
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-5">
