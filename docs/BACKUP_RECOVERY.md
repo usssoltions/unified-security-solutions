@@ -5,10 +5,44 @@ This document records only VERIFIED facts from platform documentation and live t
 ## 1. Current plan status (VERIFIED)
 
 - Workspace plan: **Builder**.
-- Base44 Backup & Restore (table data point-in-time backups) is available on **Elite and Enterprise plans only** — **not on Builder**. On this plan there is currently NO platform-managed table backup.
+- **Clarification of "no platform backups"** — two distinct things must not be conflated:
+  1. *Customer-accessible Backup & Restore* — a documented, customer-facing facility (Dashboard → Data → Backup & Restore) capturing table records at change time, with restore and undo. Available on **Elite and Enterprise plans only — not on Builder**. Official sources: https://docs.base44.com/Enterprise/backup-and-restore and the API reference "Get data version history status" (Elite keeps 7 days, higher plans 30 days).
+  2. *Base44's internal disaster-recovery backups* — any platform-operated infrastructure-level backups/redundancy Base44 may run for its own operations. This is **not documented in any public documentation, is not customer-accessible, and could NOT be verified during this audit**. Whether it exists, what it covers (especially uploaded photos/documents), its retention, and whether Base44 can restore after accidental deletion caused by app bugs must be confirmed in writing by Base44 support (questions in §4).
+  On the Builder plan there is therefore **no customer-accessible, customer-verifiable backup facility**; the existence and scope of internal DR remains unverified.
 - Even on Elite/Enterprise, platform backups cover **table records only**. Per Base44 documentation: *"The file it points to is stored separately and is not part of the backup."* Uploaded files/photos/evidence are NEVER covered by platform backups on any plan.
 - Code and design changes are recoverable via the editor's Version History (independent of data backups).
 - A full app clone (code + data) can be made manually from the **App Settings** dashboard page — a manual recovery point, not an automated schedule.
+
+## 1b. Measured storage footprint (2026-10-06, verified by live downloads)
+
+**Database** — all 81 entities serialized and measured record by record:
+- 12,386 records, **29.9 MB** of JSON-serialized table data. Largest: AccessLog 11.5 MB (1,841), HospitalityVisit 3.7 MB (1,851), Shift 1.7 MB, AttendanceRecord 1.5 MB (signatures included), GeneratedReport 1.5 MB.
+- NOT measurable: physical/indexed storage and database overhead, anything Base44 stores outside app tables (internal DR, service configuration).
+
+**Files** — every storage reference extracted from every entity field (strings and embedded arrays), deduplicated, then the ACTUAL BYTES downloaded and verified (magic bytes checked):
+- **179 unique files, 156.9 MB measured** (113 files / 110.9 MB main scan + 66 files / 46.1 MB from worker profile photos, frozen showcase report attachments and asset-linked entities). Average ~0.9 MB; predominantly JPEG photos plus PDFs.
+- Excluded as false positives: 245 strings containing storage-like URLs inside HTML content (email bodies, rendered report HTML) — table content, not files; already counted in DB size.
+- NOT measurable: **orphaned files** — uploads whose record save failed are stored but unreachable (no file-listing API; known platform limitation). They consume storage but cannot be inventoried. Also unmeasurable: Base44-managed assets outside app storage.
+
+**Growth (proxy — inflated by heavy demo/test seeding: 10,139 of 12,386 records are under 30 days old):**
+- DB: 0.72 MB/day over 30 days; 2.54 MB/day over the last 7 days (spike).
+- Files: ~32.4 MB of new file bytes referenced by records created in the last 30 days ≈ 1.08 MB/day.
+- Live operational growth is likely below these rates; the range below brackets both.
+
+**12-month single live copy:** DB ≈ 292 MB (low) – 957 MB (high); files ≈ 551 MB (low) – 1.25 GB (high). Total ≈ **0.85–2.2 GB**.
+
+**Backup storage needed with the proposed retention policy** (7 daily + 4 weekly + 12 monthly restore points; DB as daily incrementals + monthly fulls; files content-addressed so unchanged files are copied exactly once; deleted-file contents retained ≥12 months):
+- DB ≈ 2.5 GB (low) – 6.8 GB (high). Files ≈ 0.6 GB (low) – 1.5 GB (high, incl. re-copy margin and deleted-content retention).
+- **Total ≈ 3 GB expected, up to ~8.5 GB worst case over 12 months.**
+
+**Verified external storage costs (official pricing pages, checked 2026-10-06):**
+
+| Option | Free tier | Paid rate | 12-month cost for this app | Notes |
+|---|---|---|---|---|
+| Cloudflare R2 | 10 GB-month | $0.015/GB-month, $0 egress | **$0** (entire projection fits the free tier) | S3-compatible API; API token stored as app secret |
+| Backblaze B2 | 10 GB | $6.95/TB-month (~$0.007/GB) | **$0** in year one; ~$0.02/mo if exceeding 10 GB | S3-compatible API; API key stored as app secret |
+| Google One 100 GB | — | **US$1.99/month** standard (SA price shown at checkout; recent African-market price increases documented) | ~US$24/year | Easiest to implement (Drive connector exists), but your Google storage is currently FULL — requires buying space |
+| Base44 Elite plan | — | See Plan and billing (workspace Settings) | not quoted here | Adds customer Backup & Restore for TABLE DATA only (7 days); files still not covered |
 
 ## 2. What was verified live in this app (2026-10-06)
 
