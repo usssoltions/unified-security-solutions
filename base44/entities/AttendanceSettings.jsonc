@@ -1,0 +1,99 @@
+{
+  "name": "AttendanceSettings",
+  "type": "object",
+  "description": "Attendance Register module: per-customer module settings. Currently holds the deferred-signature feature flag (deferred_signatures_enabled, DEFAULT OFF): when disabled, every attendance registration requires a fresh signature at save time exactly as before; when enabled, the registration wizard additionally offers 'Save \u2014 Sign Later', which saves a REAL AttendanceRecord with signature_status 'pending' (all detail and document validations still enforced) and the signature is captured later against that exact record through the attendanceAccess gateway's sign_pending action. GATEWAY-ONLY ACCESS: read and write flow exclusively through the attendanceAccess gateway (server-side tenant resolution, admin-only writes); direct client access is restricted to platform administration by RLS. No notification or automation behaviour is attached to this entity.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant/customer this settings row belongs to (one row per customer)."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Reseller ownership for reseller-scoped oversight."
+    },
+    "deferred_signatures_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Feature gate for 'Save \u2014 Sign Later' deferred attendance saves. Default OFF \u2014 deferred saves are refused by the gateway while disabled."
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Last time an administrator changed these settings."
+    },
+    "updated_by_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display name of the administrator who last changed these settings."
+    }
+  },
+  "required": [
+    "customer_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

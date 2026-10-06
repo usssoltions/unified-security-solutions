@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   ClipboardList, Plus, Users, FileText,
-  Calendar, Activity, CheckCircle2, Loader2, ShieldAlert
+  Calendar, Activity, CheckCircle2, Loader2, ShieldAlert, Clock, PenTool
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useBranding } from "@/hooks/useBranding";
 import AttendanceBrandingHeader from "@/components/attendance/AttendanceBrandingHeader";
 import NewAttendanceWizard from "@/components/attendance/NewAttendanceWizard";
+import SignPendingDialog from "@/components/attendance/SignPendingDialog";
 import { attendanceCall } from "@/lib/attendanceApi";
 import { todayISO } from "@/lib/attendanceDropdowns";
 
@@ -17,6 +18,7 @@ export default function AttendanceDashboard() {
   const queryClient = useQueryClient();
   const [showWizard, setShowWizard] = useState(false);
   const [successInfo, setSuccessInfo] = useState(null);
+  const [signingRecord, setSigningRecord] = useState(null);
 
   // Authoritative tenant context — the attendanceAccess gateway resolves the
   // caller's tenant server-side from their User record (no client trust, no
@@ -61,12 +63,44 @@ export default function AttendanceDashboard() {
 
   const recent = todayRecords.slice(0, 8);
 
+  // Awaiting Signatures — outstanding visits from ANY day (deferred saves
+  // plus earlier unsigned records flagged for review), date-independent
+  // server-side query. Refreshed on save, signing and every return to the
+  // app (React Query refetches stale queries when the app regains focus).
+  const { data: pendingData } = useQuery({
+    queryKey: ["att_pending"],
+    queryFn: () => attendanceCall("list_pending"),
+    enabled: !!ctx?.authorized, staleTime: 30000,
+  });
+  const pendingRecords = pendingData?.records || [];
+  const awaitingList = pendingRecords.slice(0, 5);
+
   const handleSuccess = (info) => {
     setShowWizard(false);
     setSuccessInfo(info);
-    queryClient.invalidateQueries(["att_today"]);
-    queryClient.invalidateQueries(["att_month_count"]);
-    queryClient.invalidateQueries(["att_workers_count"]);
+    queryClient.invalidateQueries({ queryKey: ["att_today"] });
+    queryClient.invalidateQueries({ queryKey: ["att_month_count"] });
+    queryClient.invalidateQueries({ queryKey: ["att_workers_count"] });
+    queryClient.invalidateQueries({ queryKey: ["att_pending"] });
+  };
+
+  // A deferred visit was signed — refresh every attendance surface.
+  const handleSigned = (r) => {
+    setSigningRecord(null);
+    setSuccessInfo({
+      workerName: `${r.surname_snapshot || ""}${r.initials_snapshot ? ", " + r.initials_snapshot : ""}`,
+      attendanceTime: r.attendance_time || "",
+      signed: true,
+    });
+    queryClient.invalidateQueries({ queryKey: ["att_pending"] });
+    queryClient.invalidateQueries({ queryKey: ["att_today"] });
+    queryClient.invalidateQueries({ queryKey: ["att_month_count"] });
+    queryClient.invalidateQueries({ queryKey: ["att_records"] });
+  };
+
+  const fmtDate = (d) => {
+    const [y, m, dd] = String(d || "").split("-");
+    return dd ? `${dd}/${m}/${y}` : "—";
   };
 
   if (showWizard) {
@@ -80,6 +114,7 @@ export default function AttendanceDashboard() {
           customerId={ctx?.customer_id}
           medicalCentres={dropdowns.medicalCentres}
           assessmentTypes={dropdowns.assessmentTypes}
+          deferredEnabled={!!ctx?.deferred_signatures_enabled}
           onSuccess={handleSuccess}
           onCancel={() => setShowWizard(false)}
         />
@@ -94,9 +129,16 @@ export default function AttendanceDashboard() {
           <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle2 className="w-10 h-10 text-emerald-400" />
           </div>
-          <h2 className="text-white text-2xl font-bold">Attendance Registered</h2>
+          <h2 className="text-white text-2xl font-bold">{successInfo.signed ? "Signature Captured" : "Attendance Registered"}</h2>
           <p className="text-slate-300">{successInfo.workerName}</p>
-          <p className="text-slate-400 text-sm">Registered at {successInfo.attendanceTime}</p>
+          {successInfo.signed ? (
+            <p className="text-slate-400 text-sm">Signature captured against the original visit at {successInfo.attendanceTime || "—"}</p>
+          ) : (
+            <p className="text-slate-400 text-sm">Registered at {successInfo.attendanceTime}</p>
+          )}
+          {successInfo.signatureStatus === "pending" && (
+            <p className="text-amber-300 text-sm">Saved without a signature — Awaiting Signature. Capture it from the dashboard or records at any time.</p>
+          )}
           {successInfo.photoSummary && <p className="text-slate-300 text-sm">{successInfo.photoSummary}</p>}
           <div className="flex flex-col gap-2 pt-2">
             <Button onClick={() => { setSuccessInfo(null); setShowWizard(true); }} variant="brand" className="w-full h-12">
@@ -139,6 +181,41 @@ export default function AttendanceDashboard() {
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-5">
       <AttendanceBrandingHeader branding={branding} subtitle="Digital Attendance Register" />
+
+      {/* Awaiting Signatures — prominent counter + outstanding visits from
+          ANY day; each opens the signature capture dialog */}
+      {pendingRecords.length > 0 && (
+        <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-amber-300" />
+            <h3 className="text-amber-300 font-semibold">Awaiting Signatures</h3>
+            <Badge className="bg-amber-500 text-white text-xs ml-auto">{pendingRecords.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {awaitingList.map(r => (
+              <div key={r.id} className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] px-3 py-2.5 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">
+                    {r.surname_snapshot}{r.initials_snapshot ? `, ${r.initials_snapshot}` : ""}
+                  </p>
+                  <p className="text-slate-400 text-xs truncate">{r.id_number_snapshot} · {fmtDate(r.attendance_date)} {r.attendance_time}</p>
+                </div>
+                {r.signature_status === "needs_review" && (
+                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-300 shrink-0">Review</Badge>
+                )}
+                <Button size="sm" variant="brand" onClick={() => setSigningRecord(r)} className="h-10 shrink-0 active:scale-95 transition">
+                  <PenTool className="w-3.5 h-3.5 mr-1.5" /> Sign
+                </Button>
+              </div>
+            ))}
+          </div>
+          {pendingRecords.length > awaitingList.length && (
+            <Link to="/AttendanceRecords?pending=1" className="block text-amber-300 text-sm brand-focus">
+              View all {pendingRecords.length} in Records →
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -211,6 +211,27 @@ export default async function main(req: Request): Promise<Response> {
     return null;
   };
 
+  // ── Signature status (derived SERVER-SIDE, never client-trusted) ──────────
+  // signed    = this visit carries its own signature;
+  // pending   = an explicitly deferred save ('Save — Sign Later') awaiting its
+  //             later signature;
+  // needs_review = a legacy record saved before signature status existed with
+  //             no signature stored — flagged for review, NEVER silently
+  //             classified as deferred.
+  const sigStatus = (r: any): 'signed' | 'pending' | 'needs_review' =>
+    r?.signature_data_url ? 'signed'
+      : r?.signature_status === 'pending' ? 'pending'
+        : 'needs_review';
+
+  // Per-customer deferred-signature feature gate (DEFAULT OFF). Absent
+  // settings row = disabled. Read once per request when needed.
+  const deferredEnabled = async (): Promise<boolean> => {
+    if (!scope.customer_id) return false;
+    const rows = await base44.asServiceRole.entities.AttendanceSettings
+      .filter({ customer_id: scope.customer_id }).catch(() => []);
+    return !!rows?.[0]?.deferred_signatures_enabled;
+  };
+
   // Security-sensitive management actions are recorded in PlatformAuditLog.
   const writeAudit = (event_type: string, entity_id: string, action: string, notes: string, worker: any = null) =>
     base44.asServiceRole.entities.PlatformAuditLog.create({
@@ -256,6 +277,7 @@ export default async function main(req: Request): Promise<Response> {
           can_register: authorized,
           can_manage_options: authorized && canManageOptions,
           can_manage_workers: authorized && canManageWorkers,
+          deferred_signatures_enabled: authorized ? await deferredEnabled() : false,
         });
       }
 
@@ -536,9 +558,21 @@ export default async function main(req: Request): Promise<Response> {
         }
 
         const rec = params.record || {};
-        const sig = params.signature_data_url;
-        // One attendance = one fresh signature. Server-enforced.
-        if (!sig || !String(sig).startsWith('data:image')) {
+        // Deferred signature capture ('Save — Sign Later') is a PER-CUSTOMER
+        // setting, DEFAULT OFF: while disabled the gateway refuses deferred
+        // saves and every registration requires a fresh signature at save
+        // time, exactly as before.
+        const deferredMode = params.mode === 'deferred';
+        if (deferredMode && !(await deferredEnabled())) {
+          return err('Deferred signature capture ("Sign Later") is not enabled for this customer.', 403);
+        }
+        const sig = deferredMode ? null : params.signature_data_url;
+        // One attendance = one fresh signature. Server-enforced (immediate
+        // mode). A deferred save must NOT carry a signature — it is captured
+        // later against this exact visit.
+        if (deferredMode) {
+          if (sig) return err('A deferred save must not carry a signature.');
+        } else if (!sig || !String(sig).startsWith('data:image')) {
           return err('A fresh electronic signature is required for every attendance.');
         }
         if (!rec.attendance_date || !rec.attendance_time) return err('Attendance date and time are required.');
@@ -667,6 +701,16 @@ export default async function main(req: Request): Promise<Response> {
         const visitBack = isNewCapture ? capBack : photoMode === 'existing' ? (worker.id_back_url || null) : null;
         const visitTs = rec.attendance_timestamp || new Date().toISOString();
 
+        // Duplicate-visit protection (retries / double taps / reconnects): an
+        // identical visit (same worker, same local date AND time) already on
+        // file for this customer is never registered twice.
+        const dupeVisit = await base44.asServiceRole.entities.AttendanceRecord
+          .filter({ customer_id: scope.customer_id, worker_id: worker.id,
+            attendance_date: rec.attendance_date, attendance_time: rec.attendance_time }, '-created_date', 2);
+        if (dupeVisit && dupeVisit.length > 0) {
+          return Response.json({ success: false, duplicate: true, record_id: dupeVisit[0].id });
+        }
+
         // Historical snapshot fields come from the validated input — profile
         // edits never rewrite past attendance records.
         const created = await base44.asServiceRole.entities.AttendanceRecord.create({
@@ -686,7 +730,18 @@ export default async function main(req: Request): Promise<Response> {
           medical_centre: rec.medical_centre,
           additional_information: rec.additional_information || '',
           assessment_type: rec.assessment_type,
-          signature_data_url: sig,
+          // Signature stamping is SERVER-SIDE. Immediate mode stores the fresh
+          // signature with its capture attribution; deferred mode saves a real
+          // record stamped pending (signature captured later, never replaced).
+          ...(deferredMode
+            ? { signature_status: 'pending' }
+            : {
+              signature_data_url: sig,
+              signature_status: 'signed',
+              signature_captured_at: rec.attendance_timestamp || new Date().toISOString(),
+              signature_captured_by_id: caller.id,
+              signature_captured_by_name: callerName,
+            }),
           // Visit-level ID-document photo snapshot: the newly captured
           // photos when the operator captured them, otherwise the worker's
           // current photos (the identity evidence this visit relied on).
@@ -701,7 +756,7 @@ export default async function main(req: Request): Promise<Response> {
           captured_by_name: callerName,
         });
 
-        return Response.json({ success: true, worker_id: worker.id, record_id: created.id, photo_mode: photoMode, worker_photos_updated: workerPhotosUpdated });
+        return Response.json({ success: true, worker_id: worker.id, record_id: created.id, photo_mode: photoMode, worker_photos_updated: workerPhotosUpdated, signature_status: deferredMode ? 'pending' : 'signed' });
       }
 
       // ── Records ─────────────────────────────────────────────────────────────
@@ -719,9 +774,12 @@ export default async function main(req: Request): Promise<Response> {
         });
         // Signatures are large (base64 PNGs) — strip them from list responses.
         // PDF generation fetches them explicitly via get_signatures.
+        // Lightweight signature STATUS only — the signature image itself is
+        // never returned in list responses (PDF/Excel fetch it explicitly
+        // via get_signatures).
         out = out.map((r) => {
           const { signature_data_url, ...rest } = r;
-          return rest;
+          return { ...rest, signature_status: sigStatus(r) };
         });
         return Response.json({ records: out });
       }
@@ -776,7 +834,9 @@ export default async function main(req: Request): Promise<Response> {
           id_front_url: w.id_front_url || null, id_back_url: w.id_back_url || null,
           id_captured_at: w.id_captured_at || null, id_captured_by_name: w.id_captured_by_name || null,
         } : null;
-        return Response.json({ record: await recordView(r), worker: await workerView(worker), can_edit: canManageWorkers });
+        const recordViewed = await recordView(r);
+        recordViewed.signature_status = sigStatus(r);
+        return Response.json({ record: recordViewed, worker: await workerView(worker), can_edit: canManageWorkers });
       }
 
       // ── Image bytes for PDFs (record visit snapshot OR worker profile) ─────
@@ -1000,6 +1060,7 @@ export default async function main(req: Request): Promise<Response> {
         if (!w || w.customer_id !== scope.customer_id) return err('Worker not found in your scope.', 404);
         if (!r || r.customer_id !== scope.customer_id) return err('Record not found in your scope.', 404);
         const { signature_data_url: _sig, ...recordSafe } = r;
+        recordSafe.signature_status = sigStatus(r);
         return Response.json({ worker: await workerView(w), record: await recordView(recordSafe) });
       }
 
@@ -1015,6 +1076,126 @@ export default async function main(req: Request): Promise<Response> {
         const signatures: Record<string, string> = {};
         (recs || []).forEach((r) => { if (r.signature_data_url) signatures[r.id] = r.signature_data_url; });
         return Response.json({ signatures });
+      }
+
+      // ── Per-customer module settings (admins only, never attendance staff) ──
+      case 'get_settings': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!scope.customer_id) return err('A customer scope is required.', 400);
+        const rows = await base44.asServiceRole.entities.AttendanceSettings
+          .filter({ customer_id: scope.customer_id }).catch(() => []);
+        return Response.json({
+          settings: rows && rows.length > 0
+            ? rows[0]
+            : { customer_id: scope.customer_id, deferred_signatures_enabled: false },
+        });
+      }
+
+      case 'save_settings': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!canManageOptions) return err('Only authorized administrators may change Attendance settings.', 403);
+        if (!scope.customer_id) return err('A customer scope is required.', 400);
+        const enabled = !!params.deferred_signatures_enabled;
+        const rows = await base44.asServiceRole.entities.AttendanceSettings
+          .filter({ customer_id: scope.customer_id }).catch(() => []);
+        const ts = new Date().toISOString();
+        const updates = { deferred_signatures_enabled: enabled, updated_at: ts, updated_by_name: callerName };
+        if (rows && rows.length > 0) {
+          await base44.asServiceRole.entities.AttendanceSettings.update(rows[0].id, updates);
+        } else {
+          const reseller_id = await resolveResellerId();
+          await base44.asServiceRole.entities.AttendanceSettings.create({
+            customer_id: scope.customer_id, reseller_id, ...updates,
+          });
+        }
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'attendance.settings_changed',
+          user_id: caller.id, user_name: callerName,
+          customer_id: scope.customer_id, reseller_id: scope.reseller_id || null,
+          entity_name: 'AttendanceSettings', entity_id: scope.customer_id, action: 'update',
+          notes: `Deferred signature capture ("Sign Later") ${enabled ? 'ENABLED' : 'DISABLED'}.`,
+        }).catch(() => null);
+        return Response.json({ success: true, settings: { customer_id: scope.customer_id, ...updates } });
+      }
+
+      // ── Awaiting signatures: outstanding visits across ALL days ─────────────
+      // Date-independent explicit queries (never the caller's date filter, and
+      // never a truncated generic list): deferred saves stamped 'pending' plus
+      // legacy unsigned records flagged 'needs_review'. Lightweight fields
+      // only — no signature image data.
+      case 'list_pending': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        const q = scopeQuery();
+        const deferred = await base44.asServiceRole.entities.AttendanceRecord
+          .filter({ ...q, signature_status: 'pending' }, '-attendance_date', 2000).catch(() => []);
+        const legacyUnsigned = await base44.asServiceRole.entities.AttendanceRecord
+          .filter({ ...q, signature_data_url: null }, '-attendance_date', 2000).catch(() => []);
+        const byId = new Map();
+        [...(deferred || []), ...(legacyUnsigned || [])].forEach((r) => {
+          if (!r.signature_data_url && !byId.has(r.id)) {
+            const { signature_data_url: _s, ...rest } = r;
+            byId.set(r.id, { ...rest, signature_status: sigStatus(r) });
+          }
+        });
+        const out = [...byId.values()].sort((a, b) => {
+          const d = (a.attendance_date || '').localeCompare(b.attendance_date || '');
+          return d !== 0 ? d : (a.attendance_time || '').localeCompare(b.attendance_time || '');
+        });
+        return Response.json({
+          records: out,
+          pending_count: out.filter((r) => r.signature_status === 'pending').length,
+          review_count: out.filter((r) => r.signature_status === 'needs_review').length,
+        });
+      }
+
+      // ── Capture the signature later against ONE deferred attendance ─────────
+      // Exact existing record only (server-resolved tenant scope) — never a
+      // new visit, never a signature reused from a previous visit, and an
+      // existing signature is NEVER replaced. Signature stamping is done here
+      // (server-side); visit snapshots and the original attendance date/time
+      // are untouched.
+      case 'sign_pending': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!params.record_id) return err('An attendance record id is required.');
+        const sig = params.signature_data_url;
+        if (!sig || !String(sig).startsWith('data:image')) {
+          return err('A valid electronic signature is required.');
+        }
+        const r = await base44.asServiceRole.entities.AttendanceRecord.get(params.record_id).catch(() => null);
+        if (!r || !recordInScope(r)) return err('Attendance record not found in your scope.', 404);
+        // Confirmation guard: the operator signs the visit they were SHOWN —
+        // the confirmed ID must match the stored visit snapshot.
+        if (String(params.confirm_id_number ?? '').trim() !== String(r.id_number_snapshot ?? '').trim()) {
+          return err('The visit details changed since this dialog was opened — please reopen this visit and confirm again.');
+        }
+        // One signature per visit, never replaced: a visit that already
+        // carries a signature can never be signed again.
+        if (r.signature_data_url) {
+          return Response.json({ success: false, already_signed: true, signature_status: 'signed' });
+        }
+        // Explicit operator action on a pending (deferred) or legacy unsigned
+        // (needs_review) visit — a legacy record is never silently
+        // reclassified; the signature capture itself is the explicit review.
+        const ts = new Date().toISOString();
+        await base44.asServiceRole.entities.AttendanceRecord.update(r.id, {
+          signature_data_url: sig,
+          signature_status: 'signed',
+          signature_captured_at: ts,
+          signature_captured_by_id: caller.id,
+          signature_captured_by_name: callerName,
+        });
+        await base44.asServiceRole.entities.PlatformAuditLog.create({
+          event_type: 'attendance.signature_captured',
+          user_id: caller.id, user_name: callerName,
+          customer_id: r.customer_id, reseller_id: r.reseller_id || null,
+          entity_name: 'AttendanceRecord', entity_id: r.id, action: 'sign_pending',
+          notes: `Signature captured later against attendance ${r.attendance_date} ${r.attendance_time} (${r.id_number_snapshot}). Original visit date/time and snapshots preserved.`,
+        }).catch(() => null);
+        return Response.json({ success: true, record_id: r.id, signature_status: 'signed' });
       }
 
       default:

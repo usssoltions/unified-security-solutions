@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ScanLine, User, FileText, ClipboardList, PenTool, CheckCircle2,
   ChevronRight, ChevronLeft, Loader2, AlertCircle, RefreshCw,
-  IdCard, Building2, Phone, Briefcase, Eye
+  IdCard, Building2, Phone, Briefcase, Eye, Clock
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
 import AttendanceSignaturePad from "./AttendanceSignaturePad";
@@ -61,7 +61,7 @@ function StepIndicator({ currentStep }) {
 }
 
 export default function NewAttendanceWizard({
-  user, customerId, medicalCentres, assessmentTypes, onSuccess, onCancel
+  user, customerId, medicalCentres, assessmentTypes, deferredEnabled = false, onSuccess, onCancel
 }) {
   const [step, setStep] = useState(1);
   const [showScanner, setShowScanner] = useState(false);
@@ -100,6 +100,11 @@ export default function NewAttendanceWizard({
 
   // Signature
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
+  // Deferred save ("Save — Sign Later"): details are saved now as a REAL
+  // AttendanceRecord with signature_status 'pending' (only when the customer
+  // has enabled deferred signature capture) and the signature is captured
+  // later against this exact visit.
+  const [deferredSave, setDeferredSave] = useState(false);
 
   // Submit state
   const [saving, setSaving] = useState(false);
@@ -208,6 +213,7 @@ export default function NewAttendanceWizard({
       const captured = photoMode === "captured";
 
       const res = await attendanceCall("register_attendance", {
+        mode: deferredSave ? "deferred" : "immediate",
         existing_worker_id: existingWorker?.id || null,
         worker: {
           surname, initials, first_names: firstNames, id_number: idNumber, id_type: idType,
@@ -228,8 +234,14 @@ export default function NewAttendanceWizard({
           additional_information: additionalInfo,
           assessment_type: assessmentType,
         },
-        signature_data_url: signatureDataUrl,
+        signature_data_url: deferredSave ? null : signatureDataUrl,
       });
+      // Server-side duplicate-visit guard: a retry/double tap that already
+      // saved is reported — never a second record.
+      if (res?.duplicate) {
+        setSaveError("This visit was already saved — it is shown in Attendance Records. Do NOT confirm again.");
+        return;
+      }
 
       // Post-save verification: RELOAD the saved worker + record from the
       // server and confirm every value matches the reviewed entry
@@ -295,6 +307,7 @@ export default function NewAttendanceWizard({
         workerName: formatDisplayName({ surname, initials }),
         attendanceTime: timeStr,
         workerId: res?.worker_id,
+        signatureStatus: deferredSave ? "pending" : "signed",
         photoSummary: !visitFront
           ? "Saved without ID photos"
           : `ID photos saved on this attendance${res?.worker_photos_updated ? " · worker profile photos updated" : " · worker profile photos unchanged"}`,
@@ -546,9 +559,28 @@ export default function NewAttendanceWizard({
         <div className="space-y-4">
           <h2 className="text-white text-xl font-bold">Electronic Signature</h2>
           <AttendanceSignaturePad
-            onAccept={(dataUrl) => { setSignatureDataUrl(dataUrl); setStep(6); }}
+            onAccept={(dataUrl) => { setSignatureDataUrl(dataUrl); setDeferredSave(false); setStep(6); }}
             onCancel={goBack}
           />
+          {/* Deferred save stays available ONLY while the customer's
+              deferred-signature setting is enabled (default off). Signing
+              immediately remains the default path. */}
+          {deferredEnabled && (
+            <>
+              <div className="relative flex items-center gap-3">
+                <div className="flex-1 h-px bg-slate-700" />
+                <span className="text-slate-500 text-xs">or</span>
+                <div className="flex-1 h-px bg-slate-700" />
+              </div>
+              <Button variant="outline" onClick={() => { setSignatureDataUrl(null); setDeferredSave(true); setStep(6); }}
+                className="w-full h-12 border-slate-600 text-slate-300 active:scale-95 transition">
+                <Clock className="w-4 h-4 mr-2" /> Save — Sign Later
+              </Button>
+              <p className="text-slate-500 text-xs">
+                All details and ID-document requirements are still validated and shown for review first. The attendance is saved now with its original date and time, and the signature is captured later against this exact visit.
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -593,6 +625,15 @@ export default function NewAttendanceWizard({
             <div className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] p-3">
               <p className="text-slate-400 text-xs mb-2">Signature Preview</p>
               <img src={signatureDataUrl} alt="Signature" className="h-16 bg-white rounded-lg border border-slate-600" />
+            </div>
+          )}
+          {deferredSave && !signatureDataUrl && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2">
+              <Clock className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-amber-300 text-sm font-semibold">Saving without a signature — Sign Later</p>
+                <p className="text-slate-300 text-xs mt-1">This attendance will be saved as Awaiting Signature. The signature is captured later against this exact visit — the original date and time are kept.</p>
+              </div>
             </div>
           )}
           {placeholderWarnings.length > 0 && (
