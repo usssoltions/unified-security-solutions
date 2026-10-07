@@ -45,4 +45,6 @@ dependencies {
     implementation 'androidx.webkit:webkit:1.9.0'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'com.onesignal:OneSignal:5.6.1'
+    // USS VOICE LINK (pilot): WebRTC engine for native individual calls
+    implementation 'org.webrtc:google-webrtc:1.0.32006'
 }

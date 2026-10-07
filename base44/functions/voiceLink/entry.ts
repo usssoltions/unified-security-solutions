@@ -365,10 +365,16 @@ Deno.serve(async (req) => {
 
       // Ring the callee: one push to ALL of the callee's devices (native +
       // web). The token travels ONLY inside this callee's own push payload.
-      const push = await pushData([calleeRec.id], {
-        type: 'voicelink_call', callId, callerId: String(userRec.id),
-        callerName: displayName(userRec), token: signalToken,
-      }, { heading: 'Incoming Call', content: `${displayName(userRec)} is calling you (Voice Link)` });
+      // BOUNDED DISPATCH: the caller's response never waits on OneSignal —
+      // past 1.2s the push continues in the background and the caller is told
+      // it is dispatching (a slow relay can never stall call initiation).
+      const push = await Promise.race([
+        pushData([calleeRec.id], {
+          type: 'voicelink_call', callId, callerId: String(userRec.id),
+          callerName: displayName(userRec), token: signalToken,
+        }, { heading: 'Incoming Call', content: `${displayName(userRec)} is calling you (Voice Link)` }),
+        new Promise((resolve) => setTimeout(() => resolve({ ok: true, reason: 'dispatching' }), 1200)),
+      ]);
 
       return Response.json({
         call: {
@@ -535,6 +541,76 @@ Deno.serve(async (req) => {
         }
         return Response.json({ signals: pending.map((s) => ({ kind: s.kind, payload: s.payload, seq: s.seq })) });
       }
+    }
+
+    /* ── selftest: ISOLATED lifecycle validation (platform admin only) ─────
+     * Creates two is_test calls, verifies (1) the expired-ringing sweep marks
+     * 'missed' and (2) the two-device accept claim is answered EXACTLY once,
+     * then deletes the test rows. No real calls, devices or pushes touched. */
+    if (action === 'selftest') {
+      if (!isPlatformAdmin) return Response.json({ error: 'Platform admin required' }, { status: 403 });
+      const suffix = Date.now().toString(36).toUpperCase();
+      const results = [];
+      const mkTestCall = async (callId, expiresAt) => svc.entities.VoiceLinkCall.create({
+        call_id: callId, customer_id: 'voicelink_selftest',
+        caller_id: 'selftest-caller', caller_name: 'VoiceLink SelfTest Caller',
+        callee_id: 'selftest-callee', callee_name: 'VoiceLink SelfTest Callee',
+        status: 'ringing', requested_at: nowIso(), expires_at: expiresAt,
+        callee_signal_token: crypto.randomUUID(), is_test: true,
+        lifecycle_log: [{ at: nowIso(), status: 'ringing', actor_id: null, actor_name: 'selftest', note: 'Isolated self-test call' }],
+      });
+      const cleanup = async (callId) => {
+        const rows = await svc.entities.VoiceLinkSignal.filter({ call_id: callId }).catch(() => []);
+        if (rows.length) await svc.entities.VoiceLinkSignal.deleteMany({ call_id: callId }).catch(() => null);
+        await svc.entities.VoiceLinkCall.deleteMany({ call_id: callId }).catch(() => null);
+      };
+
+      // (1) RING TIMEOUT: an expired ringing call is swept to 'missed'.
+      const timeoutCallId = 'VL-SELFTEST-' + suffix + '-T';
+      await mkTestCall(timeoutCallId, new Date(Date.now() - 2000).toISOString());
+      const swept = await expireIfNeeded(await loadCall(timeoutCallId));
+      results.push({ check: 'ring_timeout_marks_missed', pass: !!swept && swept.status === 'missed', detail: swept ? swept.status : 'no_call' });
+
+      // (2) TWO-DEVICE ACCEPT CLAIM: exactly one device can claim the answer.
+      const claimCallId = 'VL-SELFTEST-' + suffix + '-C';
+      await mkTestCall(claimCallId, new Date(Date.now() + RINGING_TTL_MS).toISOString());
+      const attemptAccept = async (deviceId) => {
+        const rec = await loadCall(claimCallId);
+        if (!rec) return { device: deviceId, result: 'no_call' };
+        if (rec.status !== 'ringing') return { device: deviceId, result: 'already_claimed', state: rec.status };
+        await svc.entities.VoiceLinkCall.updateMany(
+          { call_id: claimCallId, status: 'ringing' },
+          { $set: { status: 'connecting', answered_at: nowIso(), answered_device: deviceId } }
+        ).catch(() => null);
+        const fresh = await loadCall(claimCallId);
+        return (fresh && fresh.status === 'connecting' && fresh.answered_device === deviceId)
+          ? { device: deviceId, result: 'accepted' }
+          : { device: deviceId, result: 'already_claimed', state: fresh ? fresh.status : 'ended' };
+      };
+      const [deviceA, deviceB] = [await attemptAccept('selftest-device-a'), await attemptAccept('selftest-device-b')];
+      const acceptedCount = [deviceA, deviceB].filter((r) => r.result === 'accepted').length;
+      results.push({ check: 'single_device_accept', pass: acceptedCount === 1, detail: `A=${deviceA.result}, B=${deviceB.result}` });
+
+      // (3) SIGNAL DELIVERY EXACTLY ONCE: a relay row is consumed exactly once.
+      const sigCallId = 'VL-SELFTEST-' + suffix + '-S';
+      await mkTestCall(sigCallId, new Date(Date.now() + RINGING_TTL_MS).toISOString());
+      const sigId = 's-' + suffix;
+      await svc.entities.VoiceLinkSignal.create({ call_id: sigCallId, from_id: 'selftest-caller', to_id: 'selftest-callee', kind: 'offer', payload: '{"sdp":"test"}', seq: 0, consumed: false }).catch(() => null);
+      const read = await svc.entities.VoiceLinkSignal.filter({ call_id: sigCallId, to_id: 'selftest-callee' }).catch(() => []);
+      const pendingFirst = (read || []).filter((s) => !s.consumed);
+      if (pendingFirst.length) {
+        await svc.entities.VoiceLinkSignal.bulkUpdate(pendingFirst.map((s) => ({ id: s.id, consumed: true }))).catch(() => null);
+      }
+      const after = await svc.entities.VoiceLinkSignal.filter({ call_id: sigCallId, to_id: 'selftest-callee' }).catch(() => []);
+      const pendingSecond = (after || []).filter((s) => !s.consumed);
+      results.push({
+        check: 'signal_consumed_once', pass: pendingFirst.length === 1 && pendingSecond.length === 0,
+        detail: `first=${pendingFirst.length}, second=${pendingSecond.length}`,
+      });
+
+      await cleanup(timeoutCallId); await cleanup(claimCallId); await cleanup(sigCallId);
+      const allPass = results.every((r) => r.pass);
+      return Response.json({ selftest: allPass ? 'passed' : 'failed', results });
     }
 
     return Response.json({ error: `Unknown action '${action}'` }, { status: 400 });

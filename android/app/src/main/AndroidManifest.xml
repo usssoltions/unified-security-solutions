@@ -22,6 +22,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- USS VOICE LINK (pilot): microphone-typed foreground service so call
+         audio continues with the screen off (Android 14 requirement). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Full-screen intent for incoming calls (Android 14+) -->
@@ -66,5 +69,28 @@
             android:turnScreenOn="true"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.USSGuard" />
+
+        <!-- USS VOICE LINK (pilot) — fully separate activities from the legacy
+             IncomingCallActivity: legacy call data never opens these screens. -->
+        <activity
+            android:name=".VoiceLinkIncomingActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.USSGuard" />
+        <activity
+            android:name=".VoiceLinkCallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.USSGuard" />
+
+        <service
+            android:name=".VoiceLinkCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"
+            android:stopWithTask="false" />
     </application>
 </manifest>

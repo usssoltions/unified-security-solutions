@@ -335,6 +335,23 @@ public class MainActivity extends AppCompatActivity {
         if (webView != null) {
             webView.onResume();
 
+            // USS VOICE LINK (pilot): notification click routes to the NATIVE
+            // incoming-call screen (real one-press answer, never a WebView URL).
+            if (USSGuardApplication.pendingVoicelinkCallJson != null) {
+                final String vlJson = USSGuardApplication.pendingVoicelinkCallJson;
+                USSGuardApplication.pendingVoicelinkCallJson = null;
+                try {
+                    org.json.JSONObject d = new org.json.JSONObject(vlJson);
+                    Intent vl = new Intent(this, VoiceLinkIncomingActivity.class);
+                    vl.putExtra("callId", d.optString("callId"));
+                    vl.putExtra("callerName", d.optString("callerName"));
+                    vl.putExtra("token", d.optString("token"));
+                    startActivity(vl);
+                } catch (Exception e) {
+                    Log.e(TAG, "Voice Link incoming open failed", e);
+                }
+            }
+
             // Check for pending call URL from notification click
             if (USSGuardApplication.pendingCallUrl != null) {
                 final String url = USSGuardApplication.pendingCallUrl;

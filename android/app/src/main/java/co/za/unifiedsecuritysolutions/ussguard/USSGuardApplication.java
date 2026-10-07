@@ -42,11 +42,17 @@ public class USSGuardApplication extends Application {
     /** Set by the Stay Awake display handler; consumed by MainActivity.onResume() */
     public static String pendingStayAwakeUrl = null;
 
+    /** USS VOICE LINK (pilot): raw call data staged by the notification click
+     *  handler; consumed by MainActivity.onResume() which opens the NATIVE
+     *  Voice Link incoming screen (never a WebView URL). */
+    public static String pendingVoicelinkCallJson = null;
+
     @Override
     public void onCreate() {
         super.onCreate();
         createCallNotificationChannel();
         createStayAwakeNotificationChannel();
+        createVoicelinkChannel();
         initOneSignal();
     }
 
@@ -120,7 +126,16 @@ public class USSGuardApplication extends Application {
                             IDisplayableNotification notification = event.getNotification();
                             JSONObject data = notification.getAdditionalData();
 
-                            if (data != null && "call".equals(data.optString("type"))) {
+                            // USS VOICE LINK (pilot) — fully separate data types:
+                            // legacy "call" data can never open the Voice Link
+                            // screen and vice versa.
+                            if (data != null && "voicelink_call".equals(data.optString("type"))) {
+                                showVoicelinkIncomingNotification(data);
+                                event.preventDefault();
+                            } else if (data != null && "voicelink_call_state".equals(data.optString("type"))) {
+                                handleVoicelinkState(data);
+                                event.preventDefault();
+                            } else if (data != null && "call".equals(data.optString("type"))) {
                                 // Call notification — show our own full-screen call UI
                                 String callId = data.optString("callId");
                                 String callerName = data.optString("callerName");
@@ -162,7 +177,10 @@ public class USSGuardApplication extends Application {
                         try {
                             INotification notification = event.getNotification();
                             JSONObject data = notification.getAdditionalData();
-                            if (data != null && "call".equals(data.optString("type"))) {
+                            if (data != null && "voicelink_call".equals(data.optString("type"))) {
+                                pendingVoicelinkCallJson = data.toString();
+                                Log.d(TAG, "Voice Link notification clicked — staged for native incoming screen");
+                            } else if (data != null && "call".equals(data.optString("type"))) {
                                 String callId = data.optString("callId");
                                 String callerName = data.optString("callerName");
                                 String url = APP_URL + "/?call_id=" + callId +
@@ -302,6 +320,88 @@ public class USSGuardApplication extends Application {
                 + ", caller: " + callerName);
         } catch (Exception e) {
             Log.e(TAG, "Failed to post call notification", e);
+        }
+    }
+
+    /**
+     * USS VOICE LINK (pilot) — dedicated call channel for the new engine.
+     * Legacy "calls" channel and its flow are untouched.
+     */
+    private void createVoicelinkChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                "voicelink_calls",
+                "Voice Link Calls",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Incoming USS Voice Link calls");
+            channel.enableVibration(true);
+            channel.setVibrationPattern(new long[]{0, 500, 200, 500, 200, 500});
+            channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+            channel.enableLights(true);
+            channel.setLightColor(0xFF0EA5E9);
+            getSystemService(NotificationManager.class).createNotificationChannel(channel);
+            Log.d(TAG, "Voice Link notification channel created (IMPORTANCE_HIGH)");
+        }
+    }
+
+    /**
+     * USS VOICE LINK (pilot) — full-screen incoming-call notification that
+     * launches the NATIVE VoiceLinkIncomingActivity (real answer in one press).
+     */
+    private void showVoicelinkIncomingNotification(JSONObject data) {
+        try {
+            String callId = data.optString("callId");
+            String callerName = data.optString("callerName");
+            String token = data.optString("token");
+
+            Intent callIntent = new Intent(this, VoiceLinkIncomingActivity.class);
+            callIntent.putExtra("callId", callId);
+            callIntent.putExtra("callerName", callerName);
+            callIntent.putExtra("token", token);
+            callIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+            int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent fullScreenIntent = PendingIntent.getActivity(this, callId.hashCode(), callIntent, piFlags);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "voicelink_calls")
+                .setSmallIcon(android.R.drawable.sym_call_incoming)
+                .setContentTitle("Incoming Call")
+                .setContentText(callerName != null && !callerName.isEmpty() ? callerName : "Unknown Caller")
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setContentIntent(fullScreenIntent)
+                .setFullScreenIntent(fullScreenIntent, true)
+                .setOngoing(true)
+                .setTimeoutAfter(45000)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            nm.notify(callId.hashCode(), builder.build());
+            Log.d(TAG, "Voice Link notification posted — callId: " + callId);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to post Voice Link notification", e);
+        }
+    }
+
+    /**
+     * USS VOICE LINK (pilot) — a call-state push (cancelled / ended /
+     * connecting elsewhere) dismisses a stale ringing screen and its
+     * notification. The connected engine reacts through its own gateway
+     * polling; this only stops ringing surfaces.
+     */
+    private void handleVoicelinkState(JSONObject data) {
+        try {
+            String callId = data.optString("callId");
+            String status = data.optString("status");
+            Log.d(TAG, "📞 Voice Link state: " + status);
+            VoiceLinkIncomingActivity.dismissIfShowing(callId);
+            try {
+                NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                nm.cancel(callId.hashCode());
+            } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to handle Voice Link state", e);
         }
     }
 
