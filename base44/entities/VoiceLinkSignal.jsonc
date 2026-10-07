@@ -1,0 +1,104 @@
+{
+  "name": "VoiceLinkSignal",
+  "type": "object",
+  "description": "USS VOICE LINK (pilot) \u2014 WebRTC signaling relay row (offer / answer / ice) for one Voice Link call. Written and consumed ONLY through the voiceLink gateway, which validates the sender is a listed participant of a live call, caps payload size, and marks rows consumed after delivery (each recipient reads its own to_id queue exactly once). Fully isolated from the legacy SignalingMessage entity used by the old calling engine. GATEWAY-ONLY ACCESS: direct client access is restricted to platform administration by RLS.",
+  "properties": {
+    "call_id": {
+      "type": "string",
+      "description": "The VoiceLinkCall this signal belongs to (validated server-side)."
+    },
+    "from_id": {
+      "type": "string",
+      "description": "Authenticated participant (or token-resolved callee) that produced the signal \u2014 never client-trusted."
+    },
+    "to_id": {
+      "type": "string",
+      "description": "The other participant's user id; the recipient's polling/subscription reads only its own queue."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "offer",
+        "answer",
+        "ice"
+      ],
+      "description": "offer = caller, status 'connecting' only; answer = callee; ice = either participant while connecting/connected."
+    },
+    "payload": {
+      "type": "string",
+      "description": "Stringified SDP/ICE JSON \u2014 capped server-side; never credentials or media bytes."
+    },
+    "seq": {
+      "type": "number",
+      "description": "Per-call monotonic sequence for deterministic delivery ordering."
+    },
+    "consumed": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "call_id",
+    "from_id",
+    "to_id",
+    "kind"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

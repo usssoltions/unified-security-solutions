@@ -1,0 +1,262 @@
+{
+  "name": "VoiceLinkCall",
+  "type": "object",
+  "description": "USS VOICE LINK (pilot) \u2014 ONE server-authoritative individual call. NEW engine, fully isolated from the legacy calling implementation (CallSession/rtcSignaling untouched). The voiceLink gateway resolves caller, callee, tenant, site and control-room scope server-side, enforces the CALLING entitlement plus the per-user Voice Link pilot flag, and stamps every lifecycle transition. Statuses: ringing (push dispatched) -> connecting (callee claimed the call atomically via conditional updateMany; connection offer permitted only in this state) -> connected (WebRTC media actually established, stamped on mark_connected) -> ended; terminal alternatives: declined, cancelled, missed (ringing timeout), expired, failed. The callee_signal_token is a call-scoped, call-expiring credential minted server-side at initiation and delivered ONLY inside the callee's own push payload, letting the native Android engine authenticate signaling without a browser session. GATEWAY-ONLY ACCESS: all tenant read/write flows through the voiceLink gateway (participant or call-token validated); direct client access is restricted to platform administration by RLS.",
+  "properties": {
+    "call_id": {
+      "type": "string",
+      "description": "Unique call reference (e.g. VL-...) generated server-side from timestamp + cryptographic randomness."
+    },
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant ownership \u2014 resolved server-side, never client-trusted."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "caller_id": {
+      "type": "string"
+    },
+    "caller_name": {
+      "type": "string"
+    },
+    "caller_role_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "callee_id": {
+      "type": "string"
+    },
+    "callee_name": {
+      "type": "string"
+    },
+    "callee_role_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Site the call belongs to (guard's site, or the site linking an operator call)."
+    },
+    "site_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "control_room_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The explicit control room the operator belongs to \u2014 never guessed."
+    },
+    "control_room_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ringing",
+        "connecting",
+        "connected",
+        "ended",
+        "declined",
+        "cancelled",
+        "missed",
+        "expired",
+        "failed"
+      ],
+      "default": "ringing",
+      "description": "Server-authoritative lifecycle state. 'connecting' = callee claimed; the WebRTC offer is permitted only in this state, and 'connected' is stamped only when media is actually established."
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Ringing deadline (requested_at + 45s). A ringing call past this instant transitions to 'missed' at the next gateway touch."
+    },
+    "answered_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "answered_device": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Device fingerprint that claimed the call \u2014 answering on one device stops ringing on the callee's others."
+    },
+    "connected_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "end_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "hangup | declined | cancelled | timeout | connection_lost | no_media | gateway_error"
+    },
+    "ended_by_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ended_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "duration_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Connected-media duration, stamped at end."
+    },
+    "callee_signal_token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL call-scoped signaling credential for the native callee engine (crypto-random, delivered only inside the callee's own push, expires with the call)."
+    },
+    "lifecycle_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "default": [],
+      "description": "Append-only server-stamped transition history (accurate missed/declined/cancelled/connected/ended outcomes)."
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "Fixture marker for isolated test runs; never set by the normal flow."
+    }
+  },
+  "required": [
+    "call_id",
+    "customer_id",
+    "caller_id",
+    "callee_id",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

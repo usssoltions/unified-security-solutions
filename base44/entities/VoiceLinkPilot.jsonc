@@ -1,0 +1,74 @@
+{
+  "name": "VoiceLinkPilot",
+  "type": "object",
+  "description": "USS VOICE LINK (pilot) \u2014 per-user pilot enrolment flag. Only accounts listed here (enabled) may place, receive or view Voice Link calls; the voiceLink gateway checks this server-side on every action. The pilot is deliberately separate from the CALLING commercial entitlement (which the gateway ALSO enforces) so the new engine can be rolled out to selected test accounts without touching the legacy calling implementation or publishing to all customers. Managed by a Platform Administrator; users can never self-enrol. PLATFORM-ADMIN-ONLY by RLS on all operations.",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "The enrolled test account's User id (one row per user; re-granting updates the existing row)."
+    },
+    "user_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display-name snapshot for the admin list."
+    },
+    "customer_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The user's tenant at enrolment time (informational)."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "false = enrolment suspended (keeps the record for audit)."
+    },
+    "granted_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "granted_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "user_id"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "admin_level": "platform"
+      }
+    }
+  }
+}
