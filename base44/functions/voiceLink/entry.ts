@@ -67,6 +67,34 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || '');
 
+    /* ── GLOBAL RELEASE FLAG (platform-wide, default OFF) ─────────────────
+     * INDEPENDENT of the CALLING entitlement and the per-user pilot flag:
+     * while the global flag is OFF, every call action fails closed — no
+     * contacts, no initiation, no listeners, no push dispatch. Only 'status'
+     * (release state query) and the isolated platform-admin 'selftest' run.
+     * The flag is read from SystemConfiguration (config_key
+     * 'voice_link_release', platform-wide customer_id null). A missing row
+     * or an unparseable value defaults to OFF. Customer-scoped rows with
+     * the same key are IGNORED (only the platform-wide row counts), so a
+     * customer administrator can never release the module themselves. */
+    const releaseCfg = (await svc.entities.SystemConfiguration.filter({
+      config_key: 'voice_link_release',
+      customer_id: null,
+    }).catch(() => [])) || [];
+    const releaseRow = releaseCfg.filter((r) => !r.customer_id).pop();
+    let releaseEnabled = false;
+    try {
+      releaseEnabled = !!(releaseRow && JSON.parse(releaseRow.config_value || '{}').enabled === true);
+    } catch (_) { releaseEnabled = false; }
+
+    if (action === 'status') {
+      return Response.json({ release_enabled: releaseEnabled });
+    }
+    if (!releaseEnabled && action !== 'selftest') {
+      if (action === 'contacts') return Response.json({ release_enabled: false });
+      return Response.json({ error: 'Voice Link is not released yet' }, { status: 403 });
+    }
+
     /* ── Identity resolution: session first, then call-token ─────────────── */
     let user = me;
     let tokenCallId = null;

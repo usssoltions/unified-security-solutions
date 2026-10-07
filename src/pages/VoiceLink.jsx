@@ -12,7 +12,7 @@ import VoiceLinkIncomingOverlay from "@/components/voicelink/VoiceLinkIncomingOv
  */
 export default function VoiceLink() {
   const [contacts, setContacts] = useState(null);
-  const [pilotState, setPilotState] = useState("loading"); // loading | ok | not_pilot | not_entitled | error
+  const [pilotState, setPilotState] = useState("loading"); // loading | ok | not_pilot | not_entitled | not_available | error
   const [errorMessage, setErrorMessage] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
   const [startingId, setStartingId] = useState(null);
@@ -22,6 +22,7 @@ export default function VoiceLink() {
     setContacts(null);
     try {
       const res = await voiceLinkApi.contacts();
+      if (res && res.release_enabled === false) { setPilotState("not_available"); return; }
       if (res && res.pilot_ok === false) { setPilotState("not_pilot"); return; }
       if (res && res.entitled === false) { setPilotState("not_entitled"); return; }
       if (res && res.error === "no_site") {
@@ -60,6 +61,18 @@ export default function VoiceLink() {
     return (
       <div className="p-6 flex items-center justify-center min-h-screen">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (pilotState === "not_available") {
+    return (
+      <div className="p-6 min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-sm bg-slate-900/60 border border-slate-700 rounded-2xl p-6">
+          <ShieldX className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+          <h1 className="text-lg font-bold text-white mb-2">USS Voice Link</h1>
+          <p className="text-sm text-slate-400">USS Voice Link is not released yet. This module stays switched off until it is formally released by the platform.</p>
+        </div>
       </div>
     );
   }

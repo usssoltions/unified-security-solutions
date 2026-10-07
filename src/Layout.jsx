@@ -123,6 +123,21 @@ export default function Layout({ children, currentPageName }) {
     staleTime: 10 * 60 * 1000,
     retry: 2,
   });
+  // GLOBAL VOICE LINK RELEASE FLAG — independent of the CALLING entitlement.
+  // While OFF (default), the Voice Link nav item is hidden from every role's
+  // sidebar/drawer; the gateway fails closed for all call actions regardless.
+  const { data: voiceLinkRelease } = useQuery({
+    queryKey: ["voice_link_release"],
+    queryFn: async () => {
+      const res = await base44.functions.invoke("voiceLink", { action: "status" });
+      return res?.data || res;
+    },
+    enabled: !!user,
+    staleTime: 30 * 60 * 1000,
+    retry: 1,
+  });
+  const voiceLinkReleased = !!voiceLinkRelease?.release_enabled;
+
   const accessControlOnly =
     user?.role_type === "guard" &&
     ["access_control", "accesscontrol"].includes(
@@ -407,14 +422,17 @@ export default function Layout({ children, currentPageName }) {
   // TASK-ONLY GUARD focused shell — sidebar/drawer match the focused bottom
   // tab: only My Tasks plus core Profile. Guard Shift (and its schedule) belong
   // to commercial modules a TASK_SCHEDULING-only customer does not own.
-  const navigationItems = bypassEntitlements
+  // Global Voice Link release gate is applied LAST so it holds for every
+  // role — including platform admins — while the flag is OFF.
+  const releaseGate = (items) => voiceLinkReleased ? items : items.filter(item => item.pageKey !== "VoiceLink");
+  const navigationItems = releaseGate(bypassEntitlements
     ? allNavItems
     : guardTaskOnly
       ? allNavItems.filter(item => ["ScheduledTasks", "Profile"].includes(item.pageKey))
       : allNavItems.filter(item => {
           const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
           return isPageModuleEnabled(entitlements, pageName, isPlatformAdmin, user?.role_type);
-        });
+        }));
   // Module-aware home: when the role's marked root page is filtered out by a
   // module entitlement (attendance-only customer_admin has no REPORTING_CORE),
   // the first VISIBLE navigation item is the home — Attendance Register.
