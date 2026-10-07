@@ -21,3 +21,8 @@
 # OkHttp (used by OneSignal)
 -dontwarn okhttp3.**
 -dontwarn okio.**
+
+# USS VOICE LINK (pilot): WebRTC native JNI — kept classes and members are
+# reached from native code and must survive release minification.
+-keep class org.webrtc.** { *; }
+-dontwarn org.webrtc.**

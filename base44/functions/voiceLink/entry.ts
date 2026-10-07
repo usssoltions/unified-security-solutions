@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 
 /**
  * voiceLink — USS VOICE LINK (pilot) gateway. Phase 1: reliable individual calls.
@@ -544,9 +544,12 @@ Deno.serve(async (req) => {
     }
 
     /* ── selftest: ISOLATED lifecycle validation (platform admin only) ─────
-     * Creates two is_test calls, verifies (1) the expired-ringing sweep marks
-     * 'missed' and (2) the two-device accept claim is answered EXACTLY once,
-     * then deletes the test rows. No real calls, devices or pushes touched. */
+     * Creates is_test calls, verifies (1) the expired-ringing sweep marks
+     * 'missed', (2) the two-device accept claim is answered EXACTLY once and
+     * (3) a signal row is consumed exactly once, then marks every test row
+     * CANCELLED (never deleted — non-destructive; is_test rows are excluded
+     * from live views and removable through the platform's test-data cleanup).
+     * No real calls, devices or pushes are touched. */
     if (action === 'selftest') {
       if (!isPlatformAdmin) return Response.json({ error: 'Platform admin required' }, { status: 403 });
       const suffix = Date.now().toString(36).toUpperCase();
@@ -559,10 +562,20 @@ Deno.serve(async (req) => {
         callee_signal_token: crypto.randomUUID(), is_test: true,
         lifecycle_log: [{ at: nowIso(), status: 'ringing', actor_id: null, actor_name: 'selftest', note: 'Isolated self-test call' }],
       });
+      // NON-DESTRUCTIVE cleanup: mark the test call cancelled with a selftest
+      // reason. The rows stay (is_test = true) for audit and are never shown
+      // to operational users; pending signal rows are consumed so nothing is
+      // re-deliverable. Nothing is ever deleted here.
       const cleanup = async (callId) => {
+        await svc.entities.VoiceLinkCall.updateMany(
+          { call_id: callId, customer_id: 'voicelink_selftest' },
+          { $set: { status: 'cancelled', end_reason: 'selftest' } }
+        ).catch(() => null);
         const rows = await svc.entities.VoiceLinkSignal.filter({ call_id: callId }).catch(() => []);
-        if (rows.length) await svc.entities.VoiceLinkSignal.deleteMany({ call_id: callId }).catch(() => null);
-        await svc.entities.VoiceLinkCall.deleteMany({ call_id: callId }).catch(() => null);
+        if (rows.length) {
+          await svc.entities.VoiceLinkSignal.bulkUpdate(
+            rows.map((s) => ({ id: s.id, consumed: true }))).catch(() => null);
+        }
       };
 
       // (1) RING TIMEOUT: an expired ringing call is swept to 'missed'.
