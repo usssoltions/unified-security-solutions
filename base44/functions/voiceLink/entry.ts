@@ -600,9 +600,16 @@ Deno.serve(async (req) => {
           ? { device: deviceId, result: 'accepted' }
           : { device: deviceId, result: 'already_claimed', state: fresh ? fresh.status : 'ended' };
       };
-      const [deviceA, deviceB] = [await attemptAccept('selftest-device-a'), await attemptAccept('selftest-device-b')];
+      // SIMULTANEOUS attempt: both devices issue their conditional accept in
+      // the SAME instant (Promise.all) — the platform's updateMany is a
+      // single server-side conditional write (status 'ringing' matches exactly
+      // once), so a genuine parallel race is decided by the database, never by
+      // a read-then-write sequence.
+      const [deviceA, deviceB] = await Promise.all([
+        attemptAccept('selftest-device-a'), attemptAccept('selftest-device-b'),
+      ]);
       const acceptedCount = [deviceA, deviceB].filter((r) => r.result === 'accepted').length;
-      results.push({ check: 'single_device_accept', pass: acceptedCount === 1, detail: `A=${deviceA.result}, B=${deviceB.result}` });
+      results.push({ check: 'single_device_accept_simultaneous', pass: acceptedCount === 1, detail: `A=${deviceA.result}, B=${deviceB.result}` });
 
       // (3) SIGNAL DELIVERY EXACTLY ONCE: a relay row is consumed exactly once.
       const sigCallId = 'VL-SELFTEST-' + suffix + '-S';
