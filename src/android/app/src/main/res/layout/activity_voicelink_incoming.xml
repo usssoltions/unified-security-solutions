@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#020617"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <View
+        android:layout_width="1dp"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:id="@+id/vlTvInitials"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/call_avatar_bg"
+        android:gravity="center"
+        android:textColor="#FFFFFF"
+        android:textSize="34sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/vlTvCallerName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="16dp"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/vlTvSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="4dp"
+        android:text="Incoming call · USS Voice Link"
+        android:textColor="#94A3B8"
+        android:textSize="14sp" />
+
+    <View
+        android:layout_width="1dp"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/vlBtnDecline"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_marginEnd="40dp"
+            android:background="@drawable/call_decline_bg"
+            android:contentDescription="Decline"
+            android:src="@android:drawable/ic_btn_speak_now"
+            android:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/vlBtnAccept"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:background="@drawable/call_accept_bg"
+            android:contentDescription="Answer"
+            android:src="@android:drawable/ic_menu_call"
+            android:tint="#FFFFFF" />
+    </LinearLayout>
+</LinearLayout>

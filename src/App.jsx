@@ -51,6 +51,7 @@ import AttendanceReports from './pages/AttendanceReports';
 import AttendanceSettings from './pages/AttendanceSettings';
 import ScheduledTasks from './pages/ScheduledTasks';
 import TestDataCleanup from './pages/TestDataCleanup';
+import VoiceLink from './pages/VoiceLink';
 import ReportShowcase from './pages/ReportShowcase';
 import BrandingPreview from './pages/BrandingPreview';
 import ProtectedPage from '@/components/ProtectedPage';
@@ -421,6 +422,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="TestDataCleanup">
             <ProtectedPage pageKey="TestDataCleanup">
               <TestDataCleanup />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/VoiceLink" element={
+          <LayoutWrapper currentPageName="VoiceLink">
+            <ProtectedPage pageKey="VoiceLink">
+              <VoiceLink />
             </ProtectedPage>
           </LayoutWrapper>
         } />

@@ -12,7 +12,7 @@
  */
 import {
   Shield, Radio, Calendar, AlertTriangle, MapPin, BarChart3, Users,
-  Clock, Mic, QrCode, Wrench, Zap, FileText, Sliders, Package, Sparkles,
+  Clock, Mic, QrCode, Wrench, Zap, FileText, Sliders, Package, Sparkles, Phone,
   UserCircle, ShirtIcon, Bell, Building2, Vote, Stethoscope, Activity, Gauge,
   ClipboardList, Eraser, Mail,
 } from "lucide-react";
@@ -21,6 +21,7 @@ export const ROUTE_REGISTRY = {
   guard: [
     { title: "My Shift", pageKey: "GuardShift", icon: Shield, isRoot: true },
     { title: "My Schedule", pageKey: "GuardMyShifts", icon: Calendar },
+    { title: "Voice Link", pageKey: "VoiceLink", icon: Phone },
     { title: "Contacts", pageKey: "Contacts", icon: Users },
     { title: "Call History", pageKey: "CallHistory", icon: Clock },
     { title: "Call Recordings", pageKey: "CallRecordings", icon: Mic },
@@ -44,6 +45,7 @@ export const ROUTE_REGISTRY = {
     { title: "Contacts", pageKey: "Contacts", icon: Users },
     { title: "Call History", pageKey: "CallHistory", icon: Clock },
     { title: "Call Recordings", pageKey: "CallRecordings", icon: Mic },
+    { title: "Voice Link", pageKey: "VoiceLink", icon: Phone },
     { title: "Scheduling", pageKey: "Scheduling", icon: Calendar },
     { title: "Scheduled Tasks", pageKey: "ScheduledTasks", icon: ClipboardList },
     { title: "Clock In/Out", pageKey: "ClockInOutReports", icon: Clock },
@@ -209,6 +211,7 @@ export const ROUTE_REGISTRY = {
   // Deliberately MINIMAL: no Customer Administrator functionality.
   control_room_operator: [
     { title: "Task Queue", pageKey: "ScheduledTasks", icon: ClipboardList, isRoot: true },
+    { title: "Voice Link", pageKey: "VoiceLink", icon: Phone },
     { title: "Panic Queue", pageKey: "PanicManagement", icon: Zap },
     // DEEP-LINK ACCESS (2026-09-22 notification review): operational alert
     // notifications link to these queues — the recipient must be able to

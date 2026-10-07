@@ -20,6 +20,7 @@
 export const PAGE_MODULE_MAP = {
   // ── CALLING module ──────────────────────────────────────────────
   Contacts: "CALLING",
+  VoiceLink: "CALLING",
   CallHistory: "CALLING",
   CallRecordings: "CALLING",
 
