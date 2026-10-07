@@ -52,6 +52,7 @@ import AttendanceSettings from './pages/AttendanceSettings';
 import ScheduledTasks from './pages/ScheduledTasks';
 import TestDataCleanup from './pages/TestDataCleanup';
 import VoiceLink from './pages/VoiceLink';
+import LinkusHandoffTest from './pages/LinkusHandoffTest';
 import ReportShowcase from './pages/ReportShowcase';
 import BrandingPreview from './pages/BrandingPreview';
 import ProtectedPage from '@/components/ProtectedPage';
@@ -422,6 +423,13 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="TestDataCleanup">
             <ProtectedPage pageKey="TestDataCleanup">
               <TestDataCleanup />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/LinkusHandoffTest" element={
+          <LayoutWrapper currentPageName="LinkusHandoffTest">
+            <ProtectedPage pageKey="LinkusHandoffTest">
+              <LinkusHandoffTest />
             </ProtectedPage>
           </LayoutWrapper>
         } />

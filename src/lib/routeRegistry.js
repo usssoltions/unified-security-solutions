@@ -281,6 +281,8 @@ export const ROUTE_REGISTRY = {
     { title: "Diagnostics", pageKey: "PlatformDiagnostics", icon: Gauge },
     { title: "Report Showcase", pageKey: "ReportShowcase", icon: Mail },
     { title: "Test Data Cleanup", pageKey: "TestDataCleanup", icon: Eraser },
+    // TEMPORARY diagnostic (isolated): Linkus handoff test — platform admin only.
+    { title: "Linkus Handoff Test", pageKey: "LinkusHandoffTest", icon: Phone },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
 };
