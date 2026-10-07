@@ -425,6 +425,8 @@ export default async function(req: Request): Promise<Response> {
         phone: phone || null,
         user_status: userStatus || 'active',
         status: 'pending',
+        cancelled_at: null,
+        cancelled_by: null,
         invited_by: caller.id,
         invited_by_name: callerName,
         notes: `Repair invitation — ${role_type}${moduleLabel ? ` (${moduleLabel})` : ''} (${userStatus || 'active'})`,
@@ -577,6 +579,13 @@ export default async function(req: Request): Promise<Response> {
       phone: phone || null,
       user_status: userStatus || 'active',
       status: 'pending',
+      // Re-inviting an invitation that was previously CANCELLED must clear the
+      // cancel markers — leaving a stale cancelled_at on a status:'pending'
+      // row made the pending-list query hide it forever (count 0, no
+      // Resend/Cancel actions) while the by-email duplicate check still
+      // matched it ("already pending"), with no way to resend from the UI.
+      cancelled_at: null,
+      cancelled_by: null,
       invited_by: caller.id,
       invited_by_name: callerName,
       notes: `Invited as ${role_type}${moduleLabel ? ` (${moduleLabel})` : ''} (${userStatus})`,
@@ -596,21 +605,47 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ error: 'The invitation could not be updated. Please try again.', code: 'scope_failed' }, { status: 500 });
       }
       console.log('[inviteTenantUser] updated existing pending scope', pending.id);
-      // A previously FAILED delivery retries the platform invitation when the
-      // admin re-invites — "already pending" must never leave the invitee
-      // with neither a working invitation email nor a fresh send.
-      if (pending.delivery_status === 'failed') {
-        try {
-          await base44.users.inviteUser(email, 'user');
-          await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: new Date().toISOString(), delivery_status: 'sent' });
-        } catch (retryErr) {
-          const retryMsg = String(retryErr?.message || retryErr);
-          if (/already|exists|pending|invited/i.test(retryMsg)) {
-            await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: new Date().toISOString(), delivery_status: 'sent' }).catch(() => {});
-          }
+      // CONTROLLED RESEND on every re-invite (the admin re-submitting the
+      // form IS a resend request). The platform invitation is idempotent —
+      // an outstanding invitation is never duplicated (the "already"
+      // outcome below) — so this can never create a duplicate invitation,
+      // but a delivery that failed or never arrived IS retried here instead
+      // of the old behaviour that only retried when delivery_status was
+      // already stamped 'failed' (which left a record stamped 'sent' from a
+      // stale dispatch permanently un-retried).
+      let resendOutcome = 'dispatched';
+      try {
+        await base44.users.inviteUser(email, 'user');
+        await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: new Date().toISOString(), delivery_status: 'sent' });
+      } catch (retryErr) {
+        const retryMsg = String(retryErr?.message || retryErr);
+        if (/already|exists|pending|invited/i.test(retryMsg)) {
+          // The platform already holds an outstanding invitation for this
+          // address — no duplicate created. Truthfully marked: the platform
+          // dispatch happened, but this attempt did not send a new email.
+          resendOutcome = 'already_outstanding';
+          await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { sent_at: new Date().toISOString(), delivery_status: 'sent' }).catch(() => {});
+        } else {
+          // Delivery failed — RETAIN the record, mark it honestly, and keep
+          // the retry option (never report success on a failed send).
+          resendOutcome = 'failed';
+          await base44.asServiceRole.entities.PendingTenantScope.update(pending.id, { delivery_status: 'failed' }).catch(() => {});
         }
       }
-      return Response.json({ success: true, already_pending: true, pending_scope_id: pending.id, similar_accounts });
+      // Branded context email — same audited path as the resend action.
+      if (resendOutcome !== 'failed') {
+        try {
+          await sendBrandedInvitationEmail(base44, {
+            to: email, customerId: customer_id || null, resellerId: effectiveReseller,
+            roleType: role_type, inviteeName: displayName, inviterName: callerName, kind: 'resent',
+          });
+        } catch (_) {}
+      }
+      return Response.json({
+        success: true, already_pending: true, pending_scope_id: pending.id,
+        resend_outcome: resendOutcome, delivery_status: resendOutcome === 'failed' ? 'failed' : 'sent',
+        similar_accounts,
+      });
     }
 
     // Delivery lifecycle: created as 'queued' the instant the invitation

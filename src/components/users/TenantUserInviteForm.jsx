@@ -328,7 +328,15 @@ export default function TenantUserInviteForm({
       const d = res?.data || res;
       if (d?.success) {
         if (d.rescoped) toast({ title: "Existing user re-scoped", description: `${form.email} already existed and was updated to ${form.role_type}.` });
-        else if (d.already_pending) toast({ title: "Invitation already pending", description: `Scoping updated for ${form.email}. No duplicate invite sent.` });
+        else if (d.already_pending) {
+          if (d.resend_outcome === "failed") {
+            toast({ title: "Delivery failed", description: `The invitation for ${form.email} could not be sent. The invitation was kept — try again.`, variant: "destructive", duration: 10000 });
+          } else if (d.resend_outcome === "already_outstanding") {
+            toast({ title: "Invitation already pending", description: `Scoping updated for ${form.email}. The platform reports an invitation already outstanding — no duplicate created. If no email arrived, use Resend on the pending invitation card.`, duration: 10000 });
+          } else {
+            toast({ title: "Invitation re-sent", description: `Scoping updated for ${form.email} and the invitation email was re-dispatched (no duplicate created).` });
+          }
+        }
         else toast({ title: "Invitation sent", description: `${form.email} will be scoped as ${form.role_type} when they accept.` });
         // NEAR-MISS WARNING (non-blocking): a blocked, never-scoped account
         // already exists for a near-identical address — usually the same

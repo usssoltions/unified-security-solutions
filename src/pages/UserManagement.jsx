@@ -189,6 +189,8 @@ export default function UserManagement() {
       if (d?.error) throw new Error(d.error);
       if (d?.delivery_status === 'failed') {
         toast({ title: 'Delivery failed', description: d?.error || 'The email could not be sent. The invitation was kept — try again.', variant: 'destructive' });
+      } else if (d?.already_outstanding) {
+        toast({ title: 'Already outstanding', description: `The platform reports an invitation already outstanding for ${p.email} — no duplicate created. If no email arrived, the original dispatch may be lost; contact support before retrying.` });
       } else {
         toast({ title: 'Invitation re-sent', description: `Sent to ${p.email}.` });
       }
