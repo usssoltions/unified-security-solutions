@@ -26,7 +26,7 @@ export default function VL360More() {
   const dutySiteId = data.duty?.site_id || null;
 
   const { data: commsData } = useQuery({
-    queryKey: ["vl360_site_comms", dutySiteId],
+    queryKey: vl360Key(["site_comms", dutySiteId]),
     queryFn: async () => vl360Invoke({ action: "get_site_comms", site_id: dutySiteId }),
     enabled: !!dutySiteId,
   });
