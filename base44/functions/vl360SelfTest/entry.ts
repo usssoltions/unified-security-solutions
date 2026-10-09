@@ -18,7 +18,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import { customerModuleLicensed } from '../../shared/entitlementActive.ts';
-import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic } from '../../shared/vl360Scope.ts';
+import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic, vlIsSiteAdmin } from '../../shared/vl360Scope.ts';
 import { validateTelegramDest, validatePhoneNumber, isVlRole, VL_ROLES } from '../../shared/vl360Core.ts';
 
 const CUST_A = 'vl360selftest-cust-a'; // licensed synthetic tenant
@@ -129,6 +129,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     check('wide group covering a cross-customer site stays DENIED', vlWideGroupSitesOk(commsCross, ctrlSitesFull, false, false) === false);
     check('wide group site scope: customer admin whole-customer allowed', vlWideGroupSitesOk(commsAB, new Set(), true, false) === true);
     check('wide group single-site group needs no extra scope', vlWideGroupSitesOk({ wide_group_site_ids: [] }, new Set(), false, false) === true);
+
+    // ── 4c. SITE MANAGEMENT MUTATIONS — administrators ONLY (negative tests
+    // against the REAL predicate the gateway's sites_list_all / site_save
+    // actions evaluate) ──
+    track('VL360Profile', await svc.entities.VL360Profile.create({ user_id: 'vl360st-sup-1', customer_id: CUST_A, vl_role: 'supervisor', enabled: true, management_powers: true }));
+    track('VL360Profile', await svc.entities.VL360Profile.create({ user_id: 'vl360st-armed-1', customer_id: CUST_A, vl_role: 'armed_response', enabled: true }));
+    check('site mgmt: customer_admin allowed', vlIsSiteAdmin({ vl_role: 'customer_admin' }, false) === true);
+    check('site mgmt: platform admin allowed', vlIsSiteAdmin({ vl_role: 'guard' }, true) === true);
+    check('site mgmt: EMPOWERED supervisor (management_powers) denied', vlIsSiteAdmin({ vl_role: 'supervisor', management_powers: true }, false) === false);
+    check('site mgmt: control_room_operator denied', vlIsSiteAdmin({ vl_role: 'control_room_operator' }, false) === false);
+    check('site mgmt: guard denied', vlIsSiteAdmin({ vl_role: 'guard' }, false) === false);
+    check('site mgmt: armed_response denied', vlIsSiteAdmin({ vl_role: 'armed_response' }, false) === false);
+    check('site mgmt: null profile denied', vlIsSiteAdmin(null, false) === false);
 
     // ── 5. Destination + number validation (real helpers) ──
     check('telegram https://t.me ok', validateTelegramDest('https://t.me/usstestbot').ok === true);

@@ -5,7 +5,7 @@ import {
   VL_MODULE_KEY, VL_ROLES, VL_ROLE_LABELS, isVlRole, vlRoleForPlatformRole,
   validateTelegramDest, validatePhoneNumber, actorName,
 } from '../../shared/vl360Core.ts';
-import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic } from '../../shared/vl360Scope.ts';
+import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic, vlIsSiteAdmin } from '../../shared/vl360Scope.ts';
 
 /**
  * vl360Access — THE single server-side gateway for the USS VOICELINK 360
@@ -547,12 +547,12 @@ export default async function(req: Request): Promise<Response> {
       // strictly customer-bound site rows. The existing siteAccess gateway
       // and every other customer's site management are untouched.
       case 'sites_list_all': {
-        if (!isVlAdmin && !platformAdmin) return DENIED('Administrator access required.');
+        if (!vlIsSiteAdmin(profile, platformAdmin)) return DENIED('Administrator access required.');
         const rows = await svc.entities.Site.filter({ customer_id: customerId }).catch(() => []);
         return Response.json({ sites: (rows || []).map((s: any) => ({ id: s.id, name: s.name, address: s.address || null, client_name: s.client_name || null, status: s.status || 'active' })) });
       }
       case 'site_save': {
-        if (!isVlAdmin && !platformAdmin) return DENIED('Administrator access required.');
+        if (!vlIsSiteAdmin(profile, platformAdmin)) return DENIED('Administrator access required.');
         const name = String(body.name || '').trim().slice(0, 120);
         const address = String(body.address || '').trim().slice(0, 200);
         if (!name || !address) return FAIL('Site name and address are required.', 'bad_request');

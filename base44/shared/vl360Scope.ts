@@ -10,6 +10,18 @@
  *  and ONLY sites that exist AND belong to the caller's own customer
  *  (defense-in-depth: a crafted cross-tenant assignment row can never leak
  *  another customer's site through this path). */
+/** SITE MANAGEMENT GATE — the single predicate both the gateway's
+ *  sites_list_all / site_save actions and the self-test evaluate. Site
+ *  creation and activation/deactivation belong to administrators ONLY:
+ *  the VoiceLink customer_admin (or platform administration). Controllers,
+ *  supervisors (even with management_powers — that grants duty-session
+ *  closure only), guards, armed_response and control_room operators are all
+ *  denied. Controllers communicate across their allocated sites; they never
+ *  mutate site records. */
+export function vlIsSiteAdmin(profile: any, platformAdmin = false): boolean {
+  return platformAdmin === true || profile?.vl_role === 'customer_admin';
+}
+
 export async function scopedSites(svc: any, profile: any, isVlAdmin: boolean, customerId: string) {
   if (isVlAdmin) {
     const sites = await svc.entities.Site.filter({ customer_id: customerId, status: 'active' }).catch(() => []);
