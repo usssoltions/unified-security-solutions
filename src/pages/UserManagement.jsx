@@ -413,6 +413,7 @@ export default function UserManagement() {
           <UserForm
             user={editingUser}
             roles={roles}
+            vl360Enabled={enabledModuleKeys.includes("VOICELINK360")}
             onClose={() => { setShowUserForm(false); setEditingUser(null); }}
             onSuccess={() => { setShowUserForm(false); setEditingUser(null); queryClient.invalidateQueries(["allUsers"]); }}
           />

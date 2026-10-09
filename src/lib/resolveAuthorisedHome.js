@@ -35,7 +35,7 @@ const ROLE_FALLBACK_PAGES = {
   // Attendance-first: an attendance-only Customer Administrator lands on the
   // Attendance Register dashboard (their role home, ClientDashboard, requires
   // the REPORTING_CORE module, which attendance-only customers lack).
-  customer_admin: ["AttendanceDashboard", "ClientDashboard", "Profile"],
+  customer_admin: ["AttendanceDashboard", "ClientDashboard", "VL360Admin", "Profile"],
   platform_admin: ["TenantSetup", "ControlRoom", "Profile"],
   reseller_admin: ["ResellerPortal", "Profile"],
   practice_admin: ["MedicalDashboard", "Profile"],
@@ -43,7 +43,7 @@ const ROLE_FALLBACK_PAGES = {
   reception: ["MedicalDashboard", "Profile"],
   employer_user: ["EmployerPortal", "Profile"],
   attendance_staff: ["AttendanceDashboard", "Profile"],
-  control_room_operator: ["ScheduledTasks", "Profile"],
+  control_room_operator: ["ScheduledTasks", "VL360Console", "Profile"],
 };
 
 function isPageAccessible(user, pageKey, entitlements, platformAdmin) {
@@ -85,6 +85,16 @@ export function resolveAuthorisedHome(user, entitlements = []) {
     const hasAccess = entitlements.some((e) => e.module_key === "ACCESS" && entActive(e));
     if (hasAccess && !hasSecurity && ROLE_PAGES.guard && ROLE_PAGES.guard.has("AccessControl")) {
       return createPageUrl("AccessControl");
+    }
+    // VOICELINK-ONLY GUARD LANDING — a guard (incl. VoiceLink supervisors and
+    // armed response officers, whose base role is guard) whose customer
+    // licenses ONLY the VOICELINK360 module lands on the VoiceLink 360 home.
+    // Strictly after the existing task-only and access-only landings so
+    // combined-module customers keep their existing behaviour.
+    const hasVL360 = entitlements.some((e) => e.module_key === "VOICELINK360" && entActive(e));
+    if (hasVL360 && !hasSecurity && !hasTasks && !hasAccess
+        && ROLE_PAGES.guard && ROLE_PAGES.guard.has("VL360GuardHome")) {
+      return createPageUrl("VL360GuardHome");
     }
   }
 

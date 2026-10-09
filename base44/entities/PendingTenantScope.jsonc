@@ -11,6 +11,20 @@
       "type": "string",
       "description": "Role the invitee will receive on acceptance (never platform_admin)."
     },
+    "vl360_role": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "guard",
+        "supervisor",
+        "armed_response",
+        "control_room_operator",
+        null
+      ],
+      "description": "USS VOICELINK 360 (additive): the invited VoiceLink operational role, stored only when the customer holds an active VOICELINK360 licence. Supervisors and Armed Response Officers ride on the guard BASE role \u2014 the platform role_type is never changed by this field. Applied as a VL360Profile on acceptance by applyMyPendingScope. Null for all non-VoiceLink invitations."
+    },
     "admin_level": {
       "type": [
         "string",
@@ -126,12 +140,18 @@
       "format": "date-time"
     },
     "cancelled_at": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time",
       "description": "Timestamp when the invitation was cancelled by an admin; the cancellation event is audit-logged."
     },
     "cancelled_by": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "User id of the admin who cancelled the invitation (set by inviteTenantUser action cancel)."
     },
     "notes": {

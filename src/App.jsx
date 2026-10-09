@@ -53,6 +53,12 @@ import ScheduledTasks from './pages/ScheduledTasks';
 import TestDataCleanup from './pages/TestDataCleanup';
 import VoiceLink from './pages/VoiceLink';
 import LinkusHandoffTest from './pages/LinkusHandoffTest';
+import VL360GuardHome from './pages/VL360GuardHome';
+import VL360Colleagues from './pages/VL360Colleagues';
+import VL360Dialler from './pages/VL360Dialler';
+import VL360Console from './pages/VL360Console';
+import VL360Admin from './pages/VL360Admin';
+import VL360More from './pages/VL360More';
 import ReportShowcase from './pages/ReportShowcase';
 import BrandingPreview from './pages/BrandingPreview';
 import ProtectedPage from '@/components/ProtectedPage';
@@ -430,6 +436,48 @@ const AuthenticatedApp = () => {
           <LayoutWrapper currentPageName="LinkusHandoffTest">
             <ProtectedPage pageKey="LinkusHandoffTest">
               <LinkusHandoffTest />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/VL360GuardHome" element={
+          <LayoutWrapper currentPageName="VL360GuardHome">
+            <ProtectedPage pageKey="VL360GuardHome">
+              <VL360GuardHome />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/VL360Colleagues" element={
+          <LayoutWrapper currentPageName="VL360Colleagues">
+            <ProtectedPage pageKey="VL360Colleagues">
+              <VL360Colleagues />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/VL360Dialler" element={
+          <LayoutWrapper currentPageName="VL360Dialler">
+            <ProtectedPage pageKey="VL360Dialler">
+              <VL360Dialler />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/VL360Console" element={
+          <LayoutWrapper currentPageName="VL360Console">
+            <ProtectedPage pageKey="VL360Console">
+              <VL360Console />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/VL360Admin" element={
+          <LayoutWrapper currentPageName="VL360Admin">
+            <ProtectedPage pageKey="VL360Admin">
+              <VL360Admin />
+            </ProtectedPage>
+          </LayoutWrapper>
+        } />
+        <Route path="/VL360More" element={
+          <LayoutWrapper currentPageName="VL360More">
+            <ProtectedPage pageKey="VL360More">
+              <VL360More />
             </ProtectedPage>
           </LayoutWrapper>
         } />

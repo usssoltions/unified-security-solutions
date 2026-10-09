@@ -129,6 +129,14 @@ export const PAGE_MODULE_MAP = {
   AttendanceReports: "ATTENDANCE_REGISTER",
   AttendanceSettings: "ATTENDANCE_REGISTER",
 
+  // ── VOICELINK360 module (standalone communications — destination links) ──
+  VL360GuardHome: "VOICELINK360",
+  VL360Colleagues: "VOICELINK360",
+  VL360Dialler: "VOICELINK360",
+  VL360Console: "VOICELINK360",
+  VL360Admin: "VOICELINK360",
+  VL360More: "VOICELINK360",
+
   // ── PLATFORM_ADMIN_ONLY ─────────────────────────────────────────
   TenantSetup: "PLATFORM_ADMIN_ONLY",
   SystemSetup: "PLATFORM_ADMIN_ONLY",
@@ -208,4 +216,4 @@ export function isPageModuleEnabled(entitlements, pageName, isPlatformAdmin = fa
  * support Telegram (assignments, reminders, overdue alerts, completion) — a
  * Task-Scheduling-only customer can configure Telegram without the
  * Notification Engine. */
-export const TELEGRAM_MODULE_KEYS = ["OPERATIONS", "COMPLETE_SECURITY", "ESTATE", "TASK_SCHEDULING"];
+export const TELEGRAM_MODULE_KEYS = ["OPERATIONS", "COMPLETE_SECURITY", "ESTATE", "TASK_SCHEDULING", "VOICELINK360"];

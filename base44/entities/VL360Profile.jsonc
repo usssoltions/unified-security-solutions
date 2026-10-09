@@ -1,0 +1,178 @@
+{
+  "name": "VL360Profile",
+  "type": "object",
+  "description": "USS VOICELINK 360 \u2014 operational profile for one User in one customer. Holds the VoiceLink operational role (guard / supervisor / armed_response / control_room_operator / customer_admin \u2014 a VoiceLink-specific distinction that NEVER changes the user's platform role), the recorded personnel ID (entered by an administrator \u2014 never invented), the individual Telegram conversation destination (contact link), its manually confirmed setup status, and the per-user External Telephone Calling permission. All access flows through the vl360Access gateway (server-side tenant + entitlement + role + site-scope enforcement); direct client access is restricted to platform administration by RLS. No notification-connected status is granted by this entity \u2014 notification connection remains the shared User-level bot enrollment.",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "The existing platform User this profile belongs to (never a duplicate account)."
+    },
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant ownership \u2014 server-resolved, never client-trusted."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "vl_role": {
+      "type": "string",
+      "enum": [
+        "guard",
+        "supervisor",
+        "armed_response",
+        "control_room_operator",
+        "customer_admin"
+      ],
+      "description": "VoiceLink operational role. Supervisor / Armed Response Officer are VoiceLink-specific distinctions layered on a suitable existing base role; they never elevate other modules' permissions."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "false = VoiceLink access removed for this user (offboarding) \u2014 the gateway refuses all destination retrieval."
+    },
+    "personnel_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Recorded personnel ID (administrator-entered). Never generated or inferred."
+    },
+    "telegram_username": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Recorded Telegram username (prefill aid only \u2014 never treated as a working calling link)."
+    },
+    "contact_link": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The individual conversation destination (validated Telegram t.me / tg://resolve format). Opened only through the gateway."
+    },
+    "contact_status": {
+      "type": "string",
+      "enum": [
+        "unconfigured",
+        "configured",
+        "confirmed"
+      ],
+      "default": "unconfigured",
+      "description": "configured = a validated link is saved; confirmed = an administrator opened the destination and verified it reaches the correct person. Never a live-availability claim."
+    },
+    "contact_confirmed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "contact_confirmed_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "external_calling_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Per-user External Telephone Calling permission (Internal Communication Only when false). USS-side only \u2014 the SIP provider enforces actual outbound restrictions."
+    },
+    "management_powers": {
+      "type": "boolean",
+      "default": false,
+      "description": "Explicitly granted additional management powers for a supervisor (e.g. closing stale duty sessions)."
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "Fixture marker for isolated verification runs \u2014 never set by the normal flow."
+    }
+  },
+  "required": [
+    "user_id",
+    "customer_id",
+    "vl_role"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { listSites } from "@/lib/siteApi";
+import { vl360Invoke } from "@/lib/vl360Api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, Lock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -24,7 +26,7 @@ import { ROLE_DESCRIPTIONS } from "@/lib/roleCatalog";
  * (display_name = "First Last") is kept in sync for every existing consumer
  * (User Management, Scheduling, Scheduled Tasks, Reports, notifications).
  */
-export default function UserForm({ user, roles = [], onClose, onSuccess }) {
+export default function UserForm({ user, roles = [], onClose, onSuccess, vl360Enabled = false }) {
   const queryClient = useQueryClient();
   // Guard clock-in PIN only applies to tenants with guard roles — hidden for
   // Attendance Register-only (and other non-guard) role sets.
@@ -60,6 +62,28 @@ export default function UserForm({ user, roles = [], onClose, onSuccess }) {
     return () => { alive = false; };
   }, [user?.id, user?.customer_id]);
 
+  // ── USS VOICELINK 360 (additive) — operational role + external calling ──
+  // Shown ONLY when the customer holds the VOICELINK360 licence. Saved
+  // through the vl360Access gateway (server-side scope checks); it never
+  // changes the platform role or other modules' permissions.
+  const [vlForm, setVlForm] = useState({ vl_role: null, external_calling_enabled: false, loaded: false });
+  useEffect(() => {
+    if (!vl360Enabled || !user?.id) return;
+    let alive = true;
+    vl360Invoke({ action: "get_profile", target_user_id: user.id })
+      .then((d) => {
+        if (!alive) return;
+        const p = d?.profile;
+        setVlForm({
+          vl_role: p?.vl_role || (["guard", "dispatcher"].includes(user.role_type) ? "guard" : "control_room_operator"),
+          external_calling_enabled: !!p?.external_calling_enabled,
+          loaded: true,
+        });
+      })
+      .catch(() => { if (alive) setVlForm((f) => ({ ...f, loaded: true })); });
+    return () => { alive = false; };
+  }, [vl360Enabled, user?.id]);
+
   const updateUserMutation = useMutation({
     mutationFn: async (data) => {
       const callManageUser = async (action, updates) => {
@@ -92,6 +116,17 @@ export default function UserForm({ user, roles = [], onClose, onSuccess }) {
       // customer's enabled module entitlements (fail closed).
       if (data.role_type !== user.role_type) {
         await callManageUser("change_role", { role_type: data.role_type });
+      }
+      // VOICELINK 360 (additive): persist the VoiceLink operational role and
+      // the external-calling permission via the module gateway.
+      if (vl360Enabled && vlForm.loaded) {
+        const d = await vl360Invoke({
+          action: "save_profile",
+          target_user_id: user.id,
+          vl_role: vlForm.vl_role || "guard",
+          external_calling_enabled: vlForm.external_calling_enabled,
+        });
+        if (d?.error) throw new Error(d.error);
       }
     },
     onSuccess: () => {
@@ -250,6 +285,35 @@ export default function UserForm({ user, roles = [], onClose, onSuccess }) {
                 </div>
               )}
             </div>
+
+            {vl360Enabled && vlForm.loaded && (
+              <div className="space-y-2 bg-sky-500/5 border border-sky-500/20 rounded-lg p-4">
+                <p className="text-sm font-semibold text-sky-300">VoiceLink 360</p>
+                <div className="space-y-1">
+                  <Label className="text-slate-300 text-xs">VoiceLink Operational Role</Label>
+                  <Select value={vlForm.vl_role || "guard"} onValueChange={(v) => setVlForm({ ...vlForm, vl_role: v })}>
+                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="guard">Guard</SelectItem>
+                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                      <SelectItem value="armed_response">Armed Response Officer</SelectItem>
+                      <SelectItem value="control_room_operator">Control Room Operator</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-500">VoiceLink-specific — never changes other modules' permissions.</p>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-slate-300 text-xs">External Telephone Calling</Label>
+                  <Switch
+                    checked={vlForm.external_calling_enabled}
+                    onCheckedChange={(v) => setVlForm({ ...vlForm, external_calling_enabled: v })}
+                  />
+                </div>
+                <p className="text-xs text-slate-500">
+                  {vlForm.external_calling_enabled ? "External Calling Enabled" : "Internal Communication Only"} — enforced in USS; the SIP provider enforces actual outbound restrictions.
+                </p>
+              </div>
+            )}
 
             <Alert className="bg-amber-500/10 border-amber-500/20">
               <AlertDescription className="text-slate-300 text-sm">

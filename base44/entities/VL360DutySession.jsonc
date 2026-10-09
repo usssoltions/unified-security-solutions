@@ -1,0 +1,153 @@
+{
+  "name": "VL360DutySession",
+  "type": "object",
+  "description": "USS VOICELINK 360 \u2014 lightweight VoiceLink-specific duty session (Go On Duty / Change Site / Go Off Duty) for standalone VoiceLink-only operation. Persisted server-side with duplicate-active-session prevention. NOT an attendance, payroll, patrol or shift record \u2014 VoiceLink duty sessions are never presented as payroll attendance. Only authorised sites may be used; authorised management closes stale sessions with an audit entry. GATEWAY-ONLY access through vl360Access; direct client access restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "user_id": {
+      "type": "string"
+    },
+    "user_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Current duty site (authorised for this user \u2014 validated server-side)."
+    },
+    "site_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "closed"
+      ],
+      "default": "active"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-stamped instant the duty session began."
+    },
+    "last_confirmed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "When duty began or was last confirmed (site change)."
+    },
+    "closed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "closed_by_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "closed_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "close_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "self_off | site_change | stale_closed_by_management | offboarded"
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_id",
+    "user_id",
+    "status",
+    "started_at"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

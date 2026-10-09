@@ -1,0 +1,104 @@
+{
+  "name": "VL360PhoneContact",
+  "type": "object",
+  "description": "USS VOICELINK 360 \u2014 Operational Contact for the external telephone dialler: a labelled telephone number (stored as a STRING preserving leading zeroes and international formatting) an authorised user can pick in the dialler and hand off to the external Grandstream Wave Lite app. USS never dials, never stores SIP credentials and never opens the external app automatically. GATEWAY-ONLY access through vl360Access; direct client access restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "description": "Operational label (e.g. 'Control Room Landline', 'SAPS Sea Point')."
+    },
+    "number": {
+      "type": "string",
+      "description": "Telephone number as a string \u2014 leading zeroes and international formatting preserved; validated characters only."
+    },
+    "site_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional site the contact relates to."
+    },
+    "created_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_id",
+    "label",
+    "number"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -27,6 +27,7 @@ export const MODULE_ROLE_ACCESS: Record<string, string[]> = {
   ESTATE: ["estate_manager", "resident", "vendor"],
   OCCUPATIONAL_THERAPY: ["practice_admin", "therapist", "reception", "employer_user"],
   ATTENDANCE_REGISTER: ["attendance_staff"],
+  VOICELINK360: ["guard", "control_room_operator"],
   // Support modules with no user roles of their own:
   CALLING: [],
   REPORTING_CORE: [],

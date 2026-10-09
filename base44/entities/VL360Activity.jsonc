@@ -1,0 +1,143 @@
+{
+  "name": "VL360Activity",
+  "type": "object",
+  "description": "USS VOICELINK 360 \u2014 activity and administration audit record. Describes ACTIONS INITIATED FROM USS only: who requested what, for which site/destination, when, and that a handoff attempt was made. NEVER claims or infers call outcomes, call durations, answered/missed calls, message delivery or read receipts \u2014 those happen inside Telegram or the external telephone app and are not observable here. Private Telegram links and enrollment tokens are never stored in the detail field. GATEWAY-ONLY access through vl360Access; direct client access restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "actor_id": {
+      "type": "string",
+      "description": "Authenticated user who initiated the action \u2014 server-resolved, never client-supplied."
+    },
+    "actor_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "actor_role": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "VoiceLink operational role at the time of the action."
+    },
+    "action": {
+      "type": "string",
+      "description": "open_conversation | dial_external_assisted | duty_on | duty_off | duty_site_change | duty_session_closed | profile_saved | phone_permission_saved | assignments_saved | site_comms_saved | group_setup_confirmed | contact_saved | phone_contact_saved | phone_contact_deleted | profile_disabled"
+    },
+    "site_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "destination_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "control_room | site_group | emergency_group | wide_group | individual | external_number"
+    },
+    "destination_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Safe display label only \u2014 never the raw private invitation link."
+    },
+    "target_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Safe summary (e.g. 'handoff attempted to Telegram', 'assisted dial flow shown'). No links, tokens or credentials."
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_id",
+    "actor_id",
+    "action"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

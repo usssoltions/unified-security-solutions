@@ -24,6 +24,7 @@ export const RESELLER_MODULES = [
   { key: "MESSAGING",              label: "Messaging",              description: "In-app chat and messaging." },
   { key: "BARKODER_CORE",          label: "SecureScan Engine",       description: "Barcode/QR document scanning core." },
   { key: "ATTENDANCE_REGISTER",    label: "Attendance Register",     description: "Digital attendance register: worker/patient check-in via SecureScan, e-signatures, official PDF register and Excel export." },
+  { key: "VOICELINK360",           label: "VoiceLink 360",           description: "Standalone communications module: personnel, sites, duty sessions and conversations opened in configured Telegram groups; external telephone calls via the customer's own Wave Lite/SIP setup. Requires no other operational module." },
 ];
 
 /** Map module_key -> {label, description} for quick lookup. */

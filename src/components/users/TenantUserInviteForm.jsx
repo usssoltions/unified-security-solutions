@@ -33,7 +33,7 @@ const FRIENDLY_ERRORS = {
 const SITE_SCOPED_ROLES = ["guard", "dispatcher"];
 
 /** Fields preserved in the session-scoped draft (NEVER any credential/secret). */
-const DRAFT_FIELDS = ["first_name", "last_name", "email", "phone", "role_type", "customer_id", "site_id", "status"];
+const DRAFT_FIELDS = ["first_name", "last_name", "email", "phone", "role_type", "customer_id", "site_id", "status", "vl360_role"];
 
 /** Draft storage key — scoped to the authenticated user AND the customer context. */
 const draftKeyFor = (ownerId, scopeId) => `uss_invite_draft:${ownerId || "anon"}:${scopeId || "general"}`;
@@ -95,6 +95,8 @@ export default function TenantUserInviteForm({
     customer_id: initialCustomerId || "",
     site_id: "",
     status: "active",
+    // USS VOICELINK 360 (additive): invited VoiceLink operational role.
+    vl360_role: "guard",
   };
   const [form, setForm] = useState(blankForm);
   // Restored draft metadata (for the restore banner + saved-at display).
@@ -173,6 +175,7 @@ export default function TenantUserInviteForm({
       role_type: restored.role_type || f.role_type,
       site_id: restored.site_id || "",
       status: restored.status || "active",
+      vl360_role: restored.vl360_role || "guard",
       customer_id: customerLocked ? (lockedCustomer?.id || f.customer_id) : (restored.customer_id || f.customer_id),
     }));
     setDraftMeta(restored);
@@ -324,6 +327,11 @@ export default function TenantUserInviteForm({
         phone: form.phone.trim() || undefined,
         site_id: showSiteField && form.site_id ? form.site_id : undefined,
         user_status: form.status,
+        // VOICELINK 360 (additive): only sent for guard-base invitations when
+        // the customer actually holds the VOICELINK360 licence.
+        vl360_role: (enabledModuleKeys || []).includes("VOICELINK360") && form.role_type === "guard"
+          ? form.vl360_role
+          : undefined,
       });
       const d = res?.data || res;
       if (d?.success) {
@@ -467,6 +475,25 @@ export default function TenantUserInviteForm({
               </p>
             )}
           </div>
+          {/* VOICELINK 360 (additive): operational role refinement for
+              guard-base invitations, shown only when the customer holds the
+              VOICELINK360 licence — never "Loading available roles". */}
+          {(enabledModuleKeys || []).includes("VOICELINK360") && form.role_type === "guard" && rolesLoadState === "ready" && (
+            <div className="sm:col-span-2">
+              <Label className="text-slate-300 text-xs">VoiceLink Operational Role</Label>
+              <Select value={form.vl360_role || "guard"} onValueChange={(v) => setForm((f) => ({ ...f, vl360_role: v }))}>
+                <SelectTrigger className="bg-slate-950 border-slate-700 mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="guard">Guard</SelectItem>
+                  <SelectItem value="supervisor">Supervisor</SelectItem>
+                  <SelectItem value="armed_response">Armed Response Officer</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500 mt-1">
+                A VoiceLink-specific operational role — it refines how this person uses VoiceLink 360 and never changes their platform role or other modules.
+              </p>
+            </div>
+          )}
           {showSiteField && (
             <div className="sm:col-span-2">
               <Label className="text-slate-300 text-xs">

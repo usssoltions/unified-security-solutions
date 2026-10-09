@@ -1,0 +1,181 @@
+{
+  "name": "VL360SiteComms",
+  "type": "object",
+  "description": "USS VOICELINK 360 \u2014 per-site communication destination mapping (one row per site). Stores the validated Telegram destinations for the site's normal communication group, emergency-response group, control-room contact/group and an optional wider All Personnel group with an explicit access scope. Telegram accounts and groups are managed IN TELEGRAM \u2014 USS stores and controls access to their mappings only, and never claims that opening a link rings every member. group_setup_confirmed is a MANUAL administrator confirmation that the stored destination opens the correct group after onboarding. GATEWAY-ONLY access through vl360Access; direct client access restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string"
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "site_id": {
+      "type": "string"
+    },
+    "control_room_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display label for the control-room destination (e.g. 'Dogs and All Control Room 1')."
+    },
+    "control_room_dest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Validated Telegram destination for the site's assigned control room."
+    },
+    "group_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display label for the site's normal communication group."
+    },
+    "group_dest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Validated Telegram destination of the site's normal communication group."
+    },
+    "emergency_label": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "emergency_dest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Validated Telegram destination of the site's predefined emergency-response group."
+    },
+    "wide_group_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display label for the optional wider All Personnel group (created and populated beforehand in Telegram, then mapped here)."
+    },
+    "wide_group_dest": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "wide_group_scope": {
+      "type": "string",
+      "enum": [
+        "management",
+        "all"
+      ],
+      "default": "management",
+      "description": "Explicit access scope for the wider group: 'management' = customer administrators, controllers and empowered supervisors only; 'all' additionally covers supervisors and response officers. Guards NEVER see wide-group actions."
+    },
+    "group_setup_confirmed": {
+      "type": [
+        "boolean"
+      ],
+      "default": false,
+      "description": "MANUAL administrator confirmation that onboarding is complete and the stored destinations open the correct groups. Never inferred from bot enrollment or link presence."
+    },
+    "confirmed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "confirmed_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_id",
+    "site_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

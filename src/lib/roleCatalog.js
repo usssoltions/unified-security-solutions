@@ -67,6 +67,7 @@ export const MODULE_ROLE_ACCESS = {
   ESTATE: ["estate_manager", "resident", "vendor"],
   OCCUPATIONAL_THERAPY: ["practice_admin", "therapist", "reception", "employer_user"],
   ATTENDANCE_REGISTER: ["attendance_staff"],
+  VOICELINK360: ["guard", "control_room_operator"],
   CALLING: [],
   REPORTING_CORE: [],
   NOTIFICATION_CORE: [],
@@ -76,7 +77,7 @@ export const MODULE_ROLE_ACCESS = {
 
 export const MODULE_ROLE_ORDER = [
   "COMPLETE_SECURITY", "OPERATIONS", "TASK_SCHEDULING", "PATROL", "ACCESS", "ESTATE",
-  "OCCUPATIONAL_THERAPY", "ATTENDANCE_REGISTER",
+  "OCCUPATIONAL_THERAPY", "ATTENDANCE_REGISTER", "VOICELINK360",
 ];
 
 export const INVITE_ROLE_LABELS = {
@@ -190,6 +191,11 @@ export const MODULE_LABELS = {
   OPERATIONS: "Operations",
   TASK_SCHEDULING: "Task Scheduling",
   COMPLETE_SECURITY: "Security Operations",
+  VOICELINK360: "VoiceLink 360",
+};
+
+export const MODULE_DESCRIPTIONS_EXTRA = {
+  VOICELINK360: "Communicate with site personnel, groups and the control room through configured Telegram conversations; external telephone calls via Wave Lite.",
 };
 
 export const MODULE_DESCRIPTIONS = {

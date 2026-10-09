@@ -377,6 +377,25 @@ export default async function(req: Request): Promise<Response> {
       }
     }
 
+    // USS VOICELINK 360 (ADDITIVE): the invited VoiceLink operational role
+    // travels with the invitation and becomes the invitee's VL360Profile on
+    // acceptance. Accepted ONLY while the customer holds an ACTIVE
+    // VOICELINK360 licence; supervisors and armed response officers ride on
+    // the guard BASE role — the platform role_type is never changed by this
+    // field, and it can never grant platform/reseller administration.
+    if (body.vl360_role) {
+      if (!['guard', 'supervisor', 'armed_response', 'control_room_operator'].includes(body.vl360_role)) {
+        return Response.json({ error: 'Unknown VoiceLink operational role', code: 'bad_vl360_role' }, { status: 400 });
+      }
+      if (!enabledKeys.includes('VOICELINK360')) {
+        return Response.json({ error: 'VoiceLink 360 is not licensed for this customer', code: 'role_not_allowed' }, { status: 400 });
+      }
+      const expectedBase = body.vl360_role === 'control_room_operator' ? 'control_room_operator' : 'guard';
+      if (role_type !== expectedBase) {
+        return Response.json({ error: 'The VoiceLink operational role must match the selected base role', code: 'bad_vl360_role' }, { status: 400 });
+      }
+    }
+
     const effectiveReseller = reseller_id || (customer ? customer.reseller_id : null) || null;
     const callerName = caller.display_name || caller.full_name || caller.email;
     const moduleLabel = customer?.customer_type
@@ -535,6 +554,23 @@ export default async function(req: Request): Promise<Response> {
         console.log('[inviteTenantUser] existing rescope failed', String(e?.message || e));
         return Response.json({ error: 'That user already exists but could not be re-scoped. Contact support.', code: 'scope_failed' }, { status: 202 });
       }
+      // USS VOICELINK 360 (ADDITIVE): an existing user receiving VoiceLink
+      // access gets or updates their VL360Profile — never a duplicate account.
+      if (body.vl360_role && customer_id) {
+        const vlRows = await base44.asServiceRole.entities.VL360Profile.filter({ user_id: existing.id, customer_id }).catch(() => []);
+        if (vlRows && vlRows[0]) {
+          await base44.asServiceRole.entities.VL360Profile.update(vlRows[0].id, {
+            vl_role: body.vl360_role, enabled: true,
+            updated_at: new Date().toISOString(), updated_by_name: callerName,
+          }).catch(() => {});
+        } else {
+          await base44.asServiceRole.entities.VL360Profile.create({
+            user_id: existing.id, customer_id, reseller_id: effectiveReseller || null,
+            vl_role: body.vl360_role, enabled: true, contact_status: 'unconfigured',
+            external_calling_enabled: false, management_powers: false,
+          }).catch(() => {});
+        }
+      }
       try {
         await base44.asServiceRole.entities.PlatformAuditLog.create({
           event_type: 'user.updated', user_id: caller.id, user_name: callerName,
@@ -588,6 +624,7 @@ export default async function(req: Request): Promise<Response> {
       cancelled_by: null,
       invited_by: caller.id,
       invited_by_name: callerName,
+      vl360_role: body.vl360_role || null,
       notes: `Invited as ${role_type}${moduleLabel ? ` (${moduleLabel})` : ''} (${userStatus})`,
     };
 

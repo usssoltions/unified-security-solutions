@@ -212,6 +212,31 @@ export default async function(req: Request): Promise<Response> {
       applied_at: new Date().toISOString(),
     });
 
+    // USS VOICELINK 360 (ADDITIVE): apply the invited VoiceLink operational
+    // role as a VL360Profile when the invitation carried one. Guarded by the
+    // customer's ACTIVE VOICELINK360 licence; never grants notification,
+    // platform or other-module status. Best-effort — never blocks onboarding.
+    if (scope.vl360_role && scope.customer_id) {
+      try {
+        const vlEnts = await base44.asServiceRole.entities.ModuleEntitlement.filter({ customer_id: scope.customer_id, enabled: true }).catch(() => []);
+        const vlLicensed = (vlEnts || []).some((e: any) => e.module_key === 'VOICELINK360' && (!e.status || e.status === 'active'));
+        if (vlLicensed) {
+          const vlRows = await base44.asServiceRole.entities.VL360Profile.filter({ user_id: caller.id, customer_id: scope.customer_id }).catch(() => []);
+          if (vlRows && vlRows[0]) {
+            await base44.asServiceRole.entities.VL360Profile.update(vlRows[0].id, {
+              vl_role: scope.vl360_role, enabled: true, updated_at: new Date().toISOString(),
+            }).catch(() => {});
+          } else {
+            await base44.asServiceRole.entities.VL360Profile.create({
+              user_id: caller.id, customer_id: scope.customer_id, reseller_id: scope.reseller_id || null,
+              vl_role: scope.vl360_role, enabled: true, contact_status: 'unconfigured',
+              external_calling_enabled: false, management_powers: false,
+            }).catch(() => {});
+          }
+        }
+      } catch (_) { /* best-effort — onboarding is never blocked */ }
+    }
+
     try {
       await base44.asServiceRole.entities.PlatformAuditLog.create({
         event_type: 'tenant_user.scope_applied',

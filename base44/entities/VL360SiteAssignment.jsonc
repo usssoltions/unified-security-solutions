@@ -1,0 +1,113 @@
+{
+  "name": "VL360SiteAssignment",
+  "type": "object",
+  "description": "USS VOICELINK 360 \u2014 personnel or controller assignment of one User to one Site (a user may hold assignments to many sites; a site may hold any configurable combination of guards, supervisors, response officers, vehicle crews and controllers). kind 'personnel' = operational member of the site; kind 'controller' = control-room allocation over the site. Managed only by authorised administrators through the vl360Access gateway; GATEWAY-ONLY access \u2014 direct client access restricted to platform administration by RLS.",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "Tenant ownership \u2014 server-resolved, never client-trusted."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "user_id": {
+      "type": "string",
+      "description": "The assigned user."
+    },
+    "site_id": {
+      "type": "string",
+      "description": "The assigned site (validated server-side to belong to the same customer)."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "personnel",
+        "controller"
+      ],
+      "default": "personnel"
+    },
+    "assigned_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_id",
+    "user_id",
+    "site_id",
+    "kind"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "admin_level": "platform"
+          }
+        }
+      ]
+    }
+  }
+}

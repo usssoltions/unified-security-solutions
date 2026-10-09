@@ -31,6 +31,13 @@ export const ROUTE_REGISTRY = {
     { title: "AI Patrol", pageKey: "GuardPatrol", icon: Shield },
     { title: "Access Control", pageKey: "AccessControl", icon: QrCode },
     { title: "Shift Reports", pageKey: "StartOfShiftHistory", icon: FileText },
+    // ── VOICELINK 360 (independently licensed communications module) ──
+    // Each entry is module-gated by the VOICELINK360 entitlement — guards of
+    // customers without it never see these. A VoiceLink-only guard's first
+    // visible item becomes the home automatically (module-aware home URL).
+    { title: "VoiceLink 360", pageKey: "VL360GuardHome", icon: Phone },
+    { title: "Colleagues", pageKey: "VL360Colleagues", icon: Users },
+    { title: "VL360 Setup", pageKey: "VL360More", icon: Sliders },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   dispatcher: [
@@ -195,6 +202,10 @@ export const ROUTE_REGISTRY = {
     { title: "Estate Announcements", pageKey: "AnnouncementManagement", icon: Bell },
     { title: "Estate Tickets", pageKey: "TicketManagement", icon: FileText },
     { title: "User Management", pageKey: "UserManagement", icon: Users },
+    // VOICELINK 360 — module-gated by the VOICELINK360 entitlement.
+    { title: "VL360 Workspace", pageKey: "VL360Console", icon: Phone },
+    { title: "VL360 Administration", pageKey: "VL360Admin", icon: Sliders },
+    { title: "VL360 Setup", pageKey: "VL360More", icon: Sliders },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   reseller_admin: [
@@ -222,6 +233,9 @@ export const ROUTE_REGISTRY = {
     { title: "Hospitality Visits", pageKey: "HospitalityVisits", icon: Building2 },
     { title: "Patrol Monitoring", pageKey: "PatrolMonitoring", icon: Activity },
     { title: "Shift Reports", pageKey: "StartOfShiftHistory", icon: FileText },
+    // VOICELINK 360 — module-gated by the VOICELINK360 entitlement.
+    { title: "VL360 Workspace", pageKey: "VL360Console", icon: Phone },
+    { title: "VL360 Setup", pageKey: "VL360More", icon: Sliders },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
   ],
   attendance_staff: [
@@ -281,6 +295,9 @@ export const ROUTE_REGISTRY = {
     { title: "Diagnostics", pageKey: "PlatformDiagnostics", icon: Gauge },
     { title: "Report Showcase", pageKey: "ReportShowcase", icon: Mail },
     { title: "Test Data Cleanup", pageKey: "TestDataCleanup", icon: Eraser },
+    // VOICELINK 360 — platform administrators retain oversight/configuration.
+    { title: "VL360 Workspace", pageKey: "VL360Console", icon: Phone },
+    { title: "VL360 Administration", pageKey: "VL360Admin", icon: Sliders },
     // TEMPORARY diagnostic (isolated): Linkus handoff test — platform admin only.
     { title: "Linkus Handoff Test", pageKey: "LinkusHandoffTest", icon: Phone },
     { title: "Profile", pageKey: "Profile", icon: UserCircle },
@@ -310,10 +327,11 @@ export const EXTRA_ALLOWED_PAGES = {
     "ResellerManagement", "CustomerManagement",
     "MedicalPatientDetail", "MedicalEmployerDetail", "PlatformDiagnostics",
     "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings",
+    "VL360GuardHome", "VL360Colleagues", "VL360Dialler", "VL360Console", "VL360Admin", "VL360More",
   ],
   reseller_admin: ["ResellerManagement", "CustomerManagement"],
   attendance_staff: ["AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports"],
-  customer_admin: ["QRScanner", "CompletedPatrols", "PatrolChecklists", "PatrolMonitoring", "ClientReports", "ClientIncidents", "DailyReport", "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
+  customer_admin: ["QRScanner", "CompletedPatrols", "PatrolChecklists", "PatrolMonitoring", "ClientReports", "ClientIncidents", "DailyReport", "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings", "VL360Console", "VL360More", "VL360GuardHome", "VL360Colleagues", "VL360Dialler"],
   practice_admin: ["MedicalPatientDetail", "MedicalEmployerDetail", "AttendanceDashboard", "AttendanceRecords", "AttendanceWorkers", "AttendanceReports", "AttendanceSettings"],
   therapist: ["MedicalPatientDetail", "MedicalEmployerDetail"],
   reception: ["MedicalPatientDetail", "MedicalEmployerDetail"],
