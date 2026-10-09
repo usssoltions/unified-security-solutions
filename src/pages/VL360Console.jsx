@@ -6,8 +6,7 @@ import DestinationOutcome from "@/components/vl360/DestinationOutcome";
 import ColleagueListPanel from "@/components/vl360/ColleagueListPanel";
 import { Button } from "@/components/ui/button";
 import { Loader2, Users, MessagesSquare, Siren, Megaphone, Video, User } from "lucide-react";
-import { openDestination } from "@/lib/vl360Api";
-import { vl360Invoke } from "@/lib/vl360Api";
+import { openDestination, vl360Invoke, vl360Key } from "@/lib/vl360Api";
 
 /**
  * VL360Console — controller / supervisor workspace. Controllers see only
@@ -28,7 +27,7 @@ export default function VL360Console() {
 
   const effectiveSiteId = siteId || (sites.length === 1 ? sites[0].id : null);
   const { data: onDutyData, isLoading: onDutyLoading } = useQuery({
-    queryKey: ["vl360_on_duty", effectiveSiteId || "all"],
+    queryKey: vl360Key(["on_duty", effectiveSiteId || "all"]),
     queryFn: async () => vl360Invoke({ action: "list_on_duty", site_id: effectiveSiteId || undefined }),
     enabled: !!effectiveSiteId || sites.length > 0,
     staleTime: 30 * 1000,

@@ -5,7 +5,7 @@ import VL360Shell from "@/components/vl360/VL360Shell";
 import AssistedDialDialog from "@/components/vl360/AssistedDialDialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, Delete, ClipboardPaste, PhoneCall, Contact } from "lucide-react";
-import { vl360Invoke } from "@/lib/vl360Api";
+import { vl360Invoke, vl360Key } from "@/lib/vl360Api";
 
 /**
  * VL360Dialler — external telephone dialler (authorised users only, per-user
@@ -26,7 +26,7 @@ export default function VL360Dialler() {
   const externalCalling = !!(ctx.data?.profile?.external_calling_enabled);
 
   const { data: contactsData, refetch: refetchContacts } = useQuery({
-    queryKey: ["vl360_phone_contacts"],
+    queryKey: vl360Key(["phone_contacts"]),
     queryFn: async () => vl360Invoke({ action: "phone_contacts_list" }),
     enabled: externalCalling,
   });

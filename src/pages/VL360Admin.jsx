@@ -12,35 +12,34 @@ import SetupChecks from "@/components/vl360/admin/SetupChecks";
 import Offboarding from "@/components/vl360/admin/Offboarding";
 import ModuleSettings from "@/components/vl360/admin/ModuleSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { vl360Invoke } from "@/lib/vl360Api";
+import { vl360Invoke, vl360Key } from "@/lib/vl360Api";
+import { isPlatformAdminUser } from "@/lib/platformAdmin";
 
 /**
  * VL360Admin — VoiceLink 360 administration (Customer Administrator scope,
  * enforced server-side): Personnel Setup, Site Communication Setup,
  * Controller Assignments, Telephone Permissions, Operational Contacts,
- * Setup Checks, Access & Offboarding, Module Settings.
+ * Setup Checks, Access & Offboarding, Module Settings. A platform
+ * administrator operating a selected customer may administer it too — the
+ * gateway re-validates every action server-side.
  */
 export default function VL360Admin() {
   const ctx = useVL360();
   const queryClient = useQueryClient();
-  const isVlAdmin = ctx.data?.role === "customer_admin" || ctx.data?.can_manage === true;
   const isFullAdmin = ctx.data?.role === "customer_admin";
+  const canOperate = isFullAdmin || isPlatformAdminUser(ctx.user);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["vl360_admin"],
+    queryKey: vl360Key(["admin"]),
     queryFn: async () => vl360Invoke({ action: "admin_list_users" }),
     enabled: !!ctx.data,
   });
 
   const refresh = () => { refetch(); ctx.refresh(); };
 
-  if (!ctx.isLoading && ctx.data && !isFullAdmin && ctx.data.role !== "customer_admin") {
-    // Gateway also enforces — the UI explains honestly.
-  }
-
   return (
     <VL360Shell ctx={ctx} title="VL360 Administration" subtitle="VoiceLink 360 setup for your organisation">
-      {!isFullAdmin ? (
+      {!canOperate ? (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
           <p className="text-sm text-amber-200">Administration requires the Customer Administrator VoiceLink role. Your current role: {ctx.data?.role_label}.</p>
         </div>

@@ -6,7 +6,7 @@ import TelegramConnection from "@/components/telegram/TelegramConnection";
 import DestinationOutcome from "@/components/vl360/DestinationOutcome";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Circle, Users, Activity, HelpCircle, Smartphone } from "lucide-react";
-import { openDestination, vl360Invoke } from "@/lib/vl360Api";
+import { openDestination, vl360Invoke, vl360Key } from "@/lib/vl360Api";
 
 /**
  * VL360More — setup, help and communication records (kept under More on the
@@ -32,7 +32,7 @@ export default function VL360More() {
   });
 
   const { data: activityData } = useQuery({
-    queryKey: ["vl360_activity", "self"],
+    queryKey: vl360Key(["activity", "self"]),
     queryFn: async () => vl360Invoke({ action: "activity_list" }),
   });
 

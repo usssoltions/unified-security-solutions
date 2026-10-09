@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import ColleagueActionsSheet from "./ColleagueActionsSheet";
-import { vl360Invoke } from "@/lib/vl360Api";
+import { vl360Invoke, vl360Key } from "@/lib/vl360Api";
 
 /**
  * ColleagueListPanel — permitted personnel list shared by the guard's
@@ -16,7 +16,7 @@ export default function ColleagueListPanel({ siteId = null }) {
   const [search, setSearch] = useState("");
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ["vl360_personnel", siteId || "all"],
+    queryKey: vl360Key(["personnel", siteId || "all"]),
     queryFn: async () => vl360Invoke({ action: "list_personnel", site_id: siteId || undefined }),
     staleTime: 30 * 1000,
   });

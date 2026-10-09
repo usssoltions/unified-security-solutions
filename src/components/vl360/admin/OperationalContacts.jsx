@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { vl360Invoke } from "@/lib/vl360Api";
+import { vl360Invoke, vl360Key } from "@/lib/vl360Api";
 
 /**
  * OperationalContacts — labelled telephone numbers for the dialler's
@@ -17,7 +17,7 @@ export default function OperationalContacts() {
   const [error, setError] = useState(null);
 
   const { data, refetch, isLoading } = useQuery({
-    queryKey: ["vl360_phone_contacts"],
+    queryKey: vl360Key(["phone_contacts"]),
     queryFn: async () => vl360Invoke({ action: "phone_contacts_list" }),
   });
   const contacts = data?.contacts || [];

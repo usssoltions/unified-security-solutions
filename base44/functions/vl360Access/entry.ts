@@ -82,14 +82,42 @@ export default async function(req: Request): Promise<Response> {
     const svc = base44.asServiceRole;
     const platformAdmin = isPlatformAdmin(caller);
 
-    // Platform administrators keep their established management scope and may
-    // operate the module for a customer they select. Every other caller is
-    // strictly bound to their SERVER-RESOLVED customer and an ACTIVE licence.
+    // ── authorised customer-selection (administrators WITHOUT their own
+    // customer scope) ── list_customers is the ONLY action reachable before a
+    // tenant is resolved, and it is itself scope-enforced: a platform admin
+    // sees every customer; a reseller admin sees ONLY the customers under
+    // their own reseller (server-enforced, never client-supplied).
+    if (action === 'list_customers') {
+      if (!platformAdmin && !isResellerAdmin(caller)) return DENIED('Administrator access required.');
+      const q: any = {};
+      if (!platformAdmin) q.reseller_id = caller.reseller_id || null;
+      const rows = await svc.entities.Customer.filter(q, 'name', 500).catch(() => []);
+      const ents = await svc.entities.ModuleEntitlement.filter({ module_key: VL_MODULE_KEY }).catch(() => []);
+      const licensed: Record<string, boolean> = {};
+      (ents || []).forEach((e: any) => { if (entitlementIsActiveNow(e)) licensed[e.customer_id] = true; });
+      return Response.json({
+        customers: (rows || []).map((c: any) => ({
+          id: c.id, name: c.name, status: c.status || 'active', vl360_licensed: !!licensed[c.id],
+        })),
+      });
+    }
+
+    // Platform administrators and reseller administrators keep their
+    // established management scope and may operate the module for a customer
+    // they are authorised for. Every other caller is strictly bound to their
+    // SERVER-RESOLVED customer and an ACTIVE licence.
     let customerId = caller.customer_id || null;
     let resellerId = caller.reseller_id || null;
     if (platformAdmin && body.customer_id) {
       const rows = await svc.entities.Customer.filter({ id: body.customer_id }).catch(() => []);
       if (!rows || !rows[0]) return FAIL('Selected customer not found', 'customer_not_found', 404);
+      customerId = rows[0].id; resellerId = rows[0].reseller_id || null;
+    } else if (!platformAdmin && isResellerAdmin(caller) && body.customer_id) {
+      const rows = await svc.entities.Customer.filter({ id: body.customer_id }).catch(() => []);
+      if (!rows || !rows[0]) return FAIL('Selected customer not found', 'customer_not_found', 404);
+      if ((rows[0].reseller_id || null) !== (caller.reseller_id || null)) {
+        return DENIED('That customer is outside your authorised reseller scope.', 'cross_tenant_denied');
+      }
       customerId = rows[0].id; resellerId = rows[0].reseller_id || null;
     }
     if (!platformAdmin && body.customer_id && body.customer_id !== customerId) {
