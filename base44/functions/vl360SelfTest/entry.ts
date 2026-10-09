@@ -19,7 +19,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import { customerModuleLicensed } from '../../shared/entitlementActive.ts';
 import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk } from '../../shared/vl360Scope.ts';
-import { validateTelegramDest, validatePhoneNumber, isVlRole } from '../../shared/vl360Core.ts';
+import { validateTelegramDest, validatePhoneNumber, isVlRole, VL_ROLES } from '../../shared/vl360Core.ts';
 
 const CUST_A = 'vl360selftest-cust-a'; // licensed synthetic tenant
 const CUST_B = 'vl360selftest-cust-b'; // unlicensed synthetic tenant
