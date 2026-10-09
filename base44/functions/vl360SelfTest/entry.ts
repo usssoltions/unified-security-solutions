@@ -47,9 +47,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   try {
     // ── Fixtures ──
-    const siteA1 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site A1', customer_id: CUST_A, reseller_id: 'vl360selftest', status: 'active' }));
-    const siteA2 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site A2 (inactive)', customer_id: CUST_A, reseller_id: 'vl360selftest', status: 'inactive' }));
-    const siteB1 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site B1 (other tenant)', customer_id: CUST_B, reseller_id: 'vl360selftest', status: 'active' }));
+    const siteA1 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site A1', address: '1 Test Road', client_name: 'VL360 SelfTest', customer_id: CUST_A, reseller_id: 'vl360selftest', status: 'active' }));
+    const siteA2 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site A2 (inactive)', address: '2 Test Road', client_name: 'VL360 SelfTest', customer_id: CUST_A, reseller_id: 'vl360selftest', status: 'inactive' }));
+    const siteB1 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site B1 (other tenant)', address: '3 Test Road', client_name: 'VL360 SelfTest', customer_id: CUST_B, reseller_id: 'vl360selftest', status: 'active' }));
     const CUST_C = 'vl360selftest-cust-c'; // expired-licence synthetic tenant
     const entA = track('ModuleEntitlement', await svc.entities.ModuleEntitlement.create({ customer_id: CUST_A, module_key: 'VOICELINK360', enabled: true, status: 'active', licence_start: iso(new Date(now.getTime() - 86400000)) }));
     track('ModuleEntitlement', await svc.entities.ModuleEntitlement.create({ customer_id: CUST_C, module_key: 'VOICELINK360', enabled: true, status: 'active', licence_start: iso(new Date(now.getTime() - 2 * 86400000)), licence_end: iso(new Date(now.getTime() - 86400000)) }));
