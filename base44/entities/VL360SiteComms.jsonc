@@ -1,7 +1,7 @@
 {
   "name": "VL360SiteComms",
   "type": "object",
-  "description": "USS VOICELINK 360 \u2014 per-site communication destination mapping (one row per site). Stores the validated Telegram destinations for the site's normal communication group, emergency-response group, control-room contact/group and an optional wider All Personnel group with an explicit access scope. Telegram accounts and groups are managed IN TELEGRAM \u2014 USS stores and controls access to their mappings only, and never claims that opening a link rings every member. group_setup_confirmed is a MANUAL administrator confirmation that the stored destination opens the correct group after onboarding. GATEWAY-ONLY access through vl360Access; direct client access restricted to platform administration by RLS.",
+  "description": "USS VOICELINK 360 \u2014 per-site communication destination mapping (one row per site). Stores the validated Telegram destinations for the site's normal communication group, emergency-response group, control-room contact/group and an optional wider All Personnel group with an explicit access scope AND an explicit complete-site-scope list. Telegram accounts and groups are managed IN TELEGRAM \u2014 USS stores and controls access to their mappings only, and never claims that opening a link rings every member. group_setup_confirmed is a MANUAL administrator confirmation that the stored destination opens the correct group after onboarding. GATEWAY-ONLY access through vl360Access; direct client access restricted to platform administration by RLS.",
   "properties": {
     "customer_id": {
       "type": "string"
@@ -77,6 +77,14 @@
       ],
       "default": "management",
       "description": "Explicit access scope for the wider group: 'management' = customer administrators, controllers and empowered supervisors only; 'all' additionally covers supervisors and response officers. Guards NEVER see wide-group actions."
+    },
+    "wide_group_site_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "COMPLETE SITE SCOPE of the wider group: the explicit list of site ids this All Personnel group covers. Opened ONLY by callers authorised for EVERY listed site (server-derived; customer administrators and platform admins hold whole-customer scope). Empty = the group belongs to this site alone. Each listed site is validated server-side to belong to the same customer."
     },
     "group_setup_confirmed": {
       "type": [

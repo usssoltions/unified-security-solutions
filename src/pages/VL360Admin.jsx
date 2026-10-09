@@ -5,6 +5,7 @@ import VL360Shell from "@/components/vl360/VL360Shell";
 import PersonnelSetup from "@/components/vl360/admin/PersonnelSetup";
 import SiteCommsSetup from "@/components/vl360/admin/SiteCommsSetup";
 import ControllerAssignments from "@/components/vl360/admin/ControllerAssignments";
+import VL360SitesSetup from "@/components/vl360/admin/VL360SitesSetup";
 import PhonePermissions from "@/components/vl360/admin/PhonePermissions";
 import OperationalContacts from "@/components/vl360/admin/OperationalContacts";
 import SetupChecks from "@/components/vl360/admin/SetupChecks";
@@ -51,6 +52,7 @@ export default function VL360Admin() {
             <TabsTrigger value="personnel">Personnel</TabsTrigger>
             <TabsTrigger value="sitecomms">Site Comms</TabsTrigger>
             <TabsTrigger value="controllers">Controllers</TabsTrigger>
+            <TabsTrigger value="sites">Sites</TabsTrigger>
             <TabsTrigger value="phone">Telephone</TabsTrigger>
             <TabsTrigger value="contacts">Contacts</TabsTrigger>
             <TabsTrigger value="checks">Setup Checks</TabsTrigger>
@@ -60,6 +62,7 @@ export default function VL360Admin() {
           <TabsContent value="personnel" className="mt-4"><PersonnelSetup data={data} onChanged={refresh} /></TabsContent>
           <TabsContent value="sitecomms" className="mt-4"><SiteCommsSetup data={data} /></TabsContent>
           <TabsContent value="controllers" className="mt-4"><ControllerAssignments data={data} onChanged={refresh} /></TabsContent>
+          <TabsContent value="sites" className="mt-4"><VL360SitesSetup onChanged={refresh} /></TabsContent>
           <TabsContent value="phone" className="mt-4"><PhonePermissions data={data} onChanged={refresh} /></TabsContent>
           <TabsContent value="contacts" className="mt-4"><OperationalContacts /></TabsContent>
           <TabsContent value="checks" className="mt-4"><SetupChecks onChanged={refresh} /></TabsContent>

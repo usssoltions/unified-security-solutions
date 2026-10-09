@@ -87,6 +87,21 @@
       "default": false,
       "description": "Explicitly granted additional management powers for a supervisor (e.g. closing stale duty sessions)."
     },
+    "duty_claim_token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL concurrency CAS claim for atomic duty starts (set by startDutySessionAtomic in vl360Scope; released after the session is created; a claim older than 2 minutes is stale and takeover-able). Never exposed to any UI."
+    },
+    "duty_claim_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "INTERNAL claim timestamp for the duty-start CAS (stale-claim takeover threshold 2 minutes). Never exposed to any UI."
+    },
     "notes": {
       "type": [
         "string",

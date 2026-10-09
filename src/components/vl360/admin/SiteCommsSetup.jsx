@@ -36,13 +36,14 @@ export default function SiteCommsSetup({ data }) {
           emergency_label: c.emergency_label || "", emergency_dest: c.emergency_dest || "",
           wide_group_label: c.wide_group_label || "", wide_group_dest: c.wide_group_dest || "",
           wide_group_scope: c.wide_group_scope || "management",
+          wide_group_site_ids: Array.isArray(c.wide_group_site_ids) ? c.wide_group_site_ids : [],
           confirmed: !!c.group_setup_confirmed,
         });
       })
       .catch(() => alive && setForm({
         control_room_label: "", control_room_dest: "", group_label: "", group_dest: "",
         emergency_label: "", emergency_dest: "", wide_group_label: "", wide_group_dest: "",
-        wide_group_scope: "management", confirmed: false,
+        wide_group_scope: "management", wide_group_site_ids: [], confirmed: false,
       }));
     return () => { alive = false; };
   }, [siteId]);
@@ -58,6 +59,7 @@ export default function SiteCommsSetup({ data }) {
         emergency_label: form.emergency_label, emergency_dest: form.emergency_dest,
         wide_group_label: form.wide_group_label, wide_group_dest: form.wide_group_dest,
         wide_group_scope: form.wide_group_scope,
+        wide_group_site_ids: form.wide_group_site_ids || [],
       });
       if (d?.error) throw new Error(d.error);
       setMsg("Destinations saved. Open each one to verify it reaches the correct group, then confirm setup.");
@@ -111,6 +113,23 @@ export default function SiteCommsSetup({ data }) {
             </Select>
             <p className="text-[11px] text-slate-500">Create and populate the wider group in Telegram beforehand, then map it here. Guards never see All Personnel actions.</p>
           </div>
+          {sites.length > 1 && (
+            <div className="space-y-1">
+              <Label className="text-slate-300 text-xs">Wider Group Covers These Sites (complete scope required)</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {sites.map((s) => {
+                  const on = (form.wide_group_site_ids || []).includes(s.id);
+                  return (
+                    <label key={s.id} className={`flex items-center gap-2 text-xs rounded-lg px-2 py-2 border cursor-pointer ${on ? "text-sky-200 border-sky-500/50 bg-sky-500/10" : "text-slate-300 border-slate-800 bg-slate-900"}`}>
+                      <input type="checkbox" checked={on} onChange={() => setForm({ ...form, wide_group_site_ids: on ? (form.wide_group_site_ids || []).filter((id) => id !== s.id) : [...(form.wide_group_site_ids || []), s.id] })} className="accent-sky-500" />
+                      <span className="truncate">{s.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-500">Only people authorised for EVERY listed site can open this wider group. Untick all if the group belongs to this site alone.</p>
+            </div>
+          )}
           {error && <p className="text-xs text-rose-400">{error}</p>}
           {msg && <p className="text-xs text-emerald-400">{msg}</p>}
           <div className="flex flex-wrap gap-2">

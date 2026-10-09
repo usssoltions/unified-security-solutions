@@ -18,7 +18,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import { customerModuleLicensed } from '../../shared/entitlementActive.ts';
-import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk } from '../../shared/vl360Scope.ts';
+import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic } from '../../shared/vl360Scope.ts';
 import { validateTelegramDest, validatePhoneNumber, isVlRole, VL_ROLES } from '../../shared/vl360Core.ts';
 
 const CUST_A = 'vl360selftest-cust-a'; // licensed synthetic tenant
@@ -50,6 +50,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const siteA1 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site A1', address: '1 Test Road', client_name: 'VL360 SelfTest', customer_id: CUST_A, reseller_id: 'vl360selftest', status: 'active' }));
     const siteA2 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site A2 (inactive)', address: '2 Test Road', client_name: 'VL360 SelfTest', customer_id: CUST_A, reseller_id: 'vl360selftest', status: 'inactive' }));
     const siteB1 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site B1 (other tenant)', address: '3 Test Road', client_name: 'VL360 SelfTest', customer_id: CUST_B, reseller_id: 'vl360selftest', status: 'active' }));
+    const siteA3 = track('Site', await svc.entities.Site.create({ name: 'VL360ST Site A3', address: '4 Test Road', client_name: 'VL360 SelfTest', customer_id: CUST_A, reseller_id: 'vl360selftest', status: 'active' }));
     const CUST_C = 'vl360selftest-cust-c'; // expired-licence synthetic tenant
     const entA = track('ModuleEntitlement', await svc.entities.ModuleEntitlement.create({ customer_id: CUST_A, module_key: 'VOICELINK360', enabled: true, status: 'active', licence_start: iso(new Date(now.getTime() - 86400000)) }));
     track('ModuleEntitlement', await svc.entities.ModuleEntitlement.create({ customer_id: CUST_C, module_key: 'VOICELINK360', enabled: true, status: 'active', licence_start: iso(new Date(now.getTime() - 2 * 86400000)), licence_end: iso(new Date(now.getTime() - 86400000)) }));
@@ -88,6 +89,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     await svc.entities.VL360DutySession.update(duty.id, { status: 'closed', closed_at: iso(now) });
     check('activeDuty null after close (dup prevention)', (await activeDuty(svc, 'vl360st-guard-1', CUST_A)) === null);
 
+    // ── 3b. Concurrency: SIMULTANEOUS duty starts (real CAS helper) ──
+    // A closed session returning null proves nothing about races; this fires
+    // FIVE duty starts through the real startDutySessionAtomic helper at the
+    // same instant and asserts exactly one active session survives.
+    const parallel = await Promise.all([0, 1, 2, 3, 4].map(() =>
+      startDutySessionAtomic(svc, { customerId: CUST_A, resellerId: 'vl360selftest', userId: 'vl360st-guard-2', userName: 'ST Guard Two', siteRow: siteA1, isTest: true })));
+    parallel.filter((r: any) => r.session).forEach((r: any) => track('VL360DutySession', r.session));
+    const concurrentActive = await svc.entities.VL360DutySession.filter({ customer_id: CUST_A, user_id: 'vl360st-guard-2', status: 'active' }).catch(() => []);
+    check('5 concurrent duty starts yield exactly ONE active session',
+      (concurrentActive || []).length === 1,
+      { created: parallel.filter((r: any) => r.session).length, busy: parallel.filter((r: any) => r.busy).length });
+    const profAfter = await svc.entities.VL360Profile.filter({ user_id: 'vl360st-guard-2', customer_id: CUST_A }).catch(() => []);
+    check('duty claim released after concurrent start', !profAfter?.[0]?.duty_claim_token);
+
     // ── 4. Wide-group gates (real helpers) ──
     check('wide group: guard DENIED', vlWideGroupAllowed('guard', false) === false);
     check('wide group: armed_response DENIED', vlWideGroupAllowed('armed_response', false) === false);
@@ -99,6 +114,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     check('management scope: controller excluded', vlWideGroupScopeOk({ wide_group_scope: 'management' }, 'control_room_operator', false) === false);
     check('management scope: customer_admin allowed', vlWideGroupScopeOk({ wide_group_scope: 'management' }, 'customer_admin', false) === true);
     check('scope "all": supervisor allowed', vlWideGroupScopeOk({ wide_group_scope: 'all' }, 'supervisor', false) === true);
+
+    // ── 4b. Wider-group COMPLETE SITE SCOPE (controller assigned only Site A) ──
+    const profCtrl = track('VL360Profile', await svc.entities.VL360Profile.create({ user_id: 'vl360st-ctrl-1', customer_id: CUST_A, vl_role: 'control_room_operator', enabled: true }));
+    track('VL360SiteAssignment', await svc.entities.VL360SiteAssignment.create({ customer_id: CUST_A, user_id: 'vl360st-ctrl-1', site_id: siteA1.id, kind: 'controller' }));
+    const commsAB = track('VL360SiteComms', await svc.entities.VL360SiteComms.create({ customer_id: CUST_A, site_id: siteA1.id, wide_group_dest: 'https://t.me/vl360stwidegroup', wide_group_scope: 'all', wide_group_site_ids: [siteA1.id, siteA3.id] }));
+    const ctrlSites = new Set((await scopedSites(svc, profCtrl, false, CUST_A)).map((s: any) => s.id));
+    check('wide group Sites A+A3: controller of Site A only DENIED', vlWideGroupSitesOk(commsAB, ctrlSites, false, false) === false);
+    track('VL360SiteAssignment', await svc.entities.VL360SiteAssignment.create({ customer_id: CUST_A, user_id: 'vl360st-ctrl-1', site_id: siteA3.id, kind: 'controller' }));
+    const ctrlSitesFull = new Set((await scopedSites(svc, profCtrl, false, CUST_A)).map((s: any) => s.id));
+    check('wide group Sites A+A3: controller authorised for complete scope allowed', vlWideGroupSitesOk(commsAB, ctrlSitesFull, false, false) === true);
+    const commsCross = track('VL360SiteComms', await svc.entities.VL360SiteComms.create({ customer_id: CUST_A, site_id: siteA1.id, wide_group_site_ids: [siteA1.id, siteB1.id] }));
+    check('wide group covering a cross-customer site stays DENIED', vlWideGroupSitesOk(commsCross, ctrlSitesFull, false, false) === false);
+    check('wide group site scope: customer admin whole-customer allowed', vlWideGroupSitesOk(commsAB, new Set(), true, false) === true);
+    check('wide group single-site group needs no extra scope', vlWideGroupSitesOk({ wide_group_site_ids: [] }, new Set(), false, false) === true);
 
     // ── 5. Destination + number validation (real helpers) ──
     check('telegram https://t.me ok', validateTelegramDest('https://t.me/usstestbot').ok === true);

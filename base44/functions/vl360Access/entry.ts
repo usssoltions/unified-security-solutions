@@ -5,7 +5,7 @@ import {
   VL_MODULE_KEY, VL_ROLES, VL_ROLE_LABELS, isVlRole, vlRoleForPlatformRole,
   validateTelegramDest, validatePhoneNumber, actorName,
 } from '../../shared/vl360Core.ts';
-import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk } from '../../shared/vl360Scope.ts';
+import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic } from '../../shared/vl360Scope.ts';
 
 /**
  * vl360Access — THE single server-side gateway for the USS VOICELINK 360
@@ -224,6 +224,11 @@ export default async function(req: Request): Promise<Response> {
           if (!vlWideGroupScopeOk(comms, profile.vl_role, platformAdmin)) {
             return DENIED('This All Personnel group is restricted to management access.', 'permission_denied');
           }
+          // COMPLETE SITE SCOPE: a wider group configured to cover several
+          // sites requires the caller to be authorised for EVERY listed site.
+          if (!vlWideGroupSitesOk(comms, scopedIds, isVlAdmin, platformAdmin)) {
+            return DENIED('You are not authorised for the complete site scope of this All Personnel group.', 'site_not_authorised');
+          }
         }
         const dest = map[type];
         if (!dest) {
@@ -246,14 +251,17 @@ export default async function(req: Request): Promise<Response> {
         const siteId = body.site_id || null;
         if (siteId && !scopedIds.has(siteId)) return DENIED('That site is not within your authorised scope.', 'site_not_authorised');
         const siteRow = sites.find((s: any) => s.id === siteId);
-        const session = await svc.entities.VL360DutySession.create({
-          customer_id: customerId, reseller_id: resellerId, user_id: caller.id, user_name: actor,
-          site_id: siteRow?.id || null, site_name: siteRow?.name || null,
-          status: 'active', started_at: nowIso(), last_confirmed_at: nowIso(),
-          is_test: body.is_test === true,
-        });
+        // ATOMIC duplicate prevention: simultaneous duty starts are serialised
+        // server-side by the CAS claim in startDutySessionAtomic — exactly one
+        // active session can ever be created.
+        const started = await startDutySessionAtomic(svc, { customerId, resellerId, userId: caller.id, userName: actor, siteRow, isTest: body.is_test === true });
+        if (started.busy) {
+          const afterWait = await activeDuty(svc, caller.id, customerId);
+          if (afterWait) return Response.json({ already: true, duty: afterWait });
+          return Response.json({ error: 'Another duty start is being processed. Please try again in a moment.', code: 'duty_start_busy', busy: true });
+        }
         await logActivity(svc, { customer_id: customerId, reseller_id: resellerId, actor_id: caller.id, actor_name: actor, actor_role: profile.vl_role, action: 'duty_on', site_id: siteRow?.id || null, site_name: siteRow?.name || null, detail: 'Duty session started.' });
-        return Response.json({ duty: session });
+        return Response.json({ duty: started.session });
       }
       case 'duty_off': {
         const existing = await activeDuty(svc, caller.id, customerId);
@@ -432,7 +440,18 @@ export default async function(req: Request): Promise<Response> {
           if (!['management', 'all'].includes(body.wide_group_scope)) return FAIL('Unknown wider-group access scope.', 'bad_request');
           updates.wide_group_scope = body.wide_group_scope;
         }
-        if (updates.wide_group_dest === null) updates.wide_group_scope = 'management';
+        // Wider-group COMPLETE SITE SCOPE: the explicit list of sites the
+        // wider group covers. Every listed site is validated to exist and
+        // belong to this customer; clearing the destination clears the scope.
+        if (body.wide_group_site_ids !== undefined) {
+          const ids: string[] = [...new Set((Array.isArray(body.wide_group_site_ids) ? body.wide_group_site_ids : []).filter((x: any) => typeof x === 'string'))];
+          for (const sid of ids) {
+            const sRows = await svc.entities.Site.filter({ id: sid }).catch(() => []);
+            if (!sRows || !sRows[0] || sRows[0].customer_id !== customerId) return DENIED('A selected wider-group site does not belong to your organisation.', 'cross_tenant_denied');
+          }
+          updates.wide_group_site_ids = ids;
+        }
+        if (updates.wide_group_dest === null) { updates.wide_group_scope = 'management'; updates.wide_group_site_ids = []; }
         const rows = await svc.entities.VL360SiteComms.filter({ customer_id: customerId, site_id: siteId }).catch(() => []);
         const saved = (rows && rows[0])
           ? await svc.entities.VL360SiteComms.update(rows[0].id, updates)
@@ -518,6 +537,38 @@ export default async function(req: Request): Promise<Response> {
           items: [{ label: 'Individual destination', link: p.contact_link, status: !p.contact_link ? 'missing' : (validateTelegramDest(p.contact_link).ok ? 'valid' : 'malformed') }],
         }));
         return Response.json({ site_checks: siteChecks, person_checks: personChecks });
+      }
+
+      // ── standalone site management (VoiceLink-only administrators) ──
+      // The SiteManagement page belongs to the OPERATIONS module and is
+      // unreachable for a VOICELINK360-only customer; these gateway actions
+      // give its Customer Administrator the minimal scoped site create/edit
+      // they need. Server-side: entitlement (above), administrator role, and
+      // strictly customer-bound site rows. The existing siteAccess gateway
+      // and every other customer's site management are untouched.
+      case 'sites_list_all': {
+        if (!isVlAdmin && !platformAdmin) return DENIED('Administrator access required.');
+        const rows = await svc.entities.Site.filter({ customer_id: customerId }).catch(() => []);
+        return Response.json({ sites: (rows || []).map((s: any) => ({ id: s.id, name: s.name, address: s.address || null, client_name: s.client_name || null, status: s.status || 'active' })) });
+      }
+      case 'site_save': {
+        if (!isVlAdmin && !platformAdmin) return DENIED('Administrator access required.');
+        const name = String(body.name || '').trim().slice(0, 120);
+        const address = String(body.address || '').trim().slice(0, 200);
+        if (!name || !address) return FAIL('Site name and address are required.', 'bad_request');
+        const status = body.status === 'inactive' ? 'inactive' : 'active';
+        if (body.site_id) {
+          const rows = await svc.entities.Site.filter({ id: body.site_id, customer_id: customerId }).catch(() => []);
+          if (!rows || !rows[0]) return DENIED('That site does not belong to your organisation.', 'cross_tenant_denied');
+          const saved = await svc.entities.Site.update(rows[0].id, { name, address, status });
+          await logActivity(svc, { customer_id: customerId, reseller_id: resellerId, actor_id: caller.id, actor_name: actor, actor_role: profile.vl_role, action: 'site_saved', site_id: saved.id, site_name: saved.name, detail: `Site updated (${saved.status || 'active'}).` });
+          return Response.json({ site: { id: saved.id, name: saved.name, address: saved.address || null, client_name: saved.client_name || null, status: saved.status || 'active' } });
+        }
+        const custRows = await svc.entities.Customer.filter({ id: customerId }).catch(() => []);
+        const clientName = String(body.client_name || '').trim().slice(0, 120) || (custRows || [])[0]?.name || name;
+        const created = await svc.entities.Site.create({ name, address, client_name: clientName, customer_id: customerId, reseller_id: resellerId, status });
+        await logActivity(svc, { customer_id: customerId, reseller_id: resellerId, actor_id: caller.id, actor_name: actor, actor_role: profile.vl_role, action: 'site_saved', site_id: created.id, site_name: created.name, detail: 'Site created for VoiceLink 360.' });
+        return Response.json({ site: { id: created.id, name: created.name, address: created.address || null, client_name: created.client_name || null, status: created.status || 'active' } });
       }
 
       default:
