@@ -5,6 +5,7 @@ import {
   VL_MODULE_KEY, VL_ROLES, VL_ROLE_LABELS, isVlRole, vlRoleForPlatformRole,
   validateTelegramDest, validatePhoneNumber, actorName,
 } from '../../shared/vl360Core.ts';
+import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk } from '../../shared/vl360Scope.ts';
 
 /**
  * vl360Access — THE single server-side gateway for the USS VOICELINK 360
@@ -46,23 +47,6 @@ async function ensureProfile(svc: any, user: any, customerId: string, resellerId
     vl_role: role, enabled: true, contact_status: 'unconfigured',
     external_calling_enabled: false, management_powers: false,
   });
-}
-
-async function scopedSites(svc: any, profile: any, isVlAdmin: boolean, customerId: string) {
-  if (isVlAdmin) {
-    const sites = await svc.entities.Site.filter({ customer_id: customerId, status: 'active' }).catch(() => []);
-    return (sites || []).map((s: any) => ({ id: s.id, name: s.name }));
-  }
-  const asg = await svc.entities.VL360SiteAssignment.filter({ customer_id: customerId, user_id: profile.user_id }).catch(() => []);
-  const ids = [...new Set((asg || []).map((a: any) => a.site_id).filter(Boolean))];
-  if (!ids.length) return [];
-  const sites = await svc.entities.Site.filter({ id: { $in: ids }, status: 'active' }).catch(() => []);
-  return (sites || []).map((s: any) => ({ id: s.id, name: s.name }));
-}
-
-async function activeDuty(svc: any, userId: string, customerId: string) {
-  const rows = await svc.entities.VL360DutySession.filter({ customer_id: customerId, user_id: userId, status: 'active' }).catch(() => []);
-  return (rows && rows[0]) || null;
 }
 
 async function logActivity(svc: any, entry: Record<string, any>) {
@@ -142,8 +126,7 @@ export default async function(req: Request): Promise<Response> {
             id: duty.id, site_id: duty.site_id, site_name: duty.site_name,
             started_at: duty.started_at, last_confirmed_at: duty.last_confirmed_at,
           } : null,
-          can_manage: canManage, wide_group_allowed: !platformAdmin
-            ? ['customer_admin', 'control_room_operator', 'supervisor'].includes(profile.vl_role) : true,
+          can_manage: canManage, wide_group_allowed: vlWideGroupAllowed(profile.vl_role, platformAdmin),
         });
       }
 
@@ -235,10 +218,10 @@ export default async function(req: Request): Promise<Response> {
           emergency_group: comms.emergency_label || 'Emergency Team', wide_group: comms.wide_group_label || 'All Personnel',
         } : {};
         if (type === 'wide_group') {
-          if (!['customer_admin', 'control_room_operator', 'supervisor'].includes(profile.vl_role) && !platformAdmin) {
+          if (!vlWideGroupAllowed(profile.vl_role, platformAdmin)) {
             return DENIED('Wide All Personnel communication is not part of your role.', 'permission_denied');
           }
-          if (comms && comms.wide_group_scope === 'management' && !['customer_admin'].includes(profile.vl_role) && !platformAdmin) {
+          if (!vlWideGroupScopeOk(comms, profile.vl_role, platformAdmin)) {
             return DENIED('This All Personnel group is restricted to management access.', 'permission_denied');
           }
         }
@@ -294,8 +277,15 @@ export default async function(req: Request): Promise<Response> {
         const siteFilter: string | null = body.site_id || null;
         if (siteFilter && !scopedIds.has(siteFilter)) return DENIED('That site is not within your authorised scope.', 'site_not_authorised');
         const q: any = { customer_id: customerId, status: 'active' };
-        if (siteFilter) q.site_id = siteFilter;
-        else if (!isVlAdmin && [...scopedIds].length) q.site_id = { $in: [...scopedIds] };
+        if (siteFilter) {
+          q.site_id = siteFilter;
+        } else if (!isVlAdmin) {
+          // SCOPE FIX: a person with NO authorised sites (including guards)
+          // must see nobody company-wide — an empty scope returns an empty
+          // list, never the customer-wide on-duty roster.
+          if (!scopedIds.size) return Response.json({ on_duty: [] });
+          q.site_id = { $in: [...scopedIds] };
+        }
         const rows = await svc.entities.VL360DutySession.filter(q).catch(() => []);
         return Response.json({ on_duty: (rows || []).map((d: any) => ({ user_id: d.user_id, user_name: d.user_name, site_id: d.site_id, site_name: d.site_name, started_at: d.started_at })) });
       }
