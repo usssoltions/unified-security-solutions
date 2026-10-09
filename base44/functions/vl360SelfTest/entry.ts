@@ -74,7 +74,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // ── 2. Site-scope derivation (real helper) ──
     const adminSites = await scopedSites(svc, profAdminA, true, CUST_A);
-    check('admin sees all ACTIVE customer sites', adminSites.length === 1 && adminSites[0].id === siteA1.id, adminSites);
+    const adminSiteIds = new Set(adminSites.map((s: any) => s.id));
+    check('admin sees all ACTIVE customer sites', adminSiteIds.has(siteA1.id) && adminSiteIds.has(siteA3.id) && !adminSiteIds.has(siteA2.id) && adminSites.length === 2, adminSites);
     const g1Sites = await scopedSites(svc, profGuard1, false, CUST_A);
     check('guard scoped to assigned ACTIVE site only', g1Sites.length === 1 && g1Sites[0].id === siteA1.id, g1Sites);
     const g2Sites = await scopedSites(svc, profGuard2, false, CUST_A);
