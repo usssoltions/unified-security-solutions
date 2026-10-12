@@ -17,7 +17,8 @@
       "type": "string"
     },
     "first_names": {
-      "type": "string"
+      "type": "string",
+      "description": "Full first names. Never populated from a truncated barcode decode \u2014 unreliable scanned values are left blank and flagged (first_names_needs_review) rather than stored."
     },
     "id_number": {
       "type": "string",
@@ -42,6 +43,38 @@
     },
     "cellphone": {
       "type": "string"
+    },
+    "first_names_needs_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "INTERNAL: a truncated barcode-decode fragment was found in first_names and cleared during the 2026-10-12 scan-fragment repair. The field is blank until a verified complete value is entered from the document \u2014 no name is ever invented for it."
+    },
+    "repair_history": {
+      "type": "array",
+      "default": [],
+      "description": "Append-only audit of scan-integrity repairs applied to this profile: what was cleared, when, by whom, why, and the previous unreliable value (kept within the record's own audit for traceability).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "by_name": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "previous_value": {
+            "type": "string",
+            "description": "The unreliable value that was cleared."
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
     },
     "id_front_url": {
       "type": "string",

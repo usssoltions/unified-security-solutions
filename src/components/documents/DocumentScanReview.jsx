@@ -8,6 +8,7 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, RefreshCw, X, ChevronDown, ChevronUp, User, FileWarning, IdCard, QrCode, Loader2 } from "lucide-react";
+import { FRAGMENT_RE } from "@/lib/scanIntegrity";
 
 const HIDDEN_KEYS = new Set(["_raw"]);
 // SADL image fields rendered as the photo (handled separately) — never as text.
@@ -18,7 +19,8 @@ const HIDDEN_PARSED_KEYS = ["imagerawbase64", "image width", "image height"];
 // fragments such as "…OF…" or "…5097…" in place of complete values. The
 // display layer never clips these — they ARE the decoded data — so they must
 // be flagged at review time and never treated as complete details.
-const FRAGMENT_RE = /(\.{3,}|\u2026)/;
+// FRAGMENT_RE now lives in @/lib/scanIntegrity — shared with the attendance
+// scan-accept guard so review and form population agree on what is complete.
 const CRITICAL_FIELDS = {
   drivers_licence: ["surname", "driver_licence_number"],
   sa_id: ["surname", "visitor_id_number"],

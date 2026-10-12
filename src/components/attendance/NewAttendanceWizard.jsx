@@ -23,6 +23,7 @@ import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { todayISO, localTimeStr } from "@/lib/attendanceDropdowns";
 import { canLoadImage } from "@/lib/imageReload";
+import { assessScannedIdentity } from "@/lib/scanIntegrity";
 
 const STEPS = [
   { id: 1, label: "Scan Document", icon: ScanLine },
@@ -73,6 +74,10 @@ export default function NewAttendanceWizard({
   const [licenceMissingFirstNames, setLicenceMissingFirstNames] = useState(false);
   const [existingWorker, setExistingWorker] = useState(null); // null=unknown, false=new, {...}=found
   const [workerLookupDone, setWorkerLookupDone] = useState(false);
+  // INCOMPLETE-SCAN GUARD: identity fields the barcode only partially decoded
+  // (ellipsis-masked fragments) — left blank in the form, never filled with
+  // masked values, flagged here for rescan or verified manual completion.
+  const [scanIssues, setScanIssues] = useState([]);
 
   // Form fields for profile
   const [surname, setSurname] = useState("");
@@ -117,22 +122,37 @@ export default function NewAttendanceWizard({
     const mf = mappedFields;
     if (!mf) { setStep(2); return; }
 
-    const sn = mf.surname || "";
+    // ── INCOMPLETE-SCAN GUARD (the Samsung-tablet fragment fix) ──
+    // barKoder PDF417 decodes are occasionally PARTIAL and the SDK's own
+    // formatted output then contains ellipsis-masked fragments ("…BEL…",
+    // "…5522…"). Those fragments are NEVER placed in the form: every
+    // candidate identity value is assessed first; an unreliable value is
+    // blanked and flagged (Rescan / manual completion), while a complete
+    // value is used verbatim. Verified details already on file are never
+    // overwritten by an incomplete result and nothing is ever invented.
     // Driver's Licence scans do NOT reliably provide full first names — never
-    // substitute surname/visitor name/initials. Only a dedicated, reliable
-    // first-names value may auto-fill; otherwise First Names stays blank and
-    // the operator enters it manually. SA ID and Passport mapping unchanged.
+    // substitute surname/visitor name/initials; SA ID and Passport unchanged.
     const licenceScan = resolvedProfileId === "drivers_licence";
-    const fn = licenceScan
+    const rawFn = licenceScan
       ? (mf.first_names || "")
       : (mf.first_names || mf.visitor_name || "");
-    const ini = mf.initials || (fn ? fn.split(" ").map(w => w[0]).join("") : "");
-    const idn = mf.visitor_id_number || mf.driver_licence_number || "";
+    const rawIdn = mf.visitor_id_number || mf.driver_licence_number || "";
+    const { fragmented, issues } = assessScannedIdentity(
+      { surname: mf.surname, first_names: rawFn, id_number: rawIdn, initials: mf.initials },
+      resolvedProfileId
+    );
+    const sn = fragmented.surname ? "" : (mf.surname || "").trim();
+    const fn = fragmented.first_names ? "" : rawFn;
+    const idn = fragmented.id_number ? "" : rawIdn;
+    // Initials come only from a clean dedicated value or a CLEAN first-names
+    // value — never derived from masked fragments.
+    const ini = fragmented.initials ? "" : (mf.initials || (fn ? fn.split(" ").map(w => w[0]).join("") : ""));
     const idt = resolvedProfileId === "drivers_licence" ? "drivers_licence"
                : resolvedProfileId === "sa_id" ? "sa_id"
                : resolvedProfileId === "passport_mr" ? "passport"
                : "sa_id";
 
+    setScanIssues(issues);
     setLicenceMissingFirstNames(licenceScan && !fn.trim());
     setSurname(sn);
     setInitials(ini.toUpperCase());
@@ -148,6 +168,14 @@ export default function NewAttendanceWizard({
         const w = res?.worker;
         if (w) {
           setExistingWorker(w);
+          // Verified profile values always win over the scan; a flagged field
+          // the profile fills is no longer incomplete.
+          setScanIssues(issues.filter((label) => !(
+            (label === "Surname" && (w.surname || "").trim()) ||
+            (label === "First names" && (w.first_names || "").trim()) ||
+            (label === "ID / document number" && (w.id_number || "").trim()) ||
+            (label === "Initials" && (w.initials || "").trim())
+          )));
           setSurname(w.surname || sn);
           setInitials(w.initials || ini.toUpperCase());
           setFirstNames(w.first_names || fn);
@@ -162,6 +190,8 @@ export default function NewAttendanceWizard({
         setExistingWorker(false);
       }
     } else {
+      // A fragmented ID number is never used as a lookup key — the operator
+      // completes it manually and goNext re-runs the lookup on the typed value.
       setExistingWorker(false);
     }
     setWorkerLookupDone(true);
@@ -170,6 +200,7 @@ export default function NewAttendanceWizard({
 
   const handleManualEntry = () => {
     setShowScanner(false);
+    setScanIssues([]);
     setExistingWorker(false);
     setLicenceMissingFirstNames(false);
     setWorkerLookupDone(true);
@@ -416,6 +447,21 @@ export default function NewAttendanceWizard({
                 <Eye className="w-4 h-4 shrink-0" />
                 The details below were read from the scanned document. Check every field against the ID document / photo before saving — scanned values are never saved automatically without your review, and you can correct any field here.
               </p>
+            </div>
+          )}
+
+          {scanIssues.length > 0 && (
+            <div className="bg-rose-500/10 border-2 border-rose-500/50 rounded-xl p-3 space-y-2">
+              <p className="text-rose-300 text-sm font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" /> Incomplete scan — {scanIssues.join(", ")} not fully decoded
+              </p>
+              <p className="text-slate-300 text-xs">
+                The scanner read the barcode partially, so these fields were left blank instead of being filled with masked values (for example "…BEL…"). Rescan the document (hold it steady, close to the camera, well lit and flat), or type the details from the document photo. Nothing was invented and any details already on file were kept.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setShowScanner(true)}
+                className="border-rose-500/50 text-rose-300 hover:bg-rose-500/10 h-10">
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Rescan Document
+              </Button>
             </div>
           )}
 

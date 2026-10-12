@@ -20,11 +20,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ScanLine, CheckCircle2, ChevronLeft, ChevronRight, AlertCircle,
-  Loader2, Eye
+  Loader2, Eye, RefreshCw
 } from "lucide-react";
 import DocumentScanner from "@/components/documents/DocumentScanner";
 import IdDocCapture from "./IdDocCapture";
 import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
+import { assessScannedIdentity } from "@/lib/scanIntegrity";
 
 export default function AddWorkerFlow({ mode = "create", worker = null, onDone, onCancel }) {
   const isEdit = mode === "edit";
@@ -50,6 +51,10 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
   // Driver's Licence scans do not reliably provide full first names — when
   // true, the operator must enter them manually before continuing.
   const [licenceMissingFirstNames, setLicenceMissingFirstNames] = useState(false);
+  // INCOMPLETE-SCAN GUARD: fields the barcode only partially decoded — left
+  // blank in the form, never filled with masked values, flagged for rescan
+  // or verified manual completion (same rule as the attendance wizard).
+  const [scanIssues, setScanIssues] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
@@ -63,30 +68,39 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
     } catch { setExisting(null); }
   };
 
-  // ── Scan accept: populate reliably decoded fields for review ──────────────
+  // ── Scan accept: populate ONLY reliably decoded fields for review ────────
   const handleScanAccept = ({ mappedFields, resolvedProfileId }) => {
     setShowScanner(false);
     const mf = mappedFields;
     if (!mf) { setStep(2); return; }
+    // ── INCOMPLETE-SCAN GUARD (same rule as the attendance wizard) ──
+    // Masked / fragmented decode values ("…BEL…") are never placed in the
+    // form: unreliable values are blanked and flagged (Rescan / manual
+    // completion), complete values are used verbatim, verified details on
+    // file are never overwritten and nothing is ever invented.
     // Driver's Licence scans do NOT reliably provide full first names — never
-    // substitute surname/visitor name/initials. Only a dedicated, reliable
-    // first-names value may auto-fill; otherwise First Names stays blank and
-    // the operator enters it manually. SA ID and Passport mapping unchanged.
+    // substitute surname/visitor name/initials. SA ID and Passport unchanged.
     const licenceScan = resolvedProfileId === "drivers_licence";
-    const fn = licenceScan
+    const rawFn = licenceScan
       ? (mf.first_names || "")
       : (mf.first_names || mf.visitor_name || "");
-    const ini = mf.initials || (fn ? fn.split(" ").map(w => w[0]).join("") : "");
-    const idn = mf.visitor_id_number || mf.driver_licence_number || "";
-    const idt = resolvedProfileId === "drivers_licence" ? "drivers_licence"
-      : resolvedProfileId === "sa_id" ? "sa_id"
-      : resolvedProfileId === "passport_mr" ? "passport" : "sa_id";
+    const rawIdn = mf.visitor_id_number || mf.driver_licence_number || "";
+    const { fragmented, issues } = assessScannedIdentity(
+      { surname: mf.surname, first_names: rawFn, id_number: rawIdn, initials: mf.initials },
+      resolvedProfileId
+    );
+    const fn = fragmented.first_names ? "" : rawFn;
+    const ini = fragmented.initials ? "" : (mf.initials || (fn ? fn.split(" ").map(w => w[0]).join("") : ""));
+    const idn = fragmented.id_number ? "" : rawIdn;
+    setScanIssues(issues);
     setLicenceMissingFirstNames(licenceScan && !fn.trim());
-    setSurname(mf.surname || "");
+    setSurname(fragmented.surname ? "" : (mf.surname || "").trim());
     setInitials(ini.toUpperCase());
     setFirstNames(fn);
     setIdNumber(idn);
-    setIdType(idt);
+    setIdType(resolvedProfileId === "drivers_licence" ? "drivers_licence"
+      : resolvedProfileId === "sa_id" ? "sa_id"
+      : resolvedProfileId === "passport_mr" ? "passport" : "sa_id");
     setStep(2);
     if (idn) lookupExisting(idn);
   };
@@ -170,7 +184,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
             <span className="text-slate-500 text-xs">or</span>
             <div className="flex-1 h-px bg-slate-700" />
           </div>
-          <Button variant="outline" onClick={() => setStep(2)} className="w-full h-12 border-slate-600 text-slate-300">
+          <Button variant="outline" onClick={() => { setScanIssues([]); setStep(2); }} className="w-full h-12 border-slate-600 text-slate-300">
             Enter Manually
           </Button>
         </div>
@@ -179,6 +193,21 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
       {/* ── STEP 2: Details ── */}
       {step === 2 && (
         <div className="space-y-4">
+          {scanIssues.length > 0 && (
+            <div className="bg-rose-500/10 border-2 border-rose-500/50 rounded-xl p-3 space-y-2">
+              <p className="text-rose-300 text-sm font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" /> Incomplete scan — {scanIssues.join(", ")} not fully decoded
+              </p>
+              <p className="text-slate-300 text-xs">
+                The scanner read the barcode partially, so these fields were left blank instead of being filled with masked values (for example "…BEL…"). Rescan the document, or type the details from the document photo. Nothing was invented and any details already on file were kept.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setShowScanner(true)}
+                className="border-rose-500/50 text-rose-300 hover:bg-rose-500/10 h-10">
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Rescan Document
+              </Button>
+            </div>
+          )}
+
           {existing && !isEdit && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
               <p className="text-amber-300 text-sm font-semibold flex items-center gap-2">
