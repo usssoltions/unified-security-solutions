@@ -23,7 +23,7 @@ import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { todayISO, localTimeStr } from "@/lib/attendanceDropdowns";
 import { canLoadImage } from "@/lib/imageReload";
-import { assessScannedIdentity } from "@/lib/scanIntegrity";
+import { assessScannedIdentity, looksLikePlaceholder } from "@/lib/scanIntegrity";
 
 const STEPS = [
   { id: 1, label: "Scan Document", icon: ScanLine },
@@ -76,8 +76,10 @@ export default function NewAttendanceWizard({
   const [workerLookupDone, setWorkerLookupDone] = useState(false);
   // INCOMPLETE-SCAN GUARD: identity fields the barcode only partially decoded
   // (ellipsis-masked fragments) — left blank in the form, never filled with
-  // masked values, flagged here for rescan or verified manual completion.
-  const [scanIssues, setScanIssues] = useState([]);
+  // masked values, flagged for rescan or verified manual completion. Stored
+  // as fragmented FIELD KEYS; the visible issue list is recalculated from the
+  // CURRENT form values below, so correcting or rescanning clears stale flags.
+  const [scanFragmented, setScanFragmented] = useState({});
 
   // Form fields for profile
   const [surname, setSurname] = useState("");
@@ -152,7 +154,7 @@ export default function NewAttendanceWizard({
                : resolvedProfileId === "passport_mr" ? "passport"
                : "sa_id";
 
-    setScanIssues(issues);
+    setScanFragmented(fragmented);
     setLicenceMissingFirstNames(licenceScan && !fn.trim());
     setSurname(sn);
     setInitials(ini.toUpperCase());
@@ -170,12 +172,12 @@ export default function NewAttendanceWizard({
           setExistingWorker(w);
           // Verified profile values always win over the scan; a flagged field
           // the profile fills is no longer incomplete.
-          setScanIssues(issues.filter((label) => !(
-            (label === "Surname" && (w.surname || "").trim()) ||
-            (label === "First names" && (w.first_names || "").trim()) ||
-            (label === "ID / document number" && (w.id_number || "").trim()) ||
-            (label === "Initials" && (w.initials || "").trim())
-          )));
+          const profileFilled = { ...fragmented };
+          if ((w.surname || "").trim()) delete profileFilled.surname;
+          if ((w.first_names || "").trim()) delete profileFilled.first_names;
+          if ((w.id_number || "").trim()) delete profileFilled.id_number;
+          if ((w.initials || "").trim()) delete profileFilled.initials;
+          setScanFragmented(profileFilled);
           setSurname(w.surname || sn);
           setInitials(w.initials || ini.toUpperCase());
           setFirstNames(w.first_names || fn);
@@ -200,7 +202,7 @@ export default function NewAttendanceWizard({
 
   const handleManualEntry = () => {
     setShowScanner(false);
-    setScanIssues([]);
+    setScanFragmented({});
     setExistingWorker(false);
     setLicenceMissingFirstNames(false);
     setWorkerLookupDone(true);
@@ -356,14 +358,18 @@ export default function NewAttendanceWizard({
   // cannot continue until First Names is completed manually.
   const firstNamesRequired = licenceMissingFirstNames && idType === "drivers_licence" && !firstNames.trim();
   const step2Valid = surname.trim() && idNumber.trim() && company.trim() && jobDescription.trim() && cellphone.trim() && !firstNamesRequired;
-  // Placeholder / ellipsis guard: "...", "…", "---", "0000000000" style debris
-  // in a required field BLOCKS saving (client AND server-side). The operator's
-  // other entered information is never cleared — only the flagged fields must
-  // be corrected before attendance can be saved.
-  const looksLikePlaceholder = (v) => {
-    const t = String(v || "").trim();
-    return t.length > 0 && (/(\.{2,}|…)/.test(t) || /^[.\-_*\sx0]+$/i.test(t));
-  };
+  // Placeholder / ellipsis guard (shared rule, mirrored server-side in the
+  // attendanceAccess gateway): ellipsis-masked fragments, punctuation-only
+  // values and x/0 filler runs ("xxx", "0000000000") BLOCK saving. Legitimate
+  // single-character initials such as "X" (Xolile) or "O" are NEVER flagged.
+  // The operator's other entered information is never cleared — only the
+  // flagged fields must be corrected before attendance can be saved.
+  const scanIssues = [
+    scanFragmented.surname && !surname.trim() ? "Surname" : null,
+    scanFragmented.first_names && !firstNames.trim() ? "First names" : null,
+    scanFragmented.id_number && !idNumber.trim() ? "ID / document number" : null,
+    scanFragmented.initials && !initials.trim() ? "Initials" : null,
+  ].filter(Boolean);
   const placeholderWarnings = [
     surname.trim() && looksLikePlaceholder(surname) ? "Surname" : null,
     initials.trim() && looksLikePlaceholder(initials) ? "Initials" : null,

@@ -54,7 +54,10 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
   // INCOMPLETE-SCAN GUARD: fields the barcode only partially decoded — left
   // blank in the form, never filled with masked values, flagged for rescan
   // or verified manual completion (same rule as the attendance wizard).
-  const [scanIssues, setScanIssues] = useState([]);
+  // Stored as fragmented FIELD KEYS; the visible issue list is recalculated
+  // from the CURRENT form values below, so correcting or rescanning clears
+  // stale flags.
+  const [scanFragmented, setScanFragmented] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
@@ -92,7 +95,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
     const fn = fragmented.first_names ? "" : rawFn;
     const ini = fragmented.initials ? "" : (mf.initials || (fn ? fn.split(" ").map(w => w[0]).join("") : ""));
     const idn = fragmented.id_number ? "" : rawIdn;
-    setScanIssues(issues);
+    setScanFragmented(fragmented);
     setLicenceMissingFirstNames(licenceScan && !fn.trim());
     setSurname(fragmented.surname ? "" : (mf.surname || "").trim());
     setInitials(ini.toUpperCase());
@@ -108,6 +111,15 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
   // ── Validation (same required fields as the attendance wizard) ────────────
   // Driver's Licence scan without reliable full first names: the operator
   // cannot continue until First Names is completed manually.
+  // Incomplete-scan flags recalculated from CURRENT values: a flagged field
+  // the operator has since completed (or that a profile on file fills) is
+  // no longer incomplete.
+  const scanIssues = [
+    scanFragmented.surname && !surname.trim() ? "Surname" : null,
+    scanFragmented.first_names && !firstNames.trim() ? "First names" : null,
+    scanFragmented.id_number && !idNumber.trim() ? "ID / document number" : null,
+    scanFragmented.initials && !initials.trim() ? "Initials" : null,
+  ].filter(Boolean);
   const firstNamesRequired = licenceMissingFirstNames && idType === "drivers_licence" && !firstNames.trim();
   const detailsValid = surname.trim() && idNumber.trim() && company.trim()
     && jobDescription.trim() && cellphone.trim() && !firstNamesRequired;
@@ -184,7 +196,7 @@ export default function AddWorkerFlow({ mode = "create", worker = null, onDone, 
             <span className="text-slate-500 text-xs">or</span>
             <div className="flex-1 h-px bg-slate-700" />
           </div>
-          <Button variant="outline" onClick={() => { setScanIssues([]); setStep(2); }} className="w-full h-12 border-slate-600 text-slate-300">
+          <Button variant="outline" onClick={() => { setScanFragmented({}); setStep(2); }} className="w-full h-12 border-slate-600 text-slate-300">
             Enter Manually
           </Button>
         </div>

@@ -53,10 +53,21 @@ const OPTION_TYPES = ['medical_centre', 'assessment_type'];
 // profile field is NEVER accepted for a saved record. Values are otherwise
 // stored EXACTLY as entered — no masking, abbreviation or truncation.
 const PLACEHOLDER_ELLIPSIS_RE = /\.{2,}|…/;
-const PLACEHOLDER_ONLY_RE = /^[.\-_*\sx0]+$/i;
+// Filler debris ONLY: punctuation/symbol-only values ("...", "---", "_ _")
+// or x/0 filler runs of 3+ characters ("xxx", "0000000000"). Legitimate
+// single-character initials such as "X" (Xolile) or "O" — and any real name
+// containing an x or 0 among other characters — are NEVER placeholders;
+// values are otherwise stored EXACTLY as entered. Mirrors
+// src/lib/scanIntegrity.js exactly (the backend cannot import src/ modules).
 const looksLikePlaceholder = (v: any): boolean => {
   const t = String(v ?? '').trim();
-  return t.length > 0 && (PLACEHOLDER_ELLIPSIS_RE.test(t) || PLACEHOLDER_ONLY_RE.test(t));
+  if (!t.length) return false;
+  if (PLACEHOLDER_ELLIPSIS_RE.test(t)) return true;
+  const core = t.replace(/[.\-_*\s]/g, '');
+  if (!core.length) return true; // punctuation/symbol-only debris
+  if (/^x{3,}$/i.test(core)) return true;
+  if (/^0{3,}$/.test(core)) return true;
+  return false;
 };
 const placeholderField = (w: any, keys: string[]): string | null => {
   for (const k of keys) {
