@@ -39,7 +39,10 @@ export default function PersonnelSetup({ data, onChanged }) {
       personnel_id: u.vl_profile?.personnel_id || "",
       vl_role: u.vl_profile?.vl_role || "guard",
       telegram_username: u.vl_profile?.telegram_username || "",
-      contact_link: "", // only filled when changing the destination
+      // Prefill the STORED destination (the gateway read shape now includes
+      // contact_link) so a saved link is visible on reopen. Clearing the
+      // field and saving removes it; saving unchanged revalidates the same link.
+      contact_link: u.vl_profile?.contact_link || "",
     });
     setError(null); setSaved(false);
   };
@@ -106,8 +109,8 @@ export default function PersonnelSetup({ data, onChanged }) {
               <Label className="text-slate-300 text-xs">Individual Conversation Destination</Label>
               <Input value={form.contact_link} onChange={(e) => setForm({ ...form, contact_link: e.target.value })}
                 className="bg-slate-950 border-slate-700 text-white" placeholder="https://t.me/… or tg://resolve?domain=…" />
-              {editing?.vl_profile?.contact_link && !form.contact_link && (
-                <p className="text-[11px] text-slate-500">Current: {editing.vl_profile.contact_link} ({editing.vl_profile.contact_status}) — leave blank to keep.</p>
+              {editing?.vl_profile?.contact_link && (
+                <p className="text-[11px] text-slate-500">Stored destination ({editing.vl_profile.contact_status}). Clear the field and save to remove it.</p>
               )}
             </div>
             {sites.length > 0 && editing && (

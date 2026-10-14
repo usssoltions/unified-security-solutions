@@ -3,7 +3,7 @@ import { entitlementIsActiveNow, customerModuleLicensed } from '../../shared/ent
 import { isPlatformAdmin, isResellerAdmin, userName } from '../../shared/gatewayRoles.ts';
 import {
   VL_MODULE_KEY, VL_ROLES, VL_ROLE_LABELS, isVlRole, vlRoleForPlatformRole,
-  validateTelegramDest, validatePhoneNumber, actorName,
+  validateTelegramDest, validatePhoneNumber, actorName, publicProfile,
 } from '../../shared/vl360Core.ts';
 import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic, vlIsSiteAdmin } from '../../shared/vl360Scope.ts';
 
@@ -51,17 +51,6 @@ async function ensureProfile(svc: any, user: any, customerId: string, resellerId
 
 async function logActivity(svc: any, entry: Record<string, any>) {
   try { await svc.entities.VL360Activity.create(entry); } catch (_) { /* audit is best-effort */ }
-}
-
-function publicProfile(p: any) {
-  if (!p) return null;
-  return {
-    user_id: p.user_id, vl_role: p.vl_role, vl_role_label: VL_ROLE_LABELS[p.vl_role] || p.vl_role,
-    enabled: p.enabled !== false, personnel_id: p.personnel_id || null,
-    contact_status: p.contact_status || 'unconfigured',
-    external_calling_enabled: !!p.external_calling_enabled,
-    management_powers: !!p.management_powers, telegram_username: p.telegram_username || null,
-  };
 }
 
 async function targetUserIsProtected(svc: any, userId: string): Promise<boolean> {

@@ -19,7 +19,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import { customerModuleLicensed } from '../../shared/entitlementActive.ts';
 import { scopedSites, activeDuty, vlWideGroupAllowed, vlWideGroupScopeOk, vlWideGroupSitesOk, startDutySessionAtomic, vlIsSiteAdmin } from '../../shared/vl360Scope.ts';
-import { validateTelegramDest, validatePhoneNumber, isVlRole, VL_ROLES } from '../../shared/vl360Core.ts';
+import { validateTelegramDest, validatePhoneNumber, isVlRole, VL_ROLES, publicProfile } from '../../shared/vl360Core.ts';
 
 const CUST_A = 'vl360selftest-cust-a'; // licensed synthetic tenant
 const CUST_B = 'vl360selftest-cust-b'; // unlicensed synthetic tenant
@@ -158,6 +158,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
     check('phone leading zero ok', validatePhoneNumber('021 555-0100').ok === true);
     check('phone letters rejected', validatePhoneNumber('call support').ok === false);
     check('phone injection chars rejected', validatePhoneNumber('<script>').ok === false);
+
+    // ── 5b. Profile save → read roundtrip (the 2026-10-14 defect: the read
+    // shape omitted contact_link, so a saved Individual Conversation
+    // Destination appeared blank on reopen). Uses the REAL read shape the
+    // gateway returns to administrators, for BOTH a guard and a
+    // control-room-operator profile, and proves an assignment replace
+    // (the exact write save_assignments performs) never touches the profile. ──
+    const stDest = 'https://t.me/vl360stdest1';
+    await svc.entities.VL360Profile.update(profGuard1.id, { contact_link: stDest, contact_status: 'configured', telegram_username: 'vl360stdest1' });
+    const g1Read = publicProfile((await svc.entities.VL360Profile.filter({ user_id: 'vl360st-guard-1', customer_id: CUST_A }).catch(() => []))[0]);
+    check('saved destination VISIBLE on read (guard)', g1Read?.contact_link === stDest && g1Read?.contact_status === 'configured', g1Read);
+    // Assignment replace — deleteMany + recreate, exactly what save_assignments does:
+    await svc.entities.VL360SiteAssignment.deleteMany({ customer_id: CUST_A, user_id: 'vl360st-guard-1', kind: 'personnel' }).catch(() => {});
+    track('VL360SiteAssignment', await svc.entities.VL360SiteAssignment.create({ customer_id: CUST_A, user_id: 'vl360st-guard-1', site_id: siteA1.id, kind: 'personnel' }));
+    const g1AfterAsg = (await svc.entities.VL360Profile.filter({ user_id: 'vl360st-guard-1', customer_id: CUST_A }).catch(() => []))[0];
+    check('assignment save PRESERVES destination (guard)', g1AfterAsg?.contact_link === stDest, g1AfterAsg?.contact_link);
+    await svc.entities.VL360Profile.update(profCtrl.id, { contact_link: 'tg://resolve?domain=vl360stctrl', contact_status: 'configured' });
+    const ctrlRead = publicProfile((await svc.entities.VL360Profile.filter({ user_id: 'vl360st-ctrl-1', customer_id: CUST_A }).catch(() => []))[0]);
+    check('saved destination VISIBLE on read (control room operator)', ctrlRead?.contact_link === 'tg://resolve?domain=vl360stctrl', ctrlRead);
+    check('publicProfile never hides contact_link', publicProfile({ user_id: 'x', vl_role: 'guard', contact_link: 'https://t.me/vl360stdest1', contact_status: 'confirmed' })?.contact_link === 'https://t.me/vl360stdest1');
 
     // ── 6. Cross-tenant data isolation ──
     const contactA = track('VL360PhoneContact', await svc.entities.VL360PhoneContact.create({ customer_id: CUST_A, label: 'VL360ST Control Room', number: '021 555 0100' }));

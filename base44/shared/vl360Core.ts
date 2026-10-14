@@ -83,6 +83,24 @@ export function validatePhoneNumber(raw: string): { ok: boolean; number?: string
   return { ok: true, number: s };
 }
 
+/** The UI read shape of a VL360Profile. Returned ONLY to the profile's own
+ *  user (bootstrap) or to VoiceLink administrators (get_profile,
+ *  admin_list_users, save_profile, confirm_contact_setup). contact_link IS
+ *  included so a saved destination stays visible on reopen — omitting it
+ *  made the Configure form show a blank Individual Conversation Destination
+ *  even though the link was stored (2026-10-14 defect). */
+export function publicProfile(p: any): Record<string, any> | null {
+  if (!p) return null;
+  return {
+    user_id: p.user_id, vl_role: p.vl_role, vl_role_label: VL_ROLE_LABELS[p.vl_role] || p.vl_role,
+    enabled: p.enabled !== false, personnel_id: p.personnel_id || null,
+    contact_status: p.contact_status || 'unconfigured',
+    contact_link: p.contact_link || null,
+    external_calling_enabled: !!p.external_calling_enabled,
+    management_powers: !!p.management_powers, telegram_username: p.telegram_username || null,
+  };
+}
+
 /** Safe, always-present actor display name. */
 export function actorName(u: any): string {
   return (u && (u.display_name || u.full_name || u.email)) || '—';
