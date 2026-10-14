@@ -22,8 +22,14 @@ export function vlIsSiteAdmin(profile: any, platformAdmin = false): boolean {
   return platformAdmin === true || profile?.vl_role === 'customer_admin';
 }
 
-export async function scopedSites(svc: any, profile: any, isVlAdmin: boolean, customerId: string) {
-  if (isVlAdmin) {
+export async function scopedSites(svc: any, profile: any, isVlAdmin: boolean, customerId: string, platformAdmin = false) {
+  // Administrators (VoiceLink customer_admin or platform administration) hold
+  // whole-customer site scope — the same rule vlIsSiteAdmin applies. Their own
+  // profile role or personal assignments must never narrow the admin site list
+  // (2026-10-14 fix: a platform admin operating a selected customer was served
+  // an empty assignment scope, hiding existing active sites from the
+  // Personnel/Controllers assignment controls).
+  if (isVlAdmin || platformAdmin) {
     const sites = await svc.entities.Site.filter({ customer_id: customerId, status: 'active' }).catch(() => []);
     return (sites || []).map((s: any) => ({ id: s.id, name: s.name }));
   }

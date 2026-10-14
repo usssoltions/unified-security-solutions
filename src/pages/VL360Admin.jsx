@@ -11,6 +11,7 @@ import OperationalContacts from "@/components/vl360/admin/OperationalContacts";
 import SetupChecks from "@/components/vl360/admin/SetupChecks";
 import Offboarding from "@/components/vl360/admin/Offboarding";
 import ModuleSettings from "@/components/vl360/admin/ModuleSettings";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { vl360Invoke, vl360Key } from "@/lib/vl360Api";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
@@ -29,7 +30,7 @@ export default function VL360Admin() {
   const isFullAdmin = ctx.data?.role === "customer_admin";
   const canOperate = isFullAdmin || isPlatformAdminUser(ctx.user);
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, refetch, isError, error } = useQuery({
     queryKey: vl360Key(["admin"]),
     queryFn: async () => vl360Invoke({ action: "admin_list_users" }),
     enabled: !!ctx.data,
@@ -45,6 +46,11 @@ export default function VL360Admin() {
         </div>
       ) : isLoading ? (
         <div className="flex justify-center py-10"><div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" /></div>
+      ) : isError ? (
+        <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 space-y-2">
+          <p className="text-sm text-rose-200">Could not load VoiceLink 360 administration data{error?.message ? ` — ${error.message}` : ""}. Assignment lists are unavailable until this loads.</p>
+          <Button size="sm" variant="outline" onClick={() => refetch()} className="border-rose-400/50 text-rose-200">Retry</Button>
+        </div>
       ) : (
         <Tabs defaultValue="personnel" className="w-full">
           <TabsList className="bg-slate-800/50 flex-wrap h-auto gap-1 w-full">

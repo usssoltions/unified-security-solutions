@@ -139,7 +139,7 @@ export default async function(req: Request): Promise<Response> {
     }
     const isVlAdmin = profile.vl_role === 'customer_admin';
     const canManage = isVlAdmin || platformAdmin || (!!profile.management_powers && profile.vl_role === 'supervisor');
-    const sites = await scopedSites(svc, profile, isVlAdmin, customerId);
+    const sites = await scopedSites(svc, profile, isVlAdmin, customerId, platformAdmin);
     const scopedIds = new Set(sites.map((s: any) => s.id));
     const actor = actorName(caller);
     const nowIso = () => new Date().toISOString();
