@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import ForegroundAlertBanner from "@/components/notifications/ForegroundAlertBanner";
-import PushPermissionManager from "@/components/notifications/PushPermissionManager";
 import IncidentEscalationMonitor from "@/components/incidents/IncidentEscalationMonitor";
 import RealTimeAlertMonitor from "@/components/alerts/RealTimeAlertMonitor";
 import GlobalPanicButton from "@/components/GlobalPanicButton";
@@ -532,7 +531,6 @@ export default function Layout({ children, currentPageName }) {
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
           <ForegroundAlertBanner user={user} />
-          {!accessControlOnly && <PushPermissionManager variant="prompt" user={user} />}
 
 
           <DeviceGate user={user}>

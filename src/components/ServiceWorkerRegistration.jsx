@@ -5,15 +5,11 @@ import { useEffect } from 'react';
  * - Registers /sw.js once at app boot
  * - Activates updates immediately via SKIP_WAITING
  * - Registers background + periodic sync tags
- * - Requests Notification permission early
  */
+// Notification permission is NEVER requested here: it fires only from the
+// explicit "Enable Notifications" button on Profile → Push Notifications.
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
-    // Request notification permission as early as possible (before any user interaction required)
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-
     if (!('serviceWorker' in navigator)) return;
 
     // In dev mode: unregister all service workers and clear caches to prevent
