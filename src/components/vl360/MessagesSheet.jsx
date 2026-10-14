@@ -33,7 +33,9 @@ export default function MessagesSheet({ open, onClose, currentSiteId }) {
       <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-sky-400" /> Messages</DialogTitle>
-          <DialogDescription className="text-slate-400">Choose a destination — the conversation opens in Telegram.</DialogDescription>
+          <DialogDescription className="text-slate-400">
+            Choose a destination — the conversation opens in Telegram. After your conversation, use Recent Apps to return to USS.
+          </DialogDescription>
         </DialogHeader>
         {outcome && <DestinationOutcome outcome={outcome} onCallControlRoom={() => go("control_room", "control_room")} onDismiss={() => setOutcome(null)} />}
         <div className="space-y-2">

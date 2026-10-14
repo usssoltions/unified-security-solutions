@@ -57,6 +57,9 @@ export default function ColleagueActionsSheet({ colleague, onClose }) {
           <p className="text-xs text-slate-500 text-center pt-1">
             Opens the conversation. Tap Call or Video inside Telegram.
           </p>
+          <p className="text-xs text-slate-500 text-center">
+            After your conversation, use Recent Apps to return to USS.
+          </p>
         </div>
       </DialogContent>
     </Dialog>

@@ -3,6 +3,7 @@ import { useVL360 } from "@/hooks/useVL360";
 import VL360Shell from "@/components/vl360/VL360Shell";
 import DutyControls from "@/components/vl360/DutyControls";
 import DestinationOutcome from "@/components/vl360/DestinationOutcome";
+import ControlRoomActionsSheet from "@/components/vl360/ControlRoomActionsSheet";
 import MessagesSheet from "@/components/vl360/MessagesSheet";
 import { Button } from "@/components/ui/button";
 import { Loader2, Radio, Users, MessagesSquare, Siren, MoreHorizontal, PhoneCall } from "lucide-react";
@@ -23,6 +24,7 @@ export default function VL360GuardHome() {
   const [outcome, setOutcome] = useState(null);
   const [busy, setBusy] = useState(null);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const [controlRoomOpen, setControlRoomOpen] = useState(false);
 
   const data = ctx.data || {};
   const profile = data.profile || {};
@@ -41,7 +43,10 @@ export default function VL360GuardHome() {
     } finally { setBusy(null); }
   };
 
-  const callControlRoom = () => open("control_room", "control_room");
+  // The control-room contact offers the same three choices as an individual
+  // colleague (Voice Call / Video Call / Send Message) instead of opening
+  // Telegram immediately.
+  const callControlRoom = () => setControlRoomOpen(true);
 
   return (
     <VL360Shell ctx={ctx} title="VoiceLink 360" subtitle={data.role_label || "Communications"}>
@@ -59,7 +64,9 @@ export default function VL360GuardHome() {
 
       {outcome && <DestinationOutcome outcome={outcome} onCallControlRoom={callControlRoom} onDismiss={() => setOutcome(null)} />}
 
-      <p className="text-xs text-slate-500 text-center">Opens the conversation. Tap Call to connect.</p>
+      <p className="text-xs text-slate-500 text-center">
+        Opens the conversation. Tap Call to connect. After your conversation, use Recent Apps to return to USS.
+      </p>
 
       <div className="space-y-3">
         {[
@@ -67,7 +74,7 @@ export default function VL360GuardHome() {
           { key: "site_group", label: "Call Site Group", icon: Users, disabled: noSite },
           { key: "emergency_group", label: "Call Emergency Team", icon: Siren, disabled: noSite },
         ].map(({ key, label, icon: Icon, disabled }) => (
-          <Button key={key} onClick={() => open(key, key)} disabled={disabled || !!busy}
+          <Button key={key} onClick={() => key === "control_room" ? callControlRoom() : open(key, key)} disabled={disabled || !!busy}
             className="w-full h-14 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-base font-semibold active:scale-[0.98] transition-transform">
             {busy === key ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Icon className="w-5 h-5 mr-2 text-sky-400" />}
             {label}
@@ -98,6 +105,8 @@ export default function VL360GuardHome() {
       </div>
 
       <MessagesSheet open={messagesOpen} onClose={() => setMessagesOpen(false)} currentSiteId={currentSiteId} />
+
+      <ControlRoomActionsSheet siteId={currentSiteId} open={controlRoomOpen} onClose={() => setControlRoomOpen(false)} />
     </VL360Shell>
   );
 }

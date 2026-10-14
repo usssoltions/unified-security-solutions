@@ -79,7 +79,19 @@ export async function openDestination(target) {
   }
   if (d?.error) throw new Error(d.error);
   if (d?.link) {
-    window.location.href = d.link;
+    // Preserve the USS page: prefer opening Telegram in a NEW browsing context
+    // so the handoff never replaces this document (browser/PWA mode keeps the
+    // login session, current screen and selected site intact, and Back /
+    // Recent Apps returns to USS). The Android wrapper intercepts the
+    // navigation in shouldOverrideUrlLoading and keeps USS in its WebView
+    // either way. If the browser blocks the popup (the gateway roundtrip
+    // consumes the user activation), fall back to same-context navigation.
+    let handed = false;
+    try {
+      const nativeApp = !!window.AndroidBridge?.isNativeApp?.();
+      if (!nativeApp) handed = !!window.open(d.link, "_blank");
+    } catch (_) { handed = false; }
+    if (!handed) window.location.href = d.link;
     return { ...d, handed_off: true };
   }
   return d;
