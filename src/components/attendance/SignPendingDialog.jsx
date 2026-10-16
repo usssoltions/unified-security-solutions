@@ -8,6 +8,12 @@
  * re-validates scope, the pending state, the confirmed identity and that no
  * signature exists yet — an existing signature is never replaced and no new
  * visit is ever created.
+ *
+ * SAFE RETRY: the drawn signature stays on the pad while saving (an overlay
+ * spinner covers it, it is never unmounted), and a failed/timed-out save is
+ * re-checked against THIS exact record before reporting failure — an attempt
+ * that committed server-side during a timeout is reported as success, never
+ * double-signed and never duplicated.
  */
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +24,15 @@ import { attendanceCall } from "@/lib/attendanceApi";
 export default function SignPendingDialog({ record, onClose, onSigned }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // Recheck THIS exact record: did a timed-out attempt actually land?
+  const recheckCommitted = async () => {
+    try {
+      const res = await attendanceCall("get_record", { record_id: record.id });
+      if (res?.record?.signature_status === "signed") return true;
+    } catch { /* fall through to the visible error */ }
+    return false;
+  };
 
   const handleAccept = async (dataUrl) => {
     if (saving) return;
@@ -35,7 +50,18 @@ export default function SignPendingDialog({ record, onClose, onSigned }) {
         onSigned(record);
       }
     } catch (e) {
-      setError(e?.message || "Failed to save the signature. Please try again.");
+      // Timeout / network failure: the backend may have committed — recheck
+      // before reporting failure. On a genuine failure the drawing is still
+      // on the pad (never cleared) and can be retried safely.
+      const recovered = await recheckCommitted();
+      if (recovered) {
+        onSigned(record);
+      } else {
+        setError(
+          (e?.message || "Failed to save the signature.") +
+          " Your signature is still on the pad — press Accept Signature to try again.",
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -85,13 +111,17 @@ export default function SignPendingDialog({ record, onClose, onSigned }) {
           </div>
         )}
 
-        {saving ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-7 h-7 text-slate-400 animate-spin" />
-          </div>
-        ) : (
-          <AttendanceSignaturePad onAccept={handleAccept} onCancel={onClose} />
-        )}
+        {/* The pad stays mounted while saving — the drawn signature is never
+            lost behind a spinner; the overlay only blocks further touches. */}
+        <div className="relative">
+          {saving && (
+            <div className="absolute inset-0 z-10 rounded-xl bg-black/50 flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-7 h-7 text-slate-300 animate-spin" />
+              <p className="text-slate-300 text-xs">Saving signature…</p>
+            </div>
+          )}
+          <AttendanceSignaturePad onAccept={handleAccept} onCancel={saving ? null : onClose} />
+        </div>
       </div>
     </div>
   );

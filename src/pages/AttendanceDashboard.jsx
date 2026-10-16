@@ -11,6 +11,7 @@ import { useBranding } from "@/hooks/useBranding";
 import AttendanceBrandingHeader from "@/components/attendance/AttendanceBrandingHeader";
 import NewAttendanceWizard from "@/components/attendance/NewAttendanceWizard";
 import SignPendingDialog from "@/components/attendance/SignPendingDialog";
+import AttendanceLoadError from "@/components/attendance/AttendanceLoadError";
 import { attendanceCall } from "@/lib/attendanceApi";
 import { todayISO } from "@/lib/attendanceDropdowns";
 
@@ -23,10 +24,12 @@ export default function AttendanceDashboard() {
   // Authoritative tenant context — the attendanceAccess gateway resolves the
   // caller's tenant server-side from their User record (no client trust, no
   // JWT custom claims) and enforces the ATTENDANCE_REGISTER module licence.
-  const { data: ctx } = useQuery({
+  // retry:false — fail fast to a clear error screen instead of stacking
+  // retries behind a stalled connection (endless-spinner prevention).
+  const { data: ctx, isError: ctxError, refetch: refetchCtx } = useQuery({
     queryKey: ["att_context"],
     queryFn: () => attendanceCall("get_context"),
-    staleTime: 60000,
+    staleTime: 60000, retry: false,
   });
 
   const { data: branding } = useBranding(ctx?.customer_id, ctx?.reseller_id);
@@ -55,9 +58,10 @@ export default function AttendanceDashboard() {
     enabled: !!ctx?.authorized, staleTime: 60000,
   });
 
+  // Count only — no worker records, no ID photos, no signed-url generation.
   const { data: workerCount = 0 } = useQuery({
     queryKey: ["att_workers_count"],
-    queryFn: () => attendanceCall("list_workers", { active_only: true }).then(r => (r.workers || []).length),
+    queryFn: () => attendanceCall("count_workers").then(r => r.active ?? 0),
     enabled: !!ctx?.authorized, staleTime: 120000,
   });
 
@@ -156,6 +160,10 @@ export default function AttendanceDashboard() {
         </div>
       </div>
     );
+  }
+
+  if (ctxError) {
+    return <AttendanceLoadError onRetry={() => refetchCtx()} />;
   }
 
   if (!ctx) {

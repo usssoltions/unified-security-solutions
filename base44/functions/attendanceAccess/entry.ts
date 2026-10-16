@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 
 /**
  * attendanceAccess — the SOLE authorized data gateway for the Attendance
@@ -188,8 +188,11 @@ export default async function main(req: Request): Promise<Response> {
     if (/^https?:\/\//.test(ref)) return ref;
     try {
       const r = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({ file_uri: ref, expires_in: 3600 });
-      return r?.signed_url || null;
-    } catch { return null; }
+      return r?.signed_url || r?.data?.signed_url || null;
+    } catch (e) {
+      console.warn('CreateFileSignedUrl failed', ref, String(e && e.message || e).slice(0, 200));
+      return null;
+    }
   };
   const workerView = async (w: any) => w ? { ...w, id_front_view_url: await signRef(w.id_front_url), id_back_view_url: await signRef(w.id_back_url) } : w;
   const recordView = async (r: any) => r ? { ...r, id_photo_front_view_url: await signRef(r.id_photo_front_url), id_photo_back_view_url: await signRef(r.id_photo_back_url) } : r;
@@ -368,7 +371,44 @@ export default async function main(req: Request): Promise<Response> {
         const q = scopeQuery();
         if (params.active_only) q.status = 'active';
         const workers = await base44.asServiceRole.entities.AttendanceWorker.filter(q, '-created_date', 1000);
-        return Response.json({ workers: await Promise.all((workers || []).map(workerView)) });
+        // LIGHTWEIGHT LISTS: signed photo urls are minted ONLY when explicitly
+        // requested (with_photos) — a directory of 270 workers previously
+        // generated 200+ CreateFileSignedUrl calls per request (6s+ server
+        // time, 393KB response), which stalled dashboards and starved other
+        // gateway calls while signatures were being collected. Ordinary lists
+        // return the stored refs only; the single-worker view (get_worker)
+        // signs photos on demand.
+        if (params.with_photos) {
+          return Response.json({ workers: await Promise.all((workers || []).map(workerView)) });
+        }
+        return Response.json({ workers: (workers || []).map((w) => ({ ...w, id_front_view_url: null, id_back_view_url: null })) });
+      }
+
+      // Count only — no records, no photos (dashboard stat).
+      case 'count_workers': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        const q = scopeQuery();
+        const [active, inactive] = await Promise.all([
+          base44.asServiceRole.entities.AttendanceWorker.count({ ...q, status: 'active' }),
+          base44.asServiceRole.entities.AttendanceWorker.count({ ...q, status: 'inactive' }),
+        ]);
+        return Response.json({ active: active ?? 0, inactive: inactive ?? 0 });
+      }
+
+      // Single worker WITH signed photo urls (detail view / edit prefill).
+      // Cross-tenant ids fail closed.
+      case 'get_worker': {
+        const denied = requireAuthorized();
+        if (denied) return denied;
+        if (!params.worker_id) return err('A worker id is required.');
+        const worker = await base44.asServiceRole.entities.AttendanceWorker.get(params.worker_id).catch(() => null);
+        if (!worker) return err('Worker not found in your scope.', 404);
+        const inScope = scope.customer_id
+          ? worker.customer_id === scope.customer_id
+          : scope.reseller_id ? worker.reseller_id === scope.reseller_id : true;
+        if (!inScope) return err('Worker not found in your scope.', 404);
+        return Response.json({ worker: await workerView(worker) });
       }
 
       case 'find_worker': {

@@ -14,6 +14,7 @@ import { generateOfficialRegisterPdf, generateIndividualAttendancePdf, downloadB
 import { generateOfficialRegisterExcel, attendanceRegisterFilename } from "@/lib/attendanceExcel";
 import { useBranding } from "@/hooks/useBranding";
 import { attendanceCall, withSignatures } from "@/lib/attendanceApi";
+import AttendanceLoadError from "@/components/attendance/AttendanceLoadError";
 import { dateRangeISO } from "@/lib/attendanceDropdowns";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -52,10 +53,11 @@ export default function AttendanceRecords() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: ctx } = useQuery({
+  // retry:false — fail fast to a clear error screen (no endless spinner).
+  const { data: ctx, isError: ctxError, refetch: refetchCtx } = useQuery({
     queryKey: ["att_context"],
     queryFn: () => attendanceCall("get_context"),
-    staleTime: 60000,
+    staleTime: 60000, retry: false,
   });
   const { data: branding } = useBranding(ctx?.customer_id, ctx?.reseller_id);
 
@@ -202,6 +204,10 @@ export default function AttendanceRecords() {
     queryClient.invalidateQueries({ queryKey: ["att_month_count"] });
     toast({ title: "Signature captured", description: "The attendance visit is now signed." });
   };
+
+  if (ctxError) {
+    return <AttendanceLoadError onRetry={() => refetchCtx()} />;
+  }
 
   if (!ctx) {
     return (

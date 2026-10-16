@@ -13,6 +13,12 @@
  */
 import { base44 } from "@/api/base44Client";
 
+// A stalled mobile/tablet connection must never hang the UI forever: every
+// gateway call races a timeout and fails with a clear, retryable message.
+// All actions are safe to retry — saves are guarded server-side (duplicate
+// visits refused; an existing signature is never replaced).
+const REQUEST_TIMEOUT_MS = 30000;
+
 export async function attendanceCall(action, params = {}) {
   const urlParams = new URLSearchParams(window.location.search);
   const payload = { action, ...params };
@@ -21,7 +27,19 @@ export async function attendanceCall(action, params = {}) {
   if (cid) payload.customer_id = cid;
   if (rid) payload.reseller_id = rid;
 
-  const res = await base44.functions.invoke("attendanceAccess", payload);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("Request timed out — please check your connection and try again.")),
+      REQUEST_TIMEOUT_MS,
+    );
+  });
+  let res;
+  try {
+    res = await Promise.race([base44.functions.invoke("attendanceAccess", payload), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
   const d = res?.data !== undefined ? res.data : res;
   if (d?.error) throw new Error(d.error);
   return d;

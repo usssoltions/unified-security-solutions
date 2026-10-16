@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { generateWorkerIdPdf, downloadBlob } from "@/lib/attendancePdf";
 import { useBranding } from "@/hooks/useBranding";
 import { attendanceCall } from "@/lib/attendanceApi";
+import AttendanceLoadError from "@/components/attendance/AttendanceLoadError";
 import { idTypeLabel, formatDisplayName } from "@/lib/attendanceDropdowns";
 
 export default function AttendanceWorkers() {
@@ -38,18 +39,42 @@ export default function AttendanceWorkers() {
     });
   };
 
-  const { data: ctx } = useQuery({
+  // retry:false — fail fast to a clear error screen (no endless spinner).
+  const { data: ctx, isError: ctxError, refetch: refetchCtx } = useQuery({
     queryKey: ["att_context"],
     queryFn: () => attendanceCall("get_context"),
-    staleTime: 60000,
+    staleTime: 60000, retry: false,
   });
   const { data: branding } = useBranding(ctx?.customer_id, ctx?.reseller_id);
 
+  // Lightweight directory (no ID-photo signed urls — loaded per expanded
+  // profile on demand).
   const { data: workers = [], isLoading } = useQuery({
     queryKey: ["att_workers"],
     queryFn: () => attendanceCall("list_workers").then(r => r.workers || []),
     enabled: !!ctx?.authorized, staleTime: 30000,
   });
+
+  // ID-document photos are loaded lazily for ONE profile at a time (the
+  // expanded card / edit prefill) — never for the whole directory.
+  const [workerPhotos, setWorkerPhotos] = useState({});
+  const [photosLoadingId, setPhotosLoadingId] = useState(null);
+
+  const loadWorkerPhotos = async (w) => {
+    if (workerPhotos[w.id] || photosLoadingId === w.id) return;
+    setPhotosLoadingId(w.id);
+    try {
+      const res = await attendanceCall("get_worker", { worker_id: w.id });
+      if (res?.worker) setWorkerPhotos(prev => ({ ...prev, [w.id]: res.worker }));
+    } catch { /* preview stays unloaded — "Load document preview" retries */ }
+    finally { setPhotosLoadingId(null); }
+  };
+
+  const toggleExpand = (w) => {
+    const isOpen = expanded === w.id;
+    setExpanded(isOpen ? null : w.id);
+    if (!isOpen && w.id_front_url) loadWorkerPhotos(w);
+  };
 
   const { data: allRecords = [] } = useQuery({
     queryKey: ["att_records_all"],
@@ -103,6 +128,10 @@ export default function AttendanceWorkers() {
   };
 
   const formatDate = d => d ? new Date(d).toLocaleDateString("en-ZA") : "—";
+
+  if (ctxError) {
+    return <AttendanceLoadError onRetry={() => refetchCtx()} />;
+  }
 
   if (!ctx) {
     return (
@@ -186,7 +215,7 @@ export default function AttendanceWorkers() {
             return (
               <div key={w.id} className="bg-[var(--surface-card)] rounded-xl border border-[var(--border-default)] overflow-hidden">
                 <button className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-slate-800 transition"
-                  onClick={() => setExpanded(isOpen ? null : w.id)}>
+                  onClick={() => toggleExpand(w)}>
                   <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center shrink-0 mt-0.5">
                     <User className="w-5 h-5 text-slate-400" />
                   </div>
@@ -217,7 +246,7 @@ export default function AttendanceWorkers() {
                       </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <Button variant="outline" onClick={() => setFlow({ mode: "edit", worker: w })}
+                      <Button variant="outline" onClick={() => setFlow({ mode: "edit", worker: workerPhotos[w.id] || w })}
                         className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 h-11">
                         <Pencil className="w-4 h-4 mr-1.5" /> Edit Details
                       </Button>
@@ -243,20 +272,39 @@ export default function AttendanceWorkers() {
                     {/* ID document */}
                     <div>
                       <p className="text-slate-400 text-xs font-semibold mb-2">Identification Document</p>
-                      {w.id_front_url ? (
-                        <div className="space-y-2">
-                          <div className="flex gap-2">
-                            <img src={w.id_front_view_url} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
-                            {w.id_back_url && <img src={w.id_back_view_url} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
+                      {(() => {
+                        if (!w.id_front_url) return <p className="text-slate-500 text-xs italic">No document on file.</p>;
+                        const pw = workerPhotos[w.id] || w;
+                        if (!pw.id_front_view_url) {
+                          return (
+                            <div className="flex items-center gap-2 py-2">
+                              {photosLoadingId === w.id ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 text-slate-500 animate-spin" />
+                                  <p className="text-slate-500 text-xs">Loading document preview…</p>
+                                </>
+                              ) : (
+                                <Button size="sm" variant="outline" onClick={() => loadWorkerPhotos(w)}
+                                  className="border-slate-600 text-slate-300 h-9">
+                                  Load document preview
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <img src={pw.id_front_view_url} alt="ID Front" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />
+                              {w.id_back_url && pw.id_back_view_url && <img src={pw.id_back_view_url} alt="ID Back" className="h-24 rounded-lg object-contain border border-[var(--border-default)] bg-[var(--surface-base)]" />}
+                            </div>
+                            {w.id_captured_at && <p className="text-slate-500 text-xs">Captured {formatDate(w.id_captured_at)}</p>}
+                            <Button onClick={() => handleWorkerPdf(w)} variant="brand" className="h-11">
+                              <Download className="w-4 h-4 mr-1.5" /> Download ID PDF
+                            </Button>
                           </div>
-                          {w.id_captured_at && <p className="text-slate-500 text-xs">Captured {formatDate(w.id_captured_at)}</p>}
-                          <Button onClick={() => handleWorkerPdf(w)} variant="brand" className="h-11">
-                            <Download className="w-4 h-4 mr-1.5" /> Download ID PDF
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-slate-500 text-xs italic">No document on file.</p>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     {/* Attendance history */}
