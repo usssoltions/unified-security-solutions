@@ -32,7 +32,7 @@ import PanicButton from "../components/guard/PanicButton";
 import { cacheLastKnownLocation } from "@/lib/panicService";
 import PatrolAssignmentAlert from "../components/guard/PatrolAssignmentAlert";
 import OfflineSyncManager from "../components/guard/OfflineSyncManager";
-import SystemSetup from "../components/SystemSetup";
+
 import ShiftAcknowledgeModal from "../components/scheduling/ShiftAcknowledgeModal";
 import BatchShiftAcknowledgeModal from "../components/scheduling/BatchShiftAcknowledgeModal";
 import BrandHeader from "@/components/branding/BrandHeader";
@@ -640,7 +640,7 @@ export default function GuardShift() {
           </div>
 
           {/* No active shift setup */}
-          {!activeShift && <SystemSetup />}
+
 
           {/* Upcoming Shifts */}
           {upcomingShifts.length > 0 && (

@@ -55,28 +55,18 @@ export default function OneSignalSetup() {
           allowLocalhostAsSecureOrigin: true,
           serviceWorkerParam: { scope: '/' },
           serviceWorkerPath: 'OneSignalSDKWorker.js',
-          // Always prompt again if user hasn't granted
-          promptOptions: {
-            slidedown: {
-              prompts: [{
-                type: 'push',
-                autoPrompt: true,
-                text: {
-                  actionMessage: 'The app needs push notifications for real-time alerts.',
-                  acceptButton: 'Allow',
-                  cancelButton: 'Later'
-                },
-                delay: { timeDelay: 5, pageViews: 1 }
-              }]
-            }
-          },
+          // NO automatic prompt, ever. Permission is requested only from the
+          // explicit "Enable Notifications" button on Profile → Push
+          // Notifications (manual, user-initiated opt-in).
+          autoPrompt: false,
+          promptOptions: { slidedown: { prompts: [{ type: 'push', autoPrompt: false }] } },
           welcomeNotification: { disable: true },
           notificationClickHandlerMatch: 'origin',
           notificationClickHandlerAction: 'focus'
         });
 
-        // Persist subscription and save player ID
-        await OneSignal.Notifications.requestPermission();
+        // NO automatic permission request here — the OS prompt fires only
+        // when the user taps "Enable Notifications" on Profile.
 
         // Set external user ID so backend can send to all devices
         const currentUser = await base44.auth.me();

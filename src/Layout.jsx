@@ -21,7 +21,6 @@ import GlobalPanicButton from "@/components/GlobalPanicButton";
 import PWAInstaller from "@/components/PWAInstaller";
 import DeviceGate from "@/components/DeviceGate";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
-import PermissionEnforcement from "@/components/PermissionEnforcement";
 import OneSignalSetup from "@/components/OneSignalSetup";
 import BackgroundNotificationManager from "@/components/BackgroundNotificationManager";
 import ThemeProvider from "@/components/ThemeProvider";
@@ -527,7 +526,6 @@ export default function Layout({ children, currentPageName }) {
           <PWAInstaller />
           <OneSignalSetup />
           {user && <BackgroundNotificationManager user={user} />}
-          {user && <PermissionEnforcement />}
           <IncidentEscalationMonitor user={user} />
           <RealTimeAlertMonitor user={user} />
           <ForegroundAlertBanner user={user} />

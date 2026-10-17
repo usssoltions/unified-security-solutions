@@ -102,8 +102,11 @@ export default function BackgroundNotificationManager({ user }) {
           updateBadgeCount();
         }
 
-        // Show native notification when app is hidden
-        if (document.hidden && Notification.permission === 'granted') {
+        // Show native notification when app is hidden (only when the Web
+        // Notification API exists AND permission was actually granted — the
+        // native Android WebView has no Web Notification API, so permission
+        // display there is delivered by the native OneSignal SDK instead).
+        if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             new Notification(`🚨 ${event.data?.title || 'New Alert'}`, {
               body: event.data?.message || '',
@@ -132,7 +135,7 @@ export default function BackgroundNotificationManager({ user }) {
           updateBadgeCount();
         }
 
-        if (document.hidden && Notification.permission === 'granted' && !event.data?.read) {
+        if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted' && !event.data?.read) {
           try {
             new Notification(event.data?.title || brandNameRef.current, {
               body: event.data?.message || '',

@@ -30,6 +30,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import android.util.Pair;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,10 +39,22 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "USSGuard";
     private static final String APP_URL = "https://guard-track-pro-26cedab8.base44.app";
-    private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final int WEB_PERMISSION_REQUEST_CODE = 1002;   // camera / mic (feature-scoped)
+    private static final int GEO_PERMISSION_REQUEST_CODE = 1003;   // location (feature-scoped)
+    private static final int NOTIF_PERMISSION_REQUEST_CODE = 1004; // notifications (Profile opt-in)
 
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
+
+    // ── Feature-scoped permission requests ──────────────────────────────
+    // NO permission is requested at app launch. Camera / microphone / location
+    // are requested ONLY when the web app starts the feature that needs them
+    // (getUserMedia / geolocation), and notifications ONLY when the user taps
+    // "Enable Notifications" on Profile through the JS bridge.
+    private PermissionRequest pendingWebPermission;              // deferred getUserMedia request
+    private List<String> pendingWebGrant = new ArrayList<>();    // WebView resources grantable now
+    private Pair<String, GeolocationPermissions.Callback> pendingGeoCallback; // deferred geolocation
+    private volatile String notificationPermissionResult = null; // bridge result: granted | denied
 
     // File chooser launcher for <input type="file"> in WebView
     private final ActivityResultLauncher<Intent> fileChooserLauncher =
@@ -135,7 +149,12 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ── WebChromeClient — camera, mic, geolocation, file upload
+        // ── WebChromeClient — camera, mic, geolocation, file upload.
+        // Each permission is requested from the USER's feature action: the
+        // page calling getUserMedia or geolocation is the trigger. When the
+        // matching native Android permission is not yet held, it is requested
+        // now (the system dialog explains the feature asking for it), and the
+        // WebView request is granted or denied in onRequestPermissionsResult.
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
@@ -148,26 +167,67 @@ public class MainActivity extends AppCompatActivity {
                         return;
                     }
                     String[] resources = request.getResources();
-                    List<String> granted = new ArrayList<>();
+                    List<String> grantable = new ArrayList<>();
+                    List<String> neededNative = new ArrayList<>();
                     for (String resource : resources) {
-                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
-                            || PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
-                            || PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource)) {
-                            granted.add(resource);
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                            if (ContextCompat.checkSelfPermission(MainActivity.this,
+                                    android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                grantable.add(resource);
+                            } else {
+                                neededNative.add(android.Manifest.permission.CAMERA);
+                            }
+                        } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                            if (ContextCompat.checkSelfPermission(MainActivity.this,
+                                    android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                grantable.add(resource);
+                            } else {
+                                neededNative.add(android.Manifest.permission.RECORD_AUDIO);
+                            }
+                        } else if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource)) {
+                            grantable.add(resource);
                         }
                     }
-                    if (granted.isEmpty()) {
+                    if (grantable.isEmpty() && neededNative.isEmpty()) {
                         request.deny();
-                    } else {
-                        request.grant(granted.toArray(new String[0]));
+                        return;
                     }
+                    if (neededNative.isEmpty()) {
+                        request.grant(grantable.toArray(new String[0]));
+                        return;
+                    }
+                    // Defer: ask the user for the missing native permission —
+                    // the request came from an explicit in-app feature action.
+                    pendingWebPermission = request;
+                    pendingWebGrant = grantable;
+                    ActivityCompat.requestPermissions(MainActivity.this,
+                        neededNative.toArray(new String[0]), WEB_PERMISSION_REQUEST_CODE);
                 });
             }
 
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                // Geolocation only for the exact production origin.
-                callback.invoke(origin, origin != null && origin.startsWith(APP_URL), false);
+                // Geolocation only for the exact production origin, and only
+                // when the user's action triggered it (WebView guarantees
+                // this prompt fires per page request).
+                if (origin == null || !origin.startsWith(APP_URL)) {
+                    callback.invoke(origin, false, false);
+                    return;
+                }
+                boolean fine = ContextCompat.checkSelfPermission(MainActivity.this,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                boolean coarse = ContextCompat.checkSelfPermission(MainActivity.this,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                if (fine || coarse) {
+                    callback.invoke(origin, true, false);
+                    return;
+                }
+                pendingGeoCallback = new Pair<>(origin, callback);
+                ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[]{
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    }, GEO_PERMISSION_REQUEST_CODE);
             }
 
             @Override
@@ -219,8 +279,9 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ── Request runtime permissions ──────────────────────────
-        requestRuntimePermissions();
+        // NO permission is requested at launch — every permission is
+        // feature-scoped (see requestRuntimePermissions removal note on
+        // onPermissionRequest / onGeolocationPermissionsShowPrompt / bridge).
 
         Log.d(TAG, "MainActivity created — WebView ready");
     }
@@ -255,47 +316,95 @@ public class MainActivity extends AppCompatActivity {
                 USSGuardApplication.setExternalId(userId);
             }
         }
-    }
 
-    /**
-     * Requests camera, microphone, location, and notification permissions.
-     */
-    private void requestRuntimePermissions() {
-        List<String> perms = new ArrayList<>();
-
-        for (String p : new String[]{
-            android.Manifest.permission.CAMERA,
-            android.Manifest.permission.RECORD_AUDIO,
-            android.Manifest.permission.ACCESS_FINE_LOCATION,
-            android.Manifest.permission.ACCESS_COARSE_LOCATION
-        }) {
-            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                perms.add(p);
-            }
+        /**
+         * Current notification permission state for THIS Android app context.
+         * "granted" | "denied" | "default" | "unsupported".
+         * Pre-Android-13 devices have no runtime notification toggle —
+         * reported as granted (the OS handles it per-channel).
+         */
+        @JavascriptInterface
+        public String getNotificationPermissionStatus() {
+            if (!isAppOrigin()) return "unsupported";
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "granted";
+            boolean granted = ContextCompat.checkSelfPermission(MainActivity.this,
+                android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+            if (granted) return "granted";
+            // "denied" only when the user has seen and refused the dialog;
+            // a never-asked install reports "default" (still askable).
+            boolean rationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                MainActivity.this, android.Manifest.permission.POST_NOTIFICATIONS);
+            return rationale ? "denied" : "default";
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-                perms.add(android.Manifest.permission.POST_NOTIFICATIONS);
-            }
-        }
-
-        if (!perms.isEmpty()) {
-            ActivityCompat.requestPermissions(this, perms.toArray(new String[0]), PERMISSION_REQUEST_CODE);
+        /**
+         * Requests POST_NOTIFICATIONS from the user's explicit Profile
+         * opt-in. Returns immediately ("granted" | "prompt" | "unsupported");
+         * the result lands in getNotificationPermissionStatus() once the
+         * system dialog is answered.
+         */
+        @JavascriptInterface
+        public String requestNotificationPermission() {
+            if (!isAppOrigin()) return "unsupported";
+            String current = getNotificationPermissionStatus();
+            if (!current.equals("default") && !current.equals("denied")) return current;
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "granted";
+            notificationPermissionResult = null;
+            // The bridge runs on a background JS thread — the permission
+            // request itself must go through the main thread.
+            MainActivity.this.runOnUiThread(() ->
+                ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                    NOTIF_PERMISSION_REQUEST_CODE));
+            return "prompt";
         }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            for (int i = 0; i < grantResults.length; i++) {
-                if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+
+        boolean deniedAny = false;
+        for (int i = 0; i < grantResults.length; i++) {
+            if (grantResults[i] != PackageManager.PERMISSION_GRANTED) deniedAny = true;
+        }
+
+        if (requestCode == WEB_PERMISSION_REQUEST_CODE) {
+            // The deferred WebView getUserMedia request (scanning / calling).
+            if (pendingWebPermission != null) {
+                PermissionRequest req = pendingWebPermission;
+                List<String> grantable = pendingWebGrant;
+                pendingWebPermission = null;
+                pendingWebGrant = new ArrayList<>();
+                if (!deniedAny && !grantable.isEmpty()) {
+                    req.grant(grantable.toArray(new String[0]));
+                } else {
+                    req.deny();
+                }
+            }
+        } else if (requestCode == GEO_PERMISSION_REQUEST_CODE) {
+            // The deferred WebView geolocation prompt (location features).
+            if (pendingGeoCallback != null) {
+                Pair<String, GeolocationPermissions.Callback> geo = pendingGeoCallback;
+                pendingGeoCallback = null;
+                geo.second.invoke(geo.first, !deniedAny, false);
+            }
+        } else if (requestCode == NOTIF_PERMISSION_REQUEST_CODE) {
+            // Profile → "Enable Notifications" (via the JS bridge).
+            notificationPermissionResult = deniedAny ? "denied" : "granted";
+        }
+
+        // Clear denial feedback for every feature-scoped request.
+        if (deniedAny) {
+            for (int i = 0; i < permissions.length; i++) {
+                if (i < grantResults.length && grantResults[i] != PackageManager.PERMISSION_GRANTED) {
                     String label = permissions[i].endsWith("POST_NOTIFICATIONS")
                         ? "Notifications"
+                        : permissions[i].endsWith("CAMERA") ? "Camera"
+                        : permissions[i].endsWith("RECORD_AUDIO") ? "Microphone"
+                        : permissions[i].endsWith("LOCATION") ? "Location"
                         : permissions[i];
-                    Toast.makeText(this, "Permission denied: " + label + ". Some features may not work.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Permission denied: " + label + ". This feature needs it — enable it in settings.", Toast.LENGTH_LONG).show();
                 }
             }
         }
