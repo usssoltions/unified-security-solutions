@@ -5,6 +5,7 @@ import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
 import { loadAutomationSettingsMap, settingsForTenant } from '../../shared/automationSettings.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { additionalEmailsFromSettings, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
 Deno.serve(async (req) => {
@@ -198,6 +199,20 @@ Deno.serve(async (req) => {
                 event_type: 'overdue_patrol', template_name: 'patrol_alert',
               }).catch(err => console.error('Email failed:', err.message))
             ));
+            // ADDITIONAL EMAIL RECIPIENTS — the patrol's OWN tenant's
+            // configured list, EMAIL-ONLY, alongside (never replacing) the
+            // user recipients.
+            for (const extra of additionalEmailsFromSettings(
+                settingsForTenant(settingsMap, scope?.customer_id || null))) {
+              await sendAuditedEmail(base44.asServiceRole, {
+                to: extra,
+                subject: '🚨 Overdue Patrol Alert',
+                html: overdueTpl.html, text: overdueTpl.text,
+                brand: patrolBrand,
+                recipient_name: ADDITIONAL_RECIPIENT_NAME,
+                event_type: 'overdue_patrol', template_name: 'patrol_alert',
+              }).catch(() => {});
+            }
             overdueAlerts++;
           }
           results.overdue_patrols = { checked: startedPatrols.length, alerts: overdueAlerts };
@@ -319,6 +334,20 @@ Deno.serve(async (req) => {
                   event_type: 'missed_clockin', template_name: 'shift_alert',
                 }).catch(err => console.error('Email failed:', err.message));
               }
+            }
+            // ADDITIONAL EMAIL RECIPIENTS — the shift's OWN tenant's
+            // configured list, EMAIL-ONLY, alongside (never replacing) the
+            // user recipients above.
+            for (const extra of additionalEmailsFromSettings(
+                settingsForTenant(settingsMap, shift.customer_id || null))) {
+              await sendAuditedEmail(base44.asServiceRole, {
+                to: extra,
+                subject: '🚨 Missed Clock-In Alert',
+                html: clockinTpl.html, text: clockinTpl.text,
+                brand: clockinBrand,
+                recipient_name: ADDITIONAL_RECIPIENT_NAME,
+                event_type: 'missed_clockin', template_name: 'shift_alert',
+              }).catch(() => {});
             }
             clockinAlerts++;
           }
@@ -579,6 +608,19 @@ Deno.serve(async (req) => {
                   event_type: 'patrol_exception', template_name: 'patrol_alert',
                 }).catch(() => {});
               }
+            }
+            // ADDITIONAL EMAIL RECIPIENTS — the patrol's OWN tenant's
+            // configured list, EMAIL-ONLY, alongside (never replacing) the
+            // user recipients above.
+            for (const extra of additionalEmailsFromSettings(
+                settingsForTenant(settingsMap, patrol.customer_id || null))) {
+              await sendAuditedEmail(base44.asServiceRole, {
+                to: extra, subject: title,
+                html: exTpl.html, text: exTpl.text,
+                brand: exBrand,
+                recipient_name: ADDITIONAL_RECIPIENT_NAME,
+                event_type: 'patrol_exception', template_name: 'patrol_alert',
+              }).catch(() => {});
             }
           };
 
