@@ -51,7 +51,6 @@ export default function OfflineSyncManager() {
             // Checkpoint submissions go through the server-side gateway, which
             // is IDEMPOTENT via submission_key — a retry can never duplicate.
             const res = await base44.functions.invoke("checkpointSubmission", {
-              action: "submit",
               submission_key: record.submission_key,
               patrol: record.patrol,
               completion: record.completion || null,

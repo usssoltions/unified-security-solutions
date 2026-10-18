@@ -343,24 +343,56 @@ export default function QRScanner() {
 
     setSubmitting(true);
 
+    // Client-generated idempotency key, created ONCE per submission: the same
+    // key is sent on every retry or offline sync, and the server gateway can
+    // never duplicate a record — including after a partial server-side save.
+    const submissionKey = `sub-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     try {
       const patrolRecord = {
-        guard_id: user.id,
-        guard_name: user.full_name,
-        shift_id: shift.id,
-        site_id: shift.site_id,
         checkpoint_id: checkpoint.id,
         checkpoint_name: checkpoint.name,
         qr_code: checkpoint.qr_code,
         checklist_name: activeTemplate?.name || null,
         location: scanLocation,
         timestamp: scanTimestamp,
-        verified: distanceFromCheckpoint !== null ? distanceFromCheckpoint <= 100 : true,
         notes: geofenceEnforced ? notes : [notes, "Geofence enforcement disabled"].filter(Boolean).join("\n")
       };
 
+      const completionRecord = checklistItems.length > 0 ? {
+        template_id: activeTemplate?.id || "manual",
+        template_name: activeTemplate?.name || "Manual Checklist",
+        checkpoint_id: checkpoint.id,
+        qr_code_scanned: checkpoint.qr_code,
+        completed_items: checklistItems.map(item => ({
+          item_id: item.id,
+          checked: item.checked,
+          value: item.value,
+          note: item.note || "",
+          photo_url: item.photo_url
+        })),
+        signature: {
+          data_url: signature,
+          timestamp: new Date().toISOString(),
+          method: "digital"
+        },
+        location: scanLocation,
+        completed_at: new Date().toISOString(),
+        status: "completed",
+        notes: [geofenceEnforced ? null : "Geofence enforcement disabled", notes, ...checklistItems.filter(i => i.note).map(i => `Issue - ${i.text}: ${i.note}`)].filter(Boolean).join("\n"),
+        media: [
+          ...photos.map(url => ({ type: "photo", url })),
+          ...videos.map(url => ({ type: "video", url }))
+        ]
+      } : null;
+
+      const submission = { submission_key: submissionKey, patrol: patrolRecord, completion: completionRecord };
+
+      // Offline: queue the FULL submission (answers, signature, media — never a
+      // stripped copy) under the same key; the sync manager replays it via the
+      // same idempotent gateway.
       if (!isOnline()) {
-        await saveOffline('pending_patrol', patrolRecord);
+        await saveOffline('pending_patrol', { submission_key: submissionKey, patrol: patrolRecord, completion: completionRecord });
         alert("✅ Checkpoint saved offline — will sync when connection is restored.");
         setScannedData(null); setCheckpoint(null); setChecklistItems([]);
         setNotes(""); setPhotos([]); setVideos([]); setSignature(null);
@@ -369,47 +401,12 @@ export default function QRScanner() {
         return;
       }
 
-      await base44.entities.PatrolLog.create({ ...patrolRecord, customer_id: user?.customer_id || undefined, reseller_id: user?.reseller_id || undefined });
-
-      if (checklistItems.length > 0) {
-        await base44.entities.ChecklistCompletion.create({
-          template_id: activeTemplate?.id || "manual",
-          template_name: activeTemplate?.name || "Manual Checklist",
-          guard_id: user.id,
-          guard_name: user.full_name,
-          // Tenant ownership stamped from the server-verified shift (the same
-          // record the gateway authorised) — never from client-supplied scope.
-          customer_id: shift.customer_id || undefined,
-          reseller_id: shift.reseller_id || undefined,
-          shift_id: shift.id,
-          site_id: shift.site_id,
-          checkpoint_id: checkpoint.id,
-          qr_code_scanned: checkpoint.qr_code,
-          completed_items: checklistItems.map(item => ({
-            item_id: item.id,
-            checked: item.checked,
-            value: item.value,
-            note: item.note || "",
-            photo_url: item.photo_url
-          })),
-          signature: {
-            data_url: signature,
-            timestamp: new Date().toISOString(),
-            method: "digital"
-          },
-          location: scanLocation,
-          completed_at: new Date().toISOString(),
-          status: "completed",
-          notes: [geofenceEnforced ? null : "Geofence enforcement disabled", notes, ...checklistItems.filter(i => i.note).map(i => `Issue - ${i.text}: ${i.note}`)].filter(Boolean).join("\n"),
-          media: [
-            ...photos.map(url => ({ type: "photo", url })),
-            ...videos.map(url => ({ type: "video", url }))
-          ]
-        });
-      }
+      const res = await base44.functions.invoke("checkpointSubmission", submission);
+      const d = res?.data !== undefined ? res.data : res;
+      if (!d?.ok) throw new Error(d?.error || "Submission failed");
 
       alert("✅ Checkpoint scanned and logged successfully!");
-      
+
       setScannedData(null);
       setCheckpoint(null);
       setChecklistItems([]);
@@ -419,15 +416,45 @@ export default function QRScanner() {
       setSignature(null);
       setScanTimestamp(null);
       setScanLocation(null);
-      
+
     } catch (error) {
-      // If server failed, try saving locally
+      // Server failed (connection dropped mid-submit, timeout, transient
+      // gateway error): queue the FULL submission offline under its key —
+      // the gateway is idempotent, so the later sync can never duplicate.
       try {
         await saveOffline('pending_patrol', {
-          guard_id: user.id, guard_name: user.full_name,
-          shift_id: shift.id, site_id: shift.site_id,
-          checkpoint_id: checkpoint?.id, checkpoint_name: checkpoint?.name,
-          location: scanLocation, timestamp: scanTimestamp, notes
+          submission_key: submissionKey,
+          patrol: {
+            checkpoint_id: checkpoint?.id,
+            checkpoint_name: checkpoint?.name,
+            qr_code: checkpoint?.qr_code,
+            checklist_name: activeTemplate?.name || null,
+            location: scanLocation,
+            timestamp: scanTimestamp,
+            notes: geofenceEnforced ? notes : [notes, "Geofence enforcement disabled"].filter(Boolean).join("\n")
+          },
+          completion: checklistItems.length > 0 ? {
+            template_id: activeTemplate?.id || "manual",
+            template_name: activeTemplate?.name || "Manual Checklist",
+            checkpoint_id: checkpoint?.id,
+            qr_code_scanned: checkpoint?.qr_code,
+            completed_items: checklistItems.map(item => ({
+              item_id: item.id,
+              checked: item.checked,
+              value: item.value,
+              note: item.note || "",
+              photo_url: item.photo_url
+            })),
+            signature: { data_url: signature, timestamp: new Date().toISOString(), method: "digital" },
+            location: scanLocation,
+            completed_at: new Date().toISOString(),
+            status: "completed",
+            notes: [geofenceEnforced ? null : "Geofence enforcement disabled", notes, ...checklistItems.filter(i => i.note).map(i => `Issue - ${i.text}: ${i.note}`)].filter(Boolean).join("\n"),
+            media: [
+              ...photos.map(url => ({ type: "photo", url })),
+              ...videos.map(url => ({ type: "video", url }))
+            ]
+          } : null
         });
         alert("⚠️ Server unavailable — checkpoint saved offline and will sync automatically.");
         setScannedData(null); setCheckpoint(null); setChecklistItems([]);
