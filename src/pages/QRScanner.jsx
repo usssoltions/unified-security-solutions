@@ -3,6 +3,7 @@ import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { base44 } from "@/api/base44Client";
 import { getSite } from "@/lib/siteApi";
+import { matchCheckpoint } from "@/lib/checkpointMatch";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,9 @@ export default function QRScanner() {
   // RFG-ONLY: 'incident' | 'maintenance' — opens the report form from the
   // checklist's final question (site-scoped, no other site affected).
   const [reportForm, setReportForm] = useState(null);
+  // CHECKPOINT MATCH GATE — a decoded QR that matches NO checkpoint of the
+  // active shift's site is rejected visibly (never assigned to a checkpoint).
+  const [notRecognised, setNotRecognised] = useState(null);
 
   // Operation-scoped screen wake lock: held ONLY while the scanner is live
   // (screen-off would interrupt the scan), released when scanning stops.
@@ -157,6 +161,25 @@ export default function QRScanner() {
   const handleScan = async (qrCodeText) => {
     try {
       const currentTime = new Date().toISOString();
+
+      // ── CHECKPOINT MATCHING FIRST ────────────────────────────────────────
+      // A patrol checkpoint QR resolves against THIS shift's site checkpoint
+      // list BEFORE any structured identity-document parsing, review screen
+      // or GPS lookup. Matching is site-scoped (a checkpoint from another
+      // site can never match), compares with surrounding whitespace trimmed
+      // while preserving the stored supplier QR values exactly, and an
+      // unmatched value is rejected VISIBLY — never assigned to a checkpoint
+      // (never the first checkpoint, never a generic one).
+      if (!site || !Array.isArray(site.checkpoints) || site.checkpoints.length === 0) {
+        setNotRecognised({ value: qrCodeText, reason: "no_checkpoints" });
+        return;
+      }
+      const foundCheckpoint = matchCheckpoint(site.checkpoints, qrCodeText);
+      if (!foundCheckpoint) {
+        setNotRecognised({ value: qrCodeText, reason: "no_match" });
+        return;
+      }
+
       let currentLocation = location;
 
       // If location not yet available, try to get it
@@ -188,67 +211,11 @@ export default function QRScanner() {
       // Allow scanning even without location if it fails - use last known or null
       if (!currentLocation) {
         console.warn("No location available, proceeding with scan anyway");
-        // Don't block scan, just continue
-      }
-
-      if (!site || !site.checkpoints || site.checkpoints.length === 0) {
-        // Accept any QR code even without checkpoints
-        setScannedData({ qr_code: qrCodeText });
-        setCheckpoint({
-          id: "manual-" + Date.now(),
-          name: "Scanned Checkpoint",
-          qr_code: qrCodeText,
-          location: currentLocation || { lat: 0, lng: 0 }
-        });
-        setScanTimestamp(currentTime);
-        setScanLocation(currentLocation || { lat: 0, lng: 0 });
-        setDistanceFromCheckpoint(0);
-        
-        if (templates.length > 0) {
-          setChecklistItems(templates[0].items.map(item => ({
-            ...item,
-            checked: false,
-            value: "",
-            photo_url: ""
-          })));
-        }
-        return;
-      }
-
-      // Try to find matching checkpoint
-      let foundCheckpoint = null;
-      
-      // Try parsing as JSON first
-      try {
-        const qrData = JSON.parse(qrCodeText);
-        foundCheckpoint = site.checkpoints.find(
-          cp => cp.qr_code === qrData.qr_code || 
-                cp.id === qrData.checkpoint_id ||
-                cp.qr_code === qrCodeText ||
-                cp.id === qrCodeText
-        );
-      } catch (e) {
-        // Not JSON, try direct string match
-        foundCheckpoint = site.checkpoints.find(
-          cp => cp.qr_code === qrCodeText || 
-                cp.id === qrCodeText ||
-                cp.name === qrCodeText
-        );
-      }
-
-      // If no match found, accept it anyway but use first checkpoint or create generic one
-      if (!foundCheckpoint) {
-        foundCheckpoint = site.checkpoints[0] || {
-          id: "manual-" + Date.now(),
-          name: "Scanned Checkpoint",
-          qr_code: qrCodeText,
-          location: currentLocation || { lat: 0, lng: 0 }
-        };
       }
 
       // Calculate distance if checkpoint has location
       let distance = 0;
-      if (foundCheckpoint.location && foundCheckpoint.location.lat && foundCheckpoint.location.lng) {
+      if (currentLocation && foundCheckpoint.location && foundCheckpoint.location.lat && foundCheckpoint.location.lng) {
         distance = calculateDistance(
           currentLocation.lat,
           currentLocation.lng,
@@ -287,30 +254,7 @@ export default function QRScanner() {
 
     } catch (error) {
       console.error("QR scan error:", error);
-      
-      // Fallback - accept any code
-      const currentTime = new Date().toISOString();
-      const currentLocation = location;
-
-      setScannedData({ qr_code: qrCodeText });
-      setCheckpoint({
-        id: "manual-" + Date.now(),
-        name: "Scanned Checkpoint",
-        qr_code: qrCodeText,
-        location: currentLocation || { lat: 0, lng: 0 }
-      });
-      setScanTimestamp(currentTime);
-      setScanLocation(currentLocation || { lat: 0, lng: 0 });
-      setDistanceFromCheckpoint(0);
-
-      if (templates.length > 0) {
-        setChecklistItems(templates[0].items.map(item => ({
-          ...item,
-          checked: false,
-          value: "",
-          photo_url: ""
-        })));
-      }
+      setNotRecognised({ value: qrCodeText, reason: "no_match" });
     }
   };
 
@@ -512,9 +456,30 @@ export default function QRScanner() {
             <DocumentScanner
               documentType="qr"
               caller="qr_scanner"
+              autoAccept
               onClose={() => setScanning(false)}
               onAccept={handleDocAccept}
             />
+          ) : notRecognised ? (
+            <Card className="bg-rose-900/30 border-rose-500/50">
+              <CardHeader>
+                <CardTitle className="text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" /> Checkpoint not recognised for this site
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-slate-300 text-sm">
+                  The scanned value does not match any checkpoint configured for this site. Nothing was recorded.
+                </p>
+                <p className="text-slate-400 text-xs font-mono break-all">
+                  Scanned value: {String(notRecognised.value || "")}
+                </p>
+                <Button variant="outline" className="w-full border-slate-600 text-slate-300"
+                  onClick={() => { setNotRecognised(null); setScanning(true); }}>
+                  <ScanLine className="w-4 h-4 mr-2" /> Scan Again
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <Button onClick={() => setScanning(true)} className="w-full h-14 bg-gradient-to-r from-sky-500 to-blue-600">
               <ScanLine className="w-5 h-5 mr-2" /> Tap to Scan Checkpoint

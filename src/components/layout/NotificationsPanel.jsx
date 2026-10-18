@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Bell, CheckCircle2, AlertTriangle, Info, Clock } from "lucide-react";
+import { isAlertVisibleToUser } from "@/lib/alertVisibility";
 
 export default function NotificationsPanel({ user, onClose }) {
   const queryClient = useQueryClient();
@@ -21,9 +22,11 @@ export default function NotificationsPanel({ user, onClose }) {
           20
         );
         
-        // Filter alerts for this user
-        return allAlerts.filter(alert => 
-          !alert.guard_id || alert.guard_id === user.id
+        // Filter alerts for this user — management-only correspondence
+        // (e.g. incident escalation) stays out of guard-tier bell lists.
+        return allAlerts.filter(alert =>
+          isAlertVisibleToUser(alert, user) &&
+          (!alert.guard_id || alert.guard_id === user.id)
         );
       } catch (error) {
         console.error("Failed to load alerts:", error);

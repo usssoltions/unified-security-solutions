@@ -26,8 +26,15 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 import { isSimulatedRecord, suppressionAuditRow } from '../../shared/simulatedRecords.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 const MANAGEMENT_ROLES = ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin', 'control_room_operator'];
+// ESCALATION recipient roles — management correspondence only. Guard-tier
+// operational roles (guard, and the guard-tier supervisor) are NOT escalation
+// recipients by default: the reporting guard receives their submission
+// confirmation and status updates, and an escalation alert goes to a guard
+// ONLY when that guard is specifically assigned as the responsible responder.
+const ESCALATION_ROLES = ['admin', 'dispatcher', 'management', 'customer_admin', 'control_room_operator'];
 // The monitor itself only runs for these roles (plus the platform sender
 // roles), so the dispatch function accepts exactly the same set.
 const MONITOR_ROLES = [...MANAGEMENT_ROLES, 'platform_admin'];
@@ -91,15 +98,26 @@ Deno.serve(async (req) => {
     const allUsers = await base44.asServiceRole.entities.User.filter(userQuery);
     let recipients = (allUsers || []).filter((u: any) => {
       const roleOk = incident.customer_id
-        ? MANAGEMENT_ROLES.includes(u.role_type)
+        ? (kind === 'escalation' ? ESCALATION_ROLES : MANAGEMENT_ROLES).includes(u.role_type)
         : (u.role_type === 'platform_admin' || u.role_type === 'admin' || u.admin_level === 'platform');
       const activeOk = !u.status || (u.status !== 'suspended' && u.status !== 'inactive');
       return roleOk && activeOk && !!u.email;
     });
-    // Escalation parity with the previous behaviour: the assigned guard is
-    // not an escalation recipient.
+    // The reporting guard is never an escalation recipient (submission
+    // confirmations and status updates are separate flows).
     if (kind === 'escalation' && incident.guard_id) {
       recipients = recipients.filter((u: any) => u.id !== incident.guard_id);
+    }
+    // ASSIGNED RESPONDER — a guard is escalated ONLY when specifically
+    // assigned as the incident's responsible responder (assigned_to).
+    if (kind === 'escalation' && incident.assigned_to && incident.assigned_to !== incident.guard_id) {
+      const assignedRows = await base44.asServiceRole.entities.User
+        .filter({ id: String(incident.assigned_to) }).catch(() => []);
+      const assigned = (assignedRows && assignedRows[0]) || null;
+      if (assigned && assigned.email && (!assigned.status || (assigned.status !== 'suspended' && assigned.status !== 'inactive')) &&
+          !recipients.some((u: any) => u.id === assigned.id)) {
+        recipients = [...recipients, assigned];
+      }
     }
     // CONTROL ROOM narrowing (fail closed) + recipient preferences.
     recipients = await applyNotificationPreferences(base44.asServiceRole,
@@ -111,6 +129,35 @@ Deno.serve(async (req) => {
 
     if (!recipients.length) {
       return Response.json({ ok: true, recipients: 0, sent: 0 });
+    }
+
+    // IN-APP — one escalation/reassignment notification per management
+    // recipient, deduplicated per recipient + incident + kind so retries
+    // never duplicate bell entries.
+    for (const r of recipients) {
+      const existing = await base44.asServiceRole.entities.Notification
+        .filter({ recipient_id: r.id, related_entity: 'incident', related_id: incident.id, type: 'incident_' + kind })
+        .catch(() => []);
+      if (existing && existing.length) continue;
+      await base44.asServiceRole.entities.Notification.create({
+        recipient_id: r.id,
+        recipient_name: r.display_name || r.full_name || null,
+        type: 'incident_' + kind,
+        priority: 'critical',
+        title: kind === 'escalation'
+          ? `⚠️ Incident Escalated — ${incident.title || 'Incident'}`
+          : `Incident Reassigned — ${incident.title || 'Incident'}`,
+        message: kind === 'escalation'
+          ? `${incident.title || 'Incident'} at ${incident.site_name || 'site'} escalated (${reason === 'priority' ? 'High/Critical Priority' : 'Unresolved for 30+ minutes'}). Immediate action required.`
+          : `${incident.title || 'Incident'} at ${incident.site_name || 'site'} reassigned to ${new_guard_name || 'a new guard'}.`,
+        read: false,
+        related_entity: 'incident',
+        related_id: incident.id,
+        action_url: '/AdminIncidents',
+        customer_id: incident.customer_id || undefined,
+        reseller_id: incident.reseller_id || undefined,
+        sent_via: ['in_app', 'email'],
+      }).catch(() => {});
     }
 
     // BRANDING — resolved from the INCIDENT's tenant (customer → reseller →
@@ -181,7 +228,28 @@ Deno.serve(async (req) => {
       })
     ));
 
-    const sent = results.filter(r => r.status === 'fulfilled' && (r as any).value?.ok).length;
+    // ADDITIONAL EMAIL RECIPIENTS — the incident's OWN tenant's configured
+    // list, EMAIL-ONLY, alongside (never replacing) the management recipients.
+    const extraEscalationEmails = await additionalEmailsFor(
+      base44.asServiceRole, incident.customer_id || null);
+    const extraResults = await Promise.allSettled(extraEscalationEmails.map((extra) =>
+      sendAuditedEmail(base44.asServiceRole, {
+        to: extra,
+        subject,
+        html: content.html,
+        text: content.text,
+        from_name: brand.brand_name,
+        brand,
+        customer_id: incident.customer_id || null,
+        reseller_id: incident.reseller_id || null,
+        recipient_name: ADDITIONAL_RECIPIENT_NAME,
+        event_type: kind === 'escalation' ? 'incident_escalation' : 'incident_reassignment',
+        reference_id: String(incident.id),
+      })
+    ));
+
+    const sent = results.filter(r => r.status === 'fulfilled' && (r as any).value?.ok).length +
+      extraResults.filter(r => r.status === 'fulfilled' && (r as any).value?.ok).length;
     return Response.json({ ok: true, recipients: recipients.length, sent });
   } catch (e: any) {
     return Response.json({ error: String(e?.message || e) }, { status: 500 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +31,13 @@ export default function ReportSchedulingSettings() {
   const [toggleError, setToggleError] = useState(null);
   const [savingKey, setSavingKey] = useState(null);
 
-  // Load THIS tenant's automation settings through the gateway.
+  // Load THIS tenant's automation settings through the gateway. The
+  // Additional Email Recipients list is TENANT-SCOPED (stored on this
+  // customer's AutomationSetting row, managed only through the gateway).
+  // One-time migration: addresses previously saved to the individual admin's
+  // account (report_email_preferences.custom_emails) are moved onto the
+  // tenant row so they take effect for the organisation's notifications.
+  const tenantEmailsLoadedRef = useRef(false);
   const loadSettings = async () => {
     setLoadError(null);
     try {
@@ -39,6 +45,29 @@ export default function ReportSchedulingSettings() {
       const payload = res?.data ?? res;
       setSettingsId(payload?.settings_id || null);
       setReportSettings(payload?.settings || null);
+      const tenantEmails = Array.isArray(payload?.settings?.additional_email_recipients)
+        ? payload.settings.additional_email_recipients
+        : [];
+      if (!tenantEmailsLoadedRef.current) {
+        tenantEmailsLoadedRef.current = true;
+        let list = tenantEmails;
+        if (list.length === 0) {
+          try {
+            const me = await base44.auth.me();
+            const legacy = me?.report_email_preferences?.custom_emails;
+            if (Array.isArray(legacy) && legacy.length > 0) {
+              const mig = await base44.functions.invoke("automationAccess", {
+                action: "set_recipients", emails: legacy,
+              });
+              const migPayload = mig?.data ?? mig;
+              list = Array.isArray(migPayload?.settings?.additional_email_recipients)
+                ? migPayload.settings.additional_email_recipients
+                : legacy;
+            }
+          } catch (_) { /* migration is best-effort; the admin can save again */ }
+        }
+        setCustomEmails(list);
+      }
       return payload?.settings || null;
     } catch (err) {
       console.error("Failed to load report settings:", err);
@@ -58,19 +87,6 @@ export default function ReportSchedulingSettings() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportSettings]);
-
-  // Custom email recipients stay per-user (report_email_preferences on the
-  // authenticated user record — never shared across tenants).
-  const { data: user } = useQuery({
-    queryKey: ["currentUser"],
-    queryFn: async () => await base44.auth.me(),
-  });
-
-  useEffect(() => {
-    if (user?.report_email_preferences) {
-      setCustomEmails(user.report_email_preferences.custom_emails || []);
-    }
-  }, [user]);
 
   const toggleMutation = useMutation({
     mutationFn: async ({ key, value }) => {
@@ -94,16 +110,18 @@ export default function ReportSchedulingSettings() {
 
   const saveEmailsMutation = useMutation({
     mutationFn: async () => {
-      await base44.auth.updateMe({
-        report_email_preferences: {
-          custom_emails: customEmails,
-          updated_at: new Date().toISOString(),
-        },
+      const res = await base44.functions.invoke("automationAccess", {
+        action: "set_recipients",
+        emails: customEmails,
       });
+      const payload = res?.data ?? res;
+      if (payload?.settings && Array.isArray(payload.settings.additional_email_recipients)) {
+        setCustomEmails(payload.settings.additional_email_recipients);
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["currentUser"]);
-      alert("Custom recipients saved!");
+      queryClient.invalidateQueries(["automationSettings"]);
+      alert("Recipients saved — they now receive this organisation's enabled email notifications.");
     },
   });
 
@@ -189,7 +207,9 @@ export default function ReportSchedulingSettings() {
               Additional Email Recipients
             </h3>
             <p className="text-sm text-slate-400 mb-3">
-              Add custom email addresses to receive reports (in addition to admins). These are saved to your account.
+              Add custom email addresses to receive this organisation's enabled email notifications — incident and
+              escalation alerts, maintenance requests, shift start/end notifications and other guard-operation alerts
+              (panic, overdue patrol, missed clock-in) — in addition to the existing admin and user recipients.
             </p>
             <div className="flex gap-2 mb-4">
               <Input

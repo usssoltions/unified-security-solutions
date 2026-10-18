@@ -16,6 +16,7 @@ import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.t
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -170,6 +171,26 @@ Deno.serve(async (req) => {
         event_type: 'incident_critical',
         reference_id: incident.id,
         idempotency_key: `incident_critical:${incident.id}:email:${admin.id}`,
+      });
+    }
+
+    // ADDITIONAL EMAIL RECIPIENTS — the incident's OWN tenant's configured
+    // list, EMAIL-ONLY, alongside (never replacing) the user recipients.
+    const extraCriticalEmails = await additionalEmailsFor(
+      base44.asServiceRole, incident.customer_id || null);
+    for (const extra of extraCriticalEmails) {
+      await sendAuditedEmail(base44.asServiceRole, {
+        to: extra,
+        subject,
+        html: brandTpl.html,
+        text: brandTpl.text,
+        from_name: brand.brand_name + ' — Critical Alerts',
+        customer_id: incident.customer_id || null,
+        reseller_id: incident.reseller_id || null,
+        recipient_name: ADDITIONAL_RECIPIENT_NAME,
+        event_type: 'incident_critical',
+        reference_id: incident.id,
+        idempotency_key: `incident_critical:${incident.id}:email:${extra.toLowerCase()}`,
       });
     }
 

@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
 import { loadCustomerById, isPlatformAdmin, isResellerAdmin } from '../../shared/deviceLicensing.ts';
 import { AUTOMATION_DEFAULTS, AUTOMATION_TOGGLE_KEYS } from '../../shared/automationSettings.ts';
+import { normalizeAdditionalEmails } from '../../shared/tenantRecipients.ts';
 
 /**
  * automationAccess — AUTHORITATIVE per-tenant automation-settings gateway.
@@ -146,6 +147,39 @@ export default async function(req: Request): Promise<Response> {
       });
     }
 
+    /* ── SET_RECIPIENTS (Additional Email Recipients, admin-only) ──────── */
+    // TENANT-SCOPED list saved on this customer's OWN AutomationSetting row:
+    // validated server-side (every entry a valid email, deduped, capped),
+    // audit-logged, and consumed email-only by the notification senders via
+    // the shared tenantRecipients helper. One customer's list can never be
+    // written onto, or read from, another customer's row.
+    if (action === 'set_recipients') {
+      const emails = normalizeAdditionalEmails(body?.emails);
+      if (emails === null) {
+        return Response.json({ error: 'One or more recipients are not valid email addresses.', code: 'invalid_recipient' }, { status: 400 });
+      }
+      const rec = await getOrCreateSettings(svc, customerId, resellerId, callerName);
+      const updated = await svc.entities.AutomationSetting.update(rec.id, {
+        additional_email_recipients: emails,
+        updated_at: new Date().toISOString(),
+        updated_by_name: callerName,
+      });
+      await svc.entities.PlatformAuditLog.create({
+        event_type: 'automation.recipients.updated',
+        customer_id: customerId, reseller_id: resellerId,
+        user_id: caller.id, user_name: callerName,
+        entity_name: 'AutomationSetting', entity_id: rec.id, action: 'set_recipients',
+        new_values: JSON.stringify({ count: emails.length }),
+        notes: `Additional email recipients updated (${emails.length} address(es))${customerId ? ` for customer ${customerId}` : ' (platform pool)'}`,
+      }).catch(() => {});
+      return Response.json({
+        success: true,
+        scope: { level, customer_id: customerId },
+        settings_id: rec.id,
+        settings: { ...AUTOMATION_DEFAULTS, ...(updated || rec) },
+      });
+    }
+
     /* ── LIST (platform oversight only) ────────────────────────────────── */
     if (action === 'list') {
       if (level !== 'platform') {
@@ -166,7 +200,7 @@ export default async function(req: Request): Promise<Response> {
       });
     }
 
-    return Response.json({ error: 'Unknown action. Use get, toggle or list', code: 'bad_action' }, { status: 400 });
+    return Response.json({ error: 'Unknown action. Use get, toggle, set_recipients or list', code: 'bad_action' }, { status: 400 });
   } catch (error) {
     const msg = String((error as any)?.message || error);
     console.log('[automationAccess] fatal', msg);

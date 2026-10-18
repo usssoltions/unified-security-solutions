@@ -54,6 +54,7 @@ import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 /** Roles authorised to RECEIVE a panic in the panic's own tenant. Includes
  * the current (post-split) operational/administration roles AND the legacy
@@ -383,6 +384,25 @@ Deno.serve(async (req) => {
 
       return { ok: true };
     }));
+
+    // ADDITIONAL EMAIL RECIPIENTS — the panic's OWN tenant's configured
+    // list, EMAIL-ONLY, alongside (never replacing) the authorised
+    // recipients. No in-app/push/Telegram/WhatsApp channel ever fires for
+    // these addresses.
+    const extraPanicEmails = await additionalEmailsFor(svc, user.customer_id || null);
+    await Promise.allSettled(extraPanicEmails.map((extra) =>
+      sendAuditedEmail(svc, {
+        to: extra,
+        from_name: `${panicBrand.brand_name} — Emergency`,
+        subject: `🚨 PANIC ALERT — ${userName} — IMMEDIATE RESPONSE REQUIRED`,
+        html: emailBody.html, text: emailBody.text,
+        brand: panicBrand,
+        customer_id: user.customer_id || null, reseller_id: user.reseller_id || null,
+        recipient_name: ADDITIONAL_RECIPIENT_NAME,
+        event_type: 'panic_alert', reference_id: panicNumber,
+        template_name: 'panic_alert',
+      }).catch(() => {})
+    ));
 
     const successCount = notifResults.filter(r => r.status === 'fulfilled').length;
     const noRecipients = recipients.length === 0;

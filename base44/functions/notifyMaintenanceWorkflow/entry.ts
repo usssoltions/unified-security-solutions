@@ -19,6 +19,7 @@ import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -194,7 +195,29 @@ Deno.serve(async (req) => {
         }).catch(() => {})
       );
 
-    await Promise.all([...notifPromises, ...emailPromises]);
+    // ADDITIONAL EMAIL RECIPIENTS — the request's OWN tenant's configured
+    // list, EMAIL-ONLY, for the MANAGEMENT workflow updates (assigned → the
+    // assignee alone is notified, unchanged). Never a channel other than
+    // email; never replacing the user recipients.
+    let extraWfEmailPromises: Promise<any>[] = [];
+    if (action !== 'assigned') {
+      const tenantIdForExtras = (maintRecord && maintRecord.customer_id) || user.customer_id || null;
+      const extraWfEmails = await additionalEmailsFor(base44.asServiceRole, tenantIdForExtras);
+      extraWfEmailPromises = extraWfEmails.map((extra) =>
+        sendAuditedEmail(base44.asServiceRole, {
+          to: extra,
+          subject: emailSubject,
+          html: brandTpl.html, text: brandTpl.text,
+          brand,
+          customer_id: tenantIdForExtras,
+          reseller_id: (maintRecord && maintRecord.reseller_id) || user.reseller_id || null,
+          recipient_name: ADDITIONAL_RECIPIENT_NAME,
+          event_type: 'maintenance_workflow', template_name: 'maintenance_request',
+        }).catch(() => {})
+      );
+    }
+
+    await Promise.all([...notifPromises, ...emailPromises, ...extraWfEmailPromises]);
 
     // NATIVE PUSH — shared platform service. Action-required events only:
     // assigned → the assignee; declined → management (reassignment required).

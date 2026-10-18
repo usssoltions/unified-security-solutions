@@ -27,6 +27,7 @@ import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.t
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -165,6 +166,28 @@ Deno.serve(async (req) => {
         event_type: 'incident_reported',
         reference_id: incident.id,
         idempotency_key: `incident_new:${incident.id}:email:${admin.id}`,
+      });
+    }
+
+    // ADDITIONAL EMAIL RECIPIENTS — the incident's OWN tenant's configured
+    // list, EMAIL-ONLY (no in-app/push/Telegram to these addresses), added
+    // alongside — never replacing — the user recipients above. Resolved
+    // server-side from the incident's tenant row, so one customer's list can
+    // never reach another customer's notifications.
+    const extraIncidentEmails = await additionalEmailsFor(svc, incident.customer_id || null);
+    for (const extra of extraIncidentEmails) {
+      await sendAuditedEmail(svc, {
+        to: extra,
+        subject,
+        html: brandTpl.html,
+        text: brandTpl.text,
+        from_name: brand.brand_name + ' — Incident Alerts',
+        customer_id: incident.customer_id || null,
+        reseller_id: incident.reseller_id || null,
+        recipient_name: ADDITIONAL_RECIPIENT_NAME,
+        event_type: 'incident_reported',
+        reference_id: incident.id,
+        idempotency_key: `incident_new:${incident.id}:email:${extra.toLowerCase()}`,
       });
     }
 

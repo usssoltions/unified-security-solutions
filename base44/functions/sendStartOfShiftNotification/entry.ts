@@ -7,6 +7,7 @@ import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveShiftReportRecipients } from '../../shared/shiftReportRecipients.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
 import { buildStartOfShiftReportEmail, haversineMetres } from '../../shared/startOfShiftReport.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 /**
  * START OF SHIFT REPORT NOTIFICATION — In-App + Email + Telegram + native
@@ -184,6 +185,33 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         diag.failures.push('telegram:' + admin.id + ':' + String(e?.message || e));
+      }
+    }
+
+    // ADDITIONAL EMAIL RECIPIENTS — the shift's OWN tenant's configured
+    // list, EMAIL-ONLY, alongside (never replacing) the user recipients.
+    const extraSosEmails = await additionalEmailsFor(base44.asServiceRole, tenantCustomerId);
+    for (const extra of extraSosEmails) {
+      try {
+        await sendAuditedEmail(base44.asServiceRole, {
+          to: extra,
+          subject: emailSubject,
+          html: buildStartOfShiftReportEmail({
+            brand, site, siteName, guardName, badgeNumber: user.badge_number || null,
+            clientName, shift, reportData, location: guardGps || location, media,
+            submittedAt, distanceMetres, withinFence, geofenceRadius, siteGpsValid,
+            reportLink: REPORT_LINK,
+          }).emailHtml,
+          text: sosReport.text,
+          brand,
+          customer_id: tenantCustomerId || null,
+          reseller_id: tenantResellerId || null,
+          recipient_name: ADDITIONAL_RECIPIENT_NAME,
+          event_type: 'start_of_shift_report', template_name: 'start_of_shift_report',
+        });
+        diag.email++;
+      } catch (e) {
+        diag.failures.push('email:' + extra + ':' + String(e?.message || e));
       }
     }
 

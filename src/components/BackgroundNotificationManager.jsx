@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useBranding } from '@/hooks/useBranding';
 import { resolveBrand, PLATFORM_APP_NAME } from '@/lib/branding';
+import { isAlertVisibleToUser } from '@/lib/alertVisibility';
 
 /**
  * Background Notification Manager
@@ -96,6 +97,10 @@ export default function BackgroundNotificationManager({ user }) {
         queryClient.invalidateQueries({ queryKey: ['criticalAlerts'] });
         queryClient.invalidateQueries({ queryKey: ['alerts'] });
 
+        // Management-only correspondence (e.g. incident escalation) never
+        // badges/vibrates/notifies an operational guard-tier user's device.
+        if (!isAlertVisibleToUser(event.data, user)) return;
+
         // Event-driven badge: an active alert increments the count
         if (event.data?.status === 'active' || !event.data?.status) {
           badgeCountRef.current += 1;
@@ -174,7 +179,9 @@ export default function BackgroundNotificationManager({ user }) {
           base44.entities.Notification.filter({ recipient_id: user.id, read: false })
         ]);
         if (cancelled) return;
-        badgeCountRef.current = (alerts?.length || 0) + (notifs?.length || 0);
+        badgeCountRef.current =
+          (alerts?.filter(a => isAlertVisibleToUser(a, user)).length || 0) +
+          (notifs?.length || 0);
         updateBadgeCount();
       } catch (_) {}
     };

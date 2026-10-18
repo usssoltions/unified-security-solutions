@@ -76,18 +76,18 @@ export default function PanicButton({ shiftId, siteId, siteName }) {
       onClick={handlePanicPress}
       disabled={lockRef.current || triggerBlocked}
       className="w-full bg-gradient-to-r from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 text-white rounded-2xl shadow-2xl shadow-red-500/40 active:scale-95 transition-all touch-manipulation select-none"
-      style={{ minHeight: "96px" }}
+      style={{ minHeight: "72px" }}
     >
       {triggerBlocked ? (
-        <div className="flex flex-col items-center justify-center gap-1 py-5">
-          <AlertTriangle className="w-10 h-10 mb-1 animate-pulse" />
-          <span className="text-2xl font-bold tracking-wide">🚨 PANIC ACTIVE</span>
+        <div className="flex flex-col items-center justify-center gap-1 py-3">
+          <AlertTriangle className="w-8 h-8 mb-1 animate-pulse" />
+          <span className="text-xl font-bold tracking-wide">🚨 PANIC ACTIVE</span>
           <span className="text-xs text-red-100 font-medium">Your emergency status is showing on screen</span>
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center gap-1 py-5">
-          <AlertTriangle className="w-10 h-10 mb-1" />
-          <span className="text-2xl font-bold tracking-wide">🚨 PANIC</span>
+        <div className="flex flex-col items-center justify-center gap-1 py-3">
+          <AlertTriangle className="w-8 h-8 mb-1" />
+          <span className="text-xl font-bold tracking-wide">🚨 PANIC</span>
           <span className="text-xs text-red-100 font-medium">Press for emergency</span>
         </div>
       )}

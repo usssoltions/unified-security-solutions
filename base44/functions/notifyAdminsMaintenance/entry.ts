@@ -9,6 +9,9 @@ import { applyNotificationPreferences } from '../../shared/notificationPreferenc
 import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
 import { resolveAppUrl } from '../../shared/appUrl.ts';
+import { buildMaintenanceRequestEmail, humanMaintenanceDescription } from '../../shared/maintenanceEmail.ts';
+import { formatSastDateTime } from '../../shared/brandedCommunication.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 /**
  * notifyAdminsMaintenance
@@ -105,31 +108,61 @@ Deno.serve(async (req) => {
     // reporter, timestamp and a direct link to open the request in the app
     // (enriched from the stored request record when available).
     const requestRef = (maintRecord && maintRecord.request_number) || maintenanceId || 'N/A';
-    const urgency = ((maintRecord && maintRecord.urgency) || 'medium').toString().toUpperCase();
+    const urgencyRaw = String((maintRecord && maintRecord.urgency) || 'medium');
+    const urgency = urgencyRaw.toUpperCase();
     const reporterName = (maintRecord && maintRecord.guard_name) || guardName || 'N/A';
-    const description = (maintRecord && maintRecord.description) || details || 'No details provided.';
     const appUrl = resolveAppUrl((secrets as any), req);
     const openRequestUrl = maintenanceId ? `${appUrl}/AdminMaintenance` : undefined;
+    // LOCATION / CHECKPOINT — the human-entered details may lead with a
+    // "Checkpoint: <name>" line (scanned at a checkpoint); it is presented as
+    // its OWN labelled field, and the remaining text is the description.
+    const rawDetailsText = String(details || '');
+    const storedDescText = String((maintRecord && maintRecord.description) || '');
+    const cpMatch = /^[ \t]*Checkpoint:[ \t]*(.+)$/im.exec(rawDetailsText || storedDescText);
+    const checkpointName = cpMatch ? cpMatch[1].trim().split(/\r?\n/)[0].trim() : null;
+    // CUSTOMER-FACING DESCRIPTION — the human-entered details only. The
+    // stored record's internal report template (concatenated labels and
+    // technical sections) NEVER renders in the email; the full record stays
+    // in the app.
+    const humanDescription = humanMaintenanceDescription(
+      checkpointName ? rawDetailsText.replace(/^[ \t]*Checkpoint:[ \t]*.*$/im, '').trim() : rawDetailsText,
+      storedDescText);
+    // GPS + reported timestamp — from the authoritative record when present.
+    const recordLocation = (maintRecord && maintRecord.location && maintRecord.location.lat != null)
+      ? maintRecord.location
+      : (hasLocation ? location : null);
+    const locationText = recordLocation ? `${recordLocation.lat}, ${recordLocation.lng}` : null;
+    const mapsUrl = recordLocation
+      ? `https://www.google.com/maps?q=${recordLocation.lat},${recordLocation.lng}` : googleMapsUrl;
+    const reportedAtStr = (maintRecord && maintRecord.reported_at)
+      ? formatSastDateTime(maintRecord.reported_at) : reportedAt;
     const brandDetails = [
       { label: 'Request ID', value: String(requestRef) },
       { label: 'Category', value: maintenanceType || 'Maintenance' },
       { label: 'Urgency', value: urgency },
       { label: 'Site', value: siteName || 'N/A' },
+      checkpointName ? { label: 'Location / Checkpoint', value: checkpointName } : null,
+      locationText ? { label: 'GPS Location', value: locationText } : null,
       { label: 'Reporter', value: reporterName },
-      { label: 'Reported at', value: reportedAt },
-      { label: 'Description', value: String(description) },
-      hasLocation ? { label: 'Location', value: googleMapsUrl } : null,
-      openRequestUrl ? { label: 'Open request', value: openRequestUrl } : null,
+      { label: 'Date / Time', value: reportedAtStr },
+      humanDescription ? { label: 'Description', value: humanDescription.substring(0, 400) } : null,
     ].filter(Boolean);
-    const brandTpl = buildBrandedEmail({
+    // CLEAN, PROFESSIONAL, MOBILE-SAFE maintenance email (dedicated renderer):
+    // labelled fields, restrained brand colours, ONE prominent "Open
+    // Maintenance Request" button — no raw concatenated metadata or internal
+    // technical fields in the customer-facing body.
+    const brandTpl = buildMaintenanceRequestEmail({
       brand,
-      heading: 'Maintenance Request',
-      greeting: 'Hello,',
-      intro: 'A new maintenance request has been submitted. Review & action required.',
-      details: brandDetails,
-      closing: `Details: ${details || 'No details provided.'}`,
-      ctaUrl: openRequestUrl || googleMapsUrl || undefined,
-      ctaLabel: openRequestUrl ? 'Open Maintenance Request' : (googleMapsUrl ? 'View on Google Maps' : undefined),
+      requestRef: String(requestRef),
+      category: maintenanceType || 'Maintenance',
+      urgency: urgencyRaw,
+      site: siteName || '—',
+      checkpoint: checkpointName,
+      locationText,
+      reporter: reporterName,
+      reportedAt: reportedAtStr,
+      description: humanDescription,
+      ctaUrl: openRequestUrl || mapsUrl || undefined,
     });
 
     const notifTitle = `🔧 Maintenance Request — ${maintenanceType}`;
@@ -167,7 +200,24 @@ Deno.serve(async (req) => {
         }).catch(() => {})
       );
 
-    await Promise.all([...notificationPromises, ...emailPromises]);
+    // ADDITIONAL EMAIL RECIPIENTS — the request's OWN tenant's configured
+    // list, EMAIL-ONLY, alongside (never replacing) the user recipients.
+    const tenantIdForExtras = (maintRecord && maintRecord.customer_id) || user.customer_id || null;
+    const extraMaintEmails = await additionalEmailsFor(base44.asServiceRole, tenantIdForExtras);
+    const extraEmailPromises = extraMaintEmails.map((extra) =>
+      sendAuditedEmail(base44.asServiceRole, {
+        to: extra,
+        subject: `Maintenance Request — ${maintenanceType} at ${siteName || 'site'}`,
+        html: brandTpl.html, text: brandTpl.text,
+        brand,
+        customer_id: tenantIdForExtras,
+        reseller_id: (maintRecord && maintRecord.reseller_id) || user.reseller_id || null,
+        recipient_name: ADDITIONAL_RECIPIENT_NAME,
+        event_type: 'maintenance_request', template_name: 'maintenance_request',
+      }).catch(() => {})
+    );
+
+    await Promise.all([...notificationPromises, ...emailPromises, ...extraEmailPromises]);
 
     // NATIVE PUSH — shared platform service. A NEW maintenance fault report
     // requires review/action even with the app closed. Routine metadata

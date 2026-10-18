@@ -7,6 +7,7 @@ import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } fr
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
 import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
+import { additionalEmailsFor, ADDITIONAL_RECIPIENT_NAME } from '../../shared/tenantRecipients.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -170,6 +171,22 @@ export default async function(req) {
         });
       }
     } catch (_) {}
+
+    // ADDITIONAL EMAIL RECIPIENTS — the shift's OWN tenant's configured
+    // list, EMAIL-ONLY, alongside (never replacing) the user recipients.
+    const extraEndEmails = await additionalEmailsFor(base44.asServiceRole, shift.customer_id || null);
+    for (const extra of extraEndEmails) {
+      await sendAuditedEmail(base44.asServiceRole, {
+        to: extra,
+        subject: title,
+        html: brandTpl.html, text: brandTpl.text,
+        brand,
+        customer_id: shift.customer_id || null,
+        reseller_id: shift.reseller_id || null,
+        recipient_name: ADDITIONAL_RECIPIENT_NAME,
+        event_type: 'shift_end', template_name: 'shift_alert',
+      }).catch(() => {});
+    }
 
     // NATIVE PUSH — shared platform service: a shift that ended without a
     // clock-out requires supervisor attention even with the app closed.

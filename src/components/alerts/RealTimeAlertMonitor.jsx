@@ -15,6 +15,7 @@ import {
   Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { isAlertVisibleToUser } from "@/lib/alertVisibility";
 
 export default function RealTimeAlertMonitor({ user }) {
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
@@ -45,6 +46,10 @@ export default function RealTimeAlertMonitor({ user }) {
       if (event.type === "create" && event.data?.priority === "critical") {
         queryClient.invalidateQueries(["criticalAlerts"]);
 
+        // Management-only correspondence never sounds/vibrates on an
+        // operational guard-tier device.
+        if (!isAlertVisibleToUser(event.data, user)) return;
+
         // Only play sound once per alert (ref — doesn't trigger re-subscribe)
         if (!soundPlayedRef.current.has(event.data.id)) {
           soundPlayedRef.current.add(event.data.id);
@@ -55,7 +60,7 @@ export default function RealTimeAlertMonitor({ user }) {
     });
 
     return unsubscribe;
-  }, [queryClient]); // stable — no more remounting on every sound state change
+  }, [queryClient, user]);
 
   const playAlertSound = () => {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -125,8 +130,11 @@ export default function RealTimeAlertMonitor({ user }) {
     }
   };
 
+  // Escalation alerts are MANAGEMENT correspondence (metadata.management_only)
+  // — operational guard-tier users never see them in the banner; management
+  // emergency notifications are never suppressed.
   const visibleAlerts = criticalAlerts.filter(
-    alert => !dismissedAlerts.has(alert.id)
+    alert => isAlertVisibleToUser(alert, user) && !dismissedAlerts.has(alert.id)
   );
 
   if (visibleAlerts.length === 0) return null;

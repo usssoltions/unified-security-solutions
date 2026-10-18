@@ -93,7 +93,13 @@ export default function IncidentEscalationMonitor({ user }) {
           metadata: {
             incident_id: incident.id,
             escalation_reason: reason,
-            original_guard: incident.guard_name
+            original_guard: incident.guard_name,
+            // MANAGEMENT CORRESPONDENCE MARKER — escalation alerts target the
+            // responsible Customer Admin + Control Room Operator recipients
+            // (in-app notification per recipient is created server-side by
+            // sendIncidentEscalationNotice). Guard-tier operational users
+            // never see this tenant-wide alert row in their alert surfaces.
+            management_only: true
           }
         });
 
