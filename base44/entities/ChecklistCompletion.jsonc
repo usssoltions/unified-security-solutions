@@ -1,7 +1,15 @@
 {
   "name": "ChecklistCompletion",
   "type": "object",
+  "description": "Patrol checklist completion submitted with a checkpoint scan. Tenant ownership is stamped server-side by the checkpointSubmission gateway from the guard's verified shift. IDEMPOTENT via submission_key: a retry or offline sync with the same key returns the existing record instead of creating a duplicate.",
   "properties": {
+    "submission_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL idempotency key shared with the linked PatrolLog (client-generated UUID, stamped server-side). Null on demo/legacy records."
+    },
     "customer_id": {
       "type": "string",
       "description": "Tenant/customer ownership inherited from the completing guard's shift/site."

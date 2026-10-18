@@ -45,6 +45,22 @@ export async function getAllPending(storeName) {
   });
 }
 
+export async function updatePending(storeName, offlineId, patch) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    const req = store.get(offlineId);
+    req.onsuccess = () => {
+      const record = req.result;
+      if (!record) return reject(new Error("Pending record not found"));
+      store.put({ ...record, ...patch }, offlineId);
+      resolve();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
 export async function deletePending(storeName, offlineId) {
   const db = await openDB();
   return new Promise((resolve, reject) => {

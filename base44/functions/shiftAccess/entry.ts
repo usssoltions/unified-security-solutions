@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { customerModuleLicensed } from '../../shared/entitlementActive.ts';
+import { fail, validCoords, distanceMeters, geofenceEnforced } from '../../shared/guardGeo.ts';
 
 /**
  * shiftAccess — server-authoritative guard shift lifecycle gateway.
@@ -33,31 +34,10 @@ import { customerModuleLicensed } from '../../shared/entitlementActive.ts';
 const SECURITY_MODULE_KEYS = ['OPERATIONS', 'COMPLETE_SECURITY'];
 const UNSCHEDULED_DEFAULT_DURATION_MS = 12 * 60 * 60 * 1000; // 12h placeholder until clock-out
 
-function fail(error, code, status = 400) {
-  return Response.json({ error, code }, { status });
-}
-
-function validCoords(loc) {
-  return !!loc
-    && typeof loc.lat === 'number' && isFinite(loc.lat)
-    && typeof loc.lng === 'number' && isFinite(loc.lng)
-    && !(loc.lat === 0 && loc.lng === 0);
-}
-
 function validGeofence(site) {
   return validCoords(site && site.location)
     && typeof site.geofence_radius === 'number'
     && site.geofence_radius > 0;
-}
-
-function distanceMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371e3;
-  const p1 = (lat1 * Math.PI) / 180;
-  const p2 = (lat2 * Math.PI) / 180;
-  const dp = ((lat2 - lat1) * Math.PI) / 180;
-  const dl = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function guardName(caller) {
@@ -72,20 +52,6 @@ async function schedulerEnabled(svc, customerId) {
   try {
     const c = await svc.entities.Customer.get(customerId);
     return c ? c.shift_scheduler_enabled !== false : true;
-  } catch (_) {
-    return true;
-  }
-}
-
-/** Geofence enforcement for the CALLER'S OWN customer (per-customer setting,
- *  default ON — existing customers without a saved value, and any read
- *  failure, keep enforcement). Never a global value: it is read from the
- *  caller's tenant on every clock-in and never affects another customer. */
-async function geofenceEnforced(svc, customerId) {
-  if (!customerId) return true;
-  try {
-    const c = await svc.entities.Customer.get(customerId);
-    return c ? c.geofence_enforcement_enabled !== false : true;
   } catch (_) {
     return true;
   }
