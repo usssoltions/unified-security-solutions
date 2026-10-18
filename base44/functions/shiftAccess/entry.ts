@@ -168,7 +168,7 @@ export default async function(req: Request): Promise<Response> {
       const caller = await base44.auth.me();
       if (!caller) return fail('Unauthorized', 'unauthorized', 401);
       if (!caller.customer_id) {
-        return Response.json({ ok: true, scheduler_enabled: true, resolved: false });
+        return Response.json({ ok: true, scheduler_enabled: true, geofence_enforcement_enabled: true, resolved: false });
       }
       const scheduler_enabled = await schedulerEnabled(svc, caller.customer_id);
       const geofence_enforcement_enabled = await geofenceEnforced(svc, caller.customer_id);
