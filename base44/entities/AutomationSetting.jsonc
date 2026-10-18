@@ -1,58 +1,91 @@
 {
   "name": "AutomationSetting",
   "type": "object",
+  "description": "PER-TENANT automation monitoring and automated-report switches (one row per customer; customer_id null = platform-managed legacy pool). Monitors (overdue patrols, missed clock-ins, low battery, scheduled patrol generation, shift reminders) DEFAULT OFF \u2014 an automation only runs for a tenant that explicitly enabled it. Report toggles (daily activity, shift reports, weekly analysis, monthly comparison, incident alerts) default ON, preserving historical behaviour; report_guard_performance defaults OFF. Every scheduled/event monitor and report sender resolves the toggle from the OWNING tenant's record server-side (shared automationSettings helper) \u2014 a tenant without a record inherits only the schema defaults, never another customer's switches. Tenant read/write flows through the automationAccess gateway (server-side tenant resolution, admin-only writes, audit-logged); direct client access is restricted to platform administration by RLS.",
   "properties": {
+    "customer_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Tenant this settings row belongs to (one row per customer). Null = the platform-managed legacy pool (records with no tenant ids)."
+    },
+    "reseller_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "monitor_overdue_patrols": {
       "type": "boolean",
       "default": false,
-      "description": "Enable overdue patrol monitoring automation"
+      "description": "Enable overdue patrol monitoring automation for this tenant"
     },
     "monitor_missed_clockins": {
       "type": "boolean",
       "default": false,
-      "description": "Enable missed clock-in monitoring automation"
+      "description": "Enable missed clock-in monitoring automation for this tenant"
     },
     "monitor_low_battery": {
       "type": "boolean",
       "default": false,
-      "description": "Enable low battery monitoring automation"
+      "description": "Enable low battery monitoring automation for this tenant"
     },
     "generate_scheduled_patrols": {
       "type": "boolean",
       "default": false,
-      "description": "Enable automatic scheduled patrol generation"
+      "description": "Enable automatic scheduled patrol generation (event-driven) and the scheduled-patrol status monitor for this tenant"
     },
     "send_shift_reminders": {
       "type": "boolean",
       "default": false,
-      "description": "Enable shift reminder emails (sent once per shift, 2 hours before start)"
+      "description": "Enable shift reminder emails for this tenant (sent once per shift, 2 hours before start)"
     },
     "report_daily_activity": {
       "type": "boolean",
       "default": true,
-      "description": "Enable the automated Daily Activity Report. When disabled, sendDailyActivityReport sends nothing."
+      "description": "Enable the automated Daily Activity Report for this tenant. When disabled, sendDailyActivityReport sends nothing to this tenant."
     },
     "report_shift_reports": {
       "type": "boolean",
       "default": true,
-      "description": "Enable automated start/end-of-shift reports (sendShiftEndNotification + AutoReportGenerator). When disabled, no shift report is generated or emailed."
+      "description": "Enable automated start/end-of-shift reports for this tenant (sendShiftEndNotification + AutoReportGenerator). When disabled, no shift report is generated or emailed."
     },
     "report_weekly_analysis": {
       "type": "boolean",
       "default": true,
-      "description": "Enable the automated Weekly Analysis Report."
+      "description": "Enable the automated Weekly Analysis Report for this tenant."
     },
     "report_monthly_comparison": {
       "type": "boolean",
       "default": true,
-      "description": "Enable the automated Monthly Comparison Report."
+      "description": "Enable the automated Monthly Comparison Report for this tenant."
     },
     "report_incident_alerts": {
       "type": "boolean",
       "default": true,
-      "description": "Enable real-time critical incident alert emails (monitorHighPriorityIncidents). When disabled, critical incidents do not trigger alert emails."
+      "description": "Enable real-time critical incident alert emails for this tenant (monitorHighPriorityIncidents). When disabled, critical incidents do not trigger alert emails."
+    },
+    "report_guard_performance": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable the Guard Performance (board) report for this tenant. Default OFF \u2014 the report only sends when explicitly enabled."
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_by_name": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
+  "required": [],
   "rls": {
     "create": {
       "user_condition": {
@@ -74,6 +107,5 @@
         "admin_level": "platform"
       }
     }
-  },
-  "required": []
+  }
 }
