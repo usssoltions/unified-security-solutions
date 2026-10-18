@@ -180,20 +180,67 @@ export default async function(req) {
        active templates are returned — never another customer's or another
        site's template. */
     if (action === 'listChecklists') {
-      const site = await findSite(body.site_id);
+      /* GUARD CHECKLIST READ — resolved from the AUTHENTICATED GUARD's OWN
+         ACTIVE SHIFT. The client supplies the shift id only; customer_id and
+         site_id are NEVER trusted from the client. The shift must belong to
+         the caller and be live; its stamped customer + site are the only
+         scope this action can ever return templates for (a guard can never
+         load another customer's or another site's templates). */
+      const shiftId = String(body.shift_id || '');
+      if (!shiftId) {
+        return Response.json({ error: 'An active shift is required to load checklists', code: 'shift_required' }, { status: 400 });
+      }
+      const shiftRows = await svc.entities.Shift.filter({ id: String(shiftId) }).catch(() => []);
+      const shift = (shiftRows && shiftRows[0]) ? shiftRows[0] : null;
+      if (!shift) {
+        return Response.json({ error: 'Shift not found', code: 'shift_not_found' }, { status: 404 });
+      }
+      if (shift.guard_id !== caller.id) {
+        await audit('site.access_denied', null, 'listChecklists shift ' + shiftId + ' does not belong to caller ' + caller.id + ' (role ' + roleType + ')');
+        return Response.json({ error: 'That shift does not belong to you', code: 'forbidden_shift' }, { status: 403 });
+      }
+      if (shift.status !== 'active') {
+        return Response.json({ error: 'Only your active shift can load its site checklist', code: 'shift_not_active' }, { status: 403 });
+      }
+      if (!shift.site_id) {
+        return Response.json({ error: 'The active shift has no site assigned', code: 'shift_no_site' }, { status: 400 });
+      }
+      const site = await findSite(shift.site_id);
       if (!site) return Response.json({ error: 'Site not found', code: 'not_found' }, { status: 404 });
-      if (!siteInScope(site)) return denied(site);
+      // Defence in depth: the shift's stamped tenant must agree with the
+      // site AND with the caller's own resolved tenant (when carried).
+      const shiftCustomer = shift.customer_id || null;
+      if (site.customer_id && shiftCustomer && site.customer_id !== shiftCustomer) {
+        await audit('site.access_denied', site, 'listChecklists shift tenant ' + shiftCustomer + ' does not match site tenant ' + site.customer_id);
+        return denied(site);
+      }
+      if (caller.customer_id && shiftCustomer && caller.customer_id !== shiftCustomer) {
+        await audit('site.access_denied', site, 'listChecklists caller tenant ' + caller.customer_id + ' does not match shift tenant ' + shiftCustomer);
+        return denied(site);
+      }
+      const scopeCustomer = shiftCustomer || site.customer_id || caller.customer_id || null;
+      if (!scopeCustomer && !platformAdmin) {
+        return Response.json({ error: 'Your account is not assigned to a customer', code: 'no_scope' }, { status: 403 });
+      }
       let templates = [];
       try {
         templates = await svc.entities.ChecklistTemplate.filter(
-          { site_id: site.id, status: 'active' },
+          { site_id: shift.site_id, status: 'active' },
           '-created_date',
           50
+        );
+        // STRICT TENANT ISOLATION — only templates owned by the shift's own
+        // customer, plus legacy site-scoped templates with no owner stamp.
+        // Another customer's templates are filtered out server-side, never
+        // trusted to have been absent from the query.
+        templates = (templates || []).filter(t =>
+          (t.customer_id && t.customer_id === scopeCustomer) ||
+          (!t.customer_id && t.site_id === shift.site_id)
         );
       } catch (e) {
         return Response.json({ error: 'The checklist query failed on the server', code: 'list_failed' }, { status: 500 });
       }
-      return Response.json({ templates: templates || [] });
+      return Response.json({ templates: templates || [], site_id: shift.site_id, customer_id: scopeCustomer });
     }
 
     if (action === 'get') {

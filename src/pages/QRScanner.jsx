@@ -118,9 +118,9 @@ export default function QRScanner() {
   // emptied this list and hid the checkpoint checklist. A failed load is now
   // VISIBLE and blocks submission instead of being silently omitted.
   const { data: templates, error: templatesError, isLoading: templatesLoading, refetch: refetchTemplates } = useQuery({
-    queryKey: ["siteChecklists", shift?.site_id],
-    queryFn: async () => await listSiteChecklists(shift.site_id),
-    enabled: !!shift
+    queryKey: ["siteChecklists", shift?.id],
+    queryFn: async () => await listSiteChecklists(shift.id),
+    enabled: !!(shift && shift.id)
   });
 
   // Customer-level geofence enforcement (server-resolved, per customer).
