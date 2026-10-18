@@ -3,6 +3,7 @@ import { secrets } from 'base44:runtime';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { loadAutomationSettingsMap, settingsForTenant } from '../../shared/automationSettings.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 
@@ -45,16 +46,23 @@ Deno.serve(async (req) => {
     }
 
     // Load toggle settings — exit immediately if ALL are disabled
-    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
-    const settings = settingsRecs?.[0] || {};
-    const anyEnabled = settings.monitor_overdue_patrols || settings.monitor_missed_clockins ||
-      settings.monitor_low_battery || settings.generate_scheduled_patrols || settings.send_shift_reminders;
+    // PER-TENANT SETTINGS: one row per customer (unscoped rows = the
+    // platform-managed pool). Each monitor below is gated on the OWNING
+    // tenant's switch — a tenant without a row inherits only the schema
+    // defaults (monitors OFF), never another customer's values.
+    const settingsMap = await loadAutomationSettingsMap(base44.asServiceRole);
+    const anyEnabled = settingsMap.recs.some(r =>
+      r.monitor_overdue_patrols === true ||
+      r.monitor_missed_clockins === true ||
+      r.monitor_low_battery === true ||
+      r.generate_scheduled_patrols === true ||
+      r.send_shift_reminders === true);
     if (!anyEnabled) {
       return Response.json({ success: true, results });
     }
 
     // ── 1. Overdue Patrol Monitor ──
-    if (settings.monitor_overdue_patrols) {
+    if (settingsMap.recs.some(r => r.monitor_overdue_patrols === true)) {
       try {
         const activePatrols = await base44.asServiceRole.entities.PatrolPlan.filter({ status: 'active' });
         const startedPatrols = activePatrols.filter(p => p.started_at);
@@ -124,6 +132,9 @@ Deno.serve(async (req) => {
             // server-side. Unresolvable scope ⇒ NO external notification and
             // an audit entry; never all admins / unrelated customers.
             const scope = await resolvePatrolTenant(patrol);
+            // PER-TENANT TOGGLE — overdue patrol monitoring only for the
+            // patrol's own tenant when explicitly enabled there.
+            if (!settingsForTenant(settingsMap, scope?.customer_id || null).monitor_overdue_patrols) continue;
             // Tenant-stamped alert so RLS-scoped tenant users can read it.
             await base44.asServiceRole.entities.Alert.create({
               type: 'patrol_overdue', priority: 'critical',
@@ -195,7 +206,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Missed Clock-In Monitor ──
-    if (settings.monitor_missed_clockins) {
+    if (settingsMap.recs.some(r => r.monitor_missed_clockins === true)) {
       try {
         const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60000);
         const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60000);
@@ -226,6 +237,9 @@ Deno.serve(async (req) => {
           let clockinAlerts = 0;
           for (const shift of missedShifts) {
             if (alertedShiftIds.has(shift.id)) continue;
+            // PER-TENANT TOGGLE — missed clock-in monitoring only for the
+            // shift's own tenant when explicitly enabled there.
+            if (!settingsForTenant(settingsMap, shift.customer_id || null).monitor_missed_clockins) continue;
             await base44.asServiceRole.entities.Alert.create({
               type: 'missed_checkin', priority: 'critical',
               title: '⚠️ Missed Clock-In',
@@ -314,7 +328,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 3. Low Battery Monitor ──
-    if (settings.monitor_low_battery) {
+    if (settingsMap.recs.some(r => r.monitor_low_battery === true)) {
       try {
         const activeShifts = await base44.asServiceRole.entities.Shift.filter({ status: 'active' });
         if (activeShifts.length > 0) {
@@ -331,6 +345,9 @@ Deno.serve(async (req) => {
           const LOW_BATTERY_THRESHOLD = 15;
           let batteryAlerts = 0;
           for (const [guardId, location] of Object.entries(latestByGuard)) {
+            // PER-TENANT TOGGLE — low battery monitoring only for the
+            // guard's own tenant when explicitly enabled there.
+            if (!settingsForTenant(settingsMap, location.customer_id || null).monitor_low_battery) continue;
             const isRecent = new Date(location.timestamp) >= fiveMinutesAgo;
             if (!isRecent || !location.battery_level || location.battery_level > LOW_BATTERY_THRESHOLD) continue;
             const existingAlerts = await base44.asServiceRole.entities.Alert.filter({
@@ -365,7 +382,7 @@ Deno.serve(async (req) => {
     //    duplicate site/shift/patrol fetches and keep this monitor lean.
 
     // ── 5. Shift Reminders (once per shift) ──
-    if (settings.send_shift_reminders) {
+    if (settingsMap.recs.some(r => r.send_shift_reminders === true)) {
       try {
         const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60000);
         const threeHoursFromNow = new Date(now.getTime() + 3 * 60 * 60000);
@@ -382,6 +399,9 @@ Deno.serve(async (req) => {
           const guardMap = Object.fromEntries(allUsers.filter(u => guardIds.includes(u.id)).map(u => [u.id, u]));
           let remindersSent = 0;
           for (const shift of upcomingShifts) {
+            // PER-TENANT TOGGLE — shift reminders only for the shift's own
+            // tenant when explicitly enabled there.
+            if (!settingsForTenant(settingsMap, shift.customer_id || null).send_shift_reminders) continue;
             const guard = guardMap[shift.guard_id];
             if (!guard) continue;
             const reminderTitle = `⏰ Shift Reminder — ${shift.site_name}`;
@@ -460,7 +480,7 @@ Deno.serve(async (req) => {
     // overdue, 60-min missed) and 10-min pre-patrol alerts; now runs on this
     // shared 10-minute tick. Gated by the same "Auto-Generate Patrols" toggle that
     // gated the old hourly run (enabled unless explicitly false).
-    if (!(settings.generate_scheduled_patrols === false)) {
+    if (settingsMap.recs.some(r => r.generate_scheduled_patrols === true)) {
       try {
         const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
         const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
@@ -563,6 +583,9 @@ Deno.serve(async (req) => {
           };
 
           for (const patrol of todayPatrols) {
+            // PER-TENANT TOGGLE — scheduled patrol monitoring only for the
+            // patrol's own tenant when explicitly enabled there.
+            if (!settingsForTenant(settingsMap, patrol.customer_id || null).generate_scheduled_patrols) continue;
             // SIMULATED-RECORD SKIP — demo/technical-test patrols are never
             // marked missed/overdue and never dispatch exceptions.
             if (patrol.is_test === true || (patrol.demo_batch_id && String(patrol.demo_batch_id).trim())) continue;
@@ -625,6 +648,7 @@ Deno.serve(async (req) => {
           // 10-min pre-patrol alerts (in-app only — no integration credit)
           const alertWindowEnd = new Date(now.getTime() + 10 * 60 * 1000);
           const dueAlerts = todayPatrols.filter(p =>
+            settingsForTenant(settingsMap, p.customer_id || null).generate_scheduled_patrols &&
             p.status === 'upcoming' &&
             p.guard_id &&
             new Date(p.scheduled_start) >= now &&

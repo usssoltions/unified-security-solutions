@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 import { resolveCommunicationBrand, hexToRgb, escHtml } from '../../shared/brandedCommunication.ts';
 import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
+import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
 
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 
@@ -32,6 +33,16 @@ Deno.serve(async (req) => {
       if (tenantScope.customer_id) return rec.customer_id === tenantScope.customer_id;
       return rec.reseller_id === tenantScope.reseller_id;
     };
+    // PER-TENANT TOGGLE — the board report only sends when the calling
+    // tenant's own "Guard Performance" switch is explicitly ON (default
+    // OFF — never presented as active until it is configured).
+    const { settings } = await tenantAutomationSettings(base44.asServiceRole, tenantScope?.customer_id || null);
+    if (settings.report_guard_performance !== true) {
+      return Response.json({
+        success: true, skipped: true,
+        reason: 'Guard Performance report not enabled for this tenant (Reports & Analytics → Automated Reports)',
+      });
+    }
     const brand = await resolveCommunicationBrand(base44.asServiceRole, {
       customer_id: tenantScope?.customer_id || null,
       reseller_id: tenantScope?.reseller_id || null,

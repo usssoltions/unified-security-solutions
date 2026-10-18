@@ -10,6 +10,7 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { resolveCommunicationBrand, buildBrandedEmail } from '../../shared/brandedCommunication.ts';
+import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
@@ -61,13 +62,15 @@ Deno.serve(async (req) => {
       return Response.json({ skipped: true, reason: 'Notification already sent' });
     }
 
-    // Respect the global "Incident Alerts" toggle.
-    try {
-      const settings = await base44.asServiceRole.entities.AutomationSetting.list();
-      if (settings?.[0] && settings[0].report_incident_alerts === false) {
-        return Response.json({ skipped: true, reason: 'incident alerts disabled' });
+    // PER-TENANT TOGGLE — the incident's own tenant decides whether
+    // critical incident alert emails are sent at all (default ON).
+    {
+      const { settings } = await tenantAutomationSettings(
+        base44.asServiceRole, incident.customer_id || null);
+      if (settings.report_incident_alerts === false) {
+        return Response.json({ skipped: true, reason: 'incident alerts disabled for this tenant' });
       }
-    } catch (_) {}
+    }
 
     // TENANT-SCOPED + MODERN role recipients, with CONTROL ROOM narrowing.
     // Previous defect: recipients were filtered by role ONLY (legacy roles),

@@ -1,7 +1,7 @@
 {
   "name": "ReportSchedule",
   "type": "object",
-  "description": "TENANT-SCOPED automated report schedule (one row per configured recurring report). Dispatched by the runReportSchedules scheduler function (scheduled workflow) \u2014 a schedule only runs when is_active is true and its due datetime has passed since last_sent_at; delivery goes ONLY to the schedule's own tenant's approved recipients (ExternalRecipient + tenant users), validated server-side by sendScheduledReport. TENANT ISOLATION: customer admins read and manage ONLY their own organisation's schedules (customer_id is stamped at creation); the legacy pool of unscoped records remains platform-visible. Legacy field `status` ('active'/'paused') is honoured alongside the authoritative is_active flag.",
+  "description": "TENANT-SCOPED automated report schedule (one row per configured recurring report). The runReportSchedules dispatcher (scheduled workflow) executes schedules whose due datetime (frequency + day + time) has passed since last_sent_at, sending ONLY to the schedule's own tenant's approved recipients, validated server-side by sendScheduledReport (types incident_maintenance_summary / guard_performance / site_activity / comprehensive_monthly) or generateAIReport (legacy AI report types). TENANT ISOLATION: customer admins read and manage ONLY their own organisation's schedules (customer_id stamped at creation); the legacy pool of unscoped records remains platform-visible. Legacy `status` ('active'/'paused') is kept in sync with the authoritative is_active flag.",
   "properties": {
     "customer_id": {
       "type": [
@@ -25,26 +25,17 @@
     },
     "report_type": {
       "type": "string",
-      "enum": [
-        "incident_maintenance_summary",
-        "guard_performance",
-        "site_activity",
-        "comprehensive_monthly"
-      ],
-      "description": "Type of report to generate"
+      "description": "Report type. Dispatcher types (auto-sent): incident_maintenance_summary, guard_performance, site_activity, comprehensive_monthly. Legacy AI-report types (manual test generation via generateAIReport): daily_activity, weekly_summary, monthly_performance, maintenance_summary, incidents, patrol_coverage, stay_awake, shift_attendance, checklist_completion, asset_register, site_analytics, incident_trends."
     },
     "frequency": {
       "type": "string",
-      "enum": [
-        "daily",
-        "weekly",
-        "monthly",
-        "real-time"
-      ],
-      "default": "monthly"
+      "description": "daily | weekly | monthly | real-time | realtime | yearly. The dispatcher auto-sends daily/weekly/monthly; real-time and yearly schedules are manual-send only and are never auto-executed."
     },
     "schedule_day": {
-      "type": "number",
+      "type": [
+        "number",
+        "null"
+      ],
       "description": "Day of month for monthly reports (1-31)"
     },
     "send_day": {
@@ -55,8 +46,18 @@
       "description": "Legacy weekly day name (e.g. 'Monday') used by the AI-report scheduler UI."
     },
     "schedule_time": {
-      "type": "string",
-      "description": "Time to send report (HH:MM format)"
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Time to send report (HH:MM, SAST)."
+    },
+    "send_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Legacy alias of schedule_time used by the AI-report scheduler UI."
     },
     "recipients": {
       "type": "array",
@@ -103,6 +104,18 @@
       },
       "default": []
     },
+    "is_comparative": {
+      "type": "boolean",
+      "default": false,
+      "description": "Legacy comparative-analysis flag from the AI-report scheduler UI."
+    },
+    "compare_with": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Legacy comparative period selector (e.g. previous_day)."
+    },
     "status": {
       "type": [
         "string",
@@ -129,6 +142,14 @@
         "null"
       ],
       "format": "date-time"
+    },
+    "last_sent": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Legacy last-sent timestamp from the AI-report scheduler UI."
     }
   },
   "required": [
@@ -173,18 +194,6 @@
             {
               "data.customer_id": {
                 "$ne": null
-              }
-            }
-          ]
-        },
-        {
-          "$and": [
-            {
-              "data.customer_id": null
-            },
-            {
-              "user_condition": {
-                "admin_level": "platform"
               }
             }
           ]

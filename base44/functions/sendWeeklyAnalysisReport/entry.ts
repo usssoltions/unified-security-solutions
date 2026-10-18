@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { resolveCommunicationBrand, escHtml } from '../../shared/brandedCommunication.ts';
 
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
+import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -15,14 +16,6 @@ Deno.serve(async (req) => {
     if (user.role_type !== 'admin') {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-
-    // Respect the global "Weekly Analysis" report toggle.
-    try {
-      const _s = await base44.asServiceRole.entities.AutomationSetting.list();
-      if (_s?.[0] && _s[0].report_weekly_analysis === false) {
-        return Response.json({ success: true, skipped: true, reason: 'weekly report disabled' });
-      }
-    } catch (_) {}
 
     const today = new Date();
     const weekAgo = new Date(today);
@@ -76,6 +69,11 @@ Deno.serve(async (req) => {
           ? rec.customer_id === group.customer_id
           : (!rec.customer_id && !rec.reseller_id);
 
+      // PER-TENANT TOGGLE — the group's own tenant decides whether the
+      // Weekly Analysis report is sent at all (default ON).
+      const { settings: groupSettings } = await tenantAutomationSettings(
+        base44.asServiceRole, group.customer_id || null);
+      if (groupSettings.report_weekly_analysis === false) continue;
       const weekIncidents = incidents.filter(i => scopeMatch(i) && inWeek(i, 'reported_at'));
       const weekMaintenance = maintenance.filter(m => scopeMatch(m) && inWeek(m, 'reported_at'));
       const weekPatrols = patrols.filter(p => scopeMatch(p) && inWeek(p, 'timestamp'));

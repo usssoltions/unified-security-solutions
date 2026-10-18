@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
 import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
 
 // Hex → [r,g,b] for jsPDF fill/text colours from the tenant brand.
@@ -121,14 +122,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Respect the global "Daily Activity Report" toggle.
-    try {
-      const _s = await base44.asServiceRole.entities.AutomationSetting.list();
-      if (_s?.[0] && _s[0].report_daily_activity === false) {
-        return Response.json({ success: true, skipped: true, reason: 'daily report disabled' });
-      }
-    } catch (_) {}
-
     // Optional report parameters — only honoured for platform admins; every
     // other role is hard-scoped to their own tenant server-side below.
     const body = await req.json().catch(() => ({}));
@@ -158,6 +151,14 @@ Deno.serve(async (req) => {
       if (tenantScope.customer_id) return rec.customer_id === tenantScope.customer_id;
       return rec.reseller_id === tenantScope.reseller_id;
     };
+
+    // PER-TENANT TOGGLE — resolved from the OWNING tenant's settings row
+    // (unscoped rows = the platform pool). The Daily Activity Report only
+    // sends when the tenant's own switch is ON (default ON).
+    const { settings } = await tenantAutomationSettings(base44.asServiceRole, tenantScope?.customer_id || null);
+    if (settings.report_daily_activity === false) {
+      return Response.json({ success: true, skipped: true, reason: 'Daily Activity Report disabled for this tenant' });
+    }
 
     // TENANT BRANDING — resolved from the report's OWN tenant scope
     // (customer → reseller → USS platform default). PDF and email bodies

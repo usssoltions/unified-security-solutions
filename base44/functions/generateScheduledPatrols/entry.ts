@@ -30,6 +30,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { secrets } from 'base44:runtime';
 import { hasDemoFlags } from '../../shared/simulatedRecords.ts';
 import { resolveCommunicationBrand } from '../../shared/brandedCommunication.ts';
+import { loadAutomationSettingsMap, settingsForTenant } from '../../shared/automationSettings.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { sendNativePush } from '../../shared/nativePush.ts';
 import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
@@ -148,13 +149,13 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ success: true, ...audit });
     }
 
-    // ── 2. Platform kill switch — the same toggle that gated the retired
-    // hourly run. Enabled unless an admin explicitly set it to false.
-    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
-    const settings = settingsRecs?.[0];
-    if (settings && settings.generate_scheduled_patrols === false) {
-      return Response.json({ success: true, skipped: true, reason: 'Automation disabled', ...audit });
-    }
+    // ── 2. PER-TENANT kill switch — the same "Auto-Generate Patrols"
+    // toggle, now resolved from the OWNING tenant's settings row
+    // (unscoped rows = the platform-managed pool). A tenant only
+    // generates patrols when it explicitly enabled the toggle.
+    const settingsMap = await loadAutomationSettingsMap(base44.asServiceRole);
+    const tenantAllowsPatrols = (tenantId) =>
+      settingsForTenant(settingsMap, tenantId || null).generate_scheduled_patrols === true;
 
     // ── 3. Resolve the target site(s) from the event (or sweep scope).
     let sites = [];
@@ -168,6 +169,10 @@ export default async function(req: Request): Promise<Response> {
       }
       if (!ELIGIBLE_SHIFT_STATUSES.includes(record.status)) {
         return Response.json({ success: true, skipped: true, reason: `Shift status '${record.status}' not eligible`, ...audit });
+      }
+      // PER-TENANT kill switch — the shift's own tenant decides.
+      if (!tenantAllowsPatrols(record.customer_id)) {
+        return Response.json({ success: true, skipped: true, reason: 'Auto-generate patrols disabled for this tenant', ...audit });
       }
       const site = await base44.asServiceRole.entities.Site.get(record.site_id).catch(() => null);
       if (!site || site.status !== 'active') {
@@ -226,7 +231,8 @@ export default async function(req: Request): Promise<Response> {
     sites = sites.filter(s =>
       s && s.status === 'active' &&
       s.patrol_config?.enabled &&
-      s.patrol_config?.schedules?.length > 0
+      s.patrol_config?.schedules?.length > 0 &&
+      tenantAllowsPatrols(s.customer_id)
     );
 
     // ── 4. Generate (idempotent — an existing patrol within 5 minutes of the

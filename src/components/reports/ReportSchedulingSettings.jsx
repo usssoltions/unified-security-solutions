@@ -6,77 +6,64 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Mail, Settings, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { Mail, Settings, Plus, Trash2, Save, Loader2, AlertCircle } from "lucide-react";
 
-// These toggles are now GLOBAL (stored on the AutomationSetting entity, not
-// per-user). Every backend report function reads the same record, so flipping
-// a toggle here truly enables/disables that report across the whole system.
+// Per-tenant automated-report switches, stored on the caller's OWN
+// AutomationSetting row and changed ONLY through the automationAccess
+// gateway (server-resolved tenant, admin-only writes, audit-logged).
 const REPORT_TOGGLES = [
-  { key: "report_daily_activity", label: "Daily Activity Report", description: "Sent every morning at 8:00 AM" },
+  { key: "report_daily_activity", label: "Daily Activity Report", description: "Sent every morning at 8:00 AM (SAST)" },
   { key: "report_shift_reports", label: "Shift Reports", description: "Start/End of shift summaries" },
   { key: "report_weekly_analysis", label: "Weekly Analysis", description: "Sent every Monday at 9:00 AM" },
-  { key: "report_monthly_comparison", label: "Monthly Comparison", description: "Sent on 1st of each month" },
+  { key: "report_monthly_comparison", label: "Monthly Comparison", description: "Sent on the 1st of each month" },
   { key: "report_incident_alerts", label: "Incident Alerts", description: "Real-time critical incident notifications" },
+  { key: "report_guard_performance", label: "Guard Performance Report", description: "Board-level guard performance report (monthly, sent on demand or when scheduled)" },
 ];
 
 export default function ReportSchedulingSettings() {
   const queryClient = useQueryClient();
   const [customEmails, setCustomEmails] = useState([]);
   const [newEmail, setNewEmail] = useState("");
-  const [reportSettings, setReportSettings] = useState({
-    report_daily_activity: true,
-    report_shift_reports: true,
-    report_weekly_analysis: true,
-    report_monthly_comparison: true,
-    report_incident_alerts: true,
-  });
+  const [reportSettings, setReportSettings] = useState(null);
   const [settingsId, setSettingsId] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [toggleError, setToggleError] = useState(null);
+  const [savingKey, setSavingKey] = useState(null);
 
-  // Load the global AutomationSetting record (single row).
-  const { data: settingsRec, isLoading } = useQuery({
-    queryKey: ["automationSettings"],
-    queryFn: async () => {
-      const records = await base44.entities.AutomationSetting.list();
-      if (records && records.length > 0) return records[0];
-      // Create the default record if none exists yet.
-      const created = await base44.entities.AutomationSetting.create({
-        monitor_overdue_patrols: false,
-        monitor_missed_clockins: false,
-        monitor_low_battery: false,
-        generate_scheduled_patrols: false,
-        send_shift_reminders: false,
-        report_daily_activity: true,
-        report_shift_reports: true,
-        report_weekly_analysis: true,
-        report_monthly_comparison: true,
-        report_incident_alerts: true,
-      });
-      return created;
-    },
+  // Load THIS tenant's automation settings through the gateway.
+  const loadSettings = async () => {
+    setLoadError(null);
+    try {
+      const res = await base44.functions.invoke("automationAccess", { action: "get" });
+      setSettingsId(res?.settings_id || null);
+      setReportSettings(res?.settings || null);
+      return res?.settings || null;
+    } catch (err) {
+      console.error("Failed to load report settings:", err);
+      setLoadError(err?.message || "Could not load report settings. Please try again.");
+      return null;
+    }
+  };
+
+  const { isLoading } = useQuery({
+    queryKey: ["automationSettings", "tenant"],
+    queryFn: loadSettings,
   });
 
   useEffect(() => {
-    if (settingsRec) {
-      setSettingsId(settingsRec.id);
-      setReportSettings({
-        report_daily_activity: settingsRec.report_daily_activity !== false,
-        report_shift_reports: settingsRec.report_shift_reports !== false,
-        report_weekly_analysis: settingsRec.report_weekly_analysis !== false,
-        report_monthly_comparison: settingsRec.report_monthly_comparison !== false,
-        report_incident_alerts: settingsRec.report_incident_alerts !== false,
-      });
+    if (reportSettings) {
+      setSettingsId(settingsId);
     }
-  }, [settingsRec]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportSettings]);
 
-  // Custom email recipients stay per-user (report_email_preferences).
+  // Custom email recipients stay per-user (report_email_preferences on the
+  // authenticated user record — never shared across tenants).
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
     queryFn: async () => await base44.auth.me(),
   });
 
-  // Own preferences come straight from the authenticated user record — the
-  // previous direct User.filter({id}) is platform-admin-only and silently
-  // failed for tenant users (and was a direct User-entity query from UI).
   useEffect(() => {
     if (user?.report_email_preferences) {
       setCustomEmails(user.report_email_preferences.custom_emails || []);
@@ -86,10 +73,19 @@ export default function ReportSchedulingSettings() {
   const toggleMutation = useMutation({
     mutationFn: async ({ key, value }) => {
       if (!settingsId) throw new Error("Settings not loaded yet");
-      return await base44.entities.AutomationSetting.update(settingsId, { [key]: value });
+      return await base44.functions.invoke("automationAccess", {
+        action: "toggle",
+        key,
+        value,
+      });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res?.settings) setReportSettings(res.settings);
       queryClient.invalidateQueries(["automationSettings"]);
+    },
+    onError: (err) => {
+      setToggleError(err?.message || "Could not save the change. Please try again.");
+      loadSettings();
     },
   });
 
@@ -121,8 +117,10 @@ export default function ReportSchedulingSettings() {
   const removeEmail = (email) => setCustomEmails(customEmails.filter((e) => e !== email));
 
   const handleToggle = (key, value) => {
+    setToggleError(null);
+    setSavingKey(key);
     setReportSettings((prev) => ({ ...prev, [key]: value }));
-    toggleMutation.mutate({ key, value });
+    toggleMutation.mutate({ key, value }, { onSettled: () => setSavingKey(null) });
   };
 
   return (
@@ -134,7 +132,8 @@ export default function ReportSchedulingSettings() {
             Automated Report Settings
           </CardTitle>
           <p className="text-sm text-slate-400 mt-2">
-            Control which reports are automatically generated and sent. Changes apply immediately and govern the whole system.
+            Control which reports are automatically generated and sent for your organisation. Changes apply
+            immediately and never affect other customers. Toggles marked OFF mean that report is not being sent.
           </p>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -144,29 +143,39 @@ export default function ReportSchedulingSettings() {
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
               </div>
+            ) : loadError ? (
+              <div className="flex items-start gap-2 p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-rose-300">{loadError}</p>
+              </div>
             ) : (
               <div className="space-y-3">
-                {REPORT_TOGGLES.map((report) => (
-                  <div
-                    key={report.key}
-                    className="flex items-center justify-between p-4 bg-slate-900/50 rounded-lg border border-slate-700"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-white font-medium">{report.label}</p>
-                        {reportSettings[report.key] && (
-                          <Badge className="bg-emerald-500">Active</Badge>
-                        )}
+                {REPORT_TOGGLES.map((report) => {
+                  const isOn = reportSettings?.[report.key] === true;
+                  const isSaving = savingKey === report.key;
+                  return (
+                    <div
+                      key={report.key}
+                      className="flex items-center justify-between p-4 bg-slate-900/50 rounded-lg border border-slate-700"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-white font-medium">{report.label}</p>
+                          {isOn && <Badge className="bg-emerald-500">Active</Badge>}
+                        </div>
+                        <p className="text-sm text-slate-400">{report.description}</p>
                       </div>
-                      <p className="text-sm text-slate-400">{report.description}</p>
+                      <div className="flex items-center gap-2">
+                        {isSaving && <Loader2 className="w-3 h-3 text-slate-400 animate-spin" />}
+                        <Switch
+                          checked={isOn}
+                          onCheckedChange={(checked) => handleToggle(report.key, checked)}
+                          disabled={isSaving || !reportSettings}
+                        />
+                      </div>
                     </div>
-                    <Switch
-                      checked={reportSettings[report.key]}
-                      onCheckedChange={(checked) => handleToggle(report.key, checked)}
-                      disabled={toggleMutation.isPending}
-                    />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -213,22 +222,6 @@ export default function ReportSchedulingSettings() {
               {saveEmailsMutation.isPending ? "Saving..." : "Save Recipients"}
             </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-slate-800/50 border-slate-700">
-        <CardHeader>
-          <CardTitle className="text-white text-lg">📊 Data Storage & Backup</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-slate-300 text-sm">
-          <p><strong className="text-white">All your data is securely stored</strong> in Base44's cloud infrastructure powered by Supabase (PostgreSQL database).</p>
-          <ul className="list-disc list-inside space-y-2 text-slate-400">
-            <li>✅ <strong>Automatic backups</strong> every day</li>
-            <li>✅ <strong>99.9% uptime</strong> guarantee</li>
-            <li>✅ <strong>Enterprise-grade security</strong> with encryption</li>
-            <li>✅ <strong>Point-in-time recovery</strong> up to 30 days</li>
-            <li>✅ <strong>Scalable storage</strong> - never lose data</li>
-          </ul>
         </CardContent>
       </Card>
     </div>

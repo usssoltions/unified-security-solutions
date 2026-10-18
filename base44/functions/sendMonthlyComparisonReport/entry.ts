@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 import { resolveCommunicationBrand, hexToRgb, escHtml } from '../../shared/brandedCommunication.ts';
 import { renderTransactionalShell } from '../../shared/transactionalEmail.ts';
+import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
 
 async function generateMonthlyPDF(currentMonthLabel, prevMonthLabel, stats, siteComparison, analysis, brand) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -137,14 +138,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Respect the global "Monthly Comparison" report toggle.
-    try {
-      const _s = await base44.asServiceRole.entities.AutomationSetting.list();
-      if (_s?.[0] && _s[0].report_monthly_comparison === false) {
-        return Response.json({ success: true, skipped: true, reason: 'monthly report disabled' });
-      }
-    } catch (_) {}
-
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -197,6 +190,11 @@ Deno.serve(async (req) => {
     let reportsSent = 0;
 
     for (const group of groups.values()) {
+      // PER-TENANT TOGGLE — the group's own tenant decides whether the
+      // Monthly Comparison report is sent at all (default ON).
+      const { settings: groupSettings } = await tenantAutomationSettings(
+        base44.asServiceRole, group.customer_id || null);
+      if (groupSettings.report_monthly_comparison === false) continue;
       const scopeMatch = (rec) =>
         group.customer_id
           ? rec.customer_id === group.customer_id

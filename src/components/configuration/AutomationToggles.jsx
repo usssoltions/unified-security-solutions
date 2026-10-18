@@ -39,7 +39,7 @@ const AUTOMATIONS = [
   {
     key: "send_shift_reminders",
     label: "Shift Reminders",
-    description: "Sends a one-time email reminder 2 hours before a scheduled shift",
+    description: "Sends a one-time reminder 2 hours before a scheduled shift",
     icon: Bell,
     color: "text-purple-400",
   },
@@ -49,29 +49,24 @@ export default function AutomationToggles() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadSettings();
   }, []);
 
   const loadSettings = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const records = await base44.entities.AutomationSetting.list();
-      if (records && records.length > 0) {
-        setSettings(records[0]);
-      } else {
-        // Create default record with all disabled
-        const created = await base44.entities.AutomationSetting.create({
-          monitor_overdue_patrols: false,
-          monitor_missed_clockins: false,
-          monitor_low_battery: false,
-          generate_scheduled_patrols: false,
-          send_shift_reminders: false,
-        });
-        setSettings(created);
-      }
+      // TENANT-SCOPED GATEWAY — the settings are read for the caller's own
+      // organisation (server-resolved). A new organisation starts with all
+      // monitors OFF — it never inherits another customer's switches.
+      const res = await base44.functions.invoke("automationAccess", { action: "get" });
+      setSettings(res?.settings || null);
     } catch (err) {
       console.error("Failed to load automation settings:", err);
+      setError(err?.message || "Could not load automation settings. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -80,14 +75,20 @@ export default function AutomationToggles() {
   const handleToggle = async (key, value) => {
     if (!settings) return;
     setSaving(key);
+    setError(null);
     const prevSettings = settings;
     setSettings({ ...settings, [key]: value });
     try {
-      const updated = await base44.entities.AutomationSetting.update(settings.id, { [key]: value });
-      setSettings(updated);
+      const res = await base44.functions.invoke("automationAccess", {
+        action: "toggle",
+        key,
+        value,
+      });
+      if (res?.settings) setSettings(res.settings);
     } catch (err) {
       console.error("Failed to update setting:", err);
       setSettings(prevSettings);
+      setError(err?.message || "Could not save the change. Please try again.");
     } finally {
       setSaving(null);
     }
@@ -111,14 +112,22 @@ export default function AutomationToggles() {
           Automation Monitoring
         </CardTitle>
         <p className="text-sm text-slate-400">
-          Enable or disable background monitoring. All monitors run inside a single combined check every 2 hours —
-          only enabled monitors execute, minimizing credit usage. All are disabled by default.
+          Enable or disable background monitoring for your organisation. All monitors run inside a single combined
+          check every 10 minutes — only enabled monitors execute, minimising credit usage. All are disabled by
+          default: a monitor only runs once you switch it on here. These switches apply to your organisation only
+          and never affect other customers.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
+        {error && (
+          <div className="flex items-start gap-2 p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-rose-300">{error}</p>
+          </div>
+        )}
         {AUTOMATIONS.map((automation) => {
           const Icon = automation.icon;
-          const isEnabled = settings?.[automation.key] || false;
+          const isEnabled = settings?.[automation.key] === true;
           const isSaving = saving === automation.key;
           return (
             <div
@@ -140,7 +149,7 @@ export default function AutomationToggles() {
                 <Switch
                   checked={isEnabled}
                   onCheckedChange={(checked) => handleToggle(automation.key, checked)}
-                  disabled={isSaving}
+                  disabled={isSaving || !settings}
                 />
               </div>
             </div>
@@ -149,7 +158,7 @@ export default function AutomationToggles() {
         <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
           <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-300">
-            Changes take effect on the next 2-hour combined monitoring cycle. Shift reminders are sent at most once per shift.
+            Changes take effect on the next 10-minute combined monitoring cycle. Shift reminders are sent at most once per shift.
           </p>
         </div>
       </CardContent>

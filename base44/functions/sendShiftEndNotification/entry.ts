@@ -6,6 +6,7 @@ import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.t
 import { resolveCommunicationBrand, buildBrandedEmail, buildBrandedTelegram } from '../../shared/brandedCommunication.ts';
 import { sendAuditedEmail } from '../../shared/auditedEmail.ts';
 import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
+import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
 
 // Phase H — shift-end notification dispatcher.
 // Idempotent: only fires once per shift (guarded by shift.ended_notified).
@@ -30,15 +31,6 @@ export default async function(req) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Respect the global "Shift Reports" toggle — if disabled in System
-    // Configuration, never send the shift-end notification email.
-    try {
-      const _settings = await base44.asServiceRole.entities.AutomationSetting.list();
-      if (_settings?.[0] && _settings[0].report_shift_reports === false) {
-        return Response.json({ skipped: true, reason: 'shift reports disabled' });
-      }
-    } catch (_) {}
-
     const body = await req.json().catch(() => ({}));
     const shiftId = body && body.shiftId ? String(body.shiftId) : '';
     if (!shiftId) return Response.json({ error: 'shiftId is required' }, { status: 400 });
@@ -51,6 +43,16 @@ export default async function(req) {
     // generate shift-end correspondence.
     if (await isSimulatedRecord(base44.asServiceRole, shift)) {
       return Response.json({ skipped: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
+    }
+
+    // PER-TENANT TOGGLE — the shift's own tenant decides whether shift
+    // reports are sent at all (default ON).
+    {
+      const { settings: shiftSettings } = await tenantAutomationSettings(
+        base44.asServiceRole, shift.customer_id || null);
+      if (shiftSettings.report_shift_reports === false) {
+        return Response.json({ skipped: true, reason: 'shift reports disabled for this tenant' });
+      }
     }
 
     if (shift.status !== 'active') {

@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { loadAutomationSettingsMap, settingsForTenant } from '../../shared/automationSettings.ts';
 
 Deno.serve(async (req) => {
   try {
@@ -13,10 +14,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Check if this automation is enabled
-    const settingsRecs = await base44.asServiceRole.entities.AutomationSetting.list();
-    const settings = settingsRecs?.[0];
-    if (!settings?.monitor_low_battery) {
+    // PER-TENANT TOGGLE — low battery monitoring only runs for tenants
+    // that explicitly enabled it (default OFF; unscoped rows = the
+    // platform-managed pool). Guarded below per guard location.
+    const settingsMap = await loadAutomationSettingsMap(base44.asServiceRole);
+    if (!settingsMap.recs.some(r => r.monitor_low_battery === true)) {
       return Response.json({ success: true, skipped: true, reason: 'Automation disabled' });
     }
 
@@ -47,6 +49,8 @@ Deno.serve(async (req) => {
     const alertsCreated = [];
 
     for (const [guardId, location] of Object.entries(latestByGuard)) {
+      // PER-TENANT TOGGLE — only for the guard's own tenant when enabled.
+      if (!settingsForTenant(settingsMap, location.customer_id || null).monitor_low_battery) continue;
       const isRecent = new Date(location.timestamp) >= fiveMinutesAgo;
       if (!isRecent || !location.battery_level || location.battery_level > LOW_BATTERY_THRESHOLD) continue;
 

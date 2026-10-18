@@ -1,0 +1,45 @@
+{
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 15,
+      "interval_unit": "minutes",
+      "interval_anchor": "2026-10-18T10:00:00",
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "report_schedule_dispatcher",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "dispatch_due_schedules": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runReportSchedules",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Dispatch due report schedules",
+            "description": "Send every tenant's due report"
+          }
+        }
+      }
+    ]
+  },
+  "name": "Report Schedule Dispatcher",
+  "description": "Executes tenant-scoped ReportSchedule rows that are actually due: every 15 minutes it checks each active daily/weekly/monthly schedule's due instant (SAST) against last_sent_at and dispatches due ones through sendScheduledReport, which validates tenant scope and delivers only to that tenant's approved recipients. Real-time and yearly schedules are manual-send only. This makes saved report schedules genuinely automated (previously they were stored but never executed)."
+}
