@@ -14,11 +14,12 @@ export default function AutoReportGenerator({ user, shift }) {
       if (generatedForShift.current.has(shift.id)) return;
       generatedForShift.current.add(shift.id);
       try {
-        // Respect the global "Shift Reports" toggle — if disabled in System
-        // Configuration, never auto-generate or email the shift-end report.
+        // Respect THIS tenant's "Shift Reports" toggle, resolved through the
+        // automationAccess gateway — if disabled, never auto-generate or
+        // email the shift-end report.
         try {
-          const settings = await base44.entities.AutomationSetting.list();
-          if (settings?.[0] && settings[0].report_shift_reports === false) return;
+          const res = await base44.functions.invoke("automationAccess", { action: "get" });
+          if (res?.settings && res.settings.report_shift_reports === false) return;
         } catch (_) {}
 
         const templates = await base44.entities.ReportTemplate.filter({

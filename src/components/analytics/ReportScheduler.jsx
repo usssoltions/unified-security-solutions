@@ -113,11 +113,15 @@ export default function ReportScheduler({ onClose }) {
     setSubmitting(true);
 
     try {
+      const me = await base44.auth.me().catch(() => null);
       await base44.entities.ReportSchedule.create({
         ...formData,
         email_recipients: validEmailRecipients,
         whatsapp_recipients: validWhatsAppRecipients,
-        sites: selectedSites
+        sites: selectedSites,
+        // TENANT STAMP — the schedule belongs to the creator's organisation.
+        customer_id: me?.customer_id || null,
+        reseller_id: me?.reseller_id || null,
       });
 
       alert("Report schedule created successfully! Reports will be sent automatically.");

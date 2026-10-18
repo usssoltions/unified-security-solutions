@@ -12,6 +12,7 @@ import KPIDashboard from "../components/analytics/KPIDashboard";
 import ComparativeAnalytics from "../components/analytics/ComparativeAnalytics";
 import CustomReportBuilder from "../components/analytics/CustomReportBuilder";
 import ReportScheduler from "../components/analytics/ReportScheduler";
+import AutomationSettings from "../components/analytics/AutomationSettings";
 import AIRiskPredictor from "../components/analytics/AIRiskPredictor";
 
 export default function Analytics() {
@@ -75,6 +76,9 @@ export default function Analytics() {
             <TabsTrigger value="scheduler" className="data-[state=active]:bg-sky-600 shrink-0">
               Scheduler
             </TabsTrigger>
+            <TabsTrigger value="automation" className="data-[state=active]:bg-sky-600 shrink-0">
+              Automation
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -107,6 +111,10 @@ export default function Analytics() {
 
           <TabsContent value="scheduler" className="space-y-6">
             <ReportScheduler />
+          </TabsContent>
+
+          <TabsContent value="automation" className="space-y-6">
+            <AutomationSettings />
           </TabsContent>
         </Tabs>
       </div>

@@ -71,12 +71,19 @@ export default async function(req: Request): Promise<Response> {
       user.role_type === 'platform_admin' || user.admin_level === 'platform';
     if (!isPlatform) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
+    // DRY-RUN MODE: dry_run=true computes and reports what WOULD be
+    // dispatched without invoking any sender — used to verify the dispatcher
+    // before it is enabled for real sends.
+    const body = await req.json().catch(() => ({}));
+    const dryRun = body?.dry_run === true;
+
     const schedules = (await svc.entities.ReportSchedule.list().catch(() => [])) || [];
     const now = new Date();
     const details = [];
     let dispatched = 0;
     let sent = 0;
     let failed = 0;
+    let wouldDispatch = 0;
     let skippedInactive = 0;
     let skippedManualOnly = 0;
     let notDue = 0;
@@ -93,8 +100,19 @@ export default async function(req: Request): Promise<Response> {
       const last = s.last_sent_at ? new Date(s.last_sent_at) : null;
       if (now < due || (last && last >= due)) { notDue++; continue; }
 
-      // DUE — dispatch through sendScheduledReport (re-validates the
-      // schedule's tenant scope + approved recipients server-side).
+      // DUE — in dry-run mode report only; nothing is sent.
+      if (dryRun) {
+        wouldDispatch++;
+        details.push({
+          schedule_id: s.id,
+          report_type: s.report_type,
+          frequency: freq,
+          tenant: s.customer_id || 'platform_pool',
+          status: 'would_dispatch (dry run — nothing sent)',
+        });
+        continue;
+      }
+
       dispatched++;
       try {
         const res = await base44.functions.invoke('sendScheduledReport', { schedule_id: s.id });
@@ -109,6 +127,8 @@ export default async function(req: Request): Promise<Response> {
 
     return Response.json({
       success: true,
+      dry_run: dryRun,
+      would_dispatch: wouldDispatch,
       schedules_total: schedules.length,
       dispatched,
       sent,

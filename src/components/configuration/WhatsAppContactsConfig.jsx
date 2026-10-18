@@ -21,7 +21,11 @@ export default function WhatsAppContactsConfig() {
   const loadContacts = async () => {
     setLoading(true);
     try {
-      const records = await base44.entities.WhatsAppContact.filter({ active: true });
+      // TENANT-SCOPED: read only this organisation's contacts (row-level
+      // security enforces isolation server-side).
+      const me = await base44.auth.me().catch(() => null);
+      const q = me?.customer_id ? { active: true, customer_id: me.customer_id } : { active: true };
+      const records = await base44.entities.WhatsAppContact.filter(q);
       setContacts(records);
       // Also cache locally for offline fallback
       saveWhatsAppContacts(records.map(r => ({ name: r.name, number: r.number })));
@@ -36,11 +40,16 @@ export default function WhatsAppContactsConfig() {
     if (!newName.trim() || !newNumber.trim()) return;
     setSaving(true);
     try {
+      // TENANT STAMP — the contact belongs to the creating admin's own
+      // organisation, never another customer's directory.
+      const me = await base44.auth.me().catch(() => null);
       const created = await base44.entities.WhatsAppContact.create({
         name: newName.trim(),
         number: newNumber.trim(),
         role: newRole,
         active: true,
+        customer_id: me?.customer_id || null,
+        reseller_id: me?.reseller_id || null,
       });
       const updated = [...contacts, created];
       setContacts(updated);

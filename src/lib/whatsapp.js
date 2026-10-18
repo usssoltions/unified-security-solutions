@@ -41,7 +41,9 @@ export function getWhatsAppContacts() {
   }
 }
 
-/** Load contacts from DB and cache locally */
+/** Load contacts from DB and cache locally. TENANT-SCOPED: row-level
+ * security on WhatsAppContact returns only the caller's own organisation's
+ * contacts — each customer manages its own directory. */
 export async function loadWhatsAppContacts() {
   try {
     const records = await base44.entities.WhatsAppContact.filter({ active: true });

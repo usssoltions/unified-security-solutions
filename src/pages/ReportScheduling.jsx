@@ -31,6 +31,12 @@ export default function ReportScheduling() {
     queryFn: () => base44.entities.ReportSchedule.list()
   });
 
+  // The authenticated creator supplies the tenant stamp at create time.
+  const { data: me } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: async () => await base44.auth.me(),
+  });
+
   const createScheduleMutation = useMutation({
     mutationFn: (data) => base44.entities.ReportSchedule.create(data),
     onSuccess: () => {
@@ -96,7 +102,10 @@ export default function ReportScheduling() {
     
     const scheduleData = {
       ...formData,
-      recipients: customEmails
+      recipients: customEmails,
+      // TENANT STAMP — the schedule belongs to the creator's organisation.
+      customer_id: me?.customer_id || null,
+      reseller_id: me?.reseller_id || null,
     };
 
     if (editingSchedule) {

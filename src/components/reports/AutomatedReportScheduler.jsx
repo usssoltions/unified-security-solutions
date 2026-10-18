@@ -28,7 +28,14 @@ export default function AutomatedReportScheduler() {
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['report-schedules'],
+    // Row-level security returns only this organisation's schedules.
     queryFn: () => base44.entities.ReportSchedule.list('-created_date')
+  });
+
+  // The authenticated creator supplies the tenant stamp at create time.
+  const { data: me } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: async () => await base44.auth.me(),
   });
 
   const { data: sites = [] } = useQuery({
@@ -40,7 +47,10 @@ export default function AutomatedReportScheduler() {
     mutationFn: async (data) => {
       const scheduleData = {
         ...data,
-        email_recipients: data.email_recipients.split(',').map(e => e.trim()).filter(e => e)
+        email_recipients: data.email_recipients.split(',').map(e => e.trim()).filter(e => e),
+        // TENANT STAMP — the schedule belongs to the creator's organisation.
+        customer_id: me?.customer_id || null,
+        reseller_id: me?.reseller_id || null,
       };
 
       if (editingSchedule) {

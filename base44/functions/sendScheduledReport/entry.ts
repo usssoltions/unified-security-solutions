@@ -80,6 +80,17 @@ Deno.serve(async (req) => {
       }
     } catch (_) { /* unresolvable scope fails CLOSED below */ }
 
+    // AUTHORITATIVE TENANT STAMP (tenant-scoped architecture): the
+    // schedule's own customer_id is stamped at creation and validated by
+    // ReportSchedule RLS (only the tenant's own administrators can create or
+    // edit a schedule carrying their tenant id). When present it wins over
+    // creator-derived scope; schedules without a stamp keep the
+    // creator-derived scope above (platform pool / reseller pool).
+    if (schedule.customer_id) {
+      scopeCid = String(schedule.customer_id);
+      scopeRid = schedule.reseller_id || null;
+    }
+
     // ── CALLER AUTHORIZATION (IDOR hardening, server-side) ─────────────────
     const isPlatformAdmin = user.role === 'admin' || user.role_type === 'platform_admin' || user.admin_level === 'platform';
     if (!isPlatformAdmin) {
