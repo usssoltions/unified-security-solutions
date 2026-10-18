@@ -75,6 +75,10 @@ export default function Layout({ children, currentPageName }) {
   // Phase 7: Module entitlement-driven navigation + white-label branding
   const { data: entitlements = [] } = useModuleEntitlements(user?.id, user?.customer_id);
   const { data: branding } = useBranding(user?.customer_id, user?.reseller_id);
+  // Customer-level Shift Scheduler mode (server-resolved, default ON).
+  // Hooks must run before any early return — called at the top with the
+  // other data hooks.
+  const schedulerOn = useShiftScheduler(user);
 
   // PANIC MODULE GATE + TASK-ONLY GUARD — role does NOT equal commercial
   // entitlement. Panic surfaces (trigger button, Panic Queue shortcut, panic
@@ -417,11 +421,9 @@ export default function Layout({ children, currentPageName }) {
   // and does not affect reseller/customer tenant scoping.
   const bypassEntitlements = isPlatformAdmin;
 
-  // Customer-level Shift Scheduler mode (server-resolved, default ON).
   // Scheduler OFF hides the in-app Scheduling / My Schedule navigation entries
   // — routes stay open for authorised admins to view existing shifts; existing
   // shifts are never changed. My Shift always remains available.
-  const schedulerOn = useShiftScheduler(user);
   const schedulerNavFilter = (items) =>
     schedulerOn ? items : items.filter((item) => !["Scheduling", "GuardMyShifts"].includes(item.pageKey));
 
