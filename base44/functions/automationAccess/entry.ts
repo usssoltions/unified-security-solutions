@@ -26,16 +26,32 @@ async function getOrCreateSettings(svc: any, customerId: string | null, reseller
   const q: any = customerId ? { customer_id: customerId } : { customer_id: null };
   const rows = (await svc.entities.AutomationSetting.filter(q).catch(() => [])) || [];
   const rec = rows[0] || null;
-  if (rec) return rec;
+  if (rec) {
+    // CONCURRENT-FIRST-LOAD RACE CLEANUP — two config panels mounting in
+    // parallel could once create TWO rows for the same tenant. Keep the
+    // first, delete the duplicates so every reader resolves the SAME row.
+    // Duplicates are identical by construction (same defaults), so no
+    // saved setting value is ever lost.
+    for (const dup of rows.slice(1)) {
+      await svc.entities.AutomationSetting.delete(dup.id).catch(() => {});
+    }
+    return rec;
+  }
   // First touch for this tenant — the record starts from the schema
   // defaults (all monitors OFF), never from another tenant's row.
-  return await svc.entities.AutomationSetting.create({
+  const created = await svc.entities.AutomationSetting.create({
     customer_id: customerId || null,
     reseller_id: resellerId || null,
     ...AUTOMATION_DEFAULTS,
     updated_at: new Date().toISOString(),
     updated_by_name: updatedBy || null,
   });
+  // Re-check for a racing duplicate create and keep exactly one row.
+  const after = (await svc.entities.AutomationSetting.filter(q).catch(() => [])) || [];
+  for (const dup of after.slice(1)) {
+    await svc.entities.AutomationSetting.delete(dup.id).catch(() => {});
+  }
+  return after[0] || created;
 }
 
 export default async function(req: Request): Promise<Response> {

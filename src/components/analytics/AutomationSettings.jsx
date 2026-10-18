@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
   Activity, Clock, Battery, Shield, Bell, BarChart3, FileText, LineChart,
-  CalendarDays, AlertTriangle, Users, Loader2, AlertCircle, Info
+  CalendarDays, AlertTriangle, Users, Loader2, AlertCircle, Info, Wrench
 } from "lucide-react";
 
 // The FULL inventory of tenant-configurable automation, made discoverable
@@ -80,6 +80,12 @@ const REPORTS = [
     icon: AlertTriangle, color: "text-rose-400",
   },
   {
+    key: "report_maintenance_alerts",
+    label: "Maintenance Alerts",
+    description: "Real-time alerts when a new maintenance request is reported",
+    icon: Wrench, color: "text-orange-400",
+  },
+  {
     key: "report_guard_performance",
     label: "Guard Performance Report",
     description: "Board-level guard performance report — sent on demand or via a schedule (default OFF)",
@@ -130,7 +136,8 @@ export default function AutomationSettings() {
     setError(null);
     try {
       const res = await base44.functions.invoke("automationAccess", { action: "get" });
-      setSettings(res?.settings || null);
+      const payload = res?.data ?? res;
+      setSettings(payload?.settings || null);
     } catch (err) {
       console.error("Failed to load automation settings:", err);
       setError(err?.message || "Could not load automation settings. Please try again.");
@@ -147,7 +154,8 @@ export default function AutomationSettings() {
     setSettings({ ...settings, [key]: value });
     try {
       const res = await base44.functions.invoke("automationAccess", { action: "toggle", key, value });
-      if (res?.settings) setSettings(res.settings);
+      const payload = res?.data ?? res;
+      if (payload?.settings) setSettings(payload.settings);
     } catch (err) {
       console.error("Failed to update setting:", err);
       setSettings(prev);

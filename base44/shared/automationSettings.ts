@@ -12,8 +12,8 @@
  *    DEFAULT OFF — an automation only runs for a tenant that explicitly
  *    enabled it.
  *  - Reports (report_daily_activity / shift_reports / weekly_analysis /
- *    monthly_comparison / incident_alerts): default ON, preserving the
- *    historical behaviour of those senders.
+ *    monthly_comparison / incident_alerts / maintenance_alerts): default ON,
+ *    preserving the historical behaviour of those senders.
  *  - report_guard_performance: default OFF — the board report only sends
  *    when explicitly enabled.
  */
@@ -29,6 +29,7 @@ export const AUTOMATION_DEFAULTS: Record<string, boolean> = {
   report_weekly_analysis: true,
   report_monthly_comparison: true,
   report_incident_alerts: true,
+  report_maintenance_alerts: true,
   report_guard_performance: false,
 };
 

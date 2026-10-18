@@ -63,7 +63,8 @@ export default function AutomationToggles() {
       // organisation (server-resolved). A new organisation starts with all
       // monitors OFF — it never inherits another customer's switches.
       const res = await base44.functions.invoke("automationAccess", { action: "get" });
-      setSettings(res?.settings || null);
+      const payload = res?.data ?? res;
+      setSettings(payload?.settings || null);
     } catch (err) {
       console.error("Failed to load automation settings:", err);
       setError(err?.message || "Could not load automation settings. Please try again.");
@@ -84,7 +85,8 @@ export default function AutomationToggles() {
         key,
         value,
       });
-      if (res?.settings) setSettings(res.settings);
+      const payload = res?.data ?? res;
+      if (payload?.settings) setSettings(payload.settings);
     } catch (err) {
       console.error("Failed to update setting:", err);
       setSettings(prevSettings);

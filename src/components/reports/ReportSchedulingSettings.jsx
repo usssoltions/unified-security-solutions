@@ -17,6 +17,7 @@ const REPORT_TOGGLES = [
   { key: "report_weekly_analysis", label: "Weekly Analysis", description: "Sent every Monday at 9:00 AM" },
   { key: "report_monthly_comparison", label: "Monthly Comparison", description: "Sent on the 1st of each month" },
   { key: "report_incident_alerts", label: "Incident Alerts", description: "Real-time critical incident notifications" },
+  { key: "report_maintenance_alerts", label: "Maintenance Alerts", description: "Real-time notifications when a new maintenance request is submitted" },
   { key: "report_guard_performance", label: "Guard Performance Report", description: "Board-level guard performance report (monthly, sent on demand or when scheduled)" },
 ];
 
@@ -35,9 +36,10 @@ export default function ReportSchedulingSettings() {
     setLoadError(null);
     try {
       const res = await base44.functions.invoke("automationAccess", { action: "get" });
-      setSettingsId(res?.settings_id || null);
-      setReportSettings(res?.settings || null);
-      return res?.settings || null;
+      const payload = res?.data ?? res;
+      setSettingsId(payload?.settings_id || null);
+      setReportSettings(payload?.settings || null);
+      return payload?.settings || null;
     } catch (err) {
       console.error("Failed to load report settings:", err);
       setLoadError(err?.message || "Could not load report settings. Please try again.");
@@ -73,11 +75,12 @@ export default function ReportSchedulingSettings() {
   const toggleMutation = useMutation({
     mutationFn: async ({ key, value }) => {
       if (!settingsId) throw new Error("Settings not loaded yet");
-      return await base44.functions.invoke("automationAccess", {
+      const res = await base44.functions.invoke("automationAccess", {
         action: "toggle",
         key,
         value,
       });
+      return res?.data ?? res;
     },
     onSuccess: (res) => {
       if (res?.settings) setReportSettings(res.settings);

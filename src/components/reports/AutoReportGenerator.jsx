@@ -19,7 +19,8 @@ export default function AutoReportGenerator({ user, shift }) {
         // email the shift-end report.
         try {
           const res = await base44.functions.invoke("automationAccess", { action: "get" });
-          if (res?.settings && res.settings.report_shift_reports === false) return;
+          const payload = res?.data ?? res;
+          if (payload?.settings && payload.settings.report_shift_reports === false) return;
         } catch (_) {}
 
         const templates = await base44.entities.ReportTemplate.filter({
