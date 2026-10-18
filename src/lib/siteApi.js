@@ -55,6 +55,17 @@ export async function getSite(siteId) {
   return d.site;
 }
 
+// Active checklist templates for ONE site — resolved server-side by the
+// siteAccess gateway so a guard's RLS-blocked direct template read can never
+// silently empty the list. Returns the site's OWN templates only.
+export async function listSiteChecklists(siteId) {
+  const d = await invokeSiteAccess({ action: "listChecklists", site_id: siteId });
+  if (!Array.isArray(d.templates)) {
+    throw new Error("Checklist response was malformed — no templates array returned.");
+  }
+  return d.templates;
+}
+
 export async function createSite(data) {
   return invokeSiteAccess({ action: "create", ...data });
 }

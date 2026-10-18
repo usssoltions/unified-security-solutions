@@ -37,6 +37,13 @@
     "qr_code": {
       "type": "string"
     },
+    "checklist_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Name of the patrol checklist template completed with this checkpoint scan (null when the site has no active checklist). Full answers are stored on the linked ChecklistCompletion record."
+    },
     "location": {
       "type": "object",
       "description": "The guard's scan GPS position at checkpoint verification.",

@@ -172,6 +172,30 @@ export default async function(req) {
       return Response.json({ customers: customers || [], locked: locked, locked_customer_id: locked_customer_id });
     }
 
+    /* GUARD CHECKLIST READ — active checklist templates for ONE site.
+       ChecklistTemplate RLS cannot authorise guards (session tokens do not
+       carry their tenant fields — the guard's direct read silently returned
+       nothing and hid the checkpoint checklist). Resolved here server-side:
+       the site must be in the caller's scope, and only THAT site's own
+       active templates are returned — never another customer's or another
+       site's template. */
+    if (action === 'listChecklists') {
+      const site = await findSite(body.site_id);
+      if (!site) return Response.json({ error: 'Site not found', code: 'not_found' }, { status: 404 });
+      if (!siteInScope(site)) return denied(site);
+      let templates = [];
+      try {
+        templates = await svc.entities.ChecklistTemplate.filter(
+          { site_id: site.id, status: 'active' },
+          '-created_date',
+          50
+        );
+      } catch (e) {
+        return Response.json({ error: 'The checklist query failed on the server', code: 'list_failed' }, { status: 500 });
+      }
+      return Response.json({ templates: templates || [] });
+    }
+
     if (action === 'get') {
       const site = await findSite(body.id);
       if (!site) return Response.json({ error: 'Site not found', code: 'not_found' }, { status: 404 });
