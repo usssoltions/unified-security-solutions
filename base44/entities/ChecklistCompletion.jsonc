@@ -48,7 +48,27 @@
           "value": {
             "type": "string"
           },
+          "note": {
+            "type": "string",
+            "description": "Issue note captured for this item (Issue answers). Cleared for Pass / Not applicable."
+          },
           "photo_url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "media": {
+      "type": "array",
+      "default": [],
+      "description": "General scan media attached at submission: [{type: 'photo'|'video', url}].",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "url": {
             "type": "string"
           }
         }

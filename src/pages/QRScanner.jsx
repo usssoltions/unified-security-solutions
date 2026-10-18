@@ -377,6 +377,10 @@ export default function QRScanner() {
           template_name: activeTemplate?.name || "Manual Checklist",
           guard_id: user.id,
           guard_name: user.full_name,
+          // Tenant ownership stamped from the server-verified shift (the same
+          // record the gateway authorised) — never from client-supplied scope.
+          customer_id: shift.customer_id || undefined,
+          reseller_id: shift.reseller_id || undefined,
           shift_id: shift.id,
           site_id: shift.site_id,
           checkpoint_id: checkpoint.id,
