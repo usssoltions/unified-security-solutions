@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { saveOffline, isOnline } from "@/lib/offlineDB";
 import { uploadOptimizedImage } from "@/lib/imageOptimize";
 import { base44 } from "@/api/base44Client";
-import { getSite } from "@/lib/siteApi";
+import { getSite, listSiteChecklists } from "@/lib/siteApi";
 import { matchCheckpoint } from "@/lib/checkpointMatch";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Camera, AlertCircle, CheckCircle2, MapPin, Clock, Upload, PenTool, ScanLine } from "lucide-react";
+import { Camera, AlertCircle, CheckCircle2, MapPin, Clock, Upload, PenTool, ScanLine, RefreshCw } from "lucide-react";
 import DocumentScanner from "../components/documents/DocumentScanner";
 import SignaturePad from "../components/guard/SignaturePad";
 import useWakeLock from "@/hooks/useWakeLock";
@@ -27,6 +27,9 @@ export default function QRScanner() {
   const [scanTimestamp, setScanTimestamp] = useState(null);
   const [scanLocation, setScanLocation] = useState(null);
   const [checklistItems, setChecklistItems] = useState([]);
+  const [activeTemplate, setActiveTemplate] = useState(null);
+  const [templateLoadFailed, setTemplateLoadFailed] = useState(false);
+  const [retryingTemplates, setRetryingTemplates] = useState(false);
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState([]);
   const [videos, setVideos] = useState([]);
@@ -109,17 +112,15 @@ export default function QRScanner() {
     enabled: !!shift
   });
 
-  const { data: templates } = useQuery({
-    queryKey: ["templates", shift?.site_id],
-    queryFn: async () => {
-      if (!shift?.site_id) return [];
-      return await base44.entities.ChecklistTemplate.filter({
-        site_id: shift.site_id,
-        status: "active"
-      });
-    },
-    enabled: !!shift,
-    initialData: []
+  // Site checklists load through the siteAccess gateway (server-side tenant
+  // resolution). A guard's direct ChecklistTemplate read is blocked by RLS
+  // (session tokens do not carry the guard's tenant field), which silently
+  // emptied this list and hid the checkpoint checklist. A failed load is now
+  // VISIBLE and blocks submission instead of being silently omitted.
+  const { data: templates, error: templatesError, isLoading: templatesLoading, refetch: refetchTemplates } = useQuery({
+    queryKey: ["siteChecklists", shift?.site_id],
+    queryFn: async () => await listSiteChecklists(shift.site_id),
+    enabled: !!shift
   });
 
   // Customer-level geofence enforcement (server-resolved, per customer).
@@ -230,33 +231,44 @@ export default function QRScanner() {
       setScanTimestamp(currentTime);
       setScanLocation(currentLocation);
 
-      const checkpointTemplates = templates.filter(
-        t => t.checkpoint_id === foundCheckpoint.id
-      );
-
-      if (checkpointTemplates.length > 0) {
-        const template = checkpointTemplates[0];
-        setChecklistItems(template.items.map(item => ({
-          ...item,
-          checked: false,
-          value: "",
-          photo_url: ""
-        })));
-      } else if (templates.length > 0) {
-        // Use first available template
-        setChecklistItems(templates[0].items.map(item => ({
-          ...item,
-          checked: false,
-          value: "",
-          photo_url: ""
-        })));
-      }
-
     } catch (error) {
       console.error("QR scan error:", error);
       setNotRecognised({ value: qrCodeText, reason: "no_match" });
     }
   };
+
+  // CHECKLIST SELECTION — runs when a checkpoint is scanned. Picks the
+  // checkpoint-specific template first, else the site-level template
+  // (checkpoint_id unset / 'all'), from the gateway's site-scoped list.
+  // NEVER falls back to another customer's or site's first template. A
+  // failed load surfaces an error with Retry and blocks submission.
+  const checklistLoadedForRef = useRef(null);
+  useEffect(() => {
+    if (!checkpoint) {
+      checklistLoadedForRef.current = null;
+      setTemplateLoadFailed(false);
+      return;
+    }
+    if (templatesLoading) return;
+    // Already loaded for THIS scan (e.g. an unrelated background refetch of
+    // the same template) — keep the guard's in-progress answers.
+    if (checklistLoadedForRef.current === checkpoint.id && !templateLoadFailed) return;
+    if (templatesError || !Array.isArray(templates)) {
+      setActiveTemplate(null);
+      setChecklistItems([]);
+      setTemplateLoadFailed(true);
+      return;
+    }
+    const checkpointSpecific = templates.filter(t => t.checkpoint_id === checkpoint.id);
+    const siteLevel = templates.filter(t => !t.checkpoint_id || t.checkpoint_id === "all");
+    const chosen = checkpointSpecific[0] || siteLevel[0] || null;
+    setActiveTemplate(chosen);
+    setChecklistItems(chosen
+      ? chosen.items.map(item => ({ ...item, checked: false, value: "", photo_url: "" }))
+      : []);
+    checklistLoadedForRef.current = checkpoint.id;
+    setTemplateLoadFailed(false);
+  }, [checkpoint, templates, templatesLoading, templatesError]);
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...checklistItems];
@@ -303,8 +315,10 @@ export default function QRScanner() {
 
   const isComplete = () => {
     return checklistItems.every(item => {
+      // RFG tri-state: EVERY checkbox item must carry a Pass / Issue /
+      // Not applicable answer before submission.
+      if (item.type === "checkbox") return isRfg ? !!item.value : (!item.required || item.checked);
       if (!item.required) return true;
-      if (item.type === "checkbox") return item.checked;
       if (item.type === "text") return item.value.trim().length > 0;
       if (item.type === "photo") return item.photo_url.length > 0;
       return true;
@@ -312,6 +326,11 @@ export default function QRScanner() {
   };
 
   const handleSubmit = async () => {
+    // A checklist that failed to load can never be submitted as if it were shown.
+    if (templateLoadFailed) {
+      alert("The site checklist could not be loaded — please retry before submitting.");
+      return;
+    }
     if (!isComplete()) {
       alert("Please complete all required checklist items");
       return;
@@ -333,6 +352,7 @@ export default function QRScanner() {
         checkpoint_id: checkpoint.id,
         checkpoint_name: checkpoint.name,
         qr_code: checkpoint.qr_code,
+        checklist_name: activeTemplate?.name || null,
         location: scanLocation,
         timestamp: scanTimestamp,
         verified: distanceFromCheckpoint !== null ? distanceFromCheckpoint <= 100 : true,
@@ -353,8 +373,8 @@ export default function QRScanner() {
 
       if (checklistItems.length > 0) {
         await base44.entities.ChecklistCompletion.create({
-          template_id: templates[0]?.id || "manual",
-          template_name: templates[0]?.name || "Manual Checklist",
+          template_id: activeTemplate?.id || "manual",
+          template_name: activeTemplate?.name || "Manual Checklist",
           guard_id: user.id,
           guard_name: user.full_name,
           shift_id: shift.id,
@@ -365,6 +385,7 @@ export default function QRScanner() {
             item_id: item.id,
             checked: item.checked,
             value: item.value,
+            note: item.note || "",
             photo_url: item.photo_url
           })),
           signature: {
@@ -539,10 +560,36 @@ export default function QRScanner() {
         </CardContent>
       </Card>
 
+      {templateLoadFailed && (
+        <Card className="bg-rose-900/30 border-rose-500/50">
+          <CardHeader>
+            <CardTitle className="text-rose-300 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" /> Checklist could not be loaded
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-slate-300 text-sm">
+              The site checklist failed to load and submission is disabled until it is shown.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full border-slate-600 text-slate-300"
+              disabled={retryingTemplates}
+              onClick={async () => {
+                setRetryingTemplates(true);
+                try { await refetchTemplates(); } finally { setRetryingTemplates(false); }
+              }}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${retryingTemplates ? "animate-spin" : ""}`} /> Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {checklistItems.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
-            <CardTitle className="text-white">Checkpoint Checklist</CardTitle>
+            <CardTitle className="text-white">{activeTemplate?.name || "Checkpoint Checklist"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {checklistItems.map((item, index) => (
@@ -812,7 +859,7 @@ export default function QRScanner() {
           <Button
             className="w-full h-14 text-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
             onClick={handleSubmit}
-            disabled={!isComplete() || submitting}
+            disabled={!isComplete() || submitting || templateLoadFailed}
           >
             {submitting ? (
               "Submitting..."
