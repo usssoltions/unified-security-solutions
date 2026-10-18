@@ -1,7 +1,7 @@
 {
   "name": "Shift",
   "type": "object",
-  "description": "Guard shift assignment. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's shifts (including clock-in GPS) to every other customer under the same reseller (confirmed cross-tenant defect class 2026-09-21). Guards always see their own shifts; platform admins retain oversight.",
+  "description": "Guard shift assignment. TENANT ISOLATION: reads/updates are customer-scoped; the reseller_id branch is reserved for RESELLER ADMINISTRATORS only (admin_level 'reseller') \u2014 an ungated reseller branch exposes every customer's shifts (including clock-in GPS) to every other customer under the same reseller (confirmed cross-tenant defect class 2026-09-21). Guards always see their own shifts; platform admins retain oversight. Lifecycle parity: scheduled and unscheduled clock-ins produce the SAME active Shift record (status 'active' + clock_in) through the shiftAccess gateway; an unscheduled shift merely carries unscheduled=true.",
   "properties": {
     "demo_batch_id": {
       "type": [
@@ -49,6 +49,11 @@
         "cancelled"
       ],
       "default": "scheduled"
+    },
+    "unscheduled": {
+      "type": "boolean",
+      "default": false,
+      "description": "TRUE when this shift was started WITHOUT a scheduled assignment (Scheduler OFF mode, started from My Shift). Validated and stamped server-side by the shiftAccess gateway (site authorisation + GPS + geofence + PIN). The lifecycle, reporting, patrol scanning and clock-out are identical to scheduled shifts."
     },
     "reminder_sent": {
       "type": "boolean",
@@ -100,6 +105,21 @@
         },
         "verified": {
           "type": "boolean"
+        },
+        "geofence": {
+          "type": "object",
+          "properties": {
+            "checked": {
+              "type": "boolean",
+              "description": "TRUE when the server actually verified the guard's GPS against the site geofence (site GPS + radius configured). FALSE never means the check passed \u2014 it means no configured geofence existed to check against (scheduled mode only)."
+            },
+            "distance_m": {
+              "type": "number"
+            },
+            "radius_m": {
+              "type": "number"
+            }
+          }
         }
       }
     },

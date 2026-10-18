@@ -14,8 +14,15 @@
  *   OPERATIONS                 — Control Room, Incidents, Maintenance, Panic, Scheduling, etc.
  *   ESTATE                     — Estate Manager, Residents, Venues, Vendors, Properties, Voting
  *   OCCUPATIONAL_THERAPY       — Medical Dashboard, Patients, Appointments, Sessions, etc.
- *   REPORTING_CORE             — Reports, Analytics, Data Hub, Payroll, AI Reports
+ *   REPORTING_CORE             — Reports, Analytics, Data Hub, Payroll, AI Reports, Daily Activity Report
  *   PLATFORM_ADMIN_ONLY        — Tenant Setup, Test Data, System Setup, OneSignal Test
+ *
+ * COMPLETE SECURITY SUITE: the COMPLETE_SECURITY bundle legitimately includes
+ * Operations, Patrol AND Access Control — every page of those three modules
+ * carries ["X", "COMPLETE_SECURITY"] so an entitled Customer Administrator
+ * (or guard / dispatcher) sees and opens the full suite. The suite does NOT
+ * include Reporting & Analytics: REPORTING_CORE stays a separate single-key
+ * gate (Daily Activity Report included), never auto-granted by the suite.
  */
 export const PAGE_MODULE_MAP = {
   // ── CALLING module ──────────────────────────────────────────────
@@ -24,20 +31,20 @@ export const PAGE_MODULE_MAP = {
   CallHistory: "CALLING",
   CallRecordings: "CALLING",
 
-  // ── OPERATIONS module ───────────────────────────────────────────
-  ControlRoom: "OPERATIONS",
-  AdminIncidents: "OPERATIONS",
-  AdminMaintenance: "OPERATIONS",
-  PanicManagement: "OPERATIONS",
-  Scheduling: "OPERATIONS",
-  ClockInOutReports: "OPERATIONS",
-  SiteManagement: "OPERATIONS",
-  SiteMapDashboard: "OPERATIONS",
-  StartOfShiftHistory: "OPERATIONS",
-  AssetManagement: "OPERATIONS",
-  StayAwakeConfiguration: "OPERATIONS",
-  GuardIncidents: "OPERATIONS",
-  GuardMaintenance: "OPERATIONS",
+  // ── OPERATIONS module (also unlocked by the COMPLETE_SECURITY suite) ──
+  ControlRoom: ["OPERATIONS", "COMPLETE_SECURITY"],
+  AdminIncidents: ["OPERATIONS", "COMPLETE_SECURITY"],
+  AdminMaintenance: ["OPERATIONS", "COMPLETE_SECURITY"],
+  PanicManagement: ["OPERATIONS", "COMPLETE_SECURITY"],
+  Scheduling: ["OPERATIONS", "COMPLETE_SECURITY"],
+  ClockInOutReports: ["OPERATIONS", "COMPLETE_SECURITY"],
+  SiteManagement: ["OPERATIONS", "COMPLETE_SECURITY"],
+  SiteMapDashboard: ["OPERATIONS", "COMPLETE_SECURITY"],
+  StartOfShiftHistory: ["OPERATIONS", "COMPLETE_SECURITY"],
+  AssetManagement: ["OPERATIONS", "COMPLETE_SECURITY"],
+  StayAwakeConfiguration: ["OPERATIONS", "COMPLETE_SECURITY"],
+  GuardIncidents: ["OPERATIONS", "COMPLETE_SECURITY"],
+  GuardMaintenance: ["OPERATIONS", "COMPLETE_SECURITY"],
   // Task Scheduling is a STANDALONE module (TASK_SCHEDULING); customers with
   // the OPERATIONS or COMPLETE_SECURITY suites keep it for continuity.
   ScheduledTasks: ["TASK_SCHEDULING", "OPERATIONS", "COMPLETE_SECURITY"],
@@ -53,29 +60,30 @@ export const PAGE_MODULE_MAP = {
   GuardMyShifts: ["OPERATIONS", "COMPLETE_SECURITY"],
   ShiftHandover: ["OPERATIONS", "COMPLETE_SECURITY"],
 
-  // ── PATROL module ───────────────────────────────────────────────
-  GuardPatrol: "PATROL",
-  PatrolDashboard: "PATROL",
-  PatrolAnalytics: "PATROL",
-  CompletedPatrols: "PATROL",
-  PatrolChecklists: "PATROL",
-  PatrolMonitoring: "PATROL",
-  GuardPatrolChecklist: "PATROL",
-  GuardPerformanceAnalytics: "PATROL",
+  // ── PATROL module (also unlocked by the COMPLETE_SECURITY suite) ──
+  GuardPatrol: ["PATROL", "COMPLETE_SECURITY"],
+  PatrolDashboard: ["PATROL", "COMPLETE_SECURITY"],
+  PatrolAnalytics: ["PATROL", "COMPLETE_SECURITY"],
+  CompletedPatrols: ["PATROL", "COMPLETE_SECURITY"],
+  PatrolChecklists: ["PATROL", "COMPLETE_SECURITY"],
+  PatrolMonitoring: ["PATROL", "COMPLETE_SECURITY"],
+  GuardPatrolChecklist: ["PATROL", "COMPLETE_SECURITY"],
+  GuardPerformanceAnalytics: ["PATROL", "COMPLETE_SECURITY"],
 
-  // ── ACCESS module ───────────────────────────────────────────────
+  // ── ACCESS module (also unlocked by the COMPLETE_SECURITY suite) ──
   // QRScanner is the PATROL CHECKPOINT scanner (requires an active shift) —
   // NOT part of Access Control: Access Control does its own visitor/QR
   // scanning inside AccessControl.jsx. ACCESS alone therefore never enables
   // the checkpoint scanner; bundles that legitimately include patrols
   // (PATROL module, OPERATIONS, COMPLETE_SECURITY) do.
   QRScanner: ["PATROL", "OPERATIONS", "COMPLETE_SECURITY"],
-  AccessControl: "ACCESS",
-  AccessHistory: "ACCESS",
-  HospitalityVisits: "ACCESS",
-  AccessSettings: "ACCESS",
+  AccessControl: ["ACCESS", "COMPLETE_SECURITY"],
+  AccessHistory: ["ACCESS", "COMPLETE_SECURITY"],
+  HospitalityVisits: ["ACCESS", "COMPLETE_SECURITY"],
+  AccessSettings: ["ACCESS", "COMPLETE_SECURITY"],
 
-  // ── REPORTING_CORE module ───────────────────────────────────────
+  // ── REPORTING_CORE module — SEPARATE entitlement, never auto-granted
+  //    by the COMPLETE_SECURITY suite ────────────────────────────────
   PayrollSummary: "REPORTING_CORE",
   DataHub: "REPORTING_CORE",
   Reports: "REPORTING_CORE",

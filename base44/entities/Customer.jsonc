@@ -79,6 +79,11 @@
       "default": false,
       "description": "PERSISTED CUSTOMER SETTING (default OFF): enables the Digital Occurrence Book extension inside Task & OB Scheduling. Server-enforced; requires the Task Scheduling module."
     },
+    "shift_scheduler_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "PERSISTED CUSTOMER SETTING (default ON for existing customers without a saved value): when ON, guards clock in only against their assigned scheduled shifts; when OFF, the in-app Scheduling and My Schedule navigation entries are hidden and guards start an unscheduled shift from My Shift at an authorised active site with server-side geofence verification. Changing it never deletes or alters existing shifts. Changed ONLY by a Customer Administrator through the shiftAccess gateway."
+    },
     "guard_default_landing": {
       "type": "string",
       "description": "Optional guard default landing module page key (e.g. 'access_control'). Fail-closed: applies only when role and entitlements permit the page."

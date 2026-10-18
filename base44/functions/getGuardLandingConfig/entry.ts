@@ -52,6 +52,10 @@ export default async function(req: Request): Promise<Response> {
       if (customer) {
         out.resolved = true;
         out.guard_default_landing = customer.guard_default_landing || null;
+        // Customer-level Shift Scheduler mode — default ON for existing
+        // customers without a saved value. Navigation and the shift gateway
+        // both read this server-side resolution.
+        out.shift_scheduler_enabled = customer.shift_scheduler_enabled !== false;
         out.customer_name = customer.name || null;
         out.customer_type = customer.customer_type || null;
       }
