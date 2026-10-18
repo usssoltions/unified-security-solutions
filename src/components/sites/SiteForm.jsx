@@ -25,7 +25,13 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     location: site?.location || { lat: 0, lng: 0 },
     geofence_radius: site?.geofence_radius || 100,
     status: site?.status || "active",
-    checkpoints: site?.checkpoints || [],
+    // NULL-SAFE: checkpoints with no captured GPS store location: null —
+    // normalise to an empty editable location so the form never reads .lat
+    // of null. Nothing is cleared: existing values are preserved as-is.
+    checkpoints: (site?.checkpoints || []).map(cp => ({
+      ...cp,
+      location: cp?.location || { lat: "", lng: "" }
+    })),
     patrol_config: site?.patrol_config || { enabled: false, schedules: [] }
   });
   const [loading, setLoading] = useState(false);
@@ -156,6 +162,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     if (field === "lat" || field === "lng") {
       // MANUAL coordinate entry — kept distinct from device capture; raw
       // text is stored while typing and parsed on save (0/0 never persists).
+      if (!updated[index].location) updated[index].location = { lat: "", lng: "" };
       updated[index].location[field] = value;
       updated[index].location_source = "manual";
     } else if (field === "name") {
@@ -503,7 +510,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                           type="number"
                           step="any"
                           placeholder="Latitude (manual)"
-                          value={checkpoint.location.lat}
+                          value={checkpoint.location?.lat ?? ""}
                           onChange={(e) => handleUpdateCheckpoint(index, "lat", e.target.value)}
                           className="bg-slate-800 border-slate-700 text-white text-sm"
                         />
@@ -511,7 +518,7 @@ export default function SiteForm({ site, onClose, onSuccess }) {
                           type="number"
                           step="any"
                           placeholder="Longitude (manual)"
-                          value={checkpoint.location.lng}
+                          value={checkpoint.location?.lng ?? ""}
                           onChange={(e) => handleUpdateCheckpoint(index, "lng", e.target.value)}
                           className="bg-slate-800 border-slate-700 text-white text-sm"
                         />

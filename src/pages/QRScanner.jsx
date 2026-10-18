@@ -13,6 +13,9 @@ import { Camera, AlertCircle, CheckCircle2, MapPin, Clock, Upload, PenTool, Scan
 import DocumentScanner from "../components/documents/DocumentScanner";
 import SignaturePad from "../components/guard/SignaturePad";
 import useWakeLock from "@/hooks/useWakeLock";
+import IncidentForm from "@/components/guard/IncidentForm";
+import MaintenanceForm from "@/components/guard/MaintenanceForm";
+import { RFG_SITE_ID } from "@/lib/rfgSite";
 
 export default function QRScanner() {
   const [user, setUser] = useState(null);
@@ -31,6 +34,9 @@ export default function QRScanner() {
   const [submitting, setSubmitting] = useState(false);
   const [distanceFromCheckpoint, setDistanceFromCheckpoint] = useState(null);
   const [scanning, setScanning] = useState(false);
+  // RFG-ONLY: 'incident' | 'maintenance' — opens the report form from the
+  // checklist's final question (site-scoped, no other site affected).
+  const [reportForm, setReportForm] = useState(null);
 
   // Operation-scoped screen wake lock: held ONLY while the scanner is live
   // (screen-off would interrupt the scan), released when scanning stops.
@@ -111,6 +117,8 @@ export default function QRScanner() {
     enabled: !!shift,
     initialData: []
   });
+
+  const isRfg = site?.id === RFG_SITE_ID;
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371e3;
@@ -293,6 +301,19 @@ export default function QRScanner() {
     setChecklistItems(newItems);
   };
 
+  // RFG-ONLY tri-state answer (Pass / Issue / Not applicable). checked=true
+  // marks the item answered for the shared completion logic; the chosen
+  // answer is stored in value. Switching away from Issue clears its extras.
+  const handleRfgAnswer = (index, ans) => {
+    const newItems = [...checklistItems];
+    newItems[index] = { ...newItems[index], checked: true, value: ans };
+    if (ans !== "Issue") {
+      newItems[index].note = "";
+      newItems[index].photo_url = "";
+    }
+    setChecklistItems(newItems);
+  };
+
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files);
     for (const file of files) {
@@ -391,7 +412,7 @@ export default function QRScanner() {
           location: scanLocation,
           completed_at: new Date().toISOString(),
           status: "completed",
-          notes: notes,
+          notes: [notes, ...checklistItems.filter(i => i.note).map(i => `Issue - ${i.text}: ${i.note}`)].filter(Boolean).join("\n"),
           media: [
             ...photos.map(url => ({ type: "photo", url })),
             ...videos.map(url => ({ type: "video", url }))
@@ -487,6 +508,18 @@ export default function QRScanner() {
 
   return (
     <div className="min-h-screen p-4 space-y-4">
+      {reportForm === "incident" && (
+        <IncidentForm
+          user={user} shift={shift} location={scanLocation} checkpoint={checkpoint}
+          onClose={() => setReportForm(null)} onSuccess={() => setReportForm(null)}
+        />
+      )}
+      {reportForm === "maintenance" && (
+        <MaintenanceForm
+          user={user} shift={shift} location={scanLocation} checkpoint={checkpoint}
+          onClose={() => setReportForm(null)} onSuccess={() => setReportForm(null)}
+        />
+      )}
       <Card className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border-emerald-500/20">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
@@ -527,7 +560,105 @@ export default function QRScanner() {
           <CardContent className="space-y-4">
             {checklistItems.map((item, index) => (
               <div key={item.id} className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
-                {item.type === "checkbox" && (
+                {item.type === "checkbox" && isRfg ? (
+                  <div>
+                    <label className="text-white font-medium block mb-2">
+                      {item.text}
+                      {item.required && <span className="text-rose-400 ml-1">*</span>}
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {["Pass", "Issue", "Not applicable"].map((ans) => (
+                        <button
+                          key={ans}
+                          type="button"
+                          onClick={() => handleRfgAnswer(index, ans)}
+                          className={`h-10 rounded-lg text-sm font-medium border ${
+                            item.value === ans
+                              ? ans === "Issue"
+                                ? "bg-amber-600 border-amber-500 text-white"
+                                : ans === "Pass"
+                                ? "bg-emerald-600 border-emerald-500 text-white"
+                                : "bg-slate-600 border-slate-500 text-white"
+                              : "bg-slate-900 border-slate-700 text-slate-300"
+                          }`}
+                        >
+                          {ans}
+                        </button>
+                      ))}
+                    </div>
+
+                    {item.value === "Issue" && (
+                      <div className="mt-3 space-y-3">
+                        <Input
+                          value={item.note || ""}
+                          onChange={(e) => handleItemChange(index, "note", e.target.value)}
+                          placeholder="Describe the issue (optional)"
+                          className="bg-slate-800 border-slate-700 text-white"
+                        />
+                        {item.photo_url ? (
+                          <div className="relative">
+                            <img src={item.photo_url} alt="Issue" className="w-full h-40 object-cover rounded-lg" />
+                            <Button
+                              size="sm"
+                              onClick={() => handleItemChange(index, "photo_url", "")}
+                              className="absolute top-2 right-2"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ) : (
+                          <div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              className="hidden"
+                              id={`issue-photo-${index}`}
+                              onChange={async (e) => {
+                                try {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  const file_url = await uploadOptimizedImage(file, { maxDim: 1000, quality: 0.7 });
+                                  if (file_url) handleItemChange(index, "photo_url", file_url);
+                                } catch (error) {
+                                  console.error("Photo upload error:", error);
+                                }
+                              }}
+                            />
+                            <label htmlFor={`issue-photo-${index}`}>
+                              <div className="border-2 border-dashed border-slate-600 rounded-lg p-4 text-center cursor-pointer hover:border-sky-500">
+                                <Camera className="w-6 h-6 text-slate-400 mx-auto mb-1" />
+                                <p className="text-sm text-slate-400">Photo of the issue (optional)</p>
+                              </div>
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {index === checklistItems.length - 1 && (
+                      <div className="flex gap-2 pt-3">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="flex-1 bg-rose-600 hover:bg-rose-700"
+                          onClick={() => setReportForm("incident")}
+                        >
+                          Report Incident
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 border-amber-500/50 text-amber-400"
+                          onClick={() => setReportForm("maintenance")}
+                        >
+                          Request Maintenance
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : item.type === "checkbox" && (
                   <label className="flex items-center gap-3 cursor-pointer">
                     <Checkbox
                       checked={item.checked}

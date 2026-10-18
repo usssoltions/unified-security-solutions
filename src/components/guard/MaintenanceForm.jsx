@@ -19,17 +19,24 @@ import {
 } from "@/components/ui/select";
 import SignaturePad from "./SignaturePad";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { RFG_SITE_ID, RFG_MAINTENANCE_TYPES } from "@/lib/rfgSite";
 
-export default function MaintenanceForm({ user, shift, location, onClose, onSuccess }) {
-  const maintenanceCategories = [
-    "Lighting", "Locks & Keys", "Fencing", "Gate/Barrier", "Alarm System",
-    "Camera/CCTV", "Plumbing", "Electrical", "Structural", "Other"
-  ];
+export default function MaintenanceForm({ user, shift, location, checkpoint, onClose, onSuccess }) {
+  // RFG-ONLY (site-scoped): this factory site uses its own maintenance type
+  // list; every other site keeps the standard list unchanged.
+  const isRfg = shift?.site_id === RFG_SITE_ID;
+  const maintenanceCategories = isRfg
+    ? RFG_MAINTENANCE_TYPES.map(t => t.label)
+    : [
+        "Lighting", "Locks & Keys", "Fencing", "Gate/Barrier", "Alarm System",
+        "Camera/CCTV", "Plumbing", "Electrical", "Structural", "Other"
+      ];
 
   const [formData, setFormData] = useState({
     maintenance_type: "",
     maintenance_type_other: "",
-    details: "",
+    urgency_choice: "",
+    details: checkpoint?.name ? "Checkpoint: " + checkpoint.name : "",
     who_notified: "",
     email_client: "YES",
     guard_id: user.id,
@@ -115,8 +122,8 @@ Officer Signature: Signed
         reseller_id: _resellerId,
         title: `Maintenance: ${data.maintenance_type}`,
         description: reportContent,
-        category: "other",
-        urgency: "medium",
+        category: isRfg ? (RFG_MAINTENANCE_TYPES.find(t => t.label === data.maintenance_type)?.category || "other") : "other",
+        urgency: isRfg ? (data.urgency_choice === "Emergency" ? "critical" : "low") : "medium",
         request_number: requestNumber,
         guard_id: data.guard_id,
         guard_name: data.guard_name,
@@ -177,7 +184,11 @@ Officer Signature: Signed
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
+    if (isRfg && !formData.urgency_choice) {
+      alert("Please select the urgency");
+      return;
+    }
     if (!formData.signature) {
       setShowSignature(true);
       return;
@@ -460,6 +471,24 @@ Please provide:
                   </SelectContent>
                 </Select>
               </div>
+
+              {isRfg && (
+                <div>
+                  <label className="text-sm text-slate-400 mb-2 block">Urgency *</label>
+                  <Select
+                    value={formData.urgency_choice}
+                    onValueChange={(value) => setFormData({ ...formData, urgency_choice: value })}
+                  >
+                    <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white w-full">
+                      <SelectValue placeholder="Select urgency..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Emergency">Emergency — immediate danger</SelectItem>
+                      <SelectItem value="Routine">Routine — not urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div>
                 <label className="text-sm text-slate-400 mb-2 block">If Other, What Type:</label>

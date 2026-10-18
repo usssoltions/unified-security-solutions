@@ -20,24 +20,31 @@ import {
 } from "@/components/ui/select";
 import SignaturePad from "./SignaturePad";
 import { createPageUrl } from "@/utils";
+import { RFG_SITE_ID, RFG_INCIDENT_TYPES } from "@/lib/rfgSite";
 
-export default function IncidentForm({ user, shift, location, onClose, onSuccess }) {
-  const incidentTypes = [
-    "Fire", "Theft", "Vandalism", "Medical Emergency", "Trespassing",
-    "Suspicious Activity", "Equipment Failure", "Safety Hazard", "Other"
-  ];
+export default function IncidentForm({ user, shift, location, checkpoint, onClose, onSuccess }) {
+  // RFG-ONLY (site-scoped): this factory site uses its own incident type
+  // list; every other site keeps the standard list unchanged.
+  const isRfg = shift?.site_id === RFG_SITE_ID;
+  const incidentTypes = isRfg
+    ? RFG_INCIDENT_TYPES.map(t => t.label)
+    : [
+        "Fire", "Theft", "Vandalism", "Medical Emergency", "Trespassing",
+        "Suspicious Activity", "Equipment Failure", "Safety Hazard", "Other"
+      ];
 
   const [formData, setFormData] = useState({
     incident_report_number: Date.now().toString(),
     date_time_of_incident: new Date().toISOString().slice(0, 16),
     incident_type: "",
+    urgency_choice: "",
     victim_names: "",
     victim_contact: "",
     suspect_names: "",
     suspect_contact: "",
     witness_names: "",
     witness_contact: "",
-    incident_location: "",
+    incident_location: checkpoint?.name || "",
     incident_summary: "",
     who_what_when_details: "",
     officer_actions: "",
@@ -140,17 +147,19 @@ Officer Signature: Signed
       `.trim();
 
       // Use AI-recommended category and priority if available
-      const categoryMap = {
-        'Fire': 'fire',
-        'Theft': 'theft',
-        'Vandalism': 'vandalism',
-        'Medical Emergency': 'medical',
-        'Trespassing': 'trespassing',
-        'Suspicious Activity': 'suspicious_activity',
-        'Equipment Failure': 'equipment_failure',
-        'Safety Hazard': 'safety_hazard',
-        'Other': 'other'
-      };
+      const categoryMap = isRfg
+        ? Object.fromEntries(RFG_INCIDENT_TYPES.map(t => [t.label, t.category]))
+        : {
+          'Fire': 'fire',
+          'Theft': 'theft',
+          'Vandalism': 'vandalism',
+          'Medical Emergency': 'medical',
+          'Trespassing': 'trespassing',
+          'Suspicious Activity': 'suspicious_activity',
+          'Equipment Failure': 'equipment_failure',
+          'Safety Hazard': 'safety_hazard',
+          'Other': 'other'
+        };
 
       const nowIso = new Date().toISOString();
       const { reseller_id: _resellerId, customer_id: _customerId } = getTenantContextFromUser(user);
@@ -160,7 +169,7 @@ Officer Signature: Signed
         title: `Incident Report - ${data.incident_type}`,
         description: reportContent,
         category: aiSuggestions?.recommended_category || categoryMap[data.incident_type] || "other",
-        priority: aiSuggestions?.recommended_priority || "high",
+        priority: isRfg ? (data.urgency_choice === "Emergency" ? "critical" : "low") : (aiSuggestions?.recommended_priority || "high"),
         incident_number: data.incident_report_number,
         guard_id: user.id,
         guard_name: getUserDisplayName(user),
@@ -507,6 +516,10 @@ Provide detailed analysis in JSON format:
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isRfg && !formData.urgency_choice) {
+      alert("Please select the urgency");
+      return;
+    }
     if (!formData.signature) {
       setShowSignature(true);
       return;
@@ -611,6 +624,24 @@ Provide detailed analysis in JSON format:
                   </SelectContent>
                 </Select>
               </div>
+
+              {isRfg && (
+                <div>
+                  <label className="text-white font-medium block mb-2">Urgency *</label>
+                  <Select
+                    value={formData.urgency_choice}
+                    onValueChange={(value) => setFormData({ ...formData, urgency_choice: value })}
+                  >
+                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white w-full">
+                      <SelectValue placeholder="Select urgency..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Emergency">Emergency — immediate danger</SelectItem>
+                      <SelectItem value="Routine">Routine — not urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
