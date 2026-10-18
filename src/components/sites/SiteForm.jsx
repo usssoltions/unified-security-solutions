@@ -105,6 +105,22 @@ export default function SiteForm({ site, onClose, onSuccess }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  // MOBILE DIALOG SCROLL FIX: while this dialog is open, stop the page behind
+  // it from scrolling (touch gestures on the backdrop must not move it).
+  // The lock is applied and released by this dialog's own mount/unmount only.
+  const contentScrollRef = React.useRef(null);
+  useEffect(() => {
+    const body = document.body;
+    const previousOverflow = body.style.overflow;
+    body.style.overflow = 'hidden';
+    return () => { body.style.overflow = previousOverflow; };
+  }, []);
+
+  // Always open scrolled to the top.
+  useEffect(() => {
+    if (contentScrollRef.current) contentScrollRef.current.scrollTop = 0;
+  }, []);
+
   const updateFormData = (updates) => {
     setFormData(prev => ({ ...prev, ...updates }));
     setHasUnsavedChanges(true);
@@ -312,9 +328,9 @@ export default function SiteForm({ site, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <Card className="w-full max-w-5xl bg-slate-800 border-slate-700 my-8">
-        <CardHeader className="border-b border-slate-700">
+    <div className="fixed inset-0 z-50 bg-black/50 flex flex-col p-0 sm:p-4 overflow-hidden">
+      <Card className="w-full max-w-5xl bg-slate-800 border-slate-700 rounded-none sm:rounded-xl flex flex-col min-h-0 flex-1 sm:flex-none sm:max-h-[85vh]">
+        <CardHeader className="shrink-0 border-b border-slate-700">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <CardTitle className="text-white">
@@ -333,7 +349,11 @@ export default function SiteForm({ site, onClose, onSuccess }) {
           </div>
         </CardHeader>
 
-        <CardContent className="p-6">
+        <CardContent
+          ref={contentScrollRef}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3">
