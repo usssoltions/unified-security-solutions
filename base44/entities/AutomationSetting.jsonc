@@ -1,7 +1,7 @@
 {
   "name": "AutomationSetting",
   "type": "object",
-  "description": "PER-TENANT automation monitoring and automated-report switches (one row per customer; customer_id null = platform-managed legacy pool). Monitors (overdue patrols, missed clock-ins, low battery, scheduled patrol generation, shift reminders) DEFAULT OFF \u2014 an automation only runs for a tenant that explicitly enabled it. Report toggles (daily activity, shift reports, weekly analysis, monthly comparison, incident alerts) default ON, preserving historical behaviour; report_guard_performance defaults OFF. Every scheduled/event monitor and report sender resolves the toggle from the OWNING tenant's record server-side (shared automationSettings helper) \u2014 a tenant without a record inherits only the schema defaults, never another customer's switches. Tenant read/write flows through the automationAccess gateway (server-side tenant resolution, admin-only writes, audit-logged); direct client access is restricted to platform administration by RLS.",
+  "description": "PER-TENANT automation monitoring and automated-report switches (one row per customer; customer_id null = platform-managed legacy pool). Monitors (overdue patrols, missed clock-ins, low battery, scheduled patrol generation, shift reminders) DEFAULT OFF \u2014 an automation only runs for a tenant that explicitly enabled it. Report toggles (daily activity, shift reports, weekly analysis, monthly comparison, incident alerts, maintenance alerts) default ON, preserving historical behaviour; report_guard_performance defaults OFF. Every scheduled/event monitor and report sender resolves the toggle from the OWNING tenant's record server-side (shared automationSettings helper) \u2014 a tenant without a record inherits only the schema defaults, never another customer's switches. Tenant read/write flows through the automationAccess gateway (server-side tenant resolution, admin-only writes, audit-logged); direct client access is restricted to platform administration by RLS.",
   "properties": {
     "customer_id": {
       "type": [
@@ -65,6 +65,11 @@
       "type": "boolean",
       "default": true,
       "description": "Enable real-time critical incident alert emails for this tenant (monitorHighPriorityIncidents). When disabled, critical incidents do not trigger alert emails."
+    },
+    "report_maintenance_alerts": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable IMMEDIATE real-time maintenance-request alerts for this tenant (notifyAdminsMaintenance: in-app + email + push + Telegram to the tenant's Customer Admin and Control Room Operator recipients, server-resolved). When disabled, new maintenance requests are still saved normally but trigger no immediate alert; later workflow status updates (assigned/accepted/completed via notifyMaintenanceWorkflow) are unaffected."
     },
     "report_guard_performance": {
       "type": "boolean",

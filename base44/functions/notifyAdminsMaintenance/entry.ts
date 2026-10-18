@@ -7,6 +7,8 @@ import { sendTaskTelegramDeduped } from '../../shared/taskNotifications.ts';
 import { narrowControlRoomOperators } from '../../shared/controlRoomRecipients.ts';
 import { applyNotificationPreferences } from '../../shared/notificationPreferences.ts';
 import { isSimulatedRecord } from '../../shared/simulatedRecords.ts';
+import { tenantAutomationSettings } from '../../shared/automationSettings.ts';
+import { resolveAppUrl } from '../../shared/appUrl.ts';
 
 /**
  * notifyAdminsMaintenance
@@ -62,6 +64,20 @@ Deno.serve(async (req) => {
     if (maintRecord && await isSimulatedRecord(base44.asServiceRole, maintRecord)) {
       return Response.json({ success: true, suppressed: true, reason: 'SIMULATED_RECORD_SUPPRESSED' });
     }
+    // PER-TENANT TOGGLE — "Maintenance Alerts" (default ON): the IMMEDIATE
+    // real-time alert fires only for the request's OWN tenant when enabled
+    // there (resolved server-side from the request's customer, falling back
+    // to the reporting user's tenant). OFF suppresses ONLY this alert — the
+    // maintenance request itself is always saved normally by the caller, and
+    // later workflow status updates (assigned/accepted/completed) are a
+    // separate flow (notifyMaintenanceWorkflow) and unaffected.
+    const { settings: maintAlertSettings } = await tenantAutomationSettings(
+      base44.asServiceRole,
+      (maintRecord && maintRecord.customer_id) || user.customer_id || null,
+    );
+    if (maintAlertSettings.report_maintenance_alerts === false) {
+      return Response.json({ success: true, suppressed: true, reason: 'MAINTENANCE_ALERTS_DISABLED' });
+    }
     // RECIPIENT PREFERENCES — a user who disabled maintenance notifications
     // is dropped from the routine automatic recipient list (opt-OUT system:
     // recipients without a preference record are always kept).
@@ -85,12 +101,25 @@ Deno.serve(async (req) => {
     // visible email renders through the ONE shared branded renderer.
     const brand = await resolveCommunicationBrand(base44.asServiceRole, {
       customer_id: user?.customer_id || null, reseller_id: user?.reseller_id || null });
+    // FULL REQUEST DETAILS — reference id, category, urgency, description,
+    // reporter, timestamp and a direct link to open the request in the app
+    // (enriched from the stored request record when available).
+    const requestRef = (maintRecord && maintRecord.request_number) || maintenanceId || 'N/A';
+    const urgency = ((maintRecord && maintRecord.urgency) || 'medium').toString().toUpperCase();
+    const reporterName = (maintRecord && maintRecord.guard_name) || guardName || 'N/A';
+    const description = (maintRecord && maintRecord.description) || details || 'No details provided.';
+    const appUrl = resolveAppUrl((secrets as any), req);
+    const openRequestUrl = maintenanceId ? `${appUrl}/AdminMaintenance` : undefined;
     const brandDetails = [
-      { label: 'Type', value: maintenanceType || 'Maintenance' },
+      { label: 'Request ID', value: String(requestRef) },
+      { label: 'Category', value: maintenanceType || 'Maintenance' },
+      { label: 'Urgency', value: urgency },
       { label: 'Site', value: siteName || 'N/A' },
-      { label: 'Guard', value: guardName || 'N/A' },
-      { label: 'Reported', value: reportedAt },
+      { label: 'Reporter', value: reporterName },
+      { label: 'Reported at', value: reportedAt },
+      { label: 'Description', value: String(description) },
       hasLocation ? { label: 'Location', value: googleMapsUrl } : null,
+      openRequestUrl ? { label: 'Open request', value: openRequestUrl } : null,
     ].filter(Boolean);
     const brandTpl = buildBrandedEmail({
       brand,
@@ -99,12 +128,12 @@ Deno.serve(async (req) => {
       intro: 'A new maintenance request has been submitted. Review & action required.',
       details: brandDetails,
       closing: `Details: ${details || 'No details provided.'}`,
-      ctaUrl: googleMapsUrl || undefined,
-      ctaLabel: googleMapsUrl ? 'View on Google Maps' : undefined,
+      ctaUrl: openRequestUrl || googleMapsUrl || undefined,
+      ctaLabel: openRequestUrl ? 'Open Maintenance Request' : (googleMapsUrl ? 'View on Google Maps' : undefined),
     });
 
     const notifTitle = `🔧 Maintenance Request — ${maintenanceType}`;
-    const notifMsg = `${guardName} submitted: ${maintenanceType} at ${siteName}. Review required.`;
+    const notifMsg = `${reporterName} submitted: ${maintenanceType} at ${siteName}. Urgency: ${urgency.toLowerCase()}. Review required.`;
 
     const notificationPromises = admins.map((admin) =>
       base44.asServiceRole.entities.Notification.create({
@@ -117,7 +146,7 @@ Deno.serve(async (req) => {
         read: false,
         related_entity: 'maintenance',
         related_id: maintenanceId,
-        action_url: googleMapsUrl,
+        action_url: openRequestUrl || googleMapsUrl,
         customer_id: user?.customer_id || undefined,
         reseller_id: user?.reseller_id || undefined,
         sent_via: ['in_app', 'email'],
