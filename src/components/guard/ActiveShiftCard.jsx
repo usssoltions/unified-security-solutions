@@ -22,24 +22,29 @@ export default function ActiveShiftCard({ shift, user, location }) {
     return `${hours}h ${minutes}m`;
   };
 
+  // Clock-out runs through the server-authoritative shiftAccess gateway — the
+  // SAME lifecycle for scheduled and unscheduled shifts (conditional status
+  // update + verified guard-state update with rollback on failure).
   const clockOutMutation = useMutation({
     mutationFn: async () => {
       if (!location) {
         throw new Error("Location services must be enabled");
       }
-
-      await base44.entities.Shift.update(shift.id, {
-        status: "completed",
-        clock_out: {
-          timestamp: new Date().toISOString(),
-          location: location
-        }
-      });
-
-      await base44.auth.updateMe({
-        is_clocked_in: false,
-        current_shift_id: null
-      });
+      let res;
+      try {
+        res = await base44.functions.invoke("shiftAccess", {
+          action: "clock_out",
+          shift_id: shift.id,
+          lat: location.lat,
+          lng: location.lng
+        });
+      } catch (e) {
+        const d = e?.response?.data;
+        throw new Error(d?.error || e?.message || "Clock out failed");
+      }
+      const d = res?.data !== undefined ? res.data : res;
+      if (!d || d.error) throw new Error(d?.error || "Clock out failed");
+      return d;
     },
     onSuccess: () => {
       queryClient.invalidateQueries();

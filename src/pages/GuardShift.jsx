@@ -37,6 +37,7 @@ import ShiftAcknowledgeModal from "../components/scheduling/ShiftAcknowledgeModa
 import BatchShiftAcknowledgeModal from "../components/scheduling/BatchShiftAcknowledgeModal";
 import BrandHeader from "@/components/branding/BrandHeader";
 import { getUserDisplayName } from "@/lib/userDisplayName";
+import { useShiftScheduler } from "@/hooks/useShiftScheduler";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -58,6 +59,10 @@ export default function GuardShift() {
   const [showDailyReportModal, setShowDailyReportModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const lastPatrolCheck = useRef(null);
+  // Customer-level Shift Scheduler mode (server-resolved, default ON).
+  // Scheduler OFF hides the My Schedule tile — unscheduled duty starts from
+  // the clock-in screen instead.
+  const schedulerOn = useShiftScheduler(user);
 
   useEffect(() => {
     loadUser();
@@ -623,11 +628,15 @@ export default function GuardShift() {
           <QuickActions location={location} shiftId={activeShift?.id} siteId={activeShift?.site_id} />
 
           {/* Feature Grid */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className={`grid ${schedulerOn ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
             {[
               { icon: GraduationCap, label: "Training", color: "from-purple-600 to-purple-700", action: () => setShowTraining(true), badge: null },
               { icon: FileText, label: "Reports", color: "from-sky-600 to-sky-700", action: () => setShowReports(true), badge: null },
-              { icon: Calendar, label: "My Schedule", color: "from-sky-500 to-sky-700", action: () => navigate(createPageUrl("GuardMyShifts")), badge: upcomingShifts.filter(s => !s.guard_ack_status).length || null },
+              // Scheduler OFF: the My Schedule tile is hidden — unscheduled
+              // duty starts from the clock-in screen instead.
+              ...(schedulerOn ? [{
+                icon: Calendar, label: "My Schedule", color: "from-sky-500 to-sky-700", action: () => navigate(createPageUrl("GuardMyShifts")), badge: upcomingShifts.filter(s => !s.guard_ack_status).length || null,
+              }] : []),
             ].map(({ icon: Icon, label, color, action, badge }) => (
               <button key={label} onClick={action} className={`bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all shadow-lg relative`}>
                 <Icon className="w-6 h-6 text-white mx-auto mb-1.5" />

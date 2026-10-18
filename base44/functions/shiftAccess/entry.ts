@@ -176,6 +176,47 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true, scheduler_enabled: body.enabled });
     }
 
+    // ── status (guard clock-in screen) ────────────────────────────────────
+    // Returns the caller's scheduler mode + their own scheduled/accepted
+    // shifts (with each shift's site coordinates for the geofence read-out).
+    // The "today" pick stays CLIENT-side (device-local date, unchanged
+    // behaviour) — the server re-validates ownership, tenant, state, geofence
+    // and PIN at the actual clock_in_scheduled call.
+    if (action === 'status') {
+      const ctx = await requireGuardShiftContext(base44, svc);
+      if (ctx.error) return ctx.error;
+      const caller = ctx.caller;
+      const scheduler_enabled = await schedulerEnabled(svc, caller.customer_id);
+      let scheduled_shifts = [];
+      const sites = {};
+      if (scheduler_enabled) {
+        const page = await svc.entities.Shift.filter({
+          guard_id: caller.id, customer_id: caller.customer_id,
+          status: { $in: ['scheduled', 'accepted'] },
+        }, { sort: 'start_time', limit: 100 }).catch(() => null);
+        const rows = (page && page.items) || page || [];
+        scheduled_shifts = rows.map((s) => ({
+          id: s.id, site_id: s.site_id, site_name: s.site_name,
+          start_time: s.start_time, end_time: s.end_time,
+          guard_ack_status: s.guard_ack_status || null,
+        }));
+        const siteIds = [...new Set(scheduled_shifts.map((s) => s.site_id).filter(Boolean))];
+        if (siteIds.length) {
+          const siteRows = await svc.entities.Site.filter({ id: { $in: siteIds } }).catch(() => []);
+          for (const s of siteRows || []) {
+            sites[s.id] = {
+              name: s.name || '',
+              lat: validCoords(s.location) ? s.location.lat : null,
+              lng: validCoords(s.location) ? s.location.lng : null,
+              geofence_radius: typeof s.geofence_radius === 'number' ? s.geofence_radius : 100,
+              geofence_valid: validGeofence(s),
+            };
+          }
+        }
+      }
+      return Response.json({ ok: true, scheduler_enabled, scheduled_shifts, sites });
+    }
+
     // ── clock_in_sites (scheduler OFF picker) ─────────────────────────────
     if (action === 'clock_in_sites') {
       const ctx = await requireGuardShiftContext(base44, svc);

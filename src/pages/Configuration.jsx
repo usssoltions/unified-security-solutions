@@ -15,6 +15,9 @@ import {
   Bell
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Calendar, Loader2 } from "lucide-react";
+import ShiftSchedulerSetting from "../components/configuration/ShiftSchedulerSetting";
 import ReportSchedulingSettings from "../components/reports/ReportSchedulingSettings";
 import WhatsAppContactsConfig from "../components/configuration/WhatsAppContactsConfig";
 import AutomationToggles from "../components/configuration/AutomationToggles";
@@ -252,6 +255,12 @@ export default function Configuration() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Customer-level Shift Scheduler mode — changed ONLY by a Customer
+          Administrator. Existing shifts are never altered by the setting. */}
+      {user?.role_type === "customer_admin" && (
+        <ShiftSchedulerSetting user={user} />
+      )}
 
       {/* Configuration Tabs */}
       <Tabs defaultValue="reports" className="space-y-6">

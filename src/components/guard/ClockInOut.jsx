@@ -82,8 +82,17 @@ export default function ClockInOut({ user, location }) {
   );
 
   // ── SCHEDULED mode: geofence read-out (enforced server-side at clock-in) ──
-  const assignedShift = status?.assigned_shift || null;
-  const assignedSite = status?.site || null;
+  // "Today" pick uses the device-local date — unchanged behaviour.
+  const assignedShift = useMemo(() => {
+    if (!status || !Array.isArray(status.scheduled_shifts)) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return status.scheduled_shifts.find((s) => {
+      const d = new Date(s.start_time);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === today.getTime();
+    }) || null;
+  }, [status]);
+  const assignedSite = assignedShift && status?.sites ? status.sites[assignedShift.site_id] : null;
   const scheduledGeofence = !!assignedSite && validCoords(assignedSite);
   const scheduledDistance = scheduledGeofence && validCoords(location)
     ? calculateDistance(location.lat, location.lng, assignedSite.lat, assignedSite.lng)

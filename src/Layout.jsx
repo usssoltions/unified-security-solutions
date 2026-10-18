@@ -34,6 +34,7 @@ import { primeWhatsAppBrand } from "@/lib/whatsapp";
 import BrandLogo from "@/components/branding/BrandLogo";
 import PreLoginBrandShell from "@/components/branding/PreLoginBrandShell";
 import { isPlatformAdminUser } from "@/lib/platformAdmin";
+import { useShiftScheduler } from "@/hooks/useShiftScheduler";
 import { getNavItems } from "@/lib/routeRegistry";
 import PageTransition from "@/components/PageTransition";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -416,6 +417,14 @@ export default function Layout({ children, currentPageName }) {
   // and does not affect reseller/customer tenant scoping.
   const bypassEntitlements = isPlatformAdmin;
 
+  // Customer-level Shift Scheduler mode (server-resolved, default ON).
+  // Scheduler OFF hides the in-app Scheduling / My Schedule navigation entries
+  // — routes stay open for authorised admins to view existing shifts; existing
+  // shifts are never changed. My Shift always remains available.
+  const schedulerOn = useShiftScheduler(user);
+  const schedulerNavFilter = (items) =>
+    schedulerOn ? items : items.filter((item) => !["Scheduling", "GuardMyShifts"].includes(item.pageKey));
+
   const allNavItems = getNavigationItems();
   // TASK-ONLY GUARD focused shell — sidebar/drawer match the focused bottom
   // tab: only My Tasks plus core Profile. Guard Shift (and its schedule) belong
@@ -423,14 +432,14 @@ export default function Layout({ children, currentPageName }) {
   // Global Voice Link release gate is applied LAST so it holds for every
   // role — including platform admins — while the flag is OFF.
   const releaseGate = (items) => voiceLinkReleased ? items : items.filter(item => item.pageKey !== "VoiceLink");
-  const navigationItems = releaseGate(bypassEntitlements
+  const navigationItems = schedulerNavFilter(releaseGate(bypassEntitlements
     ? allNavItems
     : guardTaskOnly
       ? allNavItems.filter(item => ["ScheduledTasks", "Profile"].includes(item.pageKey))
       : allNavItems.filter(item => {
           const pageName = item.url.startsWith("/") ? item.url.slice(1) : item.url;
           return isPageModuleEnabled(entitlements, pageName, isPlatformAdmin, user?.role_type);
-        }));
+        })));
   // Module-aware home: when the role's marked root page is filtered out by a
   // module entitlement (attendance-only customer_admin has no REPORTING_CORE),
   // the first VISIBLE navigation item is the home — Attendance Register.
@@ -472,7 +481,9 @@ export default function Layout({ children, currentPageName }) {
         { title: "Control", tab: "control", pageKey: "ControlRoom", icon: Radio, color: "text-sky-400" },
         { title: "Shifts", tab: "scheduling", pageKey: "Scheduling", icon: Calendar, color: "text-emerald-400" },
         { title: "Sites", tab: "sites", pageKey: "SiteManagement", icon: MapPin, color: "text-amber-400" }
-      ].filter(t => isPageModuleEnabled(entitlements, t.pageKey, false, user.role_type));
+      ].filter(t =>
+        isPageModuleEnabled(entitlements, t.pageKey, false, user.role_type)
+        && (schedulerOn || t.pageKey !== "Scheduling"));
     }
     return [];
   };
