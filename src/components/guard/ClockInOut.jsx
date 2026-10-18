@@ -61,6 +61,10 @@ export default function ClockInOut({ user, location }) {
   });
 
   const schedulerOn = status ? status.scheduler_enabled !== false : null;
+  // Customer-level geofence enforcement (server-resolved). ON = current
+  // behaviour (client read-out blocks + server enforces); OFF = the guard may
+  // clock in outside the geofence — location is still recorded and labelled.
+  const geofenceEnforced = status ? status.geofence_enforcement_enabled !== false : true;
 
   // Scheduler OFF: the authorised active sites the guard may start duty at.
   const { data: sitesData, isLoading: sitesLoading } = useQuery({
@@ -205,7 +209,7 @@ export default function ClockInOut({ user, location }) {
       );
     }
 
-    const geofenceBlocked = scheduledGeofence && validCoords(location) && !scheduledWithin;
+    const geofenceBlocked = geofenceEnforced && scheduledGeofence && validCoords(location) && !scheduledWithin;
 
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
@@ -245,9 +249,14 @@ export default function ClockInOut({ user, location }) {
                       <Badge className="bg-sky-500">Site Location Not Configured</Badge>
                     ) : !scheduledWithin ? (
                       <div>
-                        <Badge className="bg-orange-500 mb-2">Outside Geofence</Badge>
+                        <Badge className={geofenceEnforced ? "bg-orange-500 mb-2" : "bg-amber-600 mb-2"}>
+                          {geofenceEnforced ? "Outside Geofence" : "Geofence Enforcement Disabled"}
+                        </Badge>
                         <p className="text-sm text-slate-400">
-                          Distance: {Math.round(scheduledDistance)}m (must be within {assignedSite.geofence_radius || 100}m)
+                          Distance: {Math.round(scheduledDistance)}m
+                          {geofenceEnforced
+                            ? ` (must be within ${assignedSite.geofence_radius || 100}m)`
+                            : " — your location is recorded with the clock-in but not enforced"}
                         </p>
                       </div>
                     ) : (
@@ -286,7 +295,7 @@ export default function ClockInOut({ user, location }) {
 
               <Button
                 onClick={handleClockIn}
-                disabled={busy || !location || !assignedShift || (scheduledGeofence && validCoords(location) && !scheduledWithin) || (user.security_pin && pin.length !== 4)}
+                disabled={busy || !location || !assignedShift || (geofenceEnforced && scheduledGeofence && validCoords(location) && !scheduledWithin) || (user.security_pin && pin.length !== 4)}
                 className="w-full h-14 text-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
               >
                 {busy ? (
@@ -325,8 +334,7 @@ export default function ClockInOut({ user, location }) {
   const unscheduledBlocked =
     !validCoords(location) ||
     !selectedSite ||
-    !unscheduledGeofence ||
-    (unscheduledDistance !== null && !unscheduledWithin) ||
+    (geofenceEnforced && (!unscheduledGeofence || (unscheduledDistance !== null && !unscheduledWithin))) ||
     (user.security_pin && pin.length !== 4);
 
   return (
@@ -376,15 +384,27 @@ export default function ClockInOut({ user, location }) {
                   ) : !selectedSite ? (
                     <Badge className="bg-slate-500">Select a site</Badge>
                   ) : !unscheduledGeofence ? (
-                    <div>
-                      <Badge className="bg-orange-500 mb-2">Site Geofence Not Configured</Badge>
-                      <p className="text-sm text-slate-400">This site has no GPS coordinates or geofence radius set — an administrator must configure it before you can start a shift here.</p>
-                    </div>
+                    geofenceEnforced ? (
+                      <div>
+                        <Badge className="bg-orange-500 mb-2">Site Geofence Not Configured</Badge>
+                        <p className="text-sm text-slate-400">This site has no GPS coordinates or geofence radius set — an administrator must configure it before you can start a shift here.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <Badge className="bg-amber-600 mb-2">Geofence Enforcement Disabled</Badge>
+                        <p className="text-sm text-slate-400">Geofence enforcement is disabled — your GPS position is recorded with the shift but not enforced.</p>
+                      </div>
+                    )
                   ) : !unscheduledWithin ? (
                     <div>
-                      <Badge className="bg-orange-500 mb-2">Outside Geofence</Badge>
+                      <Badge className={geofenceEnforced ? "bg-orange-500 mb-2" : "bg-amber-600 mb-2"}>
+                        {geofenceEnforced ? "Outside Geofence" : "Geofence Enforcement Disabled"}
+                      </Badge>
                       <p className="text-sm text-slate-400">
-                        Distance: {Math.round(unscheduledDistance)}m (must be within {Math.round(selectedSite.geofence_radius || 100)}m)
+                        Distance: {Math.round(unscheduledDistance)}m
+                        {geofenceEnforced
+                          ? ` (must be within ${Math.round(selectedSite.geofence_radius || 100)}m)`
+                          : " — your location is recorded with the shift but not enforced"}
                       </p>
                     </div>
                   ) : (

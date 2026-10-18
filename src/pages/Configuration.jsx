@@ -18,6 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Calendar, Loader2 } from "lucide-react";
 import ShiftSchedulerSetting from "../components/configuration/ShiftSchedulerSetting";
+import GeofenceSetting from "../components/configuration/GeofenceSetting";
+import { useModuleEntitlements, isModuleEnabled } from "@/hooks/useModuleEntitlements";
 import ReportSchedulingSettings from "../components/reports/ReportSchedulingSettings";
 import WhatsAppContactsConfig from "../components/configuration/WhatsAppContactsConfig";
 import AutomationToggles from "../components/configuration/AutomationToggles";
@@ -38,6 +40,12 @@ export default function Configuration() {
     }).catch(() => {});
   }, []);
   const isMedical = customerType === "medical";
+  // The geofence setting is shown to a Customer Administrator ONLY when this
+  // customer holds the guard/patrol module (OPERATIONS or COMPLETE_SECURITY).
+  const entitlementsQuery = useModuleEntitlements(user?.id, user?.customer_id);
+  const guardPatrolLicensed =
+    isModuleEnabled(entitlementsQuery.data || [], "OPERATIONS") ||
+    isModuleEnabled(entitlementsQuery.data || [], "COMPLETE_SECURITY");
   // Incident Categories
   const [incidentCategories, setIncidentCategories] = useState([
     { id: 1, value: "fire", label: "Fire", color: "rose" },
@@ -260,6 +268,12 @@ export default function Configuration() {
           Administrator. Existing shifts are never altered by the setting. */}
       {user?.role_type === "customer_admin" && (
         <ShiftSchedulerSetting user={user} />
+      )}
+
+      {/* Customer-level site geofence enforcement for guard clock-in and
+          patrol scans — per customer, guard/patrol module only. */}
+      {user?.role_type === "customer_admin" && guardPatrolLicensed && (
+        <GeofenceSetting user={user} />
       )}
 
       {/* Configuration Tabs */}

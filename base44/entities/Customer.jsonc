@@ -84,6 +84,11 @@
       "default": true,
       "description": "PERSISTED CUSTOMER SETTING (default ON for existing customers without a saved value): when ON, guards clock in only against their assigned scheduled shifts; when OFF, the in-app Scheduling and My Schedule navigation entries are hidden and guards start an unscheduled shift from My Shift at an authorised active site with server-side geofence verification. Changing it never deletes or alters existing shifts. Changed ONLY by a Customer Administrator through the shiftAccess gateway."
     },
+    "geofence_enforcement_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "PERSISTED CUSTOMER SETTING (default ON, preserving current behaviour), stored PER CUSTOMER and never shared between customers: when ON, guard clock-ins and patrol checkpoint scans at this customer's sites are geofence-verified exactly as before; when OFF, guards of THIS customer may clock in and scan patrol checkpoints outside their site geofences, with the available GPS, timestamp, guard, site and checkpoint information still recorded and affected records marked 'Geofence enforcement disabled'. QR recognition, checkpoint matching, authentication, permissions and unrelated location checks are never affected. Changed ONLY by a Customer Administrator through the shiftAccess gateway, with an audit entry (customer, user, old and new values, timestamp)."
+    },
     "guard_default_landing": {
       "type": "string",
       "description": "Optional guard default landing module page key (e.g. 'access_control'). Fail-closed: applies only when role and entitlements permit the page."

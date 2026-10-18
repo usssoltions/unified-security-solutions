@@ -118,6 +118,25 @@ export default function QRScanner() {
     initialData: []
   });
 
+  // Customer-level geofence enforcement (server-resolved, per customer).
+  // ON = current behaviour; OFF = scans outside the geofence are permitted
+  // and the record is labelled "Geofence enforcement disabled".
+  const { data: geofenceConfig } = useQuery({
+    queryKey: ["geofenceConfig", user?.customer_id],
+    queryFn: async () => {
+      try {
+        const res = await base44.functions.invoke("shiftAccess", { action: "config" });
+        const d = res?.data ?? res;
+        return { enforced: d?.geofence_enforcement_enabled !== false };
+      } catch (e) {
+        return { enforced: true };
+      }
+    },
+    enabled: !!user,
+    staleTime: 60000,
+  });
+  const geofenceEnforced = geofenceConfig ? geofenceConfig.enforced : true;
+
   const isRfg = site?.id === RFG_SITE_ID;
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -373,7 +392,7 @@ export default function QRScanner() {
         location: scanLocation,
         timestamp: scanTimestamp,
         verified: distanceFromCheckpoint !== null ? distanceFromCheckpoint <= 100 : true,
-        notes: notes
+        notes: geofenceEnforced ? notes : [notes, "Geofence enforcement disabled"].filter(Boolean).join("\n")
       };
 
       if (!isOnline()) {
@@ -412,7 +431,7 @@ export default function QRScanner() {
           location: scanLocation,
           completed_at: new Date().toISOString(),
           status: "completed",
-          notes: [notes, ...checklistItems.filter(i => i.note).map(i => `Issue - ${i.text}: ${i.note}`)].filter(Boolean).join("\n"),
+          notes: [geofenceEnforced ? null : "Geofence enforcement disabled", notes, ...checklistItems.filter(i => i.note).map(i => `Issue - ${i.text}: ${i.note}`)].filter(Boolean).join("\n"),
           media: [
             ...photos.map(url => ({ type: "photo", url })),
             ...videos.map(url => ({ type: "video", url }))
@@ -547,6 +566,9 @@ export default function QRScanner() {
               <p className="text-xs text-emerald-400 mt-1">
                 ✓ Location verified ({Math.round(distanceFromCheckpoint)}m from checkpoint)
               </p>
+            )}
+            {!geofenceEnforced && (
+              <p className="text-xs text-amber-400 mt-1">Geofence enforcement disabled — location recorded, not enforced</p>
             )}
           </div>
         </CardContent>

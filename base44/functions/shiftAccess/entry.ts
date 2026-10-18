@@ -77,6 +77,20 @@ async function schedulerEnabled(svc, customerId) {
   }
 }
 
+/** Geofence enforcement for the CALLER'S OWN customer (per-customer setting,
+ *  default ON — existing customers without a saved value, and any read
+ *  failure, keep enforcement). Never a global value: it is read from the
+ *  caller's tenant on every clock-in and never affects another customer. */
+async function geofenceEnforced(svc, customerId) {
+  if (!customerId) return true;
+  try {
+    const c = await svc.entities.Customer.get(customerId);
+    return c ? c.geofence_enforcement_enabled !== false : true;
+  } catch (_) {
+    return true;
+  }
+}
+
 /** Server-side guard + tenant + entitlement gate for every shift action. */
 async function requireGuardShiftContext(base44, svc) {
   const caller = await base44.auth.me();
@@ -157,7 +171,8 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ ok: true, scheduler_enabled: true, resolved: false });
       }
       const scheduler_enabled = await schedulerEnabled(svc, caller.customer_id);
-      return Response.json({ ok: true, scheduler_enabled, resolved: true, customer_id: caller.customer_id });
+      const geofence_enforcement_enabled = await geofenceEnforced(svc, caller.customer_id);
+      return Response.json({ ok: true, scheduler_enabled, geofence_enforcement_enabled, resolved: true, customer_id: caller.customer_id });
     }
 
     // ── set_config (Customer Administrator ONLY) ──────────────────────────
@@ -176,6 +191,39 @@ export default async function(req: Request): Promise<Response> {
       return Response.json({ ok: true, scheduler_enabled: body.enabled });
     }
 
+    // ── set_geofence_config (Customer Administrator ONLY, audit-logged) ────
+    if (action === 'set_geofence_config') {
+      const caller = await base44.auth.me();
+      if (!caller) return fail('Unauthorized', 'unauthorized', 401);
+      const isCustomerAdministrator =
+        caller.role_type === 'customer_admin' || caller.role_type === 'admin';
+      const isPlatformAdmin = caller.role_type === 'platform_admin' || caller.admin_level === 'platform';
+      if (!isCustomerAdministrator && !isPlatformAdmin) {
+        return fail('Only a Customer Administrator can change the geofence enforcement setting', 'forbidden', 403);
+      }
+      if (!caller.customer_id) return fail('No tenant scope resolved for this account', 'no_tenant', 403);
+      if (typeof body.enabled !== 'boolean') return fail('enabled must be true or false', 'bad_request');
+      const before = await readCustomer(svc, caller.customer_id);
+      const oldValue = before ? before.geofence_enforcement_enabled !== false : true;
+      await svc.entities.Customer.update(caller.customer_id, { geofence_enforcement_enabled: body.enabled });
+      // Audit entry: customer, user, old and new values, timestamp (best-effort).
+      svc.entities.PlatformAuditLog.create({
+        event_type: 'config.changed',
+        user_id: caller.id,
+        user_name: guardName(caller),
+        customer_id: caller.customer_id,
+        reseller_id: (before && before.reseller_id) || null,
+        module_key: 'OPERATIONS',
+        entity_name: 'Customer',
+        entity_id: caller.customer_id,
+        action: 'geofence_enforcement_enabled changed',
+        old_values: JSON.stringify({ geofence_enforcement_enabled: oldValue }),
+        new_values: JSON.stringify({ geofence_enforcement_enabled: body.enabled }),
+        notes: 'Customer-level site geofence enforcement setting changed via shiftAccess',
+      }).catch(() => {});
+      return Response.json({ ok: true, geofence_enforcement_enabled: body.enabled });
+    }
+
     // ── status (guard clock-in screen) ────────────────────────────────────
     // Returns the caller's scheduler mode + their own scheduled/accepted
     // shifts (with each shift's site coordinates for the geofence read-out).
@@ -187,6 +235,7 @@ export default async function(req: Request): Promise<Response> {
       if (ctx.error) return ctx.error;
       const caller = ctx.caller;
       const scheduler_enabled = await schedulerEnabled(svc, caller.customer_id);
+      const geofence_enforcement_enabled = await geofenceEnforced(svc, caller.customer_id);
       let scheduled_shifts = [];
       const sites = {};
       if (scheduler_enabled) {
@@ -214,7 +263,7 @@ export default async function(req: Request): Promise<Response> {
           }
         }
       }
-      return Response.json({ ok: true, scheduler_enabled, scheduled_shifts, sites });
+      return Response.json({ ok: true, scheduler_enabled, geofence_enforcement_enabled, scheduled_shifts, sites });
     }
 
     // ── clock_in_sites (scheduler OFF picker) ─────────────────────────────
@@ -227,8 +276,10 @@ export default async function(req: Request): Promise<Response> {
       // Account-level site authorisation: a site-scoped guard may only start
       // duty at their own primary site.
       if (caller.site_id) sites = sites.filter((s) => s.id === caller.site_id);
+      const geofence_enforcement_enabled = await geofenceEnforced(svc, caller.customer_id);
       return Response.json({
         ok: true,
+        geofence_enforcement_enabled,
         sites: sites.map((s) => ({
           id: s.id,
           name: s.name,
@@ -265,27 +316,43 @@ export default async function(req: Request): Promise<Response> {
         return fail('You are already on duty — clock out of your current shift first', 'already_on_duty', 409);
       }
 
-      // Scheduled mode: geofence enforced ONLY when the site has GPS configured.
+      // Scheduled mode: geofence enforced ONLY when the site has GPS configured
+      // AND the caller's OWN customer has geofence enforcement ON (default ON).
+      // When OFF: clock-in proceeds anywhere, the available GPS/timestamp are
+      // still recorded, and the record is marked 'Geofence enforcement
+      // disabled' — distance is recorded whenever it can be computed.
+      const geofenceOn = await geofenceEnforced(svc, caller.customer_id);
       const site = shift.site_id ? await svc.entities.Site.get(shift.site_id).catch(() => null) : null;
       let clockIn;
       if (site && validGeofence(site)) {
         const lat = Number(body.lat), lng = Number(body.lng);
-        if (!isFinite(lat) || !isFinite(lng)) {
-          return fail('Location services must be enabled to clock in at this site', 'gps_required');
-        }
-        const dist = distanceMeters(lat, lng, site.location.lat, site.location.lng);
-        if (dist > site.geofence_radius) {
-          return fail(
-            'You are ' + Math.round(dist) + 'm from ' + (site.name || 'the site') +
-            ' (must be within ' + Math.round(site.geofence_radius) + 'm) — move closer to clock in',
-            'out_of_geofence'
-          );
+        const hasGps = isFinite(lat) && isFinite(lng);
+        const dist = hasGps ? distanceMeters(lat, lng, site.location.lat, site.location.lng) : null;
+        if (geofenceOn) {
+          if (!hasGps) {
+            return fail('Location services must be enabled to clock in at this site', 'gps_required');
+          }
+          if (dist > site.geofence_radius) {
+            return fail(
+              'You are ' + Math.round(dist) + 'm from ' + (site.name || 'the site') +
+              ' (must be within ' + Math.round(site.geofence_radius) + 'm) — move closer to clock in',
+              'out_of_geofence'
+            );
+          }
         }
         clockIn = {
           timestamp: new Date().toISOString(),
-          location: { lat, lng },
-          verified: true,
-          geofence: { checked: true, distance_m: Math.round(dist), radius_m: site.geofence_radius },
+          location: hasGps ? { lat, lng } : null,
+          verified: geofenceOn ? true : !!(hasGps && dist <= site.geofence_radius),
+          geofence: geofenceOn
+            ? { checked: true, distance_m: Math.round(dist), radius_m: site.geofence_radius }
+            : {
+                checked: dist !== null,
+                distance_m: dist !== null ? Math.round(dist) : null,
+                radius_m: site.geofence_radius,
+                enforced: false,
+                note: 'Geofence enforcement disabled',
+              },
         };
       } else {
         // No configured site GPS — the scheduled flow proceeds without a
@@ -366,21 +433,29 @@ export default async function(req: Request): Promise<Response> {
         return fail('This site is not authorised for your account', 'forbidden', 403);
       }
 
-      // Server-side geofence: the site MUST have configured GPS + radius and
-      // the guard MUST be inside it.
-      if (!validGeofence(site)) {
-        return fail(
-          'This site has no valid GPS coordinates and geofence radius configured — ask your administrator to set the site location before starting an unscheduled shift here',
-          'geofence_not_configured'
-        );
-      }
-      const dist = distanceMeters(lat, lng, site.location.lat, site.location.lng);
-      if (dist > site.geofence_radius) {
-        return fail(
-          'You are ' + Math.round(dist) + 'm from ' + (site.name || 'the site') +
-          ' (must be within ' + Math.round(site.geofence_radius) + 'm) — move closer to start your shift',
-          'out_of_geofence'
-        );
+      // Server-side geofence (the caller's OWN customer setting, default ON):
+      // when ON, the site MUST have configured GPS + radius and the guard MUST
+      // be inside it. When OFF: clock-in proceeds anywhere, the GPS/timestamp
+      // are still recorded, and the record is marked 'Geofence enforcement
+      // disabled' — distance is recorded whenever it can be computed.
+      const geofenceOn = await geofenceEnforced(svc, caller.customer_id);
+      const dist = validGeofence(site)
+        ? distanceMeters(lat, lng, site.location.lat, site.location.lng)
+        : null;
+      if (geofenceOn) {
+        if (!validGeofence(site)) {
+          return fail(
+            'This site has no valid GPS coordinates and geofence radius configured — ask your administrator to set the site location before starting an unscheduled shift here',
+            'geofence_not_configured'
+          );
+        }
+        if (dist > site.geofence_radius) {
+          return fail(
+            'You are ' + Math.round(dist) + 'm from ' + (site.name || 'the site') +
+            ' (must be within ' + Math.round(site.geofence_radius) + 'm) — move closer to start your shift',
+            'out_of_geofence'
+          );
+        }
       }
 
       if (caller.security_pin) {
@@ -400,7 +475,15 @@ export default async function(req: Request): Promise<Response> {
         timestamp: nowIso,
         location: { lat, lng },
         verified: true,
-        geofence: { checked: true, distance_m: Math.round(dist), radius_m: site.geofence_radius },
+        geofence: geofenceOn
+          ? { checked: dist !== null, distance_m: dist !== null ? Math.round(dist) : null, radius_m: site.geofence_radius }
+          : {
+              checked: dist !== null,
+              distance_m: dist !== null ? Math.round(dist) : null,
+              radius_m: site.geofence_radius,
+              enforced: false,
+              note: 'Geofence enforcement disabled',
+            },
       };
       const created = await svc.entities.Shift.create({
         customer_id: caller.customer_id,
