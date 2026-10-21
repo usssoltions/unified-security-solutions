@@ -13,6 +13,16 @@ android {
         targetSdk 34
         versionCode 5
         versionName "1.4.0"
+
+        // APK SIZE FIX (packaging only, no behaviour change): physical phones
+        // and tablets are always ARM. x86 / x86_64 are emulator-only ABIs that
+        // no fleet device can use — they added roughly half the APK size for
+        // nothing. Restricting the packaged ABIs does not change any module,
+        // feature, permission or runtime behaviour; it only stops packaging
+        // native libraries the devices can never load.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
     // Release signing: place keystore.properties (next to this file) with
