@@ -32,15 +32,32 @@ import { processQR } from "@/lib/qrProcessor";
 // internal WebAssembly.compileStreaming throw "Incorrect response MIME type".
 // Patch it once to fall back to ArrayBuffer compilation on that error, so the
 // SDK initializes regardless of how the host serves the file.
+//
+// FALLBACK HARDENING (Ulefone Armor X13 repair, 2026-10-23): when the native
+// streaming compile fails, some Android WebView versions have ALREADY consumed
+// the response body during the failed attempt. The original fallback then
+// threw "Failed to execute 'arrayBuffer' on 'Response': body stream already
+// read", aborting the SDK's initialize() before the camera ever started. The
+// original re-read is still tried first (unchanged behaviour wherever it
+// works); only when that also fails do we re-fetch the same URL once and
+// compile from the fresh buffer. Happy-path devices are unaffected.
 function patchCompileStreamingOnce() {
   if (window.__barkoderWasmMimePatched) return;
   const orig = WebAssembly.compileStreaming.bind(WebAssembly);
   WebAssembly.compileStreaming = async (response) => {
     try { return await orig(response); }
-    catch (_) {
-      const r = await response;
-      const buf = await r.arrayBuffer();
-      return WebAssembly.compile(buf);
+    catch (streamErr) {
+      try {
+        const r = await response;
+        const buf = await r.arrayBuffer();
+        return WebAssembly.compile(buf);
+      } catch (_) {
+        const url = (response && typeof response.url === "string" && response.url) ? response.url : null;
+        if (!url) throw streamErr;
+        const fresh = await fetch(url, { credentials: "same-origin" });
+        if (!fresh.ok) throw streamErr;
+        return WebAssembly.compile(await fresh.arrayBuffer());
+      }
     }
   };
   window.__barkoderWasmMimePatched = true;
