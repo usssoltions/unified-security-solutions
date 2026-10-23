@@ -52,7 +52,13 @@ function patchCompileStreamingOnce() {
         const buf = await r.arrayBuffer();
         return WebAssembly.compile(buf);
       } catch (_) {
-        const url = (response && typeof response.url === "string" && response.url) ? response.url : null;
+        // compileStreaming() accepts a Response OR a Promise resolving to one;
+        // take the re-fetch URL from the resolved Response in either case.
+        let url = null;
+        try {
+          const resolved = (response && typeof response.then === "function") ? await response : response;
+          if (resolved && typeof resolved.url === "string" && resolved.url) url = resolved.url;
+        } catch (_urlErr) { /* no URL derivable — fall through and rethrow */ }
         if (!url) throw streamErr;
         const fresh = await fetch(url, { credentials: "same-origin" });
         if (!fresh.ok) throw streamErr;
