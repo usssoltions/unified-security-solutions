@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Zap, RefreshCw, AlertCircle, Loader2, ScanLine } from "lucide-react";
 import * as scanner from "@/lib/documentScannerService";
-import DocumentScanReview from "@/components/documents/DocumentScanReview";
+import DocumentScanReview, { assessScanCompleteness } from "@/components/documents/DocumentScanReview";
 import { base44 } from "@/api/base44Client";
 
 function playBeep() {
@@ -39,6 +39,17 @@ function playBeep() {
     osc.onended = () => ctx.close();
   } catch (_) { /* audio not available */ }
 }
+
+// COMPLETE-FIRST (2026-10-23, approved draft repair): for the SA ID and
+// driver's-licence document profiles ONLY, an incomplete decode (fragmented or
+// missing critical fields per the existing scan-integrity rules) does NOT stop
+// the scanner. The camera stays open and continuous scanning keeps running so
+// the complete decode the SDK produces on a later frame is captured instead.
+// After a bounded grace period the first retained incomplete result is
+// presented with the existing warning + Scan Again / Accept & Correct.
+// QR and every other barcode profile keep the previous immediate behaviour.
+const COMPLETE_FIRST_PROFILES = new Set(["drivers_licence", "sa_id"]);
+const COMPLETE_FIRST_GRACE_MS = 3000;
 
 const ERROR_MESSAGES = {
   license_missing: { title: "Licence not configured", body: "Ask an administrator to set VITE_BARKODER_LICENSE_KEY before using the scanner." },
@@ -106,6 +117,15 @@ export default function DocumentScanner({
   // and goes straight to the camera start. The SDK/WASM instance itself was
   // already retained across opens (initPromise cached in the service).
   const enumeratedRef = useRef(false);
+  // COMPLETE-FIRST state: the first incomplete decode (retained verbatim, never
+  // overwritten) and the bounded grace timer that finally presents it when no
+  // complete decode arrives in time.
+  const incompleteRawRef = useRef(null);
+  const graceTimerRef = useRef(null);
+  const clearCompleteFirstGrace = useCallback(() => {
+    if (graceTimerRef.current) { clearTimeout(graceTimerRef.current); graceTimerRef.current = null; }
+    incompleteRawRef.current = null;
+  }, []);
   // Always invoke the latest onAccept — avoids a stale closure when autoAccept
   // bypasses the review screen and dispatches the scan immediately on decode.
   const onAcceptRef = useRef(onAccept);
@@ -163,6 +183,7 @@ export default function DocumentScanner({
     start();
     return () => {
       cancelled = true;
+      clearCompleteFirstGrace();
       scanner.stopScanner();
       // Keep the SDK instance alive across opens — the demo initializes once
       // and reuses it. Resetting on every close forces a full WASM re-compile
@@ -183,17 +204,45 @@ export default function DocumentScanner({
     setMappedFields(null);
     setResolved(null);
     processingRef.current = false;
+    clearCompleteFirstGrace();
     try {
       await scanner.configureForProfile(documentType);
       scanner.startScanner((raw) => {
-        console.log("[barKoder] RAW DECODE RESULT (unmodified):", raw);
-        console.log("[barKoder] result keys:", raw ? Object.keys(raw) : [],
-          "| formattedJSON?", !!(raw?.formattedJSON || (raw?.results?.[0]?.formattedJSON)),
-          "| textualData len:", (raw?.textualData || raw?.results?.[0]?.textualData || "").length);
+        // Sanitized logging only — types/lengths, never raw document content.
+        console.log("[barKoder] decode callback", {
+          hasResult: !!raw,
+          resultsCount: raw?.resultsCount,
+          formattedJSON: !!(raw?.formattedJSON || raw?.results?.[0]?.formattedJSON),
+          textLen: (raw?.textualData || raw?.results?.[0]?.textualData || "").length,
+        });
         if (processingRef.current) return;
         if (!raw || raw.error) return;
         if (raw.resultsCount === 0) return;
         if (!raw.textualData && !(raw.results && raw.results.length)) return;
+        // COMPLETE-FIRST (SA ID / driver's licence only): an incomplete decode
+        // does not stop the scanner. The first incomplete result is retained
+        // verbatim; if a complete decode arrives within the grace window it is
+        // processed immediately instead. QR and other profiles are untouched.
+        try {
+          const preview = scanner.resolveDocument(raw, caller, documentType);
+          if (COMPLETE_FIRST_PROFILES.has(preview.profileId) &&
+              assessScanCompleteness(preview.parsed, preview.mappedFields, preview.profile).length > 0) {
+            if (!incompleteRawRef.current) incompleteRawRef.current = raw;
+            if (!graceTimerRef.current) {
+              graceTimerRef.current = setTimeout(() => {
+                graceTimerRef.current = null;
+                if (processingRef.current) return;
+                processingRef.current = true;
+                scanner.stopScanner();
+                const retained = incompleteRawRef.current;
+                incompleteRawRef.current = null;
+                handleResult(retained);
+              }, COMPLETE_FIRST_GRACE_MS);
+            }
+            return; // camera stays open — a later frame may decode completely
+          }
+        } catch (_) { /* classification failure → original immediate path */ }
+        clearCompleteFirstGrace();
         processingRef.current = true;
         scanner.stopScanner();
         handleResult(raw);
