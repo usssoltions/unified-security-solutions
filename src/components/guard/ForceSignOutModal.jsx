@@ -1,11 +1,17 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { signOutCompletedShift } from "@/lib/shiftHandover";
+import { appParams } from "@/lib/app-params";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogOut, Shield, Clock } from "lucide-react";
 
-export default function ForceSignOutModal({ user }) {
+export default function ForceSignOutModal({ user, shift }) {
   const audioRef = useRef(null);
+  const queryClient = useQueryClient();
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
 
   useEffect(() => {
     playNotificationSound();
@@ -28,10 +34,19 @@ export default function ForceSignOutModal({ user }) {
   };
 
   const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError("");
     try {
-      await base44.auth.logout();
-    } catch (error) {
-      window.location.href = '/';
+      await signOutCompletedShift(user, shift, () => base44.auth.logout(`${window.location.origin}/`), appParams.token);
+      // Remove only this guard's shift caches; other modules are untouched.
+      for (const key of ["activeShift", "shiftClockStatus", "clockInSites", "upcomingShifts"]) {
+        queryClient.removeQueries({ queryKey: [key, user.id] });
+      }
+    } catch {
+      // Never pretend logout succeeded by navigating back into the same session.
+      setSignOutError("Sign-out could not be completed. Please try again.");
+      setSigningOut(false);
     }
   };
 
@@ -56,7 +71,7 @@ export default function ForceSignOutModal({ user }) {
               <span className="font-semibold">Clock Out Time:</span>
             </div>
             <p className="text-white text-lg font-bold">
-              {new Date().toLocaleString()}
+              {new Date(shift.clock_out.timestamp).toLocaleString()}
             </p>
           </div>
 
@@ -66,12 +81,14 @@ export default function ForceSignOutModal({ user }) {
             </p>
           </div>
 
+          {signOutError && <p role="alert" className="text-sm text-center text-rose-300">{signOutError}</p>}
           <Button
             onClick={handleSignOut}
+            disabled={signingOut}
             className="w-full h-16 text-xl font-bold bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600"
           >
             <LogOut className="w-6 h-6 mr-3" />
-            Sign Out Now
+            {signingOut ? "Signing Out…" : "Sign Out Now"}
           </Button>
 
           <p className="text-xs text-center text-slate-400">

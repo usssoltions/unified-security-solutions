@@ -38,6 +38,8 @@ import BatchShiftAcknowledgeModal from "../components/scheduling/BatchShiftAckno
 import BrandHeader from "@/components/branding/BrandHeader";
 import { getUserDisplayName } from "@/lib/userDisplayName";
 import { useShiftScheduler } from "@/hooks/useShiftScheduler";
+import { hasShiftSignOutReceipt } from "@/lib/shiftHandover";
+import { appParams } from "@/lib/app-params";
 
 export default function GuardShift() {
   const navigate = useNavigate();
@@ -46,7 +48,7 @@ export default function GuardShift() {
   const [location, setLocation] = useState(null);
   const [stayAwakePrompt, setStayAwakePrompt] = useState(null);
   const [showPatrolRoute, setShowPatrolRoute] = useState(false);
-  const [showForceSignOut, setShowForceSignOut] = useState(false);
+  const [signOutShift, setSignOutShift] = useState(null);
   const [alarmToComplete, setAlarmToComplete] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [showChat, setShowChat] = useState(false);
@@ -370,15 +372,21 @@ export default function GuardShift() {
   }, [upcomingShifts, showBatchAck, shiftToAck, ackDismissed]);
 
   useEffect(() => {
-    if (user && !user.is_clocked_in && user.role_type === 'guard') {
-      base44.entities.Shift.filter({ guard_id: user.id, status: 'completed' }, '-clock_out.timestamp', 1).then(recent => {
-        if (recent?.[0]?.clock_out) {
-          const mins = (Date.now() - new Date(recent[0].clock_out.timestamp).getTime()) / 60000;
-          if (mins >= 0 && mins < 2) setShowForceSignOut(true);
-        }
+    let cancelled = false;
+    if (user && !user.is_clocked_in && user.role_type === 'guard' && !shiftsLoading && !activeShift) {
+      base44.entities.Shift.filter({ guard_id: user.id, customer_id: user.customer_id, status: 'completed' }, '-clock_out.timestamp', 1).then(async recent => {
+        const completed = recent?.[0];
+        if (!completed?.clock_out?.timestamp) return;
+        const signedOut = await hasShiftSignOutReceipt(user, completed, appParams.token);
+        if (cancelled || signedOut) return;
+        // Preserve the existing post-clock-out gate, but do not replay an
+        // already signed-out shift when the guard authenticates again.
+        const mins = (Date.now() - new Date(completed.clock_out.timestamp).getTime()) / 60000;
+        if (mins >= 0 && mins < 2) setSignOutShift(completed);
       });
     }
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [user?.id, user?.customer_id, user?.is_clocked_in, shiftsLoading, activeShift?.id]);
 
   if (loadingUser || shiftsLoading) {
     return (
@@ -403,7 +411,7 @@ export default function GuardShift() {
     );
   }
 
-  if (showForceSignOut) return <ForceSignOutModal user={user} />;
+  if (signOutShift) return <ForceSignOutModal user={user} shift={signOutShift} />;
   if (!user.is_clocked_in && user.role_type === "guard") {
     // Render the shift-acknowledgement modal OVER the clock-in screen so a guard
     // can Accept / Decline / Request Revision for an upcoming shift BEFORE they
