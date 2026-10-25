@@ -43,6 +43,7 @@ function playBeep() {
 const ERROR_MESSAGES = {
   license_missing: { title: "Licence not configured", body: "Ask an administrator to set VITE_BARKODER_LICENSE_KEY before using the scanner." },
   license_error: { title: "Licence error", body: "The barKoder licence is invalid, expired, or not authorised for this domain." },
+  license_unlicensed: { title: "Scanner running unlicensed", body: "The barKoder engine rejected the licence key and is masking decoded data. An administrator must update the BARKODER_LICENSE_KEY app secret with the current licence key — rescanning will not help." },
   insecure_context: { title: "Secure context required", body: "Camera access and WASM streaming require HTTPS." },
   wasm_error: { title: "Scanner engine error", body: "Failed to load the barKoder WebAssembly engine. Check your connection and try again." },
   init_error: { title: "Initialization failed", body: "The scanner could not initialize. Try again." },
@@ -213,6 +214,16 @@ export default function DocumentScanner({
       scanner.resolveDocument(raw, caller, documentType);
     console.log("[barKoder] barcode_detected", { type: parsed.barcodeType, resolved: profileId, parsed: !!parsed.formattedJSON });
     scanner.logDebug("barcode_detected", { type: parsed.barcodeType, resolved: profileId });
+
+    // Unlicensed trial mode: the engine masks every decoded value, so stop and
+    // surface the licence problem instead of the misleading incomplete-scan UI.
+    if (parsed.licenseState === "unlicensed") {
+      scanner.stopScanner();
+      scanner.logDebug("license_unlicensed");
+      console.error("[barKoder] UNLICENSED engine mode detected — licence key rejected");
+      reportError({ type: "license_unlicensed" });
+      return;
+    }
 
     let photo = null;
     if (resolvedProfile.supportsPhoto && parsed.formattedJSON) {

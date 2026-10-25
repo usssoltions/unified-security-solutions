@@ -400,6 +400,17 @@ export function parseResult(rawResult) {
   const formattedText = single?.formattedText ?? rawResult?.formattedText ?? null;
   const timestamp = new Date().toISOString();
 
+  // Licence-state detection: when the barKoder engine rejects the licence key
+  // (invalid, expired or domain-mismatched) it does NOT throw at initialize()
+  // — it silently runs in UNLICENSED trial mode, masking decoded values with
+  // dot-fragments and prefixing the raw payload with "(UNLICENSED)". Detected
+  // here from the SDK's own output so the app reports the true cause instead
+  // of a misleading "incomplete scan". No SDK change is involved.
+  const UNLICENSED_MARKER = "(UNLICENSED)";
+  const licenseState = [textualData, formattedText]
+    .some((t) => typeof t === "string" && t.includes(UNLICENSED_MARKER))
+    ? "unlicensed" : null;
+
   let formattedJSON = null;
   let malformedJSON = false;
   if (typeof formattedJSONStr === "string" && formattedJSONStr.length > 0) {
@@ -417,6 +428,7 @@ export function parseResult(rawResult) {
 
   return {
     barcodeType, textualData, formattedJSON, formattedText,
+    licenseState,
     binaryDataPresent: !!(single?.binaryData || rawResult?.binaryData),
     timestamp, parsed: !!formattedJSON, malformedJSON,
     rawResultKeys: rawResult ? Object.keys(rawResult) : [],
