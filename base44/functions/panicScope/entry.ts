@@ -33,6 +33,7 @@
  * any PanicAlert, notification or audit record.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 
 export default async function(req) {
   try {
@@ -40,6 +41,8 @@ export default async function(req) {
     const caller = await base44.auth.me();
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const svc = base44.asServiceRole;
+    const suspensionDenied = await enforceTenantActive(svc, caller);
+    if (suspensionDenied) return suspensionDenied;
     const customerId = caller.customer_id || null;
 
     // Site display names — the caller's OWN tenant only. Cross-tenant site

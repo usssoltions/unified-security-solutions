@@ -151,6 +151,18 @@ export default async function(req: Request): Promise<Response> {
     if (scope.phone) updates.phone = scope.phone;
     if (scope.site_id) updates.site_id = scope.site_id;
     if (scope.user_status) updates.user_status = scope.user_status;
+    // SUSPENSION MIRROR: a user scoped while their customer is SUSPENDED
+    // starts with the tenant_suspended marker set, so entity RLS blocks their
+    // direct entity access from the first session (the gateways block them
+    // too). A lookup failure fails open to the gateway-level enforcement.
+    if (scope.customer_id) {
+      try {
+        const custNow: any = await base44.asServiceRole.entities.Customer.get(String(scope.customer_id));
+        if (custNow && custNow.status === 'suspended') {
+          updates.tenant_suspended = String(scope.customer_id);
+        }
+      } catch (_) { /* gateway-level enforcement remains authoritative */ }
+    }
 
     if (Object.keys(updates).length === 0) {
       return Response.json({ applied: false, reason: 'empty_scope' });

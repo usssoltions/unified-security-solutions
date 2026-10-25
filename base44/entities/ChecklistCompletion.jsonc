@@ -1,7 +1,7 @@
 {
   "name": "ChecklistCompletion",
   "type": "object",
-  "description": "Patrol checklist completion submitted with a checkpoint scan. Tenant ownership is stamped server-side by the checkpointSubmission gateway from the guard's verified shift. IDEMPOTENT via submission_key: a retry or offline sync with the same key returns the existing record instead of creating a duplicate.",
+  "description": "Patrol checklist completion submitted with a checkpoint scan. Tenant ownership is stamped server-side by the checkpointSubmission gateway from the guard's verified shift. IDEMPOTENT via submission_key: a retry or offline sync with the same key returns the existing record instead of creating a duplicate. SUSPENSION (direct entity access): every non-admin RLS branch additionally requires data.customer_id != the caller's server-stamped User.tenant_suspended marker (set by customerAccess on suspension, cleared on reactivation) \u2014 a suspended customer's users are blocked from direct SDK reads/writes outside the checkpointSubmission gateway, with no effect on any other user (a missing/null marker never blocks).",
   "properties": {
     "submission_key": {
       "type": [
@@ -139,10 +139,28 @@
     "create": {
       "$or": [
         {
-          "data.guard_id": "{{user.id}}"
+          "$and": [
+            {
+              "data.guard_id": "{{user.id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": "{{user.data.tenant_suspended}}"
+              }
+            }
+          ]
         },
         {
-          "created_by_id": "{{user.id}}"
+          "$and": [
+            {
+              "created_by_id": "{{user.id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": "{{user.data.tenant_suspended}}"
+              }
+            }
+          ]
         },
         {
           "user_condition": {
@@ -154,10 +172,28 @@
     "read": {
       "$or": [
         {
-          "data.guard_id": "{{user.id}}"
+          "$and": [
+            {
+              "data.guard_id": "{{user.id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": "{{user.data.tenant_suspended}}"
+              }
+            }
+          ]
         },
         {
-          "created_by_id": "{{user.id}}"
+          "$and": [
+            {
+              "created_by_id": "{{user.id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": "{{user.data.tenant_suspended}}"
+              }
+            }
+          ]
         },
         {
           "user_condition": {
@@ -173,6 +209,11 @@
               "data.customer_id": {
                 "$ne": null
               }
+            },
+            {
+              "data.customer_id": {
+                "$ne": "{{user.data.tenant_suspended}}"
+              }
             }
           ]
         }
@@ -181,10 +222,28 @@
     "update": {
       "$or": [
         {
-          "data.guard_id": "{{user.id}}"
+          "$and": [
+            {
+              "data.guard_id": "{{user.id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": "{{user.data.tenant_suspended}}"
+              }
+            }
+          ]
         },
         {
-          "created_by_id": "{{user.id}}"
+          "$and": [
+            {
+              "created_by_id": "{{user.id}}"
+            },
+            {
+              "data.customer_id": {
+                "$ne": "{{user.data.tenant_suspended}}"
+              }
+            }
+          ]
         },
         {
           "user_condition": {

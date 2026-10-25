@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
-import { gwErr as err, resolveAdminRoles, resolveCustomerScope, checkModuleLicense, tenantQueryOf, inScopeOf, findRecord, auditLog } from '../../shared/tenantGateway.ts';
+import { gwErr as err, resolveAdminRoles, resolveCustomerScope, checkModuleLicense, tenantQueryOf, inScopeOf, findRecord, auditLog, enforceTenantActive } from '../../shared/tenantGateway.ts';
 
 /**
  * medicalAccess — the SOLE authorized data gateway for the MEDICAL module
@@ -45,6 +45,8 @@ export default async function main(req: Request): Promise<Response> {
   const body = await req.json().catch(() => ({}));
   const { action, ...p } = body || {};
   const svc = base44.asServiceRole;
+  const suspensionDenied = await enforceTenantActive(svc, caller);
+  if (suspensionDenied) return suspensionDenied;
   const callerName = caller.display_name || caller.full_name || caller.email || 'Unknown';
 
   /* ── Server-side role resolution (User record wins over session claims) ── */

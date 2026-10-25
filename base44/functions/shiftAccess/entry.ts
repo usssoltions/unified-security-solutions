@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { customerModuleLicensed } from '../../shared/entitlementActive.ts';
 import { fail, validCoords, distanceMeters, geofenceEnforced } from '../../shared/guardGeo.ts';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 
 /**
  * shiftAccess — server-authoritative guard shift lifecycle gateway.
@@ -67,6 +68,8 @@ async function requireGuardShiftContext(base44, svc) {
   if (!caller.customer_id) {
     return { error: fail('No tenant scope resolved for this account — access denied', 'no_tenant', 403) };
   }
+  const suspensionDenied = await enforceTenantActive(svc, caller);
+  if (suspensionDenied) return { error: suspensionDenied };
   const licensed = await customerModuleLicensed(svc, caller.customer_id, SECURITY_MODULE_KEYS).catch(() => false);
   if (!licensed) {
     return { error: fail('Your organisation is not licensed for shift operations', 'not_licensed', 403) };
@@ -136,6 +139,8 @@ export default async function(req: Request): Promise<Response> {
       if (!caller.customer_id) {
         return Response.json({ ok: true, scheduler_enabled: true, geofence_enforcement_enabled: true, resolved: false });
       }
+      const suspensionDenied = await enforceTenantActive(svc, caller);
+      if (suspensionDenied) return suspensionDenied;
       const scheduler_enabled = await schedulerEnabled(svc, caller.customer_id);
       const geofence_enforcement_enabled = await geofenceEnforced(svc, caller.customer_id);
       return Response.json({ ok: true, scheduler_enabled, geofence_enforcement_enabled, resolved: true, customer_id: caller.customer_id });
@@ -152,6 +157,8 @@ export default async function(req: Request): Promise<Response> {
         return fail('Only a Customer Administrator can change the shift scheduler setting', 'forbidden', 403);
       }
       if (!caller.customer_id) return fail('No tenant scope resolved for this account', 'no_tenant', 403);
+      const suspensionDenied = await enforceTenantActive(svc, caller);
+      if (suspensionDenied) return suspensionDenied;
       if (typeof body.enabled !== 'boolean') return fail('enabled must be true or false', 'bad_request');
       await svc.entities.Customer.update(caller.customer_id, { shift_scheduler_enabled: body.enabled });
       return Response.json({ ok: true, scheduler_enabled: body.enabled });
@@ -168,6 +175,8 @@ export default async function(req: Request): Promise<Response> {
         return fail('Only a Customer Administrator can change the geofence enforcement setting', 'forbidden', 403);
       }
       if (!caller.customer_id) return fail('No tenant scope resolved for this account', 'no_tenant', 403);
+      const suspensionDenied = await enforceTenantActive(svc, caller);
+      if (suspensionDenied) return suspensionDenied;
       if (typeof body.enabled !== 'boolean') return fail('enabled must be true or false', 'bad_request');
       const before = await readCustomer(svc, caller.customer_id);
       const oldValue = before ? before.geofence_enforcement_enabled !== false : true;

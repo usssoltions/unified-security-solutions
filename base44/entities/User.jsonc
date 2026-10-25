@@ -64,6 +64,29 @@
       ],
       "description": "Customer/tenant ID this user belongs to. Used for tenant isolation. Nullable: cleared by manageUser remove_access."
     },
+    "tenant_suspended": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "INTERNAL suspension marker stamped ONLY by the platform service role: the user's own customer_id while their customer is SUSPENDED (set by customerAccess set_status, and at invitation acceptance by applyMyPendingScope), null otherwise. Entity RLS tenant branches require data.customer_id != this value, so a suspended customer's users are blocked from DIRECT entity access (raw SDK reads/writes that bypass the tenant gateways) while administrators remain exempt. A missing or null marker never blocks anyone. Field-locked: never editable by the user or tenant administrators; cleared on reactivation.",
+      "rls": {
+        "update": {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "admin_level": "platform"
+              }
+            }
+          ]
+        }
+      }
+    },
     "employer_id": {
       "type": [
         "string",

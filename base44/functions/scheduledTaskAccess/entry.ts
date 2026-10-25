@@ -70,6 +70,7 @@ import {
 } from '../../shared/taskSweep.ts';
 import { handleTaskLifecycle } from '../../shared/taskLifecycle.ts';
 import { handleUpdateBatch } from '../../shared/taskBatchEdit.ts';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 import { entitlementIsActiveNow, customerModuleLicensed } from '../../shared/entitlementActive.ts';
 
 const EDIT_ROLES = ['customer_admin', 'admin', 'dispatcher'];
@@ -184,6 +185,8 @@ export default async function(req) {
     /* ──────────────────────────────────────────────────────────────────────
        AUTHENTICATED ACTIONS
        ────────────────────────────────────────────────────────────────────── */
+    const suspensionDenied = await enforceTenantActive(svc, caller);
+    if (suspensionDenied) return suspensionDenied;
     const platformAdmin = isPlatformAdmin(caller);
     const resellerAdmin = isResellerAdmin(caller);
     const roleType = caller.role_type;

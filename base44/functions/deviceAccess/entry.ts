@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 import {
   isPlatformAdmin, isResellerAdmin,
   countActiveDevices, loadCustomerById,
@@ -102,6 +103,8 @@ export default async function(req: Request): Promise<Response> {
     const svc = base44.asServiceRole;
     const caller = await resolveTenantCaller(base44);
     if (!caller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const suspensionDenied = await enforceTenantActive(svc, caller);
+    if (suspensionDenied) return suspensionDenied;
 
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || '');

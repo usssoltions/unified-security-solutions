@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import { stampTenantSuspension } from '../../shared/tenantGateway.ts';
 import {
   isPlatformAdmin, isResellerAdmin, parseDeviceLimit,
   countActiveDevices, loadCustomerById,
@@ -293,6 +294,11 @@ export default async function(req: Request): Promise<Response> {
 
       const oldStatus = cust.status || null;
       const updated = await svc.entities.Customer.update(customerId, updates);
+      // SUSPENSION MIRROR: keep every tenant user's tenant_suspended marker in
+      // sync so DIRECT entity access (raw SDK reads/writes outside the tenant
+      // gateways) is blocked by entity RLS for a suspended customer and
+      // restored on reactivation. Best-effort — never blocks the transition.
+      await stampTenantSuspension(svc, customerId).catch(() => {});
       await svc.entities.PlatformAuditLog.create({
         event_type: newStatus === 'suspended' ? 'customer.suspended' : 'customer.reactivated',
         customer_id: customerId, reseller_id: cust.reseller_id || undefined,

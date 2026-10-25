@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { fail, validCoords, distanceMeters, geofenceEnforced } from '../../shared/guardGeo.ts';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 
 /**
  * checkpointSubmission — server-authoritative patrol checkpoint submission.
@@ -30,6 +31,8 @@ export default async function(req) {
     if (!caller) return fail('Unauthorized', 'unauthorized', 401);
     if (caller.role_type !== 'guard') return fail('Only guards can submit checkpoint scans', 'forbidden', 403);
     if (!caller.customer_id) return fail('No tenant scope resolved for this account — access denied', 'no_tenant', 403);
+    const suspensionDenied = await enforceTenantActive(svc, caller);
+    if (suspensionDenied) return suspensionDenied;
 
     const body = await req.json().catch(() => ({}));
     const submission = body.submission || body;

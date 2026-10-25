@@ -24,6 +24,7 @@ const TENANT_MANAGE_ROLES = ['customer_admin', 'admin', 'dispatcher'];
 import { isPlatformAdmin, isResellerAdmin } from '../../shared/gatewayRoles.ts';
 
 import { resolveTenantCaller } from '../../shared/tenantCaller.ts';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 
 export default async function(req) {
   try {
@@ -37,6 +38,8 @@ export default async function(req) {
     const body = await req.json().catch(() => ({})) || {};
     const action = String(body.action || 'list');
     const svc = base44.asServiceRole;
+    const suspensionDenied = await enforceTenantActive(svc, caller);
+    if (suspensionDenied) return suspensionDenied;
 
     const platformAdmin = isPlatformAdmin(caller);
     const resellerAdmin = isResellerAdmin(caller);

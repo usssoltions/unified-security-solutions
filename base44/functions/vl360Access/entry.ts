@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
 import { entitlementIsActiveNow, customerModuleLicensed } from '../../shared/entitlementActive.ts';
 import { isPlatformAdmin, isResellerAdmin, userName } from '../../shared/gatewayRoles.ts';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 import {
   VL_MODULE_KEY, VL_ROLES, VL_ROLE_LABELS, isVlRole, vlRoleForPlatformRole,
   validateTelegramDest, validatePhoneNumber, actorName, publicProfile,
@@ -70,6 +71,8 @@ export default async function(req: Request): Promise<Response> {
     if (!caller) return Response.json({ error: 'Authentication required', code: 'auth_required' }, { status: 401 });
     const svc = base44.asServiceRole;
     const platformAdmin = isPlatformAdmin(caller);
+    const suspensionDenied = await enforceTenantActive(svc, caller);
+    if (suspensionDenied) return suspensionDenied;
 
     // ── authorised customer-selection (administrators WITHOUT their own
     // customer scope) ── list_customers is the ONLY action reachable before a

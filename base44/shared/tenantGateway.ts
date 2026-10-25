@@ -153,3 +153,23 @@ export async function enforceTenantActive(svc: any, caller: any): Promise<Respon
     },
   }, { status: 403 });
 }
+
+/**
+ * stampTenantSuspension — keeps the tenant's users' User.tenant_suspended
+ * marker in sync with the customer's CURRENT suspension state (called by
+ * customerAccess set_status on suspend/reactivate). While suspended the
+ * marker holds the customer's own id; null otherwise. Entity RLS tenant
+ * branches compare data.customer_id against it so a suspended customer's
+ * users are blocked from DIRECT entity access (raw SDK reads/writes that
+ * bypass the tenant gateways). A missing or null marker never blocks —
+ * no one else is ever locked out by the marker.
+ */
+export async function stampTenantSuspension(svc: any, customerId: string): Promise<void> {
+  if (!customerId) return;
+  const cust = await svc.entities.Customer.get(String(customerId)).catch(() => null);
+  const stamp = cust && cust.status === 'suspended' ? String(customerId) : null;
+  await svc.entities.User.updateMany(
+    { customer_id: String(customerId) },
+    { $set: { tenant_suspended: stamp } },
+  ).catch(() => null);
+}

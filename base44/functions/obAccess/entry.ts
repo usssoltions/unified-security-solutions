@@ -37,6 +37,7 @@
  *   sweep              — scheduled automation (no session; counts only).
  */
 import { isPlatformAdmin, isResellerAdmin, userName } from '../../shared/gatewayRoles.ts';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from 'base44:runtime';
 import {
@@ -113,6 +114,8 @@ export default async function(req) {
       await logObAudit(svc, { event_type: 'ob.impersonated', actor: caller, notes: 'Platform admin executing OB action as ' + userName(target) });
     }
 
+    const suspensionDenied = await enforceTenantActive(svc, caller);
+    if (suspensionDenied) return suspensionDenied;
     const platformAdmin = isPlatformAdmin(caller);
     const resellerAdmin = isResellerAdmin(caller);
     const roleType = caller.role_type;
