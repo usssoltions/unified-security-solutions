@@ -168,8 +168,10 @@ export async function stampTenantSuspension(svc: any, customerId: string): Promi
   if (!customerId) return;
   const cust = await svc.entities.Customer.get(String(customerId)).catch(() => null);
   const stamp = cust && cust.status === 'suspended' ? String(customerId) : null;
-  await svc.entities.User.updateMany(
-    { customer_id: String(customerId) },
-    { $set: { tenant_suspended: stamp } },
-  ).catch(() => null);
+  // NOTE: the built-in User entity refuses bulk updates (updateMany/bulkUpdate),
+  // so the stamp is applied one user at a time.
+  const users = await svc.entities.User.filter({ customer_id: String(customerId) }).catch(() => []);
+  for (const u of (users || [])) {
+    await svc.entities.User.update(u.id, { tenant_suspended: stamp }).catch(() => null);
+  }
 }
