@@ -64,6 +64,9 @@ export default async function main(req: Request): Promise<Response> {
   }
 
   // ── RESELLER SCOPE ISOLATION: cross-reseller customer resolution must 403 ──
+  // resolveCustomerScope(svc, caller, p, isPlatform, isReseller) returns
+  // { scope: { mode, customer_id, reseller_id }, error? } — a reseller admin
+  // may only resolve a customer belonging to THEIR OWN reseller.
   if (mode === 'reseller_scope') {
     const customers = await svc.entities.Customer.list().catch(() => []);
     const rows = (customers && customers.items) || customers || [];
@@ -77,19 +80,32 @@ export default async function main(req: Request): Promise<Response> {
     }
     const custA = withReseller[0];
     const custB = withReseller.find((c: any) => c.reseller_id !== custA.reseller_id);
+    const isPlatform = false;
+    const isReseller = true;
+    const ra: any = { id: 'selftest-ra', full_name: 'Selftest Reseller Admin', email: 'selftest-ra@example.invalid', role: 'user', admin_level: 'reseller', role_type: 'reseller_admin', reseller_id: custA.reseller_id, customer_id: null };
     const tests: any[] = [];
-    // Same-reseller customer: resolveCustomerScope must allow it.
+    // Same-reseller customer: resolveCustomerScope must allow and scope to it.
     {
-      const ra: any = { id: 'selftest-ra', full_name: 'Selftest Reseller Admin', email: 'selftest-ra@example.invalid', role: 'user', admin_level: 'reseller', role_type: 'reseller_admin', reseller_id: custA.reseller_id, customer_id: null };
-      const scope = await resolveCustomerScope(svc, ra, { customer_id: custA.id });
-      tests.push({ name: 'same_reseller_allowed', customer: custA.name, allowed: !!scope && !scope.error, scope_customer_id: scope && scope.customer_id || null });
+      const res = await resolveCustomerScope(svc, ra, { customer_id: custA.id }, isPlatform, isReseller);
+      tests.push({
+        name: 'same_reseller_allowed',
+        customer: custA.name,
+        allowed: !!res && !res.error && !!res.scope && res.scope.customer_id === String(custA.id),
+        scope_customer_id: (res && res.scope && res.scope.customer_id) || null,
+      });
     }
     // Cross-reseller customer: resolveCustomerScope must reject it (403).
     {
-      const ra: any = { id: 'selftest-ra', full_name: 'Selftest Reseller Admin', email: 'selftest-ra@example.invalid', role: 'user', admin_level: 'reseller', role_type: 'reseller_admin', reseller_id: custA.reseller_id, customer_id: null };
-      const scope = await resolveCustomerScope(svc, ra, { customer_id: custB.id });
-      const denied = !scope || !!scope.error;
-      tests.push({ name: 'cross_reseller_denied', customer: custB.name, reseller_of_target: custB.reseller_id, caller_reseller: custA.reseller_id, denied, http_status: (scope && scope.error && scope.error.status) || null });
+      const res = await resolveCustomerScope(svc, ra, { customer_id: custB.id }, isPlatform, isReseller);
+      const denied = !res || !!res.error;
+      tests.push({
+        name: 'cross_reseller_denied',
+        customer: custB.name,
+        reseller_of_target: custB.reseller_id,
+        caller_reseller: custA.reseller_id,
+        denied,
+        http_status: (res && res.error && res.error.status) || null,
+      });
     }
     return ok({ mode, tests });
   }
