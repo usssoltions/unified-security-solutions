@@ -1,7 +1,9 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { isPlatformAdminUser } from '@/lib/platformAdmin';
+import AccountBlockedScreen from '@/components/AccountBlockedScreen';
+import AccessVerificationError from '@/components/AccessVerificationError';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 
 const AuthContext = createContext();
@@ -12,6 +14,17 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
+
+  // ── Customer suspension gate (SERVER-resolved, never client-trusted) ──────
+  // accessBlocked: {customer_name, reason, support} when the caller's own
+  // customer is suspended (authoritative Customer record via customerAccess
+  // my_status — callable even while suspended; it IS the blocked user's check).
+  const [accessBlocked, setAccessBlocked] = useState(null);
+  const [accessVerifyFailed, setAccessVerifyFailed] = useState(false);
+  const [accessChecking, setAccessChecking] = useState(false);
+  const accessLastCheckRef = useRef(0);
+  const accessInFlightRef = useRef(false);
+  const pendingUserRef = useRef(null); // sign-in withheld while blocked/failed
 
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
 
@@ -179,6 +192,31 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
+      // ── Customer suspension gate (fresh sign-in) ─────────────────────────
+      // Resolved from the authoritative Customer record server-side. A
+      // suspended organisation never mounts the app. A failed check is a
+      // retryable verification error — never a silent pass.
+      if (!isPlatformAdminUser(currentUser) && currentUser?.customer_id) {
+        pendingUserRef.current = currentUser;
+        try {
+          const d = await fetchAccessStatus();
+          if (d?.status === 'suspended') {
+            setAccessBlocked({
+              customer_name: d.customer_name || 'Your organisation',
+              reason: d.suspension_reason || null,
+              support: d.support || null,
+            });
+            setIsLoadingAuth(false);
+            return;
+          }
+          pendingUserRef.current = null;
+        } catch (_) {
+          setAccessVerifyFailed(true);
+          setIsLoadingAuth(false);
+          return;
+        }
+      }
+
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
@@ -196,6 +234,60 @@ export const AuthProvider = ({ children }) => {
       }
     }
   };
+
+  // Lightweight server-side access-status read (no polling, no intervals —
+  // callers throttle). Callable by suspended users by design.
+  const fetchAccessStatus = async () => {
+    const res = await base44.functions.invoke('customerAccess', { action: 'my_status' });
+    return res?.data || res;
+  };
+
+  // Existing sessions: revalidated on window focus and on navigation
+  // (throttled to at most one check per minute). A suspension takes effect
+  // immediately: the blocked screen replaces the app and cached protected
+  // content unmounts. A FAILED check shows a retryable verification error —
+  // never a silent pass and never a false non-payment claim.
+  const revalidateAccess = useCallback(async (force = false) => {
+    if (accessInFlightRef.current) return;
+    const target = user || pendingUserRef.current;
+    if (!target || isPlatformAdminUser(target) || !target.customer_id) return;
+    const now = Date.now();
+    if (!force && now - accessLastCheckRef.current < 60000) return;
+    accessInFlightRef.current = true;
+    accessLastCheckRef.current = now;
+    setAccessChecking(true);
+    try {
+      const d = await fetchAccessStatus();
+      if (d?.status === 'suspended') {
+        setAccessBlocked({
+          customer_name: d.customer_name || 'Your organisation',
+          reason: d.suspension_reason || null,
+          support: d.support || null,
+        });
+      } else {
+        setAccessBlocked(null);
+        setAccessVerifyFailed(false);
+        if (pendingUserRef.current) {
+          // Complete a sign-in that was withheld while suspended/failed.
+          setUser(pendingUserRef.current);
+          setIsAuthenticated(true);
+          pendingUserRef.current = null;
+        }
+      }
+    } catch (_) {
+      setAccessVerifyFailed(true);
+    } finally {
+      accessInFlightRef.current = false;
+      setAccessChecking(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const onFocus = () => revalidateAccess();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [user, revalidateAccess]);
 
   const logout = (shouldRedirect = true) => {
     setUser(null);
@@ -215,6 +307,29 @@ export const AuthProvider = ({ children }) => {
     base44.auth.redirectToLogin(window.location.href);
   };
 
+  // Blocked / unverified: these screens REPLACE the app entirely — protected
+  // pages (and their cached content) unmount, with no dismiss and no
+  // background navigation.
+  if (accessBlocked) {
+    return (
+      <AccountBlockedScreen
+        info={accessBlocked}
+        checking={accessChecking}
+        onRecheck={() => revalidateAccess(true)}
+        onSignOut={() => logout(true)}
+      />
+    );
+  }
+  if (accessVerifyFailed) {
+    return (
+      <AccessVerificationError
+        checking={accessChecking}
+        onRetry={() => revalidateAccess(true)}
+        onSignOut={() => logout(true)}
+      />
+    );
+  }
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -225,7 +340,8 @@ export const AuthProvider = ({ children }) => {
       appPublicSettings,
       logout,
       navigateToLogin,
-      checkAppState
+      checkAppState,
+      revalidateAccess
     }}>
       {children}
     </AuthContext.Provider>

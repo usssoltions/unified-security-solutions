@@ -5,8 +5,8 @@ import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
-import { Suspense } from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { Suspense, useEffect } from 'react';
+import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -75,7 +75,15 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   : <>{children}</>;
 
 const AuthenticatedApp = () => {
-  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin, checkAppState } = useAuth();
+  const { user, isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin, checkAppState, revalidateAccess } = useAuth();
+  const location = useLocation();
+
+  // Existing sessions: revalidate customer status on every navigation
+  // (throttled to at most one check per minute inside revalidateAccess —
+  // no polling, no excessive backend calls).
+  useEffect(() => {
+    revalidateAccess?.();
+  }, [location.pathname, revalidateAccess]);
 
   // PUBLIC ROUTE — external account-removal request resource (Google Play
   // Data Safety → Account Deletion URL). Rendered OUTSIDE the authenticated

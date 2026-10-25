@@ -11,6 +11,9 @@ import {
 } from "@/components/ui/select";
 import { Plus, Loader2, Building2, Package, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import CustomerModulesModal from "@/components/reseller/CustomerModulesModal";
 
 /**
@@ -25,6 +28,9 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", legal_name: "", customer_type: "security", status: "active", device_limit: "", operational_user_limit: "" });
   const [modulesFor, setModulesFor] = useState(null);
+  const [suspendFor, setSuspendFor] = useState(null);
+  const [suspendReason, setSuspendReason] = useState("trial_expired");
+  const [statusSaving, setStatusSaving] = useState(false);
 
   const create = async () => {
     if (!form.name) { toast({ title: "Name required", variant: "destructive" }); return; }
@@ -69,13 +75,29 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
     }
   };
 
-  const setStatus = async (c, status) => {
+  // Suspend / reactivate goes through the customerAccess gateway — the single
+  // audited authority (audit-logged, reason required, reseller scope forced
+  // server-side, customer admins denied). Direct Customer.update is no longer
+  // used for status changes.
+  const setStatus = async (c, status, reason) => {
+    setStatusSaving(true);
     try {
-      await base44.entities.Customer.update(c.id, { status });
-      toast({ title: `${c.name} ${status}` });
+      const res = await base44.functions.invoke("customerAccess", {
+        action: "set_status",
+        customer_id: c.id,
+        status,
+        ...(status === "suspended" ? { suspension_reason: reason } : {}),
+      });
+      const d = res?.data || res;
+      if (!d?.success) throw new Error(d?.error || "Status change failed");
+      toast({ title: status === "suspended" ? `${c.name} suspended` : `${c.name} reactivated` });
+      setSuspendFor(null);
       onRefresh?.();
     } catch (e) {
-      toast({ title: "Failed", description: e.message, variant: "destructive" });
+      const dd = e?.response?.data || e?.data;
+      toast({ title: "Failed", description: dd?.error || e?.message || "Status change failed", variant: "destructive" });
+    } finally {
+      setStatusSaving(false);
     }
   };
 
@@ -163,7 +185,7 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
               </Button>
             )}
             {!readOnly && c.status !== "suspended" && (
-              <Button size="sm" variant="ghost" className="text-amber-400 hover:text-amber-300" onClick={() => setStatus(c, "suspended")}>Suspend</Button>
+              <Button size="sm" variant="ghost" className="text-amber-400 hover:text-amber-300" onClick={() => { setSuspendReason("trial_expired"); setSuspendFor(c); }}>Suspend</Button>
             )}
             {!readOnly && c.status === "suspended" && (
               <Button size="sm" variant="ghost" className="text-emerald-400 hover:text-emerald-300" onClick={() => setStatus(c, "active")}>Activate</Button>
@@ -177,6 +199,39 @@ export default function ResellerCustomers({ resellerId, customers, onRefresh, ca
         <CustomerModulesModal open={!!modulesFor} customer={modulesFor} resellerLicensedKeys={resellerLicensedKeys}
           onClose={() => setModulesFor(null)} onDone={onRefresh} />
       )}
+
+      {/* Suspension reason — required by the set_status gateway (audit-logged) */}
+      <Dialog open={!!suspendFor} onOpenChange={(o) => !o && setSuspendFor(null)}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Suspend {suspendFor?.name}</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              The customer&apos;s users will be blocked from the app until reactivated. Choose the reason shown to them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <Label className="text-slate-300 text-xs">Suspension reason</Label>
+            <Select value={suspendReason} onValueChange={setSuspendReason}>
+              <SelectTrigger className="bg-slate-950 border-slate-700 text-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="trial_expired">Demo / trial period expired</SelectItem>
+                <SelectItem value="non_payment">Outstanding payment</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="border-slate-600 text-slate-300" onClick={() => setSuspendFor(null)}>Cancel</Button>
+            <Button
+              disabled={statusSaving}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold"
+              onClick={() => suspendFor && setStatus(suspendFor, "suspended", suspendReason)}
+            >
+              {statusSaving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null} Suspend customer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

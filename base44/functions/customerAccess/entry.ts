@@ -253,7 +253,91 @@ export default async function(req: Request): Promise<Response> {
       });
     }
 
-    return Response.json({ error: 'Unknown action. Use create, set_device_limit, set_operational_user_limit or usage', code: 'bad_action' }, { status: 400 });
+    /* ── SET STATUS (suspend / reactivate) — platform or reseller admin only ── */
+    // The SINGLE audited authority for customer suspension. Customer-level
+    // admins are DENIED (no tenant-admin bypass). Reseller admins are
+    // validated against their OWN reseller server-side — a client-supplied
+    // customer_id outside their reseller fails closed.
+    if (action === 'set_status') {
+      const customerId = String(body?.customer_id || '');
+      if (!customerId) return Response.json({ error: 'customer_id required', code: 'missing_customer' }, { status: 400 });
+      const cust = await loadCustomerById(svc, customerId);
+      if (!cust) return Response.json({ error: 'Customer not found', code: 'customer_not_found' }, { status: 404 });
+
+      let allowed = false;
+      if (isPlatformAdmin(caller)) {
+        allowed = true;
+      } else if (isResellerAdmin(caller) && cust.reseller_id && caller.reseller_id
+        && String(cust.reseller_id) === String(caller.reseller_id)) {
+        allowed = true;
+      }
+      if (!allowed) {
+        return Response.json({ error: 'Only a Platform or Reseller Administrator may suspend or reactivate a customer.', code: 'permission_denied' }, { status: 403 });
+      }
+
+      const newStatus = String(body?.status || '');
+      if (!['suspended', 'active'].includes(newStatus)) {
+        return Response.json({ error: 'status must be "suspended" or "active".', code: 'bad_status' }, { status: 400 });
+      }
+      const updates: Record<string, any> = { status: newStatus };
+      let reason: string | null = null;
+      if (newStatus === 'suspended') {
+        reason = String(body?.suspension_reason || '');
+        if (!['trial_expired', 'non_payment', 'other'].includes(reason)) {
+          return Response.json({ error: 'A suspension reason (trial_expired, non_payment or other) is required.', code: 'missing_reason' }, { status: 400 });
+        }
+        updates.suspension_reason = reason;
+      } else {
+        updates.suspension_reason = null;
+      }
+
+      const oldStatus = cust.status || null;
+      const updated = await svc.entities.Customer.update(customerId, updates);
+      await svc.entities.PlatformAuditLog.create({
+        event_type: newStatus === 'suspended' ? 'customer.suspended' : 'customer.reactivated',
+        customer_id: customerId, reseller_id: cust.reseller_id || undefined,
+        user_id: caller.id, user_name: callerName,
+        entity_name: 'Customer', entity_id: customerId, action: 'set_status',
+        old_values: JSON.stringify({ status: oldStatus }),
+        new_values: JSON.stringify({ status: newStatus, suspension_reason: reason }),
+        notes: newStatus === 'suspended'
+          ? `Customer suspended by ${callerName} — reason: ${reason}.`
+          : `Customer reactivated by ${callerName} — suspension reason cleared.`,
+      }).catch(() => {});
+      return Response.json({ success: true, customer: updated });
+    }
+
+    /* ── MY STATUS (accessible to suspended users — this IS the check) ────── */
+    // Lightweight server-resolved access-status read used by the app's
+    // Account Blocked screen and its focus/navigation revalidation. Always
+    // answers for the caller's OWN customer (never a client-supplied id) and
+    // includes the reseller's support contact for reactivation.
+    if (action === 'my_status') {
+      if (isPlatformAdmin(caller) || !caller.customer_id) {
+        return Response.json({ status: 'active', customer_name: null, suspension_reason: null, support: null, platform_admin: isPlatformAdmin(caller) });
+      }
+      const cust = await loadCustomerById(svc, String(caller.customer_id));
+      let support: any = null;
+      if (cust?.reseller_id) {
+        const res = await svc.entities.Reseller.get(cust.reseller_id).catch(() => null);
+        if (res) {
+          support = {
+            name: res.support_name || res.name || null,
+            email: res.support_email || null,
+            phone: res.support_phone || null,
+          };
+        }
+      }
+      return Response.json({
+        status: cust?.status || 'active',
+        customer_name: cust?.name || null,
+        suspension_reason: cust?.suspension_reason || null,
+        support,
+        platform_admin: false,
+      });
+    }
+
+    return Response.json({ error: 'Unknown action. Use create, set_device_limit, set_operational_user_limit, usage, set_status or my_status', code: 'bad_action' }, { status: 400 });
   } catch (error) {
     const msg = String((error as any)?.message || error);
     console.log('[customerAccess] fatal', msg);

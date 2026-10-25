@@ -1,7 +1,7 @@
 {
   "name": "Customer",
   "type": "object",
-  "description": "A customer/tenant organization (security company, estate, medical practice, factory, business park, corporate). May belong to a reseller or be directly platform-managed. TENANT ISOLATION: customer admins read their OWN organisation via the id == user.data.customer_id branch; the reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller'). Platform admins retain full access via the built-in admin role.",
+  "description": "A customer/tenant organization (security company, estate, medical practice, factory, business park, corporate). May belong to a reseller or be directly platform-managed. TENANT ISOLATION: customer admins read their OWN organisation via the id == user.data.customer_id branch; the reseller_id branch is RESELLER-ADMIN-only (admin_level 'reseller'). Platform admins retain full access via the built-in admin role. SUSPENSION: status 'suspended' is enforced SERVER-SIDE by tenant data gateways (authoritative record, never a client-supplied status) \u2014 a suspended customer's tenant users are blocked from reading/writing protected tenant data while platform and reseller administrators retain oversight.",
   "properties": {
     "name": {
       "type": "string"
@@ -168,6 +168,20 @@
         "inactive"
       ],
       "default": "active"
+    },
+    "suspension_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "trial_expired",
+        "non_payment",
+        "other",
+        null
+      ],
+      "default": null,
+      "description": "ADMIN-CONTROLLED reason recorded when a customer is suspended (trial_expired / non_payment / other). Set ONLY through the customerAccess gateway set_status action (platform or reseller administrators), cleared on reactivation, audit-logged in PlatformAuditLog. Drives the wording of the Account Blocked screen; null = generic suspension wording \u2014 never assumed to be non-payment."
     },
     "notes": {
       "type": "string"

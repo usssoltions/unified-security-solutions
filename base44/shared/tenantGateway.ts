@@ -121,3 +121,35 @@ export function auditLog(
     notes,
   }).catch(() => null);
 }
+
+/**
+ * enforceTenantActive — CUSTOMER SUSPENSION gate, shared by tenant data
+ * gateways so the check exists in exactly ONE implementation.
+ *
+ * Blocks a SUSPENDED customer's tenant users from every gateway action
+ * (reads, writes, signatures, exports) using the AUTHORITATIVE Customer
+ * record resolved server-side from the caller — never a client-supplied
+ * status, and regardless of any active module entitlement. Platform and
+ * reseller administrators retain legitimate oversight (exempt). Only
+ * status 'suspended' blocks; 'inactive' is a separate decision, not part
+ * of this defect.
+ *
+ * Returns a 403 Response (with a machine-readable code 'customer_suspended'
+ * and the suspension reason for the Account Blocked screen) when blocked,
+ * or null when the caller may proceed.
+ */
+export async function enforceTenantActive(svc: any, caller: any): Promise<Response | null> {
+  const { isPlatform, isReseller } = resolveAdminRoles(caller);
+  if (isPlatform || isReseller || !caller || !caller.customer_id) return null;
+  const cust = await svc.entities.Customer.get(String(caller.customer_id)).catch(() => null);
+  if (!cust || cust.status !== 'suspended') return null;
+  return Response.json({
+    error: 'Your organisation account is suspended. Please contact your service provider to reactivate.',
+    code: 'customer_suspended',
+    suspension: {
+      status: 'suspended',
+      customer_name: cust.name || null,
+      reason: cust.suspension_reason || null,
+    },
+  }, { status: 403 });
+}

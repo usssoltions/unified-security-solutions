@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { enforceTenantActive } from '../../shared/tenantGateway.ts';
 
 /**
  * attendanceAccess — the SOLE authorized data gateway for the Attendance
@@ -95,6 +96,15 @@ export default async function main(req: Request): Promise<Response> {
   const { action, ...params } = body || {};
 
   const callerName = caller.full_name || caller.display_name || caller.email || 'Unknown';
+
+  // ── Customer suspension gate (SERVER-SIDE, authoritative Customer record) ──
+  // A suspended customer's tenant users are blocked from EVERY action here —
+  // reads, writes, attendance registration, signatures (immediate AND
+  // sign-later), exports and record edits — even when the module licence is
+  // active, and no matter which URL they use. Platform and reseller
+  // administrators retain legitimate oversight.
+  const suspensionDenied = await enforceTenantActive(base44.asServiceRole, caller);
+  if (suspensionDenied) return suspensionDenied;
 
   // ── Role resolution (server-side, from the User record — not JWT claims) ──
   const isPlatformAdmin =
