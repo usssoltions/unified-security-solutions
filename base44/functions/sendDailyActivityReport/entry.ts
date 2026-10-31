@@ -295,11 +295,18 @@ Deno.serve(async (req) => {
     // report (cross-tenant email leak). The scope now mirrors the report's
     // OWN tenant scope; platform oversight is always permitted.
     const allUsers = await base44.asServiceRole.entities.User.list();
+    // NOTE: `isPlatformAdmin` above is a BOOLEAN flag for the CALLER, not a
+    // helper. Evaluating a per-recipient platform-admin check must derive it
+    // from that user's own fields (the previous code called the boolean as a
+    // function inside this filter → "i is not a function" 500 for every run).
+    const userIsPlatformAdmin = (u) =>
+      !!u && (u.role === 'admin' || u.role_type === 'platform_admin' || u.admin_level === 'platform');
     const inReportScope = (u) => {
-      if (!tenantScope) return isPlatformAdmin(u);
-      if (tenantScope.customer_id) return isPlatformAdmin(u) || u.customer_id === tenantScope.customer_id;
-      if (tenantScope.reseller_id) return isPlatformAdmin(u) || u.reseller_id === tenantScope.reseller_id;
-      return isPlatformAdmin(u);
+      if (userIsPlatformAdmin(u)) return true; // platform oversight is always permitted
+      if (!tenantScope) return false; // platform-managed pool: platform admins only
+      if (tenantScope.customer_id) return u.customer_id === tenantScope.customer_id;
+      if (tenantScope.reseller_id) return u.reseller_id === tenantScope.reseller_id;
+      return false;
     };
     const recipients = allUsers.filter((u) =>
       ['admin', 'dispatcher', 'supervisor', 'management', 'customer_admin'].includes(u.role_type) &&
